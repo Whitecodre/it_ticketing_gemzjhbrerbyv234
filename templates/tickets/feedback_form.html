@@ -1,0 +1,141 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Feedback{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-2xl mx-auto">
+    <div class="dashboard-card p-6 text-center">
+        <div class="flex justify-center mb-4">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-success/10 text-success">
+                {% lucide "smile" size=32 %}
+            </div>
+        </div>
+        
+        <h2 class="text-xl font-semibold mb-2" style="color: var(--color-text-primary);">
+            How was your experience?
+        </h2>
+        <p class="text-sm text-text-secondary mb-6">
+            Please rate the resolution of ticket <strong>{{ ticket.number }}</strong>
+        </p>
+        
+        {% if error %}
+        <div class="rounded-lg bg-error/10 p-3 border border-error/30 text-error text-sm mb-4">
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        <form method="post" id="feedbackForm">
+            {% csrf_token %}
+            
+            <div class="flex justify-center gap-2 mb-6" id="starContainer">
+                {% for i in "12345"|make_list %}
+                <button type="button" 
+                        class="star-btn text-4xl transition-colors duration-200"
+                        data-value="{{ forloop.counter }}"
+                        style="color: var(--color-text-secondary); background: none; border: none; cursor: pointer;"
+                        onmouseenter="highlightStars({{ forloop.counter }})"
+                        onmouseleave="resetStars()"
+                        onclick="selectStar({{ forloop.counter }})">
+                    ☆
+                </button>
+                {% endfor %}
+            </div>
+            
+            <input type="hidden" name="rating" id="selectedRating" value="">
+            
+            <div class="mb-4 text-center">
+                <p id="ratingLabel" class="text-sm font-medium" style="color: var(--color-text-secondary);">
+                    Tap a star to rate
+                </p>
+            </div>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1 text-text-primary">
+                    Additional feedback (optional)
+                </label>
+                <textarea name="comment" rows="3" 
+                          class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                          placeholder="What could we do better?"></textarea>
+            </div>
+            
+            <div class="flex justify-center">
+                <button type="submit" 
+                        class="btn-primary text-sm px-6 py-2.5 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        id="submitFeedbackBtn"
+                        disabled>
+                    {% lucide "send" size=16 %} Submit Feedback
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    let selectedStar = 0;
+    let currentHover = 0;
+    
+    function highlightStars(count) {
+        currentHover = count;
+        document.querySelectorAll('.star-btn').forEach(function(btn, index) {
+            if (index < count) {
+                btn.style.color = '#F59E0B';
+                btn.textContent = '★';
+            } else {
+                btn.style.color = 'var(--color-text-secondary)';
+                btn.textContent = '☆';
+            }
+        });
+        updateLabel(count);
+    }
+    
+    function resetStars() {
+        if (selectedStar > 0) {
+            highlightStars(selectedStar);
+        } else {
+            document.querySelectorAll('.star-btn').forEach(function(btn) {
+                btn.style.color = 'var(--color-text-secondary)';
+                btn.textContent = '☆';
+            });
+            document.getElementById('ratingLabel').textContent = 'Tap a star to rate';
+        }
+    }
+    
+    function selectStar(count) {
+        selectedStar = count;
+        document.getElementById('selectedRating').value = count;
+        highlightStars(count);
+        document.getElementById('submitFeedbackBtn').disabled = false;
+    }
+    
+    function updateLabel(count) {
+        const labels = {
+            1: '😞 Needs improvement',
+            2: '😐 Average',
+            3: '🙂 Good',
+            4: '😊 Very good',
+            5: '🌟 Excellent!'
+        };
+        document.getElementById('ratingLabel').textContent = labels[count] || 'Tap a star to rate';
+    }
+    
+    // Handle click outside star buttons to reset hover
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.star-btn')) {
+            if (selectedStar === 0) {
+                resetStars();
+            }
+        }
+    });
+</script>
+{% endblock %}

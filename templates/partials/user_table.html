@@ -5,56 +5,135 @@
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Name</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Email</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Role</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">User</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Roles</th>
                 <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Department</th>
                 <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
-                <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs w-12">Actions</th>
+                <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for user in users %}
-            <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border); overflow: visible;"
+            {% with active_role=user.get_active_role %}
+            {% with user_roles=user.roles.all %}
+            <tr class="border-b hover:bg-black/5 transition-colors {% if not user.is_active %}opacity-50{% endif %}" 
+                style="border-color: var(--color-border);"
                 data-user-id="{{ user.pk }}" data-email="{{ user.email }}"
                 data-first-name="{{ user.first_name }}" data-last-name="{{ user.last_name }}"
-                data-role="{{ user.role }}" data-department="{{ user.department }}" data-is-active="{{ user.is_active|lower }}">
-                <td class="py-3 px-4 text-text-primary font-medium">{{ user.get_full_name|default:"—" }}</td>
-                <td class="py-3 px-4 text-text-secondary">{{ user.email }}</td>
+                data-position="{{ user.position|default:'' }}"
+                data-role="{{ user.role }}"
+                data-department="{{ user.department }}"
+                data-is-active="{{ user.is_active|lower }}"
+                data-assigned-roles="{% if user_roles %}{% for role in user_roles %}{{ role.name }}{% if not forloop.last %},{% endif %}{% endfor %}{% else %}{{ user.role }}{% endif %}"
+                data-active-role="{% if active_role %}{{ active_role.name }}{% else %}{{ user.role }}{% endif %}">
+                
+                {# ===== USER ===== #}
                 <td class="py-3 px-4">
-                    <span class="text-xs px-2.5 py-1 rounded-full border border-border text-text-secondary">{{ user.get_role_display }}</span>
+                    <div class="flex items-center gap-3">
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-sm font-medium"
+                             style="background-color: var(--color-primary);">
+                            {% if user.avatar %}
+                                <img src="{{ user.avatar.url }}" alt="{{ user.get_full_name }}" class="h-9 w-9 rounded-full object-cover">
+                            {% else %}
+                                {{ user.first_name|first|upper }}{{ user.last_name|first|upper }}
+                            {% endif %}
+                        </div>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-medium truncate max-w-[160px]" style="color: var(--color-text-primary);">
+                                    {{ user.get_full_name|default:"—" }}
+                                </span>
+                                {% if user.position %}
+                                <span class="text-[0.6rem] px-2 py-0.5 rounded-full bg-surface-secondary text-text-secondary border border-border truncate max-w-[80px]">
+                                    {{ user.position }}
+                                </span>
+                                {% endif %}
+                            </div>
+                            <span class="text-sm text-text-secondary truncate max-w-[180px]">{{ user.email }}</span>
+                        </div>
+                    </div>
                 </td>
-                <td class="py-3 px-4 text-text-secondary">{{ user.get_department_display|default:"—" }}</td>
+
+                {# ===== ROLES ===== #}
+                <td class="py-3 px-4">
+                    {% if user_roles %}
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            {% for role in user_roles %}
+                                <span class="text-xs px-2.5 py-1 rounded-full whitespace-nowrap
+                                    {% if role == active_role %}
+                                        bg-primary text-white font-medium
+                                    {% else %}
+                                        bg-surface-secondary text-text-secondary border border-border
+                                    {% endif %}">
+                                    {{ role.display_name }}
+                                </span>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <span class="text-xs px-2.5 py-1 rounded-full bg-surface-secondary text-text-secondary border border-border">
+                            {{ user.get_role_display }}
+                        </span>
+                    {% endif %}
+                </td>
+
+                {# ===== DEPARTMENT ===== #}
+                <td class="py-3 px-4">
+                    {% if user.department %}
+                        <span class="text-xs px-2.5 py-1 rounded-full bg-surface-secondary text-text-secondary border border-border whitespace-nowrap">
+                            {{ user.get_department_display }}
+                        </span>
+                    {% else %}
+                        <span class="text-sm text-text-secondary">—</span>
+                    {% endif %}
+                </td>
+
+                {# ===== STATUS ===== #}
                 <td class="py-3 px-4">
                     {% if user.is_active %}
-                        <span class="inline-flex items-center gap-1.5 text-success text-xs font-medium">
-                            <span class="w-1.5 h-1.5 rounded-full bg-success"></span> Active
+                        <span class="inline-flex items-center gap-2 text-sm font-medium" style="color: var(--color-success);">
+                            <span class="w-2 h-2 rounded-full bg-success"></span>
+                            Active
                         </span>
                     {% else %}
-                        <span class="inline-flex items-center gap-1.5 text-error text-xs font-medium">
-                            <span class="w-1.5 h-1.5 rounded-full bg-error"></span> Inactive
+                        <span class="inline-flex items-center gap-2 text-sm font-medium" style="color: var(--color-error);">
+                            <span class="w-2 h-2 rounded-full bg-error"></span>
+                            Inactive
                         </span>
                     {% endif %}
                 </td>
-                <td class="py-3 px-4 text-right relative overflow-visible">
-                    {% if user.role != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
-                    <button class="user-action-btn btn-ghost p-1.5 rounded-full hover:bg-black/5 transition" 
-                            onclick="window.userActionBtnClick(this)"
-                            data-user-id="{{ user.pk }}"
-                            data-email="{{ user.email }}"
-                            data-first-name="{{ user.first_name }}"
-                            data-last-name="{{ user.last_name }}"
-                            data-role="{{ user.role }}"
-                            data-department="{{ user.department }}"
-                            data-is-active="{{ user.is_active|lower }}"
-                            aria-label="Actions">
-                        {% lucide "more-vertical" size=18 %}
-                    </button>
-                    {% else %}
-                    <span class="text-xs text-text-secondary">—</span>
-                    {% endif %}
+
+                {# ===== ACTIONS ===== #}
+                <td class="py-3 px-4 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                        {% if request.user.role == 'ADMIN' and user.role not in 'ADMIN,SUPERADMIN' and user != request.user %}
+                        <button onclick="openImpersonateModal({{ user.pk }}, '{{ user.get_full_name|escapejs }}')" 
+                                class="p-2 rounded-md transition hover:bg-black/5 text-text-secondary hover:text-warning"
+                                title="Login as this user">
+                            {% lucide "eye" size=16 %}
+                        </button>
+                        {% endif %}
+                        
+                        {% if user.role != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
+                        <button class="user-action-btn p-2 rounded-md hover:bg-black/5 transition text-text-secondary" 
+                                onclick="window.userActionBtnClick(this)"
+                                data-user-id="{{ user.pk }}"
+                                data-email="{{ user.email }}"
+                                data-first-name="{{ user.first_name }}"
+                                data-last-name="{{ user.last_name }}"
+                                data-role="{{ user.role }}"
+                                data-department="{{ user.department }}"
+                                data-is-active="{{ user.is_active|lower }}"
+                                aria-label="Actions">
+                            {% lucide "more-vertical" size=18 %}
+                        </button>
+                        {% else %}
+                        <span class="text-sm text-text-secondary px-2">—</span>
+                        {% endif %}
+                    </div>
                 </td>
             </tr>
+            {% endwith %}
+            {% endwith %}
             {% endfor %}
         </tbody>
     </table>
@@ -62,42 +141,79 @@
 
 {# Pagination #}
 {% if users.has_other_pages %}
-<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--color-border);">
-    <span class="text-sm text-text-secondary">Page {{ users.number }} of {{ users.paginator.num_pages }}</span>
+<div class="flex items-center justify-between px-4 py-3 border-t" style="border-color: var(--color-border);">
+    <div class="text-sm text-text-secondary">
+        {{ users.start_index }}–{{ users.end_index }} of {{ users.paginator.count }}
+    </div>
     <div class="flex gap-1.5">
         {% if users.has_previous %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'accounts:admin_users' %}?page={{ users.previous_page_number }}&q={{ query }}&role={{ role_filter }}&department={{ department_filter }}"
-                hx-target="#userTableContainer" hx-swap="innerHTML">← Prev</button>
+        <button class="px-3 py-1.5 rounded border text-sm hover:bg-black/5 transition" 
+                style="border-color: var(--color-border); color: var(--color-text-primary);"
+                hx-get="{% url 'accounts:admin_users' %}?page={{ users.previous_page_number }}"
+                hx-target="#userTableContainer"
+                hx-swap="innerHTML">
+            ←
+        </button>
         {% endif %}
+        {% for page_num in users.paginator.page_range %}
+            {% if page_num == users.number %}
+            <span class="px-3 py-1.5 rounded text-sm font-medium bg-primary text-white">{{ page_num }}</span>
+            {% elif page_num > users.number|add:'-3' and page_num < users.number|add:'3' %}
+            <button class="px-3 py-1.5 rounded border text-sm hover:bg-black/5 transition"
+                    style="border-color: var(--color-border); color: var(--color-text-primary);"
+                    hx-get="{% url 'accounts:admin_users' %}?page={{ page_num }}"
+                    hx-target="#userTableContainer"
+                    hx-swap="innerHTML">
+                {{ page_num }}
+            </button>
+            {% endif %}
+        {% endfor %}
         {% if users.has_next %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'accounts:admin_users' %}?page={{ users.next_page_number }}&q={{ query }}&role={{ role_filter }}&department={{ department_filter }}"
-                hx-target="#userTableContainer" hx-swap="innerHTML">Next →</button>
+        <button class="px-3 py-1.5 rounded border text-sm hover:bg-black/5 transition"
+                style="border-color: var(--color-border); color: var(--color-text-primary);"
+                hx-get="{% url 'accounts:admin_users' %}?page={{ users.next_page_number }}"
+                hx-target="#userTableContainer"
+                hx-swap="innerHTML">
+            →
+        </button>
         {% endif %}
     </div>
 </div>
 {% endif %}
 
 {% else %}
-<div class="text-center py-10 text-sm text-text-secondary">
-    No users found.
+<div class="flex flex-col items-center justify-center py-20 px-4 text-center">
+    <div class="flex h-20 w-20 items-center justify-center rounded-full bg-surface-secondary/50 mb-4">
+        {% lucide "users" size=32 class="text-text-secondary opacity-50" %}
+    </div>
+    <p class="text-base font-medium" style="color: var(--color-text-primary);">No users found</p>
+    <p class="text-sm mt-1" style="color: var(--color-text-secondary);">Try adjusting your search or filter criteria.</p>
+    <button onclick="openCreateModal()" class="btn-primary text-sm px-4 py-2 rounded-lg mt-4 flex items-center gap-2">
+        {% lucide "plus" size=16 %} Add user
+    </button>
 </div>
 {% endif %}
 
-{# Global dropdown – rendered as a direct child of body #}
-<div id="globalUserDropdown" class="fixed rounded-lg shadow-lg border bg-surface z-[9999] py-1 min-w-40 
+{# Global dropdown #}
+<div id="globalUserDropdown" class="fixed rounded-lg shadow-lg border bg-surface z-[9999] py-1 min-w-44 
             opacity-0 scale-95 pointer-events-none transition-all duration-150 ease-out"
      style="border-color: var(--color-border); background-color: var(--color-surface); transform-origin: top center;">
-    <button class="dropdown-edit w-full text-left px-4 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2 text-text-primary">
-        {% lucide "pencil" size=14 %} Edit
+    <button class="dropdown-edit w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 transition flex items-center gap-3 text-text-primary">
+        {% lucide "pencil" size=16 %} Edit
     </button>
-    <button class="dropdown-toggle-active w-full text-left px-4 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2 text-text-primary">
-        {% lucide "user-x" size=14 %} <span class="toggle-label">Deactivate</span>
+    <button class="dropdown-toggle-active w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 transition flex items-center gap-3 text-text-primary">
+        {% lucide "user-x" size=16 %} <span class="toggle-label">Deactivate</span>
     </button>
-    <button class="dropdown-password w-full text-left px-4 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2 text-text-primary">
-        {% lucide "key" size=14 %} Change Password
+    <button class="dropdown-password w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 transition flex items-center gap-3 text-text-primary">
+        {% lucide "key" size=16 %} Change Password
     </button>
+    {% if request.user.role == 'ADMIN' %}
+    <hr class="mx-2" style="border-color: var(--color-border);">
+    <button class="dropdown-impersonate w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 transition flex items-center gap-3 text-text-primary"
+            style="display: none;">
+        {% lucide "eye" size=16 %} Impersonate
+    </button>
+    {% endif %}
 </div>
 
 <script>
@@ -110,36 +226,28 @@
             return;
         }
 
-        // Get dropdown action buttons
         const editBtn = dropdown.querySelector('.dropdown-edit');
         const toggleBtn = dropdown.querySelector('.dropdown-toggle-active');
         const toggleLabel = toggleBtn.querySelector('.toggle-label');
         const passwordBtn = dropdown.querySelector('.dropdown-password');
 
-        // Define the global function that handles the dropdown toggle
         window.userActionBtnClick = function(btn) {
-            // Close any open dropdown first
             closeDropdown();
 
-            // Store user data
             activeUserId = btn.dataset.userId;
             const isActive = btn.dataset.isActive === 'true';
 
-            // Update the label
             toggleLabel.textContent = isActive ? 'Deactivate' : 'Activate';
 
-            // Position the dropdown
             const rect = btn.getBoundingClientRect();
             let top = rect.bottom + 6;
-            let left = rect.left + rect.width / 2 - 80;
+            let left = rect.left + rect.width / 2 - 88;
 
-            // If not enough space below, place above
-            if (top + 150 > window.innerHeight) {
-                top = rect.top - 150 - 6;
+            if (top + 180 > window.innerHeight) {
+                top = rect.top - 180 - 6;
             }
-            // Ensure it doesn't go off the right edge
-            if (left + 160 > window.innerWidth) {
-                left = window.innerWidth - 170;
+            if (left + 176 > window.innerWidth) {
+                left = window.innerWidth - 186;
             }
             if (left < 10) {
                 left = 10;
@@ -148,7 +256,6 @@
             dropdown.style.top = top + 'px';
             dropdown.style.left = left + 'px';
 
-            // Show with animation
             dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
             dropdown.classList.add('opacity-100', 'scale-100');
         };
@@ -160,26 +267,22 @@
             }
         }
 
-        // Click outside to close
         document.addEventListener('click', function(e) {
             if (!dropdown.contains(e.target) && !e.target.closest('.user-action-btn')) {
                 closeDropdown();
             }
         });
 
-        // Edit action
         editBtn.addEventListener('click', function() {
             if (activeUserId) openEditModal(activeUserId);
             closeDropdown();
         });
 
-        // Toggle active action
         toggleBtn.addEventListener('click', function() {
             if (activeUserId) toggleActive(activeUserId);
             closeDropdown();
         });
 
-        // Change password action
         passwordBtn.addEventListener('click', function() {
             if (activeUserId) openPasswordModal(activeUserId);
             closeDropdown();

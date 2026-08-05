@@ -1,0 +1,81 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Confirm Resolution{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-2xl mx-auto">
+    <div class="dashboard-card p-6">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "check-circle" size=24 %}
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">
+                    Confirm Resolution
+                </h2>
+                <p class="text-sm text-text-secondary">
+                    Ticket: <strong>{{ ticket.number }}</strong> — {{ ticket.title }}
+                </p>
+            </div>
+        </div>
+
+        <div class="rounded-lg bg-background p-4 mb-6 border border-border">
+            <p class="text-sm" style="color: var(--color-text-primary);">
+                {{ ticket.requester.get_full_name|default:ticket.requester.email }}, 
+                the support team has marked this ticket as resolved.
+            </p>
+            <p class="text-sm text-text-secondary mt-2">
+                Please confirm if the issue has been fully resolved.
+            </p>
+        </div>
+
+        <form method="post" id="confirmForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" id="actionInput" value="">
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                    If the issue is still not resolved, please tell us why (optional)
+                </label>
+                <textarea name="reason" rows="3" 
+                          class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                          placeholder="What's still not working?"></textarea>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+                <button type="button" onclick="submitAction('confirm')"
+                        class="btn-success text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
+                    {% lucide "check" size=16 %} Yes, it's resolved
+                </button>
+                <button type="button" onclick="submitAction('reopen')"
+                        class="btn-danger text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
+                    {% lucide "alert-circle" size=16 %} No, still having issues
+                </button>
+                <a href="{% url 'tickets:detail' ticket.pk %}" 
+                   class="btn-ghost text-sm px-4 py-2.5 rounded-lg">
+                    View ticket
+                </a>
+            </div>
+        </form>
+
+        <div class="mt-6 pt-4 border-t border-border text-xs text-text-secondary">
+            <p>If you don't respond, this ticket will remain in pending confirmation status.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+function submitAction(action) {
+    document.getElementById('actionInput').value = action;
+    document.getElementById('confirmForm').submit();
+}
+</script>
+{% endblock %}

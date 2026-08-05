@@ -4,12 +4,8 @@
 
 {% block dashboard_title %}My Dashboard{% endblock %}
 {% block page_title_area %}{% endblock %}
-{% block role_label %}User{% endblock %}
+{% block role_label %}{{ active_role_display|default:"User" }}{% endblock %}
 {% block role_badge %}USER{% endblock %}
-
-{% block sidebar_nav %}
-    {% include "partials/sidebar_end_user.html" %}
-{% endblock %}
 
 {% block dashboard_content %}
 <div class="w-full">

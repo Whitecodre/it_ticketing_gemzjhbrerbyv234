@@ -1,4 +1,5 @@
 import random, hashlib, os, re, csv, json
+from datetime import datetime, timedelta, date
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from django.shortcuts import render, redirect, get_object_or_404
@@ -16,14 +17,15 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 from django.urls import reverse
 from django.template.loader import render_to_string
-from datetime import timedelta, datetime
 from apps.common.utils import send_email_via_brevo
 from django.conf import settings
 from .forms import TicketForm, CommentForm, AssetForm
 from .models import *
+from apps.tickets.models import Asset
 from apps.accounts.models import User
 from apps.common.models import Notification
 from bs4 import BeautifulSoup
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -65,7 +67,7 @@ def clean_comment_body(body):
 
 def get_sidebar_template(user):
     """
-    Returns the correct sidebar partial template based on the user's role.
+    Returns the correct sidebar partial template based on the user's active role.
     Used in all dashboard views to load the appropriate navigation sidebar.
     """
     mapping = {
@@ -76,7 +78,9 @@ def get_sidebar_template(user):
         'SUPERADMIN': 'partials/sidebar_superadmin.html',
         # 'APPROVER': 'partials/sidebar_approver.html',
     }
-    return mapping.get(user.role, 'partials/sidebar_end_user.html')
+    active_role = user.get_active_role()
+    role_name = active_role.name if active_role else user.role
+    return mapping.get(role_name, 'partials/sidebar_end_user.html')
 
 def apply_sla(ticket):
     """
@@ -450,38 +454,106 @@ def assigned_to_me(request):
     }
     return render(request, 'agent/assigned_to_me.html', context)
 
+from django.template.loader import render_to_string
+from django.http import JsonResponse
+
 @login_required
 def claim_ticket(request, pk):
-    """
-    Allows an agent to claim an unassigned ticket.
-    Assigns the ticket to the current user and sets status to ASSIGNED.
-    Returns the updated agent ticket table partial (HTMX).
-    """
     ticket = get_object_or_404(Ticket, pk=pk)
+    source = request.POST.get('source', 'unassigned')
+    
     if ticket.assigned_to is None:
-        # Prevent claiming if ticket is pending manager review
         if ticket.status == Ticket.Status.PENDING_MANAGER_REVIEW:
             return HttpResponse("This ticket is pending manager review and cannot be claimed.", status=400)
+        
+        # Assign ticket to current user
         ticket.assigned_to = request.user
         ticket.status = Ticket.Status.ASSIGNED
         ticket.save()
+        
+        # Log the assignment
         TicketActivityLog.objects.create(
             ticket=ticket, action='assigned', actor=request.user,
             details={'to': request.user.get_full_name(), 'status': ticket.status}
         )
-    tickets = Ticket.objects.filter(assigned_to__isnull=True).exclude(
-        status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL]
-    ).order_by('-created_at')
-
+        
+        # ================================================================
+        # SEND NOTIFICATIONS
+        # ================================================================
+        
+        # 1. In-app notification to the agent (claim confirmation)
+        Notification.objects.create(
+            recipient=request.user,
+            message=f"✅ You have claimed ticket {ticket.number}: {ticket.title}",
+            url=reverse('tickets:conversation', args=[ticket.pk]),
+            type=Notification.Type.TICKET
+        )
+        
+        # 2. Notification to the requester (someone claimed their ticket)
+        Notification.objects.create(
+            recipient=ticket.requester,
+            message=f"🎫 Ticket {ticket.number} has been claimed by {request.user.get_full_name()} and is now in progress.",
+            url=reverse('tickets:detail', args=[ticket.pk]),
+            type=Notification.Type.TICKET
+        )
+        
+        # 3. Notification to the notification bell (HTMX will show it)
+        # The signal on Notification creation will handle broadcasting
+    
     assignable_agents = User.objects.filter(
         role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
     ).only('pk', 'first_name', 'last_name', 'email')
-
-    return render(request, 'partials/agent_ticket_table.html', {
-        'tickets': tickets,
-        'assignable_agents': assignable_agents,
-        'status_choices': Ticket.Status.choices,
-    })
+    
+    # Get updated unassigned tickets
+    unassigned_tickets = Ticket.objects.filter(
+        assigned_to__isnull=True
+    ).exclude(
+        status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL,
+                    Ticket.Status.PENDING_MANAGER_REVIEW, Ticket.Status.PENDING_FULFILLMENT]
+    ).order_by('-created_at')
+    
+    # If from dashboard, limit to 5
+    if source == 'dashboard':
+        unassigned_tickets = unassigned_tickets[:5]
+        
+        # Get updated assigned tickets for dashboard
+        assigned_tickets = Ticket.objects.filter(
+            assigned_to=request.user
+        ).exclude(
+            status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL,
+                        Ticket.Status.PENDING_MANAGER_REVIEW, Ticket.Status.PENDING_FULFILLMENT]
+        ).order_by('-created_at')[:5]
+        
+        # Render both tables
+        unassigned_html = render_to_string('partials/agent_ticket_table.html', {
+            'tickets': unassigned_tickets,
+            'assignable_agents': assignable_agents,
+            'status_choices': Ticket.Status.choices,
+            'source': 'dashboard',
+        })
+        
+        assigned_html = render_to_string('partials/agent_ticket_table.html', {
+            'tickets': assigned_tickets,
+            'assignable_agents': assignable_agents,
+            'status_choices': Ticket.Status.choices,
+            'source': 'dashboard',
+        })
+        
+        return JsonResponse({
+            'success': True,
+            'message': f'✅ Successfully claimed ticket {ticket.number}',
+            'unassigned_html': unassigned_html,
+            'assigned_html': assigned_html,
+            'unassigned_count': Ticket.objects.filter(assigned_to__isnull=True).count(),
+        })
+    else:
+        # For dedicated pages - show ALL tickets
+        return render(request, 'partials/agent_ticket_table.html', {
+            'tickets': unassigned_tickets,
+            'assignable_agents': assignable_agents,
+            'status_choices': Ticket.Status.choices,
+            'source': source,
+        })
 
 @login_required
 def agent_ticket_detail(request, pk):
@@ -608,6 +680,254 @@ def update_status(request, pk):
             details={'from': previous_status, 'to': new_status}
         )
     return HttpResponse(status=204)
+
+@login_required
+@require_http_methods(['GET', 'POST'])
+def resolve_ticket(request, pk):
+    """
+    Initiates the resolve confirmation flow.
+    - GET: Returns the resolve modal (HTMX)
+    - POST: Processes the resolution confirmation
+    """
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+        return HttpResponse(status=403)
+    
+    # Check if ticket is already resolved
+    if ticket.status in [Ticket.Status.RESOLVED, Ticket.Status.CLOSED]:
+        if request.headers.get('HX-Request'):
+            return HttpResponse('<div class="p-4 text-center"><p class="text-text-secondary">This ticket is already resolved.</p></div>')
+        messages.warning(request, 'Ticket is already resolved or closed.')
+        return redirect('tickets:conversation', pk=ticket.pk)
+    
+    # GET request - return the modal (HTMX)
+    if request.method == 'GET' and request.headers.get('HX-Request'):
+        return render(request, 'partials/resolve_modal.html', {'ticket': ticket})
+    
+    # POST request - process confirmation
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        comment = request.POST.get('comment', '').strip()
+        
+        if action == 'confirm':
+            # Create resolution request
+            ticket.status = Ticket.Status.PENDING_USER
+            ticket.save()
+            
+            # Create activity log
+            TicketActivityLog.objects.create(
+                ticket=ticket,
+                action='resolution_requested',
+                actor=request.user,
+                details={'comment': comment}
+            )
+            
+            # Add system comment to ticket
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                body=f"🔄 **Resolution requested**: Please confirm if this ticket has been resolved.{' ' + comment if comment else ''}",
+                visibility='PUBLIC'
+            )
+            
+            # Send notification to requester
+            Notification.objects.create(
+                recipient=ticket.requester,
+                message=f"Please confirm if ticket {ticket.number} has been resolved.",
+                url=reverse('tickets:confirm_resolution', args=[ticket.pk]),
+                type=Notification.Type.RESOLUTION_CONFIRMATION
+            )
+            
+            # Send email to requester
+            confirm_url = request.build_absolute_uri(
+                reverse('tickets:confirm_resolution', args=[ticket.pk])
+            )
+            html_message = render_to_string('emails/resolution_confirmation.html', {
+                'requester_name': ticket.requester.get_full_name() or ticket.requester.email,
+                'ticket_number': ticket.number,
+                'ticket_title': ticket.title,
+                'confirm_url': confirm_url,
+                'agent_name': request.user.get_full_name() or request.user.email,
+            })
+            
+            success, result = send_email_via_brevo(
+                to_email=ticket.requester.email,
+                subject=f"Please confirm resolution for ticket {ticket.number}",
+                html_content=html_message,
+                from_email=settings.DEFAULT_FROM_EMAIL
+            )
+            
+            if not success:
+                print(f"❌ Failed to send resolution confirmation email: {result}")
+            
+            messages.success(request, f'Resolution confirmation sent to {ticket.requester.get_full_name()}.')
+            return redirect('tickets:conversation', pk=ticket.pk)
+        
+        elif action == 'cancel':
+            return redirect('tickets:conversation', pk=ticket.pk)
+    
+    return HttpResponse(status=400)
+
+
+@login_required
+def confirm_resolution(request, pk):
+    """
+    Page where requester confirms if ticket is resolved.
+    """
+    ticket = get_object_or_404(Ticket, pk=pk)
+    
+    # Security: only requester can confirm
+    if request.user != ticket.requester:
+        return HttpResponse(status=403)
+    
+    # Check if ticket is in pending user state (waiting for confirmation)
+    if ticket.status != Ticket.Status.PENDING_USER:
+        messages.warning(request, f'Ticket {ticket.number} is not awaiting resolution confirmation.')
+        return redirect('tickets:detail', pk=ticket.pk)
+    
+    if request.method == 'POST':
+        print(f"🔍 POST data: {request.POST}")  # Debug
+        
+        action = request.POST.get('action')
+        reason = request.POST.get('reason', '').strip()
+        
+        print(f"🔍 Action: '{action}', Reason: '{reason}'")  # Debug
+        
+        if action == 'confirm':
+            # User confirms resolution
+            ticket.resolution_confirmed_at = timezone.now()
+            ticket.resolution_confirmed_by = request.user
+            ticket.status = Ticket.Status.RESOLVED
+            ticket.resolved_at = timezone.now()
+            ticket.save()
+            
+            TicketActivityLog.objects.create(
+                ticket=ticket,
+                action='resolution_confirmed',
+                actor=request.user,
+                details={'confirmed_at': ticket.resolution_confirmed_at.isoformat()}
+            )
+            
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                body="✅ **Resolution confirmed**. The issue has been resolved.",
+                visibility='PUBLIC'
+            )
+            
+            messages.success(request, 'Thank you for confirming! Please rate your experience.')
+            return redirect('tickets:submit_feedback', pk=ticket.pk)
+        
+        elif action == 'reopen':
+            # User says issue is not resolved
+            ticket.status = Ticket.Status.IN_PROGRESS
+            ticket.save()
+            
+            TicketActivityLog.objects.create(
+                ticket=ticket,
+                action='resolution_rejected',
+                actor=request.user,
+                details={'reason': reason}
+            )
+            
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                body=f"❌ **Resolution rejected**. The issue is not fully resolved.{' Reason: ' + reason if reason else ''}",
+                visibility='PUBLIC'
+            )
+            
+            # Notify the agent who requested resolution
+            last_log = TicketActivityLog.objects.filter(
+                ticket=ticket,
+                action='resolution_requested'
+            ).order_by('-created_at').first()
+            
+            if last_log and last_log.actor:
+                Notification.objects.create(
+                    recipient=last_log.actor,
+                    message=f"{ticket.requester.get_full_name()} rejected resolution for ticket {ticket.number}.{' Reason: ' + reason if reason else ''}",
+                    url=reverse('tickets:conversation', args=[ticket.pk])
+                )
+            
+            messages.info(request, f'Ticket {ticket.number} reopened for further investigation.')
+            return redirect('tickets:detail', pk=ticket.pk)
+        else:
+            print(f"❌ Unknown action: '{action}'")
+            messages.error(request, f'Invalid action: {action}')
+            return redirect('tickets:confirm_resolution', pk=ticket.pk)
+    
+    return render(request, 'tickets/confirm_resolution.html', {
+        'ticket': ticket,
+        'sidebar_template': get_sidebar_template(request.user),
+    })
+
+
+@login_required
+def submit_feedback(request, pk):
+    """
+    Submit 1-5 star feedback for resolved ticket.
+    """
+    ticket = get_object_or_404(Ticket, pk=pk)
+    
+    # Security: only requester can submit feedback
+    if request.user != ticket.requester:
+        return HttpResponse(status=403)
+    
+    # Check if ticket is resolved and feedback not already submitted
+    if ticket.status != Ticket.Status.RESOLVED:
+        messages.warning(request, 'Feedback can only be submitted for resolved tickets.')
+        return redirect('tickets:detail', pk=ticket.pk)
+    
+    if ticket.feedback_rating is not None:
+        messages.info(request, 'You have already submitted feedback for this ticket.')
+        return redirect('tickets:detail', pk=ticket.pk)
+    
+    if request.method == 'POST':
+        rating = request.POST.get('rating')
+        comment = request.POST.get('comment', '').strip()
+        
+        if not rating or int(rating) < 1 or int(rating) > 5:
+            messages.error(request, 'Please select a rating from 1 to 5 stars.')
+            return render(request, 'tickets/feedback_form.html', {
+                'ticket': ticket,
+                'sidebar_template': get_sidebar_template(request.user),
+                'error': 'Please select a rating.'
+            })
+        
+        ticket.feedback_rating = int(rating)
+        ticket.feedback_comment = comment
+        ticket.feedback_submitted_at = timezone.now()
+        ticket.save()
+        
+        TicketActivityLog.objects.create(
+            ticket=ticket,
+            action='feedback_submitted',
+            actor=request.user,
+            details={'rating': rating, 'comment': comment}
+        )
+        
+        # Notify the agent(s) who worked on this ticket
+        assigned_log = TicketActivityLog.objects.filter(
+            ticket=ticket,
+            action='assigned'
+        ).order_by('-created_at').first()
+        
+        if assigned_log and assigned_log.actor:
+            star_emoji = '⭐' * int(rating) + '☆' * (5 - int(rating))
+            Notification.objects.create(
+                recipient=assigned_log.actor,
+                message=f"Feedback received for ticket {ticket.number}: {star_emoji} ({rating}/5)",
+                url=reverse('tickets:detail', args=[ticket.pk])
+            )
+        
+        messages.success(request, f'Thank you for your feedback! You rated this ticket {rating}/5 stars.')
+        return redirect('tickets:detail', pk=ticket.pk)
+    
+    return render(request, 'tickets/feedback_form.html', {
+        'ticket': ticket,
+        'sidebar_template': get_sidebar_template(request.user),
+    })
 
 # ==========================================================================
 # TICKET DETAILS PANEL & METADATA EDITING
@@ -752,20 +1072,45 @@ def bulk_action(request):
                     ticket=ticket, action='status_changed', actor=request.user,
                     details={'from': old_status, 'to': value, 'method': 'bulk'}
                 )
+                
     elif action == 'assign':
         if request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
             return HttpResponse(status=403)
         if value.isdigit():
             agent = get_object_or_404(User, pk=int(value))
+            actor_name = request.user.get_full_name()
+            agent_name = agent.get_full_name()
+            
             for ticket in tickets:
                 old_assignee = ticket.assigned_to
+                old_name = old_assignee.get_full_name() if old_assignee else 'Unassigned'
+                
+                # Reassign the ticket
                 ticket.assigned_to = agent
                 ticket.save()
+                
+                # Create activity log
                 TicketActivityLog.objects.create(
                     ticket=ticket, action='assigned', actor=request.user,
-                    details={'from': old_assignee.get_full_name() if old_assignee else 'Unassigned',
-                             'to': agent.get_full_name(), 'method': 'bulk'}
+                    details={'from': old_name, 'to': agent_name, 'method': 'bulk'}
                 )
+                
+                # ================================================================
+                # DEFAULT REASSIGN COMMENT (per ticket)
+                # ================================================================
+                TicketComment.objects.create(
+                    ticket=ticket,
+                    author=request.user,
+                    body=f"🔄 **Bulk reassign**: Ticket reassigned by {actor_name} from **{old_name}** to **{agent_name}**.",
+                    visibility='PUBLIC'
+                )
+            
+            # Notify the agent once for all tickets
+            Notification.objects.create(
+                recipient=agent,
+                message=f"{len(tickets)} ticket(s) have been reassigned to you by {actor_name}.",
+                url=reverse('tickets:unassigned')
+            )
 
     source = request.POST.get('source', 'unassigned')
     if source == 'assigned':
@@ -827,13 +1172,39 @@ def team_reassign(request, pk):
     new_agent_id = request.POST.get('agent_id')
     agent = get_object_or_404(User, pk=new_agent_id, role='AGENT')
     old_assignee = ticket.assigned_to
+    
+    # Store old assignee name for comment
+    old_name = old_assignee.get_full_name() if old_assignee else 'Unassigned'
+    new_name = agent.get_full_name()
+    actor_name = request.user.get_full_name()
+    
+    # Reassign the ticket
     ticket.assigned_to = agent
     ticket.save()
+    
+    # Create activity log
     TicketActivityLog.objects.create(
         ticket=ticket, action='assigned', actor=request.user,
-        details={'from': old_assignee.get_full_name() if old_assignee else 'Unassigned',
-                 'to': agent.get_full_name()}
+        details={'from': old_name, 'to': new_name}
     )
+    
+    # ================================================================
+    # DEFAULT REASSIGN COMMENT
+    # ================================================================
+    TicketComment.objects.create(
+        ticket=ticket,
+        author=request.user,
+        body=f"🔄 **Ticket reassigned** by {actor_name} from **{old_name}** to **{new_name}**.",
+        visibility='PUBLIC'
+    )
+    
+    # Notify the new agent
+    Notification.objects.create(
+        recipient=agent,
+        message=f"Ticket {ticket.number} has been reassigned to you by {actor_name}.",
+        url=reverse('tickets:conversation', args=[ticket.pk])
+    )
+    
     return JsonResponse({'status': 'ok'})
 
 # ==========================================================================
@@ -925,46 +1296,103 @@ def reports_dashboard(request):
     if user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
         return HttpResponse(status=403)
     
+    # ================================================================
+    # DATE RANGE FILTER
+    # ================================================================
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    
+    if start_date_str and end_date_str:
+        try:
+            from datetime import datetime
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+            date_range_filter = Q(created_at__date__gte=start_date) & Q(created_at__date__lte=end_date)
+            date_range_label = f"{start_date.strftime('%b %d, %Y')} – {end_date.strftime('%b %d, %Y')}"
+            # Calculate number of days for volume chart
+            volume_days = (end_date - start_date).days + 1
+            volume_start = start_date
+        except ValueError:
+            # Invalid date format - fallback to 30 days
+            end_date = timezone.now().date()
+            start_date = end_date - timedelta(days=29)
+            date_range_filter = Q(created_at__date__gte=start_date) & Q(created_at__date__lte=end_date)
+            date_range_label = "Last 30 days"
+            volume_days = 30
+            volume_start = start_date
+    else:
+        # Default: Last 30 days
+        end_date = timezone.now().date()
+        start_date = end_date - timedelta(days=29)
+        date_range_filter = Q(created_at__date__gte=start_date) & Q(created_at__date__lte=end_date)
+        date_range_label = "Last 30 days"
+        volume_days = 30
+        volume_start = start_date
+    
     if user.role == 'TEAM_LEAD':
         team_members = User.objects.filter(department=user.department, role='AGENT')
         ticket_filter = Q(assigned_to__in=team_members) | Q(requester__in=team_members)
     else:
         ticket_filter = Q()
     
+    # Apply date range to ticket filter
+    ticket_filter = ticket_filter & date_range_filter
+    
     # ========== SLA COMPLIANCE ==========
     slas = SLA.objects.all().order_by('priority')
     sla_data = []
+
     for sla in slas:
-        resolved = Ticket.objects.filter(
-            ticket_filter, priority=sla.priority,
-            status__in=['RESOLVED', 'CLOSED'], resolved_at__isnull=False
+        resolved_tickets = Ticket.objects.filter(
+            ticket_filter,
+            priority=sla.priority,
+            status__in=['RESOLVED', 'CLOSED'],
+            resolved_at__isnull=False
         )
-        total = resolved.count()
+        
+        total = resolved_tickets.count()
+        
         if total == 0:
             compliance = 100
+            compliant_count = 0
+            breached_count = 0
         else:
-            compliant = sum(
-                1 for t in resolved
-                if t.resolved_at and (t.resolved_at - t.created_at).total_seconds() / 60 <= sla.resolution_minutes
-            )
-            compliance = round((compliant / total) * 100, 1)
-        sla_data.append({'priority': sla.get_priority_display(), 'compliance': compliance})
+            compliant_count = 0
+            breached_count = 0
+            
+            for ticket in resolved_tickets:
+                if ticket.resolved_at and ticket.created_at:
+                    actual_minutes = (ticket.resolved_at - ticket.created_at).total_seconds() / 60
+                    
+                    if actual_minutes <= sla.resolution_minutes:
+                        compliant_count += 1
+                    else:
+                        breached_count += 1
+            
+            compliance = round((compliant_count / total) * 100, 1)
+        
+        sla_data.append({
+            'priority': sla.get_priority_display(),
+            'compliance': compliance,
+            'total': total,
+            'compliant': compliant_count,
+            'breached': breached_count,
+            'sla_minutes': sla.resolution_minutes,
+            'sla_display': sla.get_resolution_display(),
+        })
 
-    # ========== TICKET VOLUME (30 days) ==========
-    end = timezone.now().date()
-    start = end - timedelta(days=29)  # <-- Use timedelta from datetime module
-    
+    # ========== TICKET VOLUME (Date Range) ==========
     created_qs = Ticket.objects.filter(
-        ticket_filter, created_at__date__gte=start
+        ticket_filter, created_at__date__gte=volume_start
     ).annotate(date=TruncDate('created_at')).values('date').annotate(count=Count('id')).order_by('date')
     
     resolved_qs = Ticket.objects.filter(
-        ticket_filter, resolved_at__isnull=False, resolved_at__date__gte=start
+        ticket_filter, resolved_at__isnull=False, resolved_at__date__gte=volume_start
     ).annotate(date=TruncDate('resolved_at')).values('date').annotate(count=Count('id')).order_by('date')
 
     dates, created_counts, resolved_counts = [], [], []
-    for i in range(30):
-        d = start + timedelta(days=i)
+    for i in range(volume_days):
+        d = volume_start + timedelta(days=i)
         dates.append(d.strftime('%m/%d'))
         created_counts.append(next((x['count'] for x in created_qs if x['date'] == d), 0))
         resolved_counts.append(next((x['count'] for x in resolved_qs if x['date'] == d), 0))
@@ -995,13 +1423,9 @@ def reports_dashboard(request):
         open_data.append(p['count'])
 
     # ========== ASSET METRICS ==========
-    from apps.tickets.models import Asset
-    from datetime import date
     
-    # Total assets
     total_assets = Asset.objects.count()
     
-    # Asset status distribution
     asset_status_labels = ['Active', 'In Store', 'Maintenance', 'Damaged', 'Scrapped']
     asset_status_counts = [
         Asset.objects.filter(status='ACTIVE').count(),
@@ -1011,7 +1435,6 @@ def reports_dashboard(request):
         Asset.objects.filter(status='SCRAPPED').count(),
     ]
     
-    # Asset fulfillment metrics
     total_asset_requests = Ticket.objects.filter(
         type=Ticket.Type.SERVICE_REQUEST,
         is_asset_request=True
@@ -1025,7 +1448,6 @@ def reports_dashboard(request):
     
     fulfillment_rate = round((fulfilled_asset_requests / total_asset_requests * 100), 1) if total_asset_requests > 0 else 0
     
-    # Average fulfillment time (in hours)
     fulfilled_tickets = Ticket.objects.filter(
         type=Ticket.Type.SERVICE_REQUEST,
         is_asset_request=True,
@@ -1061,6 +1483,10 @@ def reports_dashboard(request):
         'fulfilled_asset_requests': fulfilled_asset_requests,
         'fulfillment_rate': fulfillment_rate,
         'avg_fulfillment_hours': avg_fulfillment_hours,
+        # Date range context
+        'start_date': start_date,
+        'end_date': end_date,
+        'date_range_label': date_range_label,
     }
     return render(request, 'dashboards/reports.html', context)
 
@@ -1321,6 +1747,8 @@ def asset_edit_page(request, pk):
     if request.method == 'POST':
         # Store the old assigned_to value before saving
         old_assigned_to = asset.assigned_to
+        old_name = old_assigned_to.get_full_name() if old_assigned_to else 'Unassigned'
+        actor_name = request.user.get_full_name()
         
         form = AssetForm(request.POST, instance=asset)
         if form.is_valid():
@@ -1328,6 +1756,7 @@ def asset_edit_page(request, pk):
             
             # Check if assigned_to changed
             new_assigned_to = asset.assigned_to
+            new_name = new_assigned_to.get_full_name() if new_assigned_to else 'Unassigned'
             
             # Create appropriate logs based on what changed
             if old_assigned_to != new_assigned_to:
@@ -1339,11 +1768,22 @@ def asset_edit_page(request, pk):
                         action=AssetLog.Action.ASSIGNED,
                         actor=request.user,
                         details={
-                            'from': old_assigned_to.get_full_name() if old_assigned_to else None,
-                            'to': new_assigned_to.get_full_name() if new_assigned_to else None,
+                            'from': old_name,
+                            'to': new_name,
                             'comment': 'Reassigned via edit form'
                         }
                     )
+                    
+                    # ================================================================
+                    # DEFAULT REASSIGN COMMENT
+                    # ================================================================
+                    comment_body = f"🔄 **Asset reassigned** by {actor_name} from **{old_name}** to **{new_name}** via edit form."
+                    if asset.notes:
+                        asset.notes = f"{asset.notes}\n\n{comment_body}"
+                    else:
+                        asset.notes = comment_body
+                    asset.save(update_fields=['notes'])
+                    
                 else:
                     # Unassigned
                     AssetLog.objects.create(
@@ -1351,11 +1791,22 @@ def asset_edit_page(request, pk):
                         action=AssetLog.Action.UNASSIGNED,
                         actor=request.user,
                         details={
-                            'from': old_assigned_to.get_full_name() if old_assigned_to else None,
+                            'from': old_name,
                             'to': None,
                             'comment': 'Unassigned via edit form'
                         }
                     )
+                    
+                    # ================================================================
+                    # DEFAULT UNASSIGN COMMENT
+                    # ================================================================
+                    comment_body = f"🔄 **Asset unassigned** by {actor_name} from **{old_name}** via edit form."
+                    if asset.notes:
+                        asset.notes = f"{asset.notes}\n\n{comment_body}"
+                    else:
+                        asset.notes = comment_body
+                    asset.save(update_fields=['notes'])
+                    
             else:
                 # General update (no assignment change)
                 AssetLog.objects.create(
@@ -1424,25 +1875,64 @@ def asset_reassign(request, pk):
     comment = request.POST.get('comment', '')
 
     old_user = asset.assigned_to
+    actor_name = request.user.get_full_name()
+    
     if new_user_id:
         new_user = get_object_or_404(User, pk=new_user_id)
         asset.assigned_to = new_user
+        new_name = new_user.get_full_name()
     else:
         asset.assigned_to = None
+        new_name = 'Unassigned'
+    
+    old_name = old_user.get_full_name() if old_user else 'Unassigned'
+    
     asset.save()
 
+    # Create asset log
     AssetLog.objects.create(
         asset=asset,
         action=AssetLog.Action.ASSIGNED if new_user_id else AssetLog.Action.UNASSIGNED,
         actor=request.user,
         details={
-            'from': old_user.get_full_name() if old_user else None,
-            'to': new_user.get_full_name() if new_user_id else None,
+            'from': old_name,
+            'to': new_name,
             'comment': comment
         }
     )
 
+    # Add comment to asset notes (user can edit the default comment)
+    if new_user_id:
+        comment_body = f"🔄 **Asset reassigned** by {actor_name} from **{old_name}** to **{new_name}**.\n\n**Reason:** {comment}"
+    else:
+        comment_body = f"🔄 **Asset unassigned** by {actor_name} from **{old_name}**.\n\n**Reason:** {comment}"
+    
+    if asset.notes:
+        asset.notes = f"{asset.notes}\n\n{comment_body}"
+    else:
+        asset.notes = comment_body
+    asset.save(update_fields=['notes'])
+
     return redirect('tickets:assets')
+
+@login_required
+def asset_reassign_modal(request, pk):
+    """Returns the asset reassign modal with pre-filled comment."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    users = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
+    
+    # Generate default comment
+    old_name = asset.assigned_to.get_full_name() if asset.assigned_to else 'Unassigned'
+    default_comment = f"Reassigning asset from {old_name} to [new user]."
+    
+    return render(request, 'partials/asset_reassign_modal.html', {
+        'asset': asset,
+        'users': users,
+        'default_comment': default_comment,
+    })
 
 # ==========================================================================
 # ASSET DETAIL
@@ -1490,6 +1980,15 @@ def asset_scrap_request(request, pk):
 
     return redirect('tickets:assets')
 
+@login_required
+def scrap_request_modal(request, pk):
+    """Returns the scrap request modal content."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    return render(request, 'partials/scrap_request_modal.html', {'asset': asset})
+
 # ==========================================================================
 # ASSET SCRAP APPROVE
 # ==========================================================================
@@ -1528,6 +2027,15 @@ def asset_scrap_approve(request, pk):
 
     return redirect('tickets:assets')
 
+@login_required
+def scrap_approve_modal(request, pk):
+    """Returns the scrap approve modal content."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    return render(request, 'partials/scrap_approve_modal.html', {'asset': asset})
+
 # ==========================================================================
 # ASSET CALCULATE WARRANTY
 # ==========================================================================
@@ -1555,7 +2063,6 @@ def asset_calculate_warranty(request):
                 logger.info(f"Warranty calculation result: {expiry_date_str}")
             except ValueError:
                 # Handle Feb 29 edge case - approximate by adding days
-                from datetime import timedelta
                 days = 365 * duration_years
                 expiry_date = purchase_date + timedelta(days=days)
                 expiry_date_str = expiry_date.strftime('%Y-%m-%d')
@@ -1860,19 +2367,44 @@ def escalated_tickets(request):
 def reassign_escalated(request, pk):
     if request.user.role not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
+    
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.ESCALATED)
     agent_id = request.POST.get('agent_id')
     comment = request.POST.get('comment', '')
     agent = get_object_or_404(User, pk=agent_id, role=User.Role.AGENT)
+    
+    # Store old assignee name
+    old_name = ticket.assigned_to.get_full_name() if ticket.assigned_to else 'Unassigned'
+    new_name = agent.get_full_name()
+    actor_name = request.user.get_full_name()
+    
+    # Reassign the ticket
     ticket.assigned_to = agent
     ticket.status = Ticket.Status.ASSIGNED
     ticket.save()
+    
+    # Create activity log
     TicketActivityLog.objects.create(
         ticket=ticket,
         action='reassigned_escalated',
         actor=request.user,
         details={'to': agent.get_full_name(), 'comment': comment}
     )
+    
+    # ================================================================
+    # DEFAULT REASSIGN COMMENT
+    # ================================================================
+    reassign_body = f"🔄 **Escalated ticket reassigned** by {actor_name} from **{old_name}** to **{new_name}**."
+    if comment:
+        reassign_body += f"\n\n**Reason:** {comment}"
+    
+    TicketComment.objects.create(
+        ticket=ticket,
+        author=request.user,
+        body=reassign_body,
+        visibility='PUBLIC'
+    )
+    
     # Notify agent
     Notification.objects.create(
         recipient=agent,
@@ -1880,6 +2412,31 @@ def reassign_escalated(request, pk):
         url=reverse('tickets:detail', args=[ticket.pk])
     )
     return redirect('tickets:escalated_tickets')
+
+@login_required
+def escalated_reassign_modal(request, pk):
+    """Returns the escalated ticket reassign modal with pre-filled comment."""
+    if request.user.role not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+        return HttpResponse(status=403)
+    
+    ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.ESCALATED)
+    
+    # Get agents in the same department
+    agents = User.objects.filter(
+        department=request.user.department, 
+        role=User.Role.AGENT, 
+        is_active=True
+    )
+    
+    # Generate default comment
+    old_name = ticket.assigned_to.get_full_name() if ticket.assigned_to else 'Unassigned'
+    default_comment = f"Reassigning escalated ticket from {old_name} to [new agent]."
+    
+    return render(request, 'partials/escalated_reassign_modal.html', {
+        'ticket': ticket,
+        'agents': agents,
+        'default_comment': default_comment,
+    })
 
 @login_required
 @require_POST
@@ -2008,12 +2565,26 @@ def sla_list(request):
 @require_POST
 def sla_create(request):
     priority = request.POST.get('priority')
-    response = request.POST.get('response_minutes')
-    resolution = request.POST.get('resolution_minutes')
+    
+    # Get hours and minutes from form
+    response_hours = int(request.POST.get('response_hours', 0))
+    response_minutes = int(request.POST.get('response_minutes', 0))
+    resolution_hours = int(request.POST.get('resolution_hours', 0))
+    resolution_minutes = int(request.POST.get('resolution_minutes', 0))
+    
+    # Calculate total minutes
+    response_total = (response_hours * 60) + response_minutes
+    resolution_total = (resolution_hours * 60) + resolution_minutes
+    
     calendar_id = request.POST.get('calendar_id') or None
+    
     SLA.objects.update_or_create(
         priority=priority,
-        defaults={'response_minutes': response, 'resolution_minutes': resolution, 'calendar_id': calendar_id}
+        defaults={
+            'response_minutes': response_total if response_total > 0 else 60,  # Default 1 hour
+            'resolution_minutes': resolution_total if resolution_total > 0 else 480,  # Default 8 hours
+            'calendar_id': calendar_id
+        }
     )
     return redirect('tickets:sla_management')
 
@@ -2121,16 +2692,16 @@ def manager_review_ticket(request, pk):
         action = request.POST.get('action', '').strip()
         comment = request.POST.get('comment', '').strip()
 
-        if not comment:
-            messages.error(request, 'Please provide a comment.')
+        # Comment is required for REJECT and REQUEST_CHANGES only
+        if action in ['reject', 'request_changes'] and not comment:
+            messages.error(request, f'Please provide a comment explaining why you are {action.replace("_", " ")} this request.')
             return redirect('tickets:manager_review_ticket', pk=pk)
 
         if action == 'approve':
             # ================================================================
-            # ASSET REQUEST ROUTING
+            # APPROVAL - Comment is Optional
             # ================================================================
             if ticket.is_asset_request:
-                # Asset requests go to PENDING_FULFILLMENT for Admin to fulfill
                 ticket.status = Ticket.Status.PENDING_FULFILLMENT
                 ticket.save()
                 
@@ -2138,10 +2709,9 @@ def manager_review_ticket(request, pk):
                     ticket=ticket,
                     action='manager_approved',
                     actor=request.user,
-                    details={'comment': comment, 'routed_to': 'PENDING_FULFILLMENT'}
+                    details={'comment': comment if comment else 'No comment provided', 'routed_to': 'PENDING_FULFILLMENT'}
                 )
                 
-                # Notify Admins about pending fulfillment
                 admins = User.objects.filter(role=User.Role.ADMIN, is_active=True)
                 for admin in admins:
                     Notification.objects.create(
@@ -2150,7 +2720,6 @@ def manager_review_ticket(request, pk):
                         url=reverse('tickets:conversation', args=[ticket.pk])
                     )
                 
-                # Notify requester
                 Notification.objects.create(
                     recipient=ticket.requester,
                     message=f'Your asset request {ticket.number} has been approved by your manager and is pending fulfillment.',
@@ -2158,12 +2727,7 @@ def manager_review_ticket(request, pk):
                 )
                 
                 messages.success(request, f'Asset request {ticket.number} approved. An admin will fulfill it shortly.')
-            
             else:
-                # ================================================================
-                # NON-ASSET REQUESTS: Go directly to APPROVED
-                # Skip the Approver role entirely
-                # ================================================================
                 ticket.status = Ticket.Status.APPROVED
                 ticket.save()
                 
@@ -2171,20 +2735,15 @@ def manager_review_ticket(request, pk):
                     ticket=ticket,
                     action='manager_approved',
                     actor=request.user,
-                    details={'comment': comment, 'routed_to': 'APPROVED'}
+                    details={'comment': comment if comment else 'No comment provided', 'routed_to': 'APPROVED'}
                 )
                 
-                # Notify requester
                 Notification.objects.create(
                     recipient=ticket.requester,
                     message=f'Your service request {ticket.number} has been approved.',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
                 
-                # ================================================================
-                # Ticket is now APPROVED - send to Agent Pool
-                # ================================================================
-                # Notify agents about new approved ticket
                 agents = User.objects.filter(role__in=[User.Role.AGENT, User.Role.TEAM_LEAD])
                 for agent in agents:
                     Notification.objects.create(
@@ -2649,3 +3208,194 @@ def available_assets_for_fulfillment(request):
     return render(request, 'partials/available_assets_list.html', {
         'assets': assets,
     })
+
+# Exportables
+
+@login_required
+def exportables(request):
+    """
+    Centralized export page for all data types.
+    Accessible to Admins, Superadmins, and Team Leads.
+    """
+    user = request.user
+    if user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+    
+    # Get counts for each data type
+    service_request_count = Ticket.objects.filter(type=Ticket.Type.SERVICE_REQUEST).count()
+    incident_count = Ticket.objects.filter(type=Ticket.Type.INCIDENT).count()
+    asset_count = Asset.objects.count()
+    user_count = User.objects.count()
+    audit_count = TicketActivityLog.objects.count()
+    
+    context = {
+        'service_request_count': service_request_count,
+        'incident_count': incident_count,
+        'asset_count': asset_count,
+        'user_count': user_count,
+        'audit_count': audit_count,
+        'role_choices': User.Role.choices,
+        'ticket': Ticket,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'dashboards/exportables.html', context)
+
+
+@login_required
+def export_service_requests(request):
+    """Export service requests as CSV, Excel, or JSON."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+    
+    export_format = request.GET.get('format', 'csv')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    status_filter = request.GET.get('status')
+    
+    # Build queryset
+    tickets = Ticket.objects.filter(type=Ticket.Type.SERVICE_REQUEST)
+    
+    # Apply filters
+    if start_date and end_date:
+        try:
+            from datetime import datetime
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            tickets = tickets.filter(created_at__date__gte=start, created_at__date__lte=end)
+        except ValueError:
+            pass
+    
+    if status_filter and status_filter in dict(Ticket.Status.choices):
+        tickets = tickets.filter(status=status_filter)
+    
+    # Prepare data
+    data = []
+    for ticket in tickets.select_related('requester', 'assigned_to', 'category'):
+        data.append({
+            'Number': ticket.number,
+            'Title': ticket.title,
+            'Status': ticket.get_status_display(),
+            'Priority': ticket.get_priority_display(),
+            'Requester': ticket.requester.get_full_name() or ticket.requester.email,
+            'Requester Department': ticket.requester.get_department_display(),
+            'Assigned To': ticket.assigned_to.get_full_name() if ticket.assigned_to else 'Unassigned',
+            'Category': ticket.category.name if ticket.category else '—',
+            'Created': ticket.created_at.strftime('%Y-%m-%d %H:%M'),
+            'Resolved': ticket.resolved_at.strftime('%Y-%m-%d %H:%M') if ticket.resolved_at else '—',
+            'Is Asset Request': 'Yes' if ticket.is_asset_request else 'No',
+        })
+    
+    filename = f"service_requests_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    if export_format == 'csv':
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+        if data:
+            writer = csv.DictWriter(response, fieldnames=data[0].keys())
+            writer.writeheader()
+            writer.writerows(data)
+        return response
+    
+    elif export_format == 'excel':
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Service Requests"
+        if data:
+            headers = list(data[0].keys())
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+            for row_idx, row_data in enumerate(data, 2):
+                for col_idx, key in enumerate(headers, 1):
+                    ws.cell(row=row_idx, column=col_idx, value=row_data.get(key, ''))
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
+        wb.save(response)
+        return response
+    
+    elif export_format == 'json':
+        response = HttpResponse(json.dumps(data, indent=2), content_type='application/json')
+        response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
+        return response
+    
+    return HttpResponse('Invalid format', status=400)
+
+
+@login_required
+def export_incidents(request):
+    """Export incidents as CSV, Excel, or JSON."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+    
+    export_format = request.GET.get('format', 'csv')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    status_filter = request.GET.get('status')
+    
+    tickets = Ticket.objects.filter(type=Ticket.Type.INCIDENT)
+    
+    if start_date and end_date:
+        try:
+            from datetime import datetime
+            start = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end = datetime.strptime(end_date, '%Y-%m-%d').date()
+            tickets = tickets.filter(created_at__date__gte=start, created_at__date__lte=end)
+        except ValueError:
+            pass
+    
+    if status_filter and status_filter in dict(Ticket.Status.choices):
+        tickets = tickets.filter(status=status_filter)
+    
+    data = []
+    for ticket in tickets.select_related('requester', 'assigned_to', 'category'):
+        data.append({
+            'Number': ticket.number,
+            'Title': ticket.title,
+            'Status': ticket.get_status_display(),
+            'Priority': ticket.get_priority_display(),
+            'Impact': ticket.get_impact_display(),
+            'Urgency': ticket.get_urgency_display(),
+            'Requester': ticket.requester.get_full_name() or ticket.requester.email,
+            'Requester Department': ticket.requester.get_department_display(),
+            'Assigned To': ticket.assigned_to.get_full_name() if ticket.assigned_to else 'Unassigned',
+            'Category': ticket.category.name if ticket.category else '—',
+            'Created': ticket.created_at.strftime('%Y-%m-%d %H:%M'),
+            'Resolved': ticket.resolved_at.strftime('%Y-%m-%d %H:%M') if ticket.resolved_at else '—',
+        })
+    
+    filename = f"incidents_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    if export_format == 'csv':
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+        if data:
+            writer = csv.DictWriter(response, fieldnames=data[0].keys())
+            writer.writeheader()
+            writer.writerows(data)
+        return response
+    
+    elif export_format == 'excel':
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Incidents"
+        if data:
+            headers = list(data[0].keys())
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col, value=header)
+                cell.font = Font(bold=True)
+                cell.fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
+            for row_idx, row_data in enumerate(data, 2):
+                for col_idx, key in enumerate(headers, 1):
+                    ws.cell(row=row_idx, column=col_idx, value=row_data.get(key, ''))
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
+        wb.save(response)
+        return response
+    
+    elif export_format == 'json':
+        response = HttpResponse(json.dumps(data, indent=2), content_type='application/json')
+        response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
+        return response
+    
+    return HttpResponse('Invalid format', status=400)

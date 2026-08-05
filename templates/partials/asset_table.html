@@ -70,8 +70,9 @@
                         title="View Details">
                             {% lucide "eye" size=16 %}
                         </a>
+                        <!-- Asset reassign button -->
                         <button class="btn-ghost p-1 text-text-secondary hover:text-primary transition"
-                                onclick="openReassignModal({{ asset.pk }})"
+                                onclick="openAssetReassignModal({{ asset.pk }})"
                                 title="Reassign">
                             {% lucide "user-plus" size=16 %}
                         </button>

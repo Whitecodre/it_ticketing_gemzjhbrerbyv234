@@ -1,46 +1,69 @@
 {% load static %}
 {% load lucide %}
 
-<div class="p-2">
-    <div class="flex items-center justify-between px-3 py-2">
-        <h3 class="text-xs font-semibold" style="color: var(--color-text-primary);">Notifications</h3>
-        {% if unread > 0 %}
-        <button class="text-[0.65rem] font-medium hover:underline"
-                style="color: var(--color-primary); background: none; border: none; cursor: pointer;"
-                hx-post="{% url 'notifications:mark_all_read' %}"
-                hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-                hx-target="#notificationBadgeContainer"
-                hx-swap="innerHTML"
-                hx-on::after-request="htmx.ajax('GET', '{% url 'notifications:list' %}', {target:'#notificationDropdown', swap:'innerHTML'})">
-            Mark all read
-        </button>
-        {% endif %}
-    </div>
-    <div class="max-h-64 overflow-y-auto">
-        {% for notification in notifications %}
-        <div class="flex items-start gap-3 px-3 py-2.5 rounded-md transition hover:bg-black/5 cursor-pointer
-                    {% if not notification.is_read %}bg-black/2{% endif %}"
-             onclick="markReadAndGo('{{ notification.url }}', {{ notification.pk }})">
-            <div class="shrink-0 mt-0.5">
+<div class="divide-y divide-gray-700">
+    {% for notification in notifications %}
+    <div class="group flex items-start gap-3 px-5 py-3.5 transition cursor-pointer hover:bg-black/5
+                {% if not notification.is_read %}bg-primary/5{% endif %}"
+         onclick="markReadAndGo('{{ notification.url }}', {{ notification.pk }})">
+        
+        {# Icon based on notification type #}
+        <div class="shrink-0 mt-0.5">
+            {% if notification.type == 'TICKET' %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    {% lucide "ticket" size=16 %}
+                </div>
+            {% elif notification.type == 'REMOTE_SESSION' %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent/10 text-accent">
+                    {% lucide "monitor" size=16 %}
+                </div>
+            {% elif notification.type == 'MANAGER_REVIEW' %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-warning/10 text-warning">
+                    {% lucide "clipboard-check" size=16 %}
+                </div>
+            {% elif notification.type == 'APPROVAL' %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-success/10 text-success">
+                    {% lucide "check-circle" size=16 %}
+                </div>
+            {% else %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-info/10 text-info">
+                    {% lucide "bell" size=16 %}
+                </div>
+            {% endif %}
+        </div>
+        
+        {# Content #}
+        <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2">
+                <p class="text-sm leading-snug" style="color: var(--color-text-primary);">
+                    {{ notification.message }}
+                </p>
                 {% if not notification.is_read %}
-                <span class="flex h-2 w-2 rounded-full" style="background-color: var(--color-primary);"></span>
-                {% else %}
-                <span class="flex h-2 w-2 rounded-full border" style="border-color: var(--color-border);"></span>
+                <span class="shrink-0 mt-1 flex h-2 w-2 rounded-full" style="background-color: var(--color-primary);"></span>
                 {% endif %}
             </div>
-            <div class="flex-1 min-w-0">
-                <p class="text-xs" style="color: var(--color-text-primary);">{{ notification.message }}</p>
-                <p class="text-[0.65rem] mt-0.5" style="color: var(--color-text-secondary);">
+            <div class="flex items-center gap-3 mt-1">
+                <p class="text-[0.6rem] font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
                     {{ notification.created_at|timesince }} ago
                 </p>
+                {% if notification.type %}
+                <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full border"
+                      style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                    {{ notification.get_type_display }}
+                </span>
+                {% endif %}
             </div>
         </div>
-        {% empty %}
-        <div class="px-3 py-4 text-center text-xs" style="color: var(--color-text-secondary);">
-            No notifications yet.
-        </div>
-        {% endfor %}
     </div>
+    {% empty %}
+    <div class="flex flex-col items-center justify-center py-12 px-4">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-secondary/50 mb-4">
+            {% lucide "bell-off" size=24 class="text-text-secondary" %}
+        </div>
+        <p class="text-sm font-medium" style="color: var(--color-text-primary);">All caught up!</p>
+        <p class="text-xs mt-1" style="color: var(--color-text-secondary);">No new notifications</p>
+    </div>
+    {% endfor %}
 </div>
 
 <script>
@@ -51,10 +74,14 @@
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             }
         }).then(() => {
-            // Refresh badge – will hide if count becomes 0
-            htmx.ajax('GET', '{% url "notifications:unread_count" %}', {target:'#notificationBadgeContainer', swap:'innerHTML'});
-            // Refresh dropdown
-            htmx.ajax('GET', '{% url "notifications:list" %}', {target:'#notificationDropdown', swap:'innerHTML'});
+            htmx.ajax('GET', '{% url "notifications:unread_count" %}', {
+                target: '#notificationBadgeContainer',
+                swap: 'innerHTML'
+            });
+            htmx.ajax('GET', '{% url "notifications:list" %}', {
+                target: '#notificationDropdownContent',
+                swap: 'innerHTML'
+            });
         });
         if (url) {
             window.location.href = url;

@@ -4,34 +4,55 @@
 
 {% block dashboard_title %}Agent Dashboard{% endblock %}
 {% block page_title_area %}{% endblock %}
-{% block role_label %}Support Team{% endblock %}
+{% block role_label %}{{ active_role_display|default:"Support Team" }}{% endblock %}
 {% block role_badge %}SUPPORT TEAM{% endblock %}
 
-{% block sidebar_nav %}
-    {% include "partials/sidebar_agent.html" %}
-{% endblock %}
 
 {% block dashboard_content %}
 
-{# KPI Row – new recommended cards #}
+{# KPI Row – New recommended cards #}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div class="kpi-card border-l-4" style="border-left-color: var(--color-primary);">
-        <p class="kpi-label">Total Solved</p>
-        <p class="kpi-value">{{ total_solved|default:0 }}</p>
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Total Resolved</p>
+            {% lucide "check-circle" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value">{{ total_resolved|default:0 }}</p>
         <p class="kpi-trend up">Resolved by you</p>
     </div>
-    <div class="kpi-card border-l-4" style="border-left-color: var(--color-success);">
-        <p class="kpi-label">Good Tickets</p>
-        <p class="kpi-value" style="color: var(--color-success);">{{ good_tickets|default:0 }}</p>
-        <p class="kpi-trend up">Within SLA</p>
+    <div class="kpi-card border-l-4" style="border-left-color: var(--color-info);">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Avg Resolution Time</p>
+            {% lucide "clock" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value" style="color: var(--color-info);">
+            {% if avg_resolution_time %}
+                {{ avg_resolution_time }}<span class="text-xs font-normal text-text-secondary"> hrs</span>
+            {% else %}
+                <span class="text-base font-normal text-text-secondary">—</span>
+            {% endif %}
+        </p>
+        <p class="kpi-trend up">From assign to resolve</p>
     </div>
-    <div class="kpi-card border-l-4" style="border-left-color: var(--color-error);">
-        <p class="kpi-label">Bad Tickets</p>
-        <p class="kpi-value" style="color: var(--color-error);">{{ bad_tickets|default:0 }}</p>
-        <p class="kpi-trend down">SLA breaches</p>
+    <div class="kpi-card border-l-4" style="border-left-color: var(--color-success);">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Avg Response Time</p>
+            {% lucide "message-circle" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value" style="color: var(--color-success);">
+            {% if avg_response_time %}
+                {{ avg_response_time }}<span class="text-xs font-normal text-text-secondary"> min</span>
+            {% else %}
+                <span class="text-base font-normal text-text-secondary">—</span>
+            {% endif %}
+        </p>
+        <p class="kpi-trend up">First reply time</p>
     </div>
     <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
-        <p class="kpi-label">My Open Tickets</p>
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">My Open Tickets</p>
+            {% lucide "inbox" size=14 class="text-text-secondary" %}
+        </div>
         <p class="kpi-value" style="color: var(--color-warning);">{{ my_open_tickets }}</p>
         <p class="kpi-trend down">Assigned to you</p>
     </div>
@@ -52,7 +73,7 @@
                 </a>
             </div>
             <div id="ticketTable" class="overflow-x-auto">
-                {% include "partials/agent_ticket_table.html" with tickets=recent_unassigned source="unassigned" %}
+                {% include "partials/agent_ticket_table.html" with tickets=recent_unassigned source="dashboard" %}
             </div>
         </div>
 
@@ -65,7 +86,7 @@
                 </a>
             </div>
             <div id="assignedTicketTable" class="overflow-x-auto">
-                {% include "partials/agent_ticket_table.html" with tickets=assigned_to_me_tickets source="assigned" %}
+                {% include "partials/agent_ticket_table.html" with tickets=assigned_to_me_tickets source="dashboard" %}
             </div>
         </div>
 

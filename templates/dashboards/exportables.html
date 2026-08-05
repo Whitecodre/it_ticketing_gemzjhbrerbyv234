@@ -1,0 +1,261 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Exportables{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full space-y-6">
+
+    {# Header #}
+    <div class="flex items-start gap-3 mb-2">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+            {% lucide "download" size=20 %}
+        </div>
+        <div>
+            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Exportables</h2>
+            <p class="text-xs text-text-secondary mt-0.5">Export data in CSV, Excel, or JSON format for reporting and analysis.</p>
+        </div>
+    </div>
+
+    {# Export Cards Grid #}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+        {# Service Requests #}
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div class="px-5 py-4 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center gap-2">
+                    <span class="text-primary">{% lucide "file-text" size=18 %}</span>
+                    <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Service Requests</h3>
+                </div>
+                <p class="text-xs text-text-secondary mt-1">{{ service_request_count }} records</p>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <div class="flex flex-wrap gap-2">
+                    <select id="sr_status_filter" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">All Status</option>
+                        {% for value, label in ticket.Status.choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="flex items-center gap-1 text-xs">
+                        <input type="date" id="sr_start_date" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <span class="text-text-secondary">to</span>
+                        <input type="date" id="sr_end_date" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="exportData('service-requests', 'csv')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} CSV
+                    </button>
+                    <button onclick="exportData('service-requests', 'excel')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} Excel
+                    </button>
+                    <button onclick="exportData('service-requests', 'json')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-code" size=12 %} JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {# Incidents #}
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div class="px-5 py-4 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center gap-2">
+                    <span class="text-primary">{% lucide "alert-circle" size=18 %}</span>
+                    <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Incidents</h3>
+                </div>
+                <p class="text-xs text-text-secondary mt-1">{{ incident_count }} records</p>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <div class="flex flex-wrap gap-2">
+                    <select id="inc_status_filter" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">All Status</option>
+                        {% for value, label in ticket.Status.choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="flex items-center gap-1 text-xs">
+                        <input type="date" id="inc_start_date" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <span class="text-text-secondary">to</span>
+                        <input type="date" id="inc_end_date" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="exportData('incidents', 'csv')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} CSV
+                    </button>
+                    <button onclick="exportData('incidents', 'excel')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} Excel
+                    </button>
+                    <button onclick="exportData('incidents', 'json')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-code" size=12 %} JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {# Audit Logs #}
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div class="px-5 py-4 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center gap-2">
+                    <span class="text-primary">{% lucide "file-search" size=18 %}</span>
+                    <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Audit Logs</h3>
+                </div>
+                <p class="text-xs text-text-secondary mt-1">{{ audit_count }} records</p>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <div class="flex flex-wrap gap-2">
+                    <select id="audit_action_filter" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">All Actions</option>
+                        <option value="created">Created</option>
+                        <option value="status_changed">Status Changed</option>
+                        <option value="assigned">Assigned</option>
+                        <option value="commented">Commented</option>
+                    </select>
+                    <div class="flex items-center gap-1 text-xs">
+                        <input type="date" id="audit_start_date" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <span class="text-text-secondary">to</span>
+                        <input type="date" id="audit_end_date" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="exportAuditLog('csv')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} CSV
+                    </button>
+                    <button onclick="exportAuditLog('excel')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} Excel
+                    </button>
+                    <button onclick="exportAuditLog('json')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-code" size=12 %} JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {# Assets #}
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div class="px-5 py-4 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center gap-2">
+                    <span class="text-primary">{% lucide "hard-drive" size=18 %}</span>
+                    <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Assets</h3>
+                </div>
+                <p class="text-xs text-text-secondary mt-1">{{ asset_count }} records</p>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <p class="text-xs text-text-secondary">Export all assets with current filters applied.</p>
+                <div class="flex flex-wrap gap-2">
+                    <a href="{% url 'tickets:asset_export' %}?format=csv" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} CSV
+                    </a>
+                    <a href="{% url 'tickets:asset_export' %}?format=excel" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} Excel
+                    </a>
+                    <a href="{% url 'tickets:asset_export' %}?format=json" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-code" size=12 %} JSON
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        {# Users #}
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+            <div class="px-5 py-4 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center gap-2">
+                    <span class="text-primary">{% lucide "users" size=18 %}</span>
+                    <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Users</h3>
+                </div>
+                <p class="text-xs text-text-secondary mt-1">{{ user_count }} records</p>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <div class="flex flex-wrap gap-2">
+                    <select id="user_role_filter" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">All Roles</option>
+                        {% for value, label in role_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <select id="user_status_filter" class="text-xs rounded-lg border py-1.5 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="exportUsers('csv')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} CSV
+                    </button>
+                    <button onclick="exportUsers('excel')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-spreadsheet" size=12 %} Excel
+                    </button>
+                    <button onclick="exportUsers('json')" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "file-code" size=12 %} JSON
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    // ================================================================
+    // EXPORT FUNCTIONS
+    // ================================================================
+
+    function exportData(type, format) {
+        const baseUrl = `/tickets/export/${type}/`;
+        const params = new URLSearchParams();
+        params.set('format', format);
+        
+        if (type === 'service-requests' || type === 'incidents') {
+            const statusFilter = document.getElementById(`${type === 'service-requests' ? 'sr' : 'inc'}_status_filter`);
+            const startDate = document.getElementById(`${type === 'service-requests' ? 'sr' : 'inc'}_start_date`);
+            const endDate = document.getElementById(`${type === 'service-requests' ? 'sr' : 'inc'}_end_date`);
+            
+            if (statusFilter && statusFilter.value) params.set('status', statusFilter.value);
+            if (startDate && startDate.value) params.set('start_date', startDate.value);
+            if (endDate && endDate.value) params.set('end_date', endDate.value);
+        }
+        
+        window.location.href = `${baseUrl}?${params.toString()}`;
+    }
+
+    function exportAuditLog(format) {
+        const params = new URLSearchParams();
+        params.set('format', format);
+        
+        const actionFilter = document.getElementById('audit_action_filter');
+        const startDate = document.getElementById('audit_start_date');
+        const endDate = document.getElementById('audit_end_date');
+        
+        if (actionFilter && actionFilter.value) params.set('action', actionFilter.value);
+        if (startDate && startDate.value) params.set('start_date', startDate.value);
+        if (endDate && endDate.value) params.set('end_date', endDate.value);
+        
+        window.location.href = `/tickets/audit/?export=${format}&${params.toString()}`;
+    }
+
+    function exportUsers(format) {
+        const params = new URLSearchParams();
+        params.set('format', format);
+        
+        const roleFilter = document.getElementById('user_role_filter');
+        const statusFilter = document.getElementById('user_status_filter');
+        
+        if (roleFilter && roleFilter.value) params.set('role', roleFilter.value);
+        if (statusFilter && statusFilter.value) params.set('status', statusFilter.value);
+        
+        window.location.href = `/accounts/admin/users/?export=${format}&${params.toString()}`;
+    }
+</script>
+{% endblock %}

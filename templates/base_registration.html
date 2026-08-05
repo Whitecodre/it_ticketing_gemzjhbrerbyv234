@@ -55,78 +55,39 @@
 
     {# -------- THEME SWITCHER SCRIPT (radio version) -------- #}
     {% block scripts %}
-    <script>
-        (function() {
-            // DOM elements
-            const lightRadio = document.querySelector('input[name="theme"][value="light"]');
-            const darkRadio = document.querySelector('input[name="theme"][value="dark"]');
-            const lightLabel = document.getElementById('themeRadioLight');
-            const darkLabel = document.getElementById('themeRadioDark');
+<!-- Alpine.js - Lightweight reactive framework -->
+<script src="{% static 'js/alpine.min.js' %}" defer></script>
+<!-- Alpine.js Focus plugin -->
+<script src="{% static 'js/alpine-focus.min.js' %}" defer></script>
 
-            if (!lightRadio || !darkRadio) return;
-
-            // Function to update active class on labels
-            function updateActiveClass() {
-                const isDark = document.documentElement.classList.contains('dark');
-                if (isDark) {
-                    darkRadio.checked = true;
-                    lightLabel.classList.remove('active');
-                    darkLabel.classList.add('active');
-                } else {
-                    lightRadio.checked = true;
-                    lightLabel.classList.add('active');
-                    darkLabel.classList.remove('active');
-                }
-            }
-
-            // Function to set theme and update UI
-            function setTheme(theme) {
-                if (theme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                    localStorage.setItem('theme', 'dark');
-                } else {
-                    document.documentElement.classList.remove('dark');
-                    localStorage.setItem('theme', 'light');
-                }
-                updateActiveClass();
-            }
-
-            // Initial load: read from localStorage or system preference
-            const savedTheme = localStorage.getItem('theme');
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
-                setTheme('dark');
-            } else {
-                setTheme('light');
-            }
-
-            // Event listeners for radio buttons
-            lightRadio.addEventListener('change', function(e) {
-                if (this.checked) setTheme('light');
-            });
-            darkRadio.addEventListener('change', function(e) {
-                if (this.checked) setTheme('dark');
-            });
-        })();
-        // Error message Time-out
-        document.addEventListener('DOMContentLoaded', function() {
-            // Find all alert/message containers with class 'alert-message'
-            const messages = document.querySelectorAll('.alert-message, .alert-error, .alert-success, .alert-warning');
-            messages.forEach(function(msg) {
-                // Auto-dismiss after 5 seconds (5000ms)
+<script>
+    (function() {
+        const savedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+        
+        if (initialTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    })();
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        const messages = document.querySelectorAll('.alert-message, .alert-error, .alert-success, .alert-warning');
+        messages.forEach(function(msg) {
+            setTimeout(function() {
+                msg.style.transition = 'opacity 0.5s ease';
+                msg.style.opacity = '0';
                 setTimeout(function() {
-                    msg.style.transition = 'opacity 0.5s ease';
-                    msg.style.opacity = '0';
-                    // Remove from DOM after fade
-                    setTimeout(function() {
-                        msg.remove();
-                    }, 500);
-                }, 5000);
-            });
+                    msg.remove();
+                }, 500);
+            }, 5000);
         });
-    </script>
-    {{ block.super }}
-    {% endblock scripts %}
+    });
+</script>
+{{ block.super }}
+{% endblock scripts %}
+
 </body>
 </html>

@@ -1,0 +1,64 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning shrink-0">
+            {% lucide "hard-drive" size=20 %}
+        </div>
+        <div>
+            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Reassign Asset</h3>
+            <p class="text-sm text-text-secondary">{{ asset.name }} ({{ asset.tracking_id }})</p>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-warning/10 p-3 border border-warning/30 text-warning text-sm mb-4">
+        <div class="flex items-center gap-2">
+            {% lucide "alert-triangle" size=16 %}
+            <span>This action will be logged in the asset's history.</span>
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'tickets:asset_reassign' asset.pk %}" id="assetReassignForm">
+        {% csrf_token %}
+        
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                Assign to User <span class="text-error">*</span>
+            </label>
+            <select name="assigned_to" required
+                    class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                <option value="">Select a user...</option>
+                {% for user in users %}
+                <option value="{{ user.pk }}">{{ user.get_full_name_with_role }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                Comment <span class="text-text-secondary text-xs font-normal">(optional, editable)</span>
+            </label>
+            <textarea name="comment" rows="3" 
+                      class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      id="assetReassignComment">{{ default_comment }}</textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeAssetReassignModal()" 
+                    class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" 
+                    class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+                {% lucide "check" size=14 %} Reassign
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function closeAssetReassignModal() {
+        const overlay = document.getElementById('modalOverlay');
+        const container = document.getElementById('modalContainer');
+        if (overlay) overlay.classList.add('hidden');
+        if (container) container.innerHTML = '';
+    }
+</script>

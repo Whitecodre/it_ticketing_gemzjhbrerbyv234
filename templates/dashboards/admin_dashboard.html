@@ -4,13 +4,8 @@
 {% load asset_filters %}
 
 {% block dashboard_title %}Admin Dashboard{% endblock %}
-{% block page_title_area %}{% endblock %}
-{% block role_label %}Admin{% endblock %}
+{% block role_label %}{{ active_role_display|default:"Admin" }}{% endblock %}
 {% block role_badge %}ADMIN{% endblock %}
-
-{% block sidebar_nav %}
-    {% include "partials/sidebar_admin.html" %}
-{% endblock %}
 
 {% block dashboard_content %}
 

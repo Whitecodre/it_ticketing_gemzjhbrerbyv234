@@ -28,6 +28,7 @@ class Notification(models.Model):
         REMOTE_SESSION = 'REMOTE_SESSION', 'Remote Session'
         MANAGER_REVIEW = 'MANAGER_REVIEW', 'Manager Review'
         APPROVAL = 'APPROVAL', 'Approval'
+        RESOLUTION_CONFIRMATION = 'RESOLUTION_CONFIRMATION', 'Resolution Confirmation'
 
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -40,7 +41,7 @@ class Notification(models.Model):
     message = models.CharField(max_length=500)
     is_read = models.BooleanField(default=False)
     url = models.URLField(blank=True)
-    type = models.CharField(max_length=20, choices=Type.choices, default=Type.GENERAL)
+    type = models.CharField(max_length=25, choices=Type.choices, default=Type.GENERAL)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

@@ -15,7 +15,7 @@
 <div class="w-full space-y-6">
     <div>
         <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Service Level Agreement and Calendar Configuration</h2>
-        <p class="text-sm text-text-secondary">Manage hardware, software, and other IT assets.</p>
+        <p class="text-sm text-text-secondary">Manage SLA policies, business calendars, and escalation rules.</p>
     </div>
 
     <!-- ======== 1. SLA Policies ======== -->
@@ -51,8 +51,8 @@
                                 {{ sla.get_priority_display }}
                             </span>
                         </td>
-                        <td class="py-3 px-4 text-text-secondary">{{ sla.response_minutes }} min</td>
-                        <td class="py-3 px-4 text-text-secondary">{{ sla.resolution_minutes }} min</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ sla.get_response_display }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ sla.get_resolution_display }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ sla.calendar.name|default:"Default" }}</td>
                         <td class="py-3 px-4 text-right">
                             <form method="post" action="{% url 'tickets:sla_delete' sla.pk %}" onsubmit="return confirm('Delete this SLA policy?')">
@@ -193,16 +193,26 @@
                     {% endfor %}
                 </select>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-text-secondary mb-1">Response (min)</label>
-                    <input type="number" name="response_minutes" placeholder="Minutes" required
-                           class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <div>
+                <label class="block text-xs font-medium text-text-secondary mb-1">Response Target</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" name="response_hours" value="0" min="0" placeholder="Hrs"
+                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <span class="text-sm text-text-secondary">h</span>
+                    <input type="number" name="response_minutes" value="0" min="0" max="59" placeholder="Mins"
+                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <span class="text-sm text-text-secondary">m</span>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-text-secondary mb-1">Resolution (min)</label>
-                    <input type="number" name="resolution_minutes" placeholder="Minutes" required
-                           class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-text-secondary mb-1">Resolution Target</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" name="resolution_hours" value="0" min="0" placeholder="Hrs"
+                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <span class="text-sm text-text-secondary">h</span>
+                    <input type="number" name="resolution_minutes" value="0" min="0" max="59" placeholder="Mins"
+                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <span class="text-sm text-text-secondary">m</span>
                 </div>
             </div>
             <div>

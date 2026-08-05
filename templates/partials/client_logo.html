@@ -1,0 +1,11 @@
+{% load static %}
+
+{# Client Logo - appears on reports and exports only #}
+{% if client_settings and client_settings.logo_url %}
+<div class="client-logo-container">
+    <img src="{{ client_settings.logo_url }}" 
+         alt="{{ client_settings.company_name }} Logo" 
+         class="client-logo"
+         style="max-height: 60px; max-width: 200px; object-fit: contain;">
+</div>
+{% endif %}

@@ -20,9 +20,9 @@ from django.utils.html import strip_tags
 from django.db.models import F, DurationField, ExpressionWrapper, Count, Q
 from datetime import timedelta, date
 from ..forms import ProfileForm, EmailAuthenticationForm, RegistrationStep1Form, RegistrationStep2Form, ChangePasswordForm, UserSettingsForm
-from ..models import User, UserProfile
+from ..models import User, UserProfile, Role
 from ..utils import validate_password_strength
-from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, Asset, RemoteConnector 
+from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, Asset, RemoteConnector, TicketComment
 from apps.tickets.views import get_sidebar_template
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
@@ -30,11 +30,12 @@ from django.views.decorators.csrf import csrf_protect
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-
+# @method_decorator(ratelimit(key='ip', rate='5/15m', method='POST', block=True), name='dispatch')
+@method_decorator(csrf_protect, name='dispatch')
 class CustomLoginView(LoginView):
     template_name = 'registration/login.html'
     authentication_form = EmailAuthenticationForm
-    redirect_authenticated_user = True
+    redirect_authenticated_user = False  # ← This is the key change
 
     def form_valid(self, form):
         remember_me = self.request.POST.get('remember_me')
@@ -42,10 +43,20 @@ class CustomLoginView(LoginView):
             self.request.session.set_expiry(30 * 24 * 60 * 60)
         else:
             self.request.session.set_expiry(0)
+        
+        user = form.get_user()
+        
+        if not user.password_changed:
+            # Log the user in
+            from django.contrib.auth import login
+            login(self.request, user)
+            # Redirect to force password change
+            return redirect('accounts:force_password_change')
+        
+        # Normal flow
         return super().form_valid(form)
 
     def form_invalid(self, form):
-        # Pass the submitted username back to the template
         return self.render_to_response(
             self.get_context_data(
                 form=form,
@@ -91,30 +102,6 @@ class CustomPasswordResetView(PasswordResetView):
         return success
 
 
-# @method_decorator(ratelimit(key='ip', rate='5/15m', method='POST', block=True), name='dispatch')
-@method_decorator(csrf_protect, name='dispatch')
-class CustomLoginView(LoginView):
-    template_name = 'registration/login.html'
-    authentication_form = EmailAuthenticationForm
-    redirect_authenticated_user = True
-
-    def form_valid(self, form):
-        remember_me = self.request.POST.get('remember_me')
-        if remember_me:
-            self.request.session.set_expiry(30 * 24 * 60 * 60)
-        else:
-            self.request.session.set_expiry(0)
-        return super().form_valid(form)
-
-    def form_invalid(self, form):
-        # Pass the submitted username back to the template
-        return self.render_to_response(
-            self.get_context_data(
-                form=form,
-                username=form.data.get('username', '')
-            )
-        )
-
 def validate_email_ajax(request):
     email = request.GET.get('email', '').strip()
     if not email:
@@ -146,20 +133,99 @@ def validate_password_ajax(request):
     return render(request, 'partials/password_strength.html', result)
 
 @login_required
+def force_password_change(request):
+    """
+    Forces user to change password on first login.
+    """
+    user = request.user
+    
+    # If user already changed password, redirect to dashboard
+    if user.password_changed:
+        return redirect('dashboard')
+    
+     # If user is not authenticated, redirect to login
+    if not request.user.is_authenticated:
+        return redirect('accounts:login')
+    
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        
+        if action == 'skip':
+            # Mark as changed so they don't see this page again
+            user.password_changed = True
+            user.save()
+            messages.info(request, 'You can change your password later from your profile settings.')
+            return redirect('dashboard')
+        
+        elif action == 'change':
+            # Process password change
+            password1 = request.POST.get('password1')
+            password2 = request.POST.get('password2')
+            
+            if password1 != password2:
+                messages.error(request, 'Passwords do not match.')
+                return render(request, 'registration/force_password_change.html', {
+                    'user': user,
+                })
+            
+            if len(password1) < 8:
+                messages.error(request, 'Password must be at least 8 characters.')
+                return render(request, 'registration/force_password_change.html', {
+                    'user': user,
+                })
+            
+            # Set new password
+            user.set_password(password1)
+            user.password_changed = True
+            user.save()
+            
+            # Update session hash to prevent logout
+            update_session_auth_hash(request, user)
+            
+            messages.success(request, 'Password changed successfully.')
+            return redirect('dashboard')
+    
+    return render(request, 'registration/force_password_change.html', {
+        'user': user,
+    })
+
+@login_required
 def dashboard(request):
-    role = request.user.role
-    template_map = {
-        'END_USER': 'dashboards/end_user_dashboard.html',
-        'AGENT': 'dashboards/agent_dashboard.html',
-        'TEAM_LEAD': 'dashboards/team_lead_dashboard.html',
-        # 'APPROVER': 'dashboards/approver_dashboard.html',  # <-- REMOVED
-        'ADMIN': 'dashboards/admin_dashboard.html',
-        'SUPERADMIN': 'dashboards/super_admin_dashboard.html',
-    }
-    template = template_map.get(role, 'dashboard/generic_dashboard.html')
+    user = request.user
+    
+    # ================================================================
+    # DUAL ROLES: Get active role
+    # ================================================================
+    active_role = user.get_active_role()
+    
+    # If no active role, use the highest priority role
+    if not active_role:
+        active_role = user.roles.order_by('priority').first()
+        if active_role:
+            user.active_role = active_role
+            user.save(update_fields=['active_role'])
+    
+    # Determine template based on active role
+    if active_role:
+        role_name = active_role.name
+        template_map = {
+            'SUPERADMIN': 'dashboards/super_admin_dashboard.html',
+            'ADMIN': 'dashboards/admin_dashboard.html',
+            'TEAM_LEAD': 'dashboards/team_lead_dashboard.html',
+            'AGENT': 'dashboards/agent_dashboard.html',
+            'END_USER': 'dashboards/end_user_dashboard.html',
+        }
+        template = template_map.get(role_name, 'dashboards/end_user_dashboard.html')
+    else:
+        # Fallback for users with no roles
+        template = 'dashboards/end_user_dashboard.html'
+    
+    # ================================================================
+    # Build context based on active role
+    # ================================================================
     context = {}
     
-    if role == 'END_USER':
+    if active_role and active_role.name == 'END_USER':
         context['open_tickets_count'] = Ticket.objects.filter(
             requester=request.user,
             status__in=['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
@@ -171,15 +237,66 @@ def dashboard(request):
         context['resolved_count'] = Ticket.objects.filter(requester=request.user, status='RESOLVED').count()
         context['closed_count'] = Ticket.objects.filter(requester=request.user, status='CLOSED').count()
         
-    elif role == 'AGENT':
+    elif active_role and active_role.name in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
         
-        context['total_open_tickets'] = Ticket.objects.filter(status__in=open_statuses).count()
-        context['my_open_tickets'] = Ticket.objects.filter(
+        resolved_tickets = Ticket.objects.filter(
+            assigned_to=request.user,
+            status__in=['RESOLVED', 'CLOSED']
+        )
+        total_resolved = resolved_tickets.count()
+        
+        # Average Resolution Time
+        avg_resolution_time = None
+        resolution_times = []
+        for ticket in resolved_tickets:
+            if ticket.resolved_at and ticket.assigned_to == request.user:
+                assigned_log = TicketActivityLog.objects.filter(
+                    ticket=ticket,
+                    action='assigned',
+                    details__to=request.user.get_full_name()
+                ).order_by('created_at').first()
+                
+                if assigned_log:
+                    assigned_at = assigned_log.created_at
+                    resolution_time = (ticket.resolved_at - assigned_at).total_seconds() / 3600
+                    resolution_times.append(resolution_time)
+        
+        if resolution_times:
+            avg_resolution_time = round(sum(resolution_times) / len(resolution_times), 1)
+        
+        # Average Response Time
+        avg_response_time = None
+        response_times = []
+        for ticket in resolved_tickets:
+            if ticket.resolved_at and ticket.assigned_to == request.user:
+                assigned_log = TicketActivityLog.objects.filter(
+                    ticket=ticket,
+                    action='assigned',
+                    details__to=request.user.get_full_name()
+                ).order_by('created_at').first()
+                
+                if assigned_log:
+                    assigned_at = assigned_log.created_at
+                    first_reply = TicketComment.objects.filter(
+                        ticket=ticket,
+                        author=request.user,
+                        visibility='PUBLIC'
+                    ).order_by('created_at').first()
+                    
+                    if first_reply:
+                        response_time = (first_reply.created_at - assigned_at).total_seconds() / 60
+                        response_times.append(response_time)
+        
+        if response_times:
+            avg_response_time = round(sum(response_times) / len(response_times), 1)
+        
+        my_open_tickets = Ticket.objects.filter(
             assigned_to=request.user,
             status__in=open_statuses
         ).count()
-        context['unassigned_count'] = Ticket.objects.filter(
+        
+        unassigned_count = Ticket.objects.filter(
             assigned_to__isnull=True
         ).exclude(status__in=[
             Ticket.Status.RESOLVED,
@@ -188,7 +305,8 @@ def dashboard(request):
             Ticket.Status.PENDING_MANAGER_REVIEW,
             Ticket.Status.PENDING_FULFILLMENT,
         ]).count()
-        context['recent_unassigned'] = Ticket.objects.filter(
+        
+        recent_unassigned = Ticket.objects.filter(
             assigned_to__isnull=True
         ).exclude(status__in=[
             Ticket.Status.RESOLVED,
@@ -197,37 +315,23 @@ def dashboard(request):
             Ticket.Status.PENDING_MANAGER_REVIEW,
             Ticket.Status.PENDING_FULFILLMENT,
         ]).order_by('-created_at')[:5]
-        context['assigned_to_me_tickets'] = Ticket.objects.filter(
+        
+        assigned_to_me_tickets = Ticket.objects.filter(
             assigned_to=request.user
         ).exclude(status__in=['RESOLVED', 'CLOSED']).order_by('-created_at')[:5]
         
-        resolved = Ticket.objects.filter(assigned_to=request.user, status__in=['RESOLVED', 'CLOSED'])
-        total_solved = resolved.count()
-        context['total_solved'] = total_solved
-        
-        good = 0
-        bad = 0
-        for ticket in resolved:
-            try:
-                sla = SLA.objects.get(priority=ticket.priority)
-                if ticket.resolved_at and (ticket.resolved_at - ticket.created_at).total_seconds() / 60 <= sla.resolution_minutes:
-                    good += 1
-                else:
-                    bad += 1
-            except SLA.DoesNotExist:
-                good += 1
-        context['good_tickets'] = good
-        context['bad_tickets'] = bad
-        
-        context['sla_breaches'] = 0
-        context['avg_response_time'] = None
-        
-    elif role in ['ADMIN', 'SUPERADMIN']:
-        
-        # KPI: Total tickets this month
+        context['total_resolved'] = total_resolved
+        context['avg_resolution_time'] = avg_resolution_time
+        context['avg_response_time'] = avg_response_time
+        context['my_open_tickets'] = my_open_tickets
+        context['unassigned_count'] = unassigned_count
+        context['recent_unassigned'] = recent_unassigned
+        context['assigned_to_me_tickets'] = assigned_to_me_tickets
+    
+    # Admin specific context
+    if active_role and active_role.name in ['ADMIN', 'SUPERADMIN']:
         context['total_tickets_month'] = Ticket.objects.filter(created_at__month=timezone.now().month).count()
 
-        # SLA Compliance calculation
         resolved_tickets = Ticket.objects.filter(status__in=['RESOLVED', 'CLOSED'], resolved_at__isnull=False)
         compliant = 0
         total = 0
@@ -242,32 +346,19 @@ def dashboard(request):
             total += 1
         context['sla_compliance'] = round((compliant / total * 100), 1) if total > 0 else 100.0
 
-        # Remote Connectors
         context['connectors'] = RemoteConnector.objects.all().order_by('name')
         context['active_connectors'] = RemoteConnector.objects.filter(is_active=True).count()
-
-        # SLA policies summary
         context['slas'] = SLA.objects.all().order_by('priority')
         context['escalation_rules'] = EscalationRule.objects.all().order_by('priority', 'timer_type', 'threshold_percent')
         context['calendars'] = BusinessCalendar.objects.all()
-
-        # Recent audit logs
         context['recent_audit_logs'] = TicketActivityLog.objects.select_related('ticket', 'actor').order_by('-created_at')[:5]
-
-        # RBAC matrix (dynamic from user roles)
         context['role_choices'] = User.Role.choices
 
-        # ========== ASSET FULFILLMENT & MANAGEMENT KPIs ==========
-        # Fulfillment Metrics
-        pending_fulfillment_count = Ticket.objects.filter(
-            status=Ticket.Status.PENDING_FULFILLMENT
-        ).count()
-        
+        pending_fulfillment_count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
         pending_fulfillment_requests = Ticket.objects.filter(
             status=Ticket.Status.PENDING_FULFILLMENT
         ).select_related('requester', 'category').order_by('-created_at')[:10]
         
-        # Asset Inventory Metrics
         total_assets = Asset.objects.count()
         active_assets = Asset.objects.filter(status='ACTIVE').count()
         in_store_assets = Asset.objects.filter(status='IN_STORE').count()
@@ -277,7 +368,6 @@ def dashboard(request):
         
         thirty_days_ago = timezone.now() - timedelta(days=30)
         recently_added = Asset.objects.filter(created_at__gte=thirty_days_ago).count()
-        
         assigned_assets = Asset.objects.filter(assigned_to__isnull=False).count()
         unassigned_assets = total_assets - assigned_assets
         
@@ -316,13 +406,12 @@ def dashboard(request):
             'approved_requests': approved_requests,
             'fulfilled_this_month': fulfilled_this_month,
         })
-        
-    elif role == 'TEAM_LEAD':
-        
+    
+    # Team Lead specific context
+    if active_role and active_role.name == 'TEAM_LEAD':
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
         team_members = User.objects.filter(department=request.user.department, role='AGENT', is_active=True)
         
-        # ========== KPI CARDS ==========
         context['team_open_tickets'] = Ticket.objects.filter(
             status__in=open_statuses,
             assigned_to__in=team_members
@@ -352,8 +441,7 @@ def dashboard(request):
         
         context['team_members'] = team_members
         
-        # ========== WORKLOAD DISTRIBUTION ==========
-        # Count open tickets per agent
+        # Workload distribution
         agent_workload = []
         for agent in team_members:
             open_count = Ticket.objects.filter(
@@ -361,7 +449,6 @@ def dashboard(request):
                 status__in=open_statuses
             ).count()
             
-            # Get agent's recent activity (last 7 days)
             seven_days_ago = timezone.now() - timedelta(days=7)
             recent_resolved = Ticket.objects.filter(
                 assigned_to=agent,
@@ -376,21 +463,18 @@ def dashboard(request):
                 'avatar': agent.avatar,
             })
         
-        # Sort by workload (highest first)
         agent_workload.sort(key=lambda x: x['open_count'], reverse=True)
         context['agent_workload'] = agent_workload
         
-        # ========== AGENT PERFORMANCE METRICS ==========
+        # Agent performance
         agent_performance = []
         for agent in team_members:
-            # Total resolved by this agent
             resolved = Ticket.objects.filter(
                 assigned_to=agent,
                 status__in=['RESOLVED', 'CLOSED']
             )
             total_resolved = resolved.count()
             
-            # SLA compliance for this agent
             compliant = 0
             for ticket in resolved:
                 if ticket.resolved_at and ticket.created_at:
@@ -400,15 +484,12 @@ def dashboard(request):
                         if resolution_time <= sla.resolution_minutes:
                             compliant += 1
                     except SLA.DoesNotExist:
-                        # If no SLA, consider it compliant
                         compliant += 1
             
             compliance_rate = round((compliant / total_resolved * 100), 1) if total_resolved > 0 else 0
             
-            # Average response time
             avg_response_time = 0
             if total_resolved > 0:
-                # This is a simplified calculation - you can make it more sophisticated
                 total_time = sum(
                     (t.resolved_at - t.created_at).total_seconds() / 3600 
                     for t in resolved 
@@ -423,11 +504,9 @@ def dashboard(request):
                 'avg_response_time': avg_response_time,
             })
         
-        # Sort by compliance rate (highest first)
         agent_performance.sort(key=lambda x: x['compliance_rate'], reverse=True)
         context['agent_performance'] = agent_performance
         
-        # ========== RECENT TEAM ACTIVITY ==========
         context['recent_team_tickets'] = Ticket.objects.filter(
             assigned_to__in=team_members
         ).exclude(status__in=['RESOLVED', 'CLOSED']).order_by('-created_at')[:5]
@@ -441,8 +520,11 @@ def dashboard(request):
             Ticket.Status.PENDING_MANAGER_REVIEW,
             Ticket.Status.PENDING_FULFILLMENT,
         ]).order_by('-created_at')[:5]
-        
-    # Removed APPROVER case
+    
+    # Add active role to context for sidebar
+    context['active_role'] = active_role
+    context['available_roles'] = user.roles.all().order_by('priority')
+    context['sidebar_template'] = get_sidebar_template(user)
     
     return render(request, template, context)
 
@@ -623,6 +705,17 @@ def profile(request):
     if not hasattr(request.user, 'profile'):
         UserProfile.objects.create(user=request.user)
 
+    # Handle role switching from profile
+    if request.method == 'POST' and 'switch_role' in request.POST:
+        role_name = request.POST.get('role')
+        if role_name:
+            success = request.user.set_active_role(role_name)
+            if success:
+                messages.success(request, f'Switched to {request.user.get_active_role_display()} view.')
+            else:
+                messages.error(request, f'You do not have the {role_name} role.')
+        return redirect('accounts:profile')
+
     if request.method == 'POST':
         if 'save_profile' in request.POST:
             form = ProfileForm(request.POST, request.FILES, instance=request.user)
@@ -648,19 +741,51 @@ def profile(request):
         settings_form = UserSettingsForm(instance=request.user.profile)
         password_form = ChangePasswordForm(request.user)
 
+    if not Role.objects.exists():
+        default_roles = [
+            ('SUPERADMIN', 'Super Admin', 1),
+            ('ADMIN', 'Admin', 2),
+            ('TEAM_LEAD', 'Team Lead', 3),
+            ('AGENT', 'Support Team', 4),
+            ('END_USER', 'User', 5),
+        ]
+        for name, display_name, priority in default_roles:
+            Role.objects.get_or_create(name=name, defaults={'display_name': display_name, 'priority': priority})
+
+    all_roles = Role.objects.all().order_by('priority')
+    assigned_role_names = list(request.user.roles.values_list('name', flat=True))
+
+    active_role = request.user.get_active_role()
+    active_role_name = active_role.name if active_role else request.user.role
+
+    available_roles = list(request.user.roles.all().order_by('priority'))
+    if not available_roles and active_role:
+        available_roles = [active_role]
+    elif not available_roles:
+        highest_role = request.user.get_highest_role()
+        if highest_role:
+            available_roles = [highest_role]
+
+     # Debug: Print active role info
+    print(f"Profile view - User: {request.user.email}")
+    print(f"Profile view - Active role: {request.user.active_role}")
+    print(f"Profile view - Active role name: {request.user.get_active_role_name()}")
+    print(f"Profile view - All roles: {[r.name for r in request.user.roles.all()]}")
+
     sidebar_map = {
         'END_USER': 'partials/sidebar_end_user.html',
         'AGENT': 'partials/sidebar_agent.html',
         'TEAM_LEAD': 'partials/sidebar_team_lead.html',
-        # 'APPROVER': 'partials/sidebar_approver.html',
         'ADMIN': 'partials/sidebar_admin.html',
         'SUPERADMIN': 'partials/sidebar_superadmin.html',
     }
-    sidebar_template = sidebar_map.get(request.user.role, 'partials/sidebar_generic.html')
+    sidebar_template = sidebar_map.get(active_role_name, 'partials/sidebar_generic.html')
 
     return render(request, 'dashboards/profile.html', {
         'form': form,
         'settings_form': settings_form,
         'password_form': password_form,
         'sidebar_template': sidebar_template,
+        'available_roles': available_roles,
+        'active_role': active_role,
     })

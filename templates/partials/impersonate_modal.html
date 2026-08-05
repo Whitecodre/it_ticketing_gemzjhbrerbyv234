@@ -1,0 +1,79 @@
+{% load lucide %}
+
+<div class="p-4">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning">
+            {% lucide "eye" size=20 %}
+        </div>
+        <div>
+            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Login as User</h3>
+            <p class="text-sm text-text-secondary">You are about to impersonate <strong>{{ user_name|default:"User" }}</strong></p>
+        </div>
+    </div>
+    
+    <div class="rounded-lg bg-warning/10 p-3 border border-warning/30 text-warning text-sm mb-4">
+        <div class="flex items-center gap-2">
+            {% lucide "alert-triangle" size=16 %}
+            <span>This action will be logged and the user will be notified.</span>
+        </div>
+    </div>
+    
+    <form id="impersonateForm">
+        {% csrf_token %}
+        <input type="hidden" name="user_id" id="impersonateUserId" value="{{ user_id }}">
+        
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                Reason for impersonation <span class="text-error">*</span>
+            </label>
+            <select name="reason" id="impersonateReason" required
+                    class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                <option value="">Select a reason...</option>
+                <option value="Troubleshooting">🔧 Troubleshooting / Debugging</option>
+                <option value="User Support">🙋 User Support / Training</option>
+                <option value="User Unavailable">⏳ User Unavailable</option>
+                <option value="Access Verification">🔐 Access Verification</option>
+                <option value="Onboarding">📋 Onboarding Assistance</option>
+                <option value="Other">📝 Other (please specify)</option>
+            </select>
+        </div>
+        
+        <div class="mb-4" id="otherReasonContainer" style="display: none;">
+            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                Please specify
+            </label>
+            <input type="text" name="other_reason" id="otherReason" 
+                   class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                   placeholder="Enter your reason...">
+        </div>
+        
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeImpersonateModal()" 
+                    class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" 
+                    class="btn-warning text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+                {% lucide "eye" size=14 %} Login as User
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const reasonSelect = document.getElementById('impersonateReason');
+        const otherContainer = document.getElementById('otherReasonContainer');
+        const otherInput = document.getElementById('otherReason');
+        
+        if (reasonSelect) {
+            reasonSelect.addEventListener('change', function() {
+                if (this.value === 'Other') {
+                    otherContainer.style.display = 'block';
+                    if (otherInput) otherInput.required = true;
+                } else {
+                    otherContainer.style.display = 'none';
+                    if (otherInput) otherInput.required = false;
+                }
+            });
+        }
+    });
+</script>

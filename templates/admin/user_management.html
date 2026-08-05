@@ -66,139 +66,383 @@
     </div>
 </div>
 
-{# ---- Modals (unchanged) ---- #}
-{# Create User Modal #}
-<div id="createUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Create New User</h3>
-            <button onclick="closeCreateModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+{# ================================================================ #}
+{# CREATE USER MODAL - SIMPLIFIED                                 #}
+{# ================================================================ #}
+<div id="createUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
+     onclick="if(event.target===this) closeCreateModal()">
+    <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-xl p-0 mx-4 max-h-[90vh] overflow-y-auto" 
+         style="background-color: var(--color-surface);">
+        
+        {# Header #}
+        <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-surface rounded-t-2xl" 
+             style="border-color: var(--color-border); background-color: var(--color-surface);">
+            <div class="flex items-center gap-3">
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    {% lucide "user-plus" size=18 %}
+                </div>
+                <div>
+                    <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Create New User</h3>
+                    <p class="text-xs text-text-secondary">Fill in the details below to create a new user account</p>
+                </div>
+            </div>
+            <button onclick="closeCreateModal()" class="p-1.5 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary">
+                {% lucide "x" size=20 %}
+            </button>
         </div>
-        <form action="{% url 'accounts:admin_user_create' %}" id="createUserForm">
+
+        {# Form #}
+        <form action="{% url 'accounts:admin_user_create' %}" id="createUserForm" method="post" class="px-6 py-5 space-y-4">
             {% csrf_token %}
-            <div class="space-y-3">
-                <input type="email" name="email" placeholder="Email" required
-                       class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            
+            {# Personal Information Section #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "user" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Personal Information</span>
+                </div>
                 <div class="grid grid-cols-2 gap-3">
-                    <input type="text" name="first_name" placeholder="First Name" required
-                           class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <input type="text" name="last_name" placeholder="Last Name" required
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-secondary">First Name <span class="text-error">*</span></label>
+                        <input type="text" name="first_name" placeholder="John" required
+                               class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-secondary">Last Name <span class="text-error">*</span></label>
+                        <input type="text" name="last_name" placeholder="Doe" required
+                               class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Email Address <span class="text-error">*</span></label>
+                    <input type="email" name="email" placeholder="john.doe@company.com" required
                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
                 </div>
-                <select name="role" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    {% for value, label in role_choices %}
-                        {% if value != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Position / Job Title</label>
+                    <input type="text" name="position" placeholder="e.g., Senior Developer, HR Manager"
+                           class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                </div>
+            </div>
+
+            {# Department Section #}
+            <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "briefcase" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Department</span>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Department <span class="text-error">*</span></label>
+                    <select name="department" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">Select Department</option>
+                        {% for value, label in department_choices %}
                             <option value="{{ value }}">{{ label }}</option>
-                        {% endif %}
-                    {% endfor %}
-                </select>
-                <select name="department" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <option value="">No Department</option>
-                    {% for value, label in department_choices %}
-                        <option value="{{ value }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
-                <div class="relative">
-                    <input type="password" name="password" id="CreatePassword" placeholder="Add Password" required minlength="8"
-                           class="w-full rounded-lg border py-2 px-3 pr-10 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
-                            onclick="togglePasswordVisibility('CreatePassword', 'newEyeIcon', 'newEyeOffIcon')">
-                        <span id="newEyeIcon">{% lucide "eye" size=16 class="h-4 w-4" %}</span>
-                        <span id="newEyeOffIcon" class="hidden">{% lucide "eye-off" size=16 class="h-4 w-4" %}</span>
-                    </button>
+                        {% endfor %}
+                    </select>
                 </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closeCreateModal()" class="btn-ghost text-sm">Cancel</button>
-                    <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg">Create</button>
+            </div>
+
+            {# Role Section - Simplified #}
+            <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "shield" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Roles</span>
+                    <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Dual Roles</span>
                 </div>
+                
+                {# Primary Role #}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Primary Role <span class="text-error">*</span></label>
+                    <select name="role" id="createPrimaryRole" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        {% for value, label in role_choices %}
+                            {% if value != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <p class="text-[0.5rem] text-text-secondary mt-1">This is the user's main role. It will be automatically assigned.</p>
+                </div>
+
+                {# Additional Roles #}
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-2 text-text-secondary">Additional Roles</label>
+                    <div class="rounded-lg border border-border bg-background p-3">
+                        <p class="text-xs text-text-secondary mb-2">Select additional roles for this user. The primary role is automatically included.</p>
+                        <div class="grid grid-cols-2 gap-2" id="createRolesCheckboxes">
+                            {% for role in all_roles %}
+                            <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition role-checkbox">
+                                <input type="checkbox" name="selected_roles" value="{{ role.name }}" 
+                                       class="rounded border-border text-primary focus:ring-primary additional-role-checkbox"
+                                       data-role-name="{{ role.name }}">
+                                <span>{{ role.display_name }}</span>
+                                <span class="text-[0.45rem] text-text-secondary ml-auto">P{{ role.priority }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <p class="text-[0.5rem] text-text-secondary mt-1">The highest priority role will be the active role.</p>
+                </div>
+            </div>
+
+            {# Password Section #}
+            <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "key" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Temporary Password</span>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Password <span class="text-error">*</span></label>
+                    <div class="relative">
+                        <input type="password" name="password" id="CreatePassword" placeholder="Min 8 characters" required minlength="8"
+                               class="w-full rounded-lg border py-2 px-3 pr-10 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
+                                onclick="togglePasswordVisibility('CreatePassword', 'createEyeIcon', 'createEyeOffIcon')">
+                            <span id="createEyeIcon">{% lucide "eye" size=16 class="h-4 w-4" %}</span>
+                            <span id="createEyeOffIcon" class="hidden">{% lucide "eye-off" size=16 class="h-4 w-4" %}</span>
+                        </button>
+                    </div>
+                    <p class="text-[0.5rem] text-text-secondary mt-1">User will be prompted to change this on first login.</p>
+                </div>
+            </div>
+
+            {# Actions #}
+            <div class="flex items-center justify-end gap-3 pt-4 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="closeCreateModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+                <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "check" size=16 %} Create User
+                </button>
             </div>
         </form>
     </div>
 </div>
 
-{# Edit User Modal #}
-<div id="editUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Edit User</h3>
-            <button onclick="closeEditModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+{# ================================================================ #}
+{# EDIT USER MODAL - SIMPLIFIED                                   #}
+{# ================================================================ #}
+<div id="editUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
+     onclick="if(event.target===this) closeEditModal()">
+    <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-xl p-0 mx-4 max-h-[90vh] overflow-y-auto" 
+         style="background-color: var(--color-surface);">
+        
+        {# Header #}
+        <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-surface rounded-t-2xl" 
+             style="border-color: var(--color-border); background-color: var(--color-surface);">
+            <div class="flex items-center gap-3">
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    {% lucide "user-cog" size=18 %}
+                </div>
+                <div>
+                    <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Edit User</h3>
+                    <p class="text-xs text-text-secondary">Update user information and permissions</p>
+                </div>
+            </div>
+            <button onclick="closeEditModal()" class="p-1.5 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary">
+                {% lucide "x" size=20 %}
+            </button>
         </div>
-        <form id="editUserForm">
+
+        {# Form #}
+        <form id="editUserForm" class="px-6 py-5 space-y-4">
             {% csrf_token %}
             <input type="hidden" id="editUserId">
-            <div class="space-y-3">
-                <input type="email" id="editEmail" disabled
-                       class="w-full rounded-lg border py-2 px-3 text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
-                <div class="grid grid-cols-2 gap-3">
-                    <input type="text" name="first_name" id="editFirstName" placeholder="First Name" required
-                           class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <input type="text" name="last_name" id="editLastName" placeholder="Last Name" required
+            
+            {# Personal Information Section #}
+            <div>
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "user" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Personal Information</span>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Email Address</label>
+                    <input type="email" id="editEmail" disabled
+                           class="w-full rounded-lg border py-2 px-3 text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
+                </div>
+                <div class="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-secondary">First Name <span class="text-error">*</span></label>
+                        <input type="text" name="first_name" id="editFirstName" placeholder="John" required
+                               class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-secondary">Last Name <span class="text-error">*</span></label>
+                        <input type="text" name="last_name" id="editLastName" placeholder="Doe" required
+                               class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Position / Job Title</label>
+                    <input type="text" name="position" id="editPosition" placeholder="e.g., Senior Developer, HR Manager"
                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
                 </div>
-                <select name="role" id="editRole" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    {% for value, label in role_choices %}
-                        {% if value != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
+            </div>
+
+            {# Department Section #}
+            <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "briefcase" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Department</span>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Department <span class="text-error">*</span></label>
+                    <select name="department" id="editDepartment" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">Select Department</option>
+                        {% for value, label in department_choices %}
                             <option value="{{ value }}">{{ label }}</option>
-                        {% endif %}
-                    {% endfor %}
-                </select>
-                <select name="department" id="editDepartment" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <option value="">No Department</option>
-                    {% for value, label in department_choices %}
-                        <option value="{{ value }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
-                <label class="flex items-center gap-2 text-sm">
-                    <input type="checkbox" id="editIsActive" checked> Active
-                </label>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closeEditModal()" class="btn-ghost text-sm">Cancel</button>
-                    <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg">Save</button>
+                        {% endfor %}
+                    </select>
                 </div>
+            </div>
+
+            {# Role Section - Simplified #}
+            <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "shield" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Roles</span>
+                    <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Dual Roles</span>
+                </div>
+                
+                {# Primary Role #}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Primary Role <span class="text-error">*</span></label>
+                    <select name="role" id="editPrimaryRole" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        {% for value, label in role_choices %}
+                            {% if value != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
+                                <option value="{{ value }}">{{ label }}</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                    <p class="text-[0.5rem] text-text-secondary mt-1">This is the user's main role. It will be automatically assigned.</p>
+                </div>
+
+                {# Additional Roles #}
+                <div class="mt-3">
+                    <label class="block text-xs font-medium mb-2 text-text-secondary">Additional Roles</label>
+                    <div class="rounded-lg border border-border bg-background p-3">
+                        <p class="text-xs text-text-secondary mb-2">Select additional roles for this user. The primary role is automatically included.</p>
+                        <div class="grid grid-cols-2 gap-2" id="editRolesCheckboxes">
+                            {% for role in all_roles %}
+                            <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition role-checkbox">
+                                <input type="checkbox" name="selected_roles" value="{{ role.name }}" 
+                                       class="rounded border-border text-primary focus:ring-primary additional-role-checkbox"
+                                       data-role-name="{{ role.name }}">
+                                <span>{{ role.display_name }}</span>
+                                <span class="text-[0.45rem] text-text-secondary ml-auto">P{{ role.priority }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <p class="text-[0.5rem] text-text-secondary mt-1">The highest priority role will be the active role.</p>
+                </div>
+            </div>
+
+            {# Account Status #}
+            <div class="pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mb-3">
+                    {% lucide "toggle-left" size=14 class="text-primary" %}
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Account Status</span>
+                </div>
+                <label class="flex items-center gap-3 cursor-pointer p-3 rounded-lg border hover:bg-black/5 transition" style="border-color: var(--color-border);">
+                    <input type="checkbox" id="editIsActive" checked class="h-4 w-4 rounded border-border text-primary focus:ring-primary">
+                    <div>
+                        <span class="text-sm font-medium text-text-primary">Active Account</span>
+                        <p class="text-xs text-text-secondary">Inactive users cannot log in to the system</p>
+                    </div>
+                </label>
+            </div>
+
+            {# Actions #}
+            <div class="flex items-center justify-end gap-3 pt-4 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="closeEditModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+                <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "save" size=16 %} Save Changes
+                </button>
             </div>
         </form>
     </div>
 </div>
 
-{# Change Password Modal #}
-<div id="changePasswordModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-sm p-6 mx-4" style="background-color: var(--color-surface);">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Change Password</h3>
-            <button onclick="closePasswordModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
-        </div>
-        <div id="passwordUserInfo" class="mb-4 p-3 rounded-lg border text-sm" style="border-color: var(--color-border); background-color: var(--color-background);">
-            <p class="font-semibold" id="passwordUserName" style="color: var(--color-text-primary);"></p>
-            <p class="mt-1" id="passwordUserDetails" style="color: var(--color-text-secondary);"></p>
-        </div>
-        <form id="changePasswordForm">
-            {% csrf_token %}
-            <input type="hidden" id="passwordUserId">
-            <div class="space-y-3">
-                <div class="relative">
-                    <input type="password" id="newPassword" placeholder="New password" required minlength="8"
-                           class="w-full rounded-lg border py-2 px-3 pr-10 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
-                            onclick="togglePasswordVisibility('newPassword', 'newEyeIcon', 'newEyeOffIcon')">
-                        <span id="newEyeIcon">{% lucide "eye" size=16 class="h-4 w-4" %}</span>
-                        <span id="newEyeOffIcon" class="hidden">{% lucide "eye-off" size=16 class="h-4 w-4" %}</span>
-                    </button>
+{# ================================================================ #}
+{# CHANGE PASSWORD MODAL - COMPACT                                #}
+{# ================================================================ #}
+<div id="changePasswordModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
+     onclick="if(event.target===this) closePasswordModal()">
+    <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-sm p-0 mx-4" 
+         style="background-color: var(--color-surface);">
+        
+        {# Header #}
+        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
+            <div class="flex items-center gap-2.5">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10 text-warning">
+                    {% lucide "key" size=16 %}
                 </div>
-                <div class="relative">
-                    <input type="password" id="confirmPassword" placeholder="Confirm new password" required minlength="8"
-                           class="w-full rounded-lg border py-2 px-3 pr-10 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
-                            onclick="togglePasswordVisibility('confirmPassword', 'confirmEyeIcon', 'confirmEyeOffIcon')">
-                        <span id="confirmEyeIcon">{% lucide "eye" size=16 class="h-4 w-4" %}</span>
-                        <span id="confirmEyeOffIcon" class="hidden">{% lucide "eye-off" size=16 class="h-4 w-4" %}</span>
-                    </button>
+                <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Change Password</h3>
+            </div>
+            <button onclick="closePasswordModal()" class="p-1 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary">
+                {% lucide "x" size=18 %}
+            </button>
+        </div>
+
+        {# User Info - Compact #}
+        <div class="px-5 py-3" style="background-color: var(--color-background);">
+            <div class="flex items-center gap-2.5">
+                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-white text-xs font-medium">
+                    <span id="passwordUserInitials">JD</span>
                 </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closePasswordModal()" class="btn-ghost text-sm">Cancel</button>
-                    <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg">Change Password</button>
+                <div class="min-w-0">
+                    <p class="text-sm font-medium truncate" id="passwordUserName" style="color: var(--color-text-primary);">User Name</p>
+                    <p class="text-xs text-text-secondary truncate" id="passwordUserDetails">Role: User | Dept: IT</p>
                 </div>
             </div>
+        </div>
+
+        {# Form #}
+        <form id="changePasswordForm" class="px-5 py-4 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" id="passwordUserId">
+            
+            <div>
+                <label class="block text-xs font-medium mb-1 text-text-secondary">New Password <span class="text-error">*</span></label>
+                <div class="relative">
+                    <input type="password" id="newPassword" placeholder="Enter new password" required minlength="8"
+                           class="w-full rounded-lg border py-1.5 px-3 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
+                            onclick="togglePasswordVisibility('newPassword', 'pwdNewEyeIcon', 'pwdNewEyeOffIcon')">
+                        <span id="pwdNewEyeIcon">{% lucide "eye" size=14 class="h-3.5 w-3.5" %}</span>
+                        <span id="pwdNewEyeOffIcon" class="hidden">{% lucide "eye-off" size=14 class="h-3.5 w-3.5" %}</span>
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium mb-1 text-text-secondary">Confirm Password <span class="text-error">*</span></label>
+                <div class="relative">
+                    <input type="password" id="confirmPassword" placeholder="Confirm new password" required minlength="8"
+                           class="w-full rounded-lg border py-1.5 px-3 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
+                            onclick="togglePasswordVisibility('confirmPassword', 'pwdConfirmEyeIcon', 'pwdConfirmEyeOffIcon')">
+                        <span id="pwdConfirmEyeIcon">{% lucide "eye" size=14 class="h-3.5 w-3.5" %}</span>
+                        <span id="pwdConfirmEyeOffIcon" class="hidden">{% lucide "eye-off" size=14 class="h-3.5 w-3.5" %}</span>
+                    </button>
+                </div>
+            </div>
+
+            {# Actions #}
+            <div class="flex items-center justify-end gap-2 pt-2 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="closePasswordModal()" class="btn-ghost text-xs px-3 py-1.5 rounded-lg">Cancel</button>
+                <button type="submit" class="btn-warning text-xs px-4 py-1.5 rounded-lg flex items-center gap-1.5">
+                    {% lucide "key" size=14 %} Change
+                </button>
+            </div>
         </form>
+    </div>
+</div>
+
+{# ========== IMPERSONATE MODAL ========== #}
+<div id="impersonateModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
+     onclick="if(event.target===this) closeImpersonateModal()">
+    <div id="impersonateModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto" 
+         style="background-color: var(--color-surface);">
+        <!-- Content loaded via HTMX -->
     </div>
 </div>
 {% endblock %}
@@ -211,5 +455,54 @@
     window.adminUserEditUrl = "{% url 'accounts:admin_user_edit' 0 %}";
     window.adminUserToggleUrl = "{% url 'accounts:admin_user_toggle_active' 0 %}";
     window.adminUserChangePasswordUrl = "{% url 'accounts:admin_user_change_password' 0 %}";
+    
+    // ================================================================
+    // AUTO-SYNC PRIMARY ROLE WITH CHECKBOXES
+    // ================================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        // Function to update checkbox states based on primary role
+        function updateRoleCheckboxes(containerId, primaryRoleSelectId) {
+            const container = document.getElementById(containerId);
+            const primarySelect = document.getElementById(primaryRoleSelectId);
+            if (!container || !primarySelect) return;
+            
+            const primaryValue = primarySelect.value;
+            
+            container.querySelectorAll('.additional-role-checkbox').forEach(checkbox => {
+                const checkboxValue = checkbox.dataset.roleName || checkbox.value;
+                
+                // If this role matches the primary role, disable and uncheck it
+                if (checkboxValue === primaryValue) {
+                    checkbox.disabled = true;
+                    checkbox.checked = false;
+                    checkbox.closest('.role-checkbox').style.opacity = '0.4';
+                    checkbox.closest('.role-checkbox').style.cursor = 'not-allowed';
+                } else {
+                    checkbox.disabled = false;
+                    checkbox.closest('.role-checkbox').style.opacity = '1';
+                    checkbox.closest('.role-checkbox').style.cursor = 'pointer';
+                }
+            });
+        }
+        
+        // Initialize for Create modal
+        const createPrimary = document.getElementById('createPrimaryRole');
+        if (createPrimary) {
+            createPrimary.addEventListener('change', function() {
+                updateRoleCheckboxes('createRolesCheckboxes', 'createPrimaryRole');
+            });
+            // Initial sync
+            updateRoleCheckboxes('createRolesCheckboxes', 'createPrimaryRole');
+        }
+        
+        // Initialize for Edit modal
+        const editPrimary = document.getElementById('editPrimaryRole');
+        if (editPrimary) {
+            editPrimary.addEventListener('change', function() {
+                updateRoleCheckboxes('editRolesCheckboxes', 'editPrimaryRole');
+            });
+            // Initial sync will happen when edit modal opens
+        }
+    });
 </script>
 {% endblock %}

@@ -44,7 +44,7 @@
                 {% lucide "download" size=16 %} Import
             </button>
             
-            <!-- Add Asset - Changed to regular link -->
+            <!-- Add Asset -->
             {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
             <a href="{% url 'tickets:asset_create_page' %}" 
             class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
@@ -148,170 +148,31 @@
     </div>
 </div>
 
+<!-- Hidden configuration for JavaScript -->
+<input type="hidden" id="assetReassignModalUrl" value="{% url 'tickets:asset_reassign_modal' 0 %}">
+<input type="hidden" id="scrapApproveModalUrl" value="{% url 'tickets:scrap_approve_modal' 0 %}">
+<input type="hidden" id="scrapRequestModalUrl" value="{% url 'tickets:scrap_request_modal' 0 %}">
+<input type="hidden" id="editUrl" value="{% url 'tickets:asset_edit_page' 0 %}">
+<input type="hidden" id="assetsUrl" value="{% url 'tickets:assets' %}">
+
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script src="{% static 'js/asset_management.js' %}"></script>
 <script>
-    // Base URLs for JavaScript replacements
-    const scrapApproveUrl = "{% url 'tickets:asset_scrap_approve' 0 %}";
-    const reassignUrl = "{% url 'tickets:asset_reassign' 0 %}";
-    const scrapRequestUrl = "{% url 'tickets:asset_scrap_request' 0 %}";
-    const editUrl = "{% url 'tickets:asset_edit_page' 0 %}";
-
-    let isWarrantyCalculation = false;
-
-    document.addEventListener('htmx:beforeRequest', function(evt) {
-        if (evt.detail.target && evt.detail.target.id === 'warrantyExpiry') {
-            isWarrantyCalculation = true;
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof initAssetManagement === 'function') {
+            initAssetManagement({
+                assetReassignModalUrl: document.getElementById('assetReassignModalUrl').value,
+                scrapApproveModalUrl: document.getElementById('scrapApproveModalUrl').value,
+                scrapRequestModalUrl: document.getElementById('scrapRequestModalUrl').value,
+                editUrl: document.getElementById('editUrl').value,
+                assetsUrl: document.getElementById('assetsUrl').value,
+            });
+        } else {
+            console.error('❌ asset_management.js not loaded');
         }
     });
-
-    document.addEventListener('htmx:afterRequest', function(evt) {
-    if (evt.detail.target && evt.detail.target.id === 'warrantyExpiry') {
-        setTimeout(function() {
-            isWarrantyCalculation = false;
-        }, 100);
-    }
-});
-
-    function closeModal() {
-        if (isWarrantyCalculation) {
-            return;
-        }
-        // Small delay to ensure HTMX swaps complete before hiding
-        setTimeout(function() {
-            document.getElementById('modalOverlay').classList.add('hidden');
-            document.getElementById('modalContainer').innerHTML = '';
-        }, 100);
-    }
-
-    function resetFilters(event) {
-        if (event) event.preventDefault();
-        const form = document.getElementById('assetFilters');
-        form.querySelectorAll('input, select').forEach(function(el) {
-            if (el.tagName === 'INPUT') {
-                el.value = '';
-            } else if (el.tagName === 'SELECT') {
-                el.selectedIndex = 0;
-            }
-        });
-        htmx.ajax('GET', "{% url 'tickets:assets' %}", {
-            target: '#assetTableContainer',
-            swap: 'innerHTML'
-        });
-    }
-
-    // Open scrap approval modal
-    function openScrapApproveModal(assetId) {
-        const modal = document.getElementById('modalContainer');
-        const actionUrl = scrapApproveUrl.replace('0', assetId);
-        modal.innerHTML = `
-            <div class="p-6">
-                <h3 class="text-lg font-semibold mb-4">Scrap Approval</h3>
-                <form method="post" action="${actionUrl}">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="approve">
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium mb-1">Comment (optional)</label>
-                        <textarea name="comment" rows="3" class="w-full rounded-lg border p-2 text-sm"></textarea>
-                    </div>
-                    <div class="flex justify-end gap-2">
-                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
-                        <button type="submit" class="btn-success text-sm">Approve Scrap</button>
-                        <button type="submit" formaction="${actionUrl}?action=reject" class="btn-danger text-sm">Reject</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.getElementById('modalOverlay').classList.remove('hidden');
-    }
-
-    // Reassign modal
-    function openReassignModal(assetId) {
-        const modal = document.getElementById('modalContainer');
-        const actionUrl = reassignUrl.replace('0', assetId);
-        modal.innerHTML = `
-            <div class="p-6">
-                <h3 class="text-lg font-semibold mb-4">Reassign Asset</h3>
-                <form method="post" action="${actionUrl}">
-                    {% csrf_token %}
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium mb-1">Assign to User</label>
-                        <select name="assigned_to" class="w-full rounded-lg border p-2 text-sm">
-                            <option value="">Unassign</option>
-                            {% for user in users %}
-                            <option value="{{ user.pk }}">{{ user.get_full_name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium mb-1">Comment</label>
-                        <textarea name="comment" rows="2" class="w-full rounded-lg border p-2 text-sm"></textarea>
-                    </div>
-                    <div class="flex justify-end gap-2">
-                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
-                        <button type="submit" class="btn-primary text-sm">Reassign</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.getElementById('modalOverlay').classList.remove('hidden');
-    }
-
-    // Scrap request modal
-    function openScrapRequestModal(assetId) {
-        const modal = document.getElementById('modalContainer');
-        const actionUrl = scrapRequestUrl.replace('0', assetId);
-        modal.innerHTML = `
-            <div class="p-6">
-                <h3 class="text-lg font-semibold mb-4">Request Scrap</h3>
-                <form method="post" action="${actionUrl}">
-                    {% csrf_token %}
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium mb-1">Reason for scrapping</label>
-                        <textarea name="comment" rows="3" required class="w-full rounded-lg border p-2 text-sm"></textarea>
-                    </div>
-                    <div class="flex justify-end gap-2">
-                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
-                        <button type="submit" class="btn-danger text-sm">Submit Scrap Request</button>
-                    </div>
-                </form>
-            </div>
-        `;
-        document.getElementById('modalOverlay').classList.remove('hidden');
-    }
-
-    // Edit asset (via HTMX)
-    function editAsset(assetId) {
-        const url = editUrl.replace('0', assetId);
-        htmx.ajax('GET', url, {
-            target: '#modalContainer',
-            swap: 'innerHTML',
-            after: function() {
-                document.getElementById('modalOverlay').classList.remove('hidden');
-            }
-        });
-    }
-
-    // Listen for HX-Trigger: closeModal
-    document.addEventListener('closeModal', function() {
-        closeModal();
-    });
-
-    // Toggle export dropdown
-    function toggleExportDropdown() {
-        document.getElementById('exportDropdown').classList.toggle('hidden');
-    }
-    
-    // Close dropdown on outside click
-    document.addEventListener('click', function(event) {
-        const dropdown = document.getElementById('exportDropdown');
-        const button = document.querySelector('[onclick="toggleExportDropdown()"]');
-        if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) {
-            dropdown.classList.add('hidden');
-        }
-    });
-    
-    // Close import modal
-    function closeImportModal() {
-        document.getElementById('importModal').classList.add('hidden');
-    }
 </script>
 {% endblock %}

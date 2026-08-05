@@ -178,13 +178,88 @@
             {% lucide "message-square" size=14 %} Full Conversation
         </a>
         {% if not ticket.assigned_to %}
-        <button class="btn-primary text-xs flex items-center gap-1 px-4 py-2"
-                hx-post="{% url 'tickets:claim_ticket' ticket.pk %}"
-                hx-target="#ticketTable"
-                hx-swap="innerHTML"
-                hx-on::after-request="closeSlideover()">
+        <button class="btn-primary text-xs flex items-center gap-1 px-4 py-2" id="slideoverClaimBtn"
+                data-ticket-id="{{ ticket.pk }}"
+                data-claim-url="{% url 'tickets:claim_ticket' ticket.pk %}">
             {% lucide "user-plus" size=14 %} Claim Ticket
         </button>
         {% endif %}
     </div>
 </div>
+
+<script>
+    (function() {
+        const claimBtn = document.getElementById('slideoverClaimBtn');
+        if (!claimBtn) return;
+        
+        const source = 'dashboard';
+        
+        claimBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const claimUrl = this.dataset.claimUrl;
+            const ticketId = this.dataset.ticketId;
+            
+            if (!claimUrl) return;
+            
+            // Disable button
+            this.disabled = true;
+            this.innerHTML = `<span class="inline-flex items-center gap-1">
+                <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Claiming...
+            </span>`;
+            
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            
+            // Show loading toast
+            if (typeof showToast === 'function') {
+                showToast('⏳ Claiming ticket...', 'info');
+            }
+            
+            fetch(claimUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'source': source
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Close slide-over
+                closeSlideover();
+                
+                if (data.success) {
+                    if (typeof showToast === 'function') {
+                        showToast(data.message || '✅ Ticket claimed successfully!', 'success');
+                    }
+                    
+                    // RELOAD THE PAGE
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 800);
+                } else {
+                    if (typeof showToast === 'function') {
+                        showToast(data.message || 'Failed to claim ticket.', 'error');
+                    }
+                    claimBtn.disabled = false;
+                    claimBtn.innerHTML = `{% lucide "user-plus" size=14 %} Claim Ticket`;
+                }
+            })
+            .catch(error => {
+                console.error('Error claiming ticket:', error);
+                if (typeof showToast === 'function') {
+                    showToast('An error occurred while claiming the ticket.', 'error');
+                }
+                claimBtn.disabled = false;
+                claimBtn.innerHTML = `{% lucide "user-plus" size=14 %} Claim Ticket`;
+            });
+        });
+    })();
+</script>

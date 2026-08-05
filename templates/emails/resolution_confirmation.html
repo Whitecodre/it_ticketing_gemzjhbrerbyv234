@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .content { padding: 20px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; }
+        .btn-confirm { background: #10B981; color: white; }
+        .btn-reopen { background: #EF4444; color: white; }
+        .footer { margin-top: 20px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Ticket Resolution Confirmation</h1>
+    </div>
+    <div class="content">
+        <p>Dear {{ requester_name }},</p>
+        
+        <p>The support team has resolved ticket <strong>{{ ticket_number }}</strong>.</p>
+        
+        <p><strong>Title:</strong> {{ ticket_title }}</p>
+        <p><strong>Agent:</strong> {{ agent_name }}</p>
+        
+        <p>Please confirm if the issue has been fully resolved:</p>
+        
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="{{ confirm_url }}" class="button btn-confirm" style="margin-right: 12px;">✅ Yes, it's resolved</a>
+        </p>
+        
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="{{ confirm_url }}?action=reopen" class="button btn-reopen">❌ No, still having issues</a>
+        </p>
+        
+        <p>If the issue is not resolved, please provide details about what's still not working.</p>
+        
+        <p>Best regards,<br>TicketSwipe Support Team</p>
+    </div>
+    <div class="footer">
+        <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+</body>
+</html>

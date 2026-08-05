@@ -1,0 +1,42 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-error/10 text-error shrink-0">
+            {% lucide "trash-2" size=20 %}
+        </div>
+        <div>
+            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Request Scrap</h3>
+            <p class="text-sm text-text-secondary">Submit a scrap request for {{ asset.name }} ({{ asset.tracking_id }})</p>
+        </div>
+    </div>
+
+    <div class="rounded-lg bg-warning/10 p-3 border border-warning/30 text-warning text-sm mb-4">
+        <div class="flex items-center gap-2">
+            {% lucide "alert-triangle" size=16 %}
+            <span>This action will mark the asset as "Damaged" and require admin approval.</span>
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'tickets:asset_scrap_request' asset.id %}">
+        {% csrf_token %}
+        
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                Reason for scrapping <span class="text-error">*</span>
+            </label>
+            <textarea name="comment" rows="3" required
+                      class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      placeholder="Explain why this asset should be scrapped..."></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()" 
+                    class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" 
+                    class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+                {% lucide "trash-2" size=14 %} Submit Scrap Request
+            </button>
+        </div>
+    </form>
+</div>

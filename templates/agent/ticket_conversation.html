@@ -88,27 +88,38 @@
             {% if is_agent %}
             <div class="px-3 py-1.5 sm:px-4 sm:py-2 border-b flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0"
                 style="background-color: var(--color-surface); border-color: var(--color-border);">
+                
+                {# Resolve button - only show if not already resolved/closed #}
+                {% if ticket.status not in 'RESOLVED,CLOSED' %}
                 <button class="btn-success text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]"
-                        hx-post="{% url 'tickets:update_status' ticket.pk %}?status=RESOLVED"
-                        hx-swap="none"
-                        hx-on::after-request="location.reload()">
+                        hx-get="{% url 'tickets:resolve_ticket' ticket.pk %}"
+                        hx-target="#resolveModalContainer"
+                        hx-swap="innerHTML"
+                        hx-trigger="click"
+                        onclick="document.getElementById('resolveModalOverlay').classList.remove('hidden')">
                     {% lucide "check-circle" size=14 %} Resolve
                 </button>
-                {% if is_agent and ticket.status == 'PENDING_FULFILLMENT' and user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
+                {% endif %}
+                
+                {# Fulfill Request button - only for admins on pending fulfillment tickets #}
+                {% if ticket.status == 'PENDING_FULFILLMENT' and user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
                 <button class="btn-success text-xs flex items-center gap-1 px-3 py-1.5 rounded min-h-[32px]"
                         onclick="openFulfillModal({{ ticket.pk }})">
                     {% lucide "check-circle" size=14 %} Fulfill Request
                 </button>
                 {% endif %}
+                
                 <button class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]" onclick="toggleDetailsPanel()">
                     {% lucide "panel-right" size=14 %} Toggle Details
                 </button>
+                
                 <button class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]"
                         hx-post="{% url 'tickets:request_remote_session' ticket.pk %}"
                         hx-swap="none"
                         hx-on::after-request="if(event.detail.successful) { location.reload(); } else { alert('Request failed. Active connector needed?'); }">
                     {% lucide "monitor" size=14 %} Request Remote Session
                 </button>
+                
                 <form method="post" action="{% url 'kb:convert_ticket' ticket.pk %}" class="inline">
                     {% csrf_token %}
                     <button type="submit" class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]">
@@ -212,6 +223,13 @@
             </div>
         </div>
         {% endif %}
+    </div>
+</div>
+
+<!-- Resolve Confirmation Modal -->
+<div id="resolveModalOverlay" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 hidden" onclick="if(event.target===this) closeResolveModal()">
+    <div id="resolveModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);" onclick="event.stopPropagation()">
+        <!-- Content loaded via HTMX -->
     </div>
 </div>
 

@@ -30,6 +30,7 @@ class Command(BaseCommand):
         try:
             sla = SLA.objects.get(priority=ticket.priority)
             total_minutes = sla.response_minutes if timer_type == 'response' else sla.resolution_minutes
+            total_display = sla.get_response_display() if timer_type == 'response' else sla.get_resolution_display()
         except SLA.DoesNotExist:
             return
         if total_minutes == 0:

@@ -13,6 +13,8 @@ SESSION_COOKIE_AGE = 86400  # 24 hours (in seconds)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Session persists after browser close
 SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection (Lax or Strict)
+# In config/settings/base.py or development.py
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Should be this
 
 # CSRF settings
 CSRF_COOKIE_HTTPONLY = True  # Prevent JavaScript access to CSRF cookie
@@ -91,6 +93,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'apps.common.middleware.SecurityHeadersMiddleware',  
+    'apps.common.middleware.ImpersonationMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -107,6 +110,9 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'apps.common.context_processors.vapid_keys',
+                'apps.common.context_processors.impersonation_context',
+                'apps.common.context_processors.client_settings',
+                'apps.common.context_processors.active_role_context',
             ],
             'builtins':[
                 "lucide.templatetags.lucide",

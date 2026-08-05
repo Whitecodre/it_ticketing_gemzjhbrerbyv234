@@ -4,12 +4,9 @@
 
 {% block dashboard_title %}Team Lead Dashboard{% endblock %}
 {% block page_title_area %}{% endblock %}
-{% block role_label %}Team Lead{% endblock %}
+{% block role_label %}{{ active_role_display|default:"Team Lead" }}{% endblock %}
 {% block role_badge %}TEAM LEAD{% endblock %}
 
-{% block sidebar_nav %}
-    {% include "partials/sidebar_team_lead.html" %}
-{% endblock %}
 
 {% block dashboard_content %}
 

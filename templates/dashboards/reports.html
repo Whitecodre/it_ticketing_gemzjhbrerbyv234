@@ -25,12 +25,63 @@
         </div>
     </div>
 
+    {% if client_settings and client_settings.logo_url %}
+    <div class="flex justify-between items-center mb-4 border-b pb-4" style="border-color: var(--color-border);">
+        <div>
+            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Reports & Analytics</h2>
+            <p class="text-xs text-text-secondary">Generated {{ now|date:"F d, Y H:i" }}</p>
+        </div>
+        <div>
+            <img src="{{ client_settings.logo_url }}" 
+                alt="{{ client_settings.company_name }} Logo" 
+                style="max-height: 50px; max-width: 150px; object-fit: contain;">
+        </div>
+    </div>
+    {% endif %}
+
+    {# ========== DATE RANGE FILTER ========== #}
+    <div class="dashboard-card p-4">
+        <div class="flex flex-wrap items-end gap-3">
+            <div>
+                <label class="block text-xs font-medium text-text-secondary mb-1">Start Date</label>
+                <input type="date" id="startDate" value="{{ start_date|date:'Y-m-d' }}"
+                       class="rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-text-secondary mb-1">End Date</label>
+                <input type="date" id="endDate" value="{{ end_date|date:'Y-m-d' }}"
+                       class="rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            </div>
+            <div>
+                <button id="applyDateRange" 
+                        class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                        onclick="applyDateRange()">
+                    {% lucide "filter" size=14 %} Apply
+                </button>
+            </div>
+            <div>
+                <button id="resetDateRange" 
+                        class="btn-ghost text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                        onclick="resetDateRange()">
+                    {% lucide "rotate-ccw" size=14 %} Reset
+                </button>
+            </div>
+            <div class="ml-auto text-xs text-text-secondary" id="dateRangeDisplay">
+                {% if start_date and end_date %}
+                    Showing: {{ start_date|date:"M d, Y" }} – {{ end_date|date:"M d, Y" }}
+                {% else %}
+                    Showing: Last 30 days
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
     {# ========== SECTION 1: TICKET KPIs ========== #}
     <div>
         <div class="flex items-center gap-2 mb-3">
             {% lucide "ticket" size=16 class="text-primary" %}
             <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Ticket Performance</h2>
-            <span class="text-xs text-text-secondary">(Last 30 days)</span>
+            <span class="text-xs text-text-secondary">({{ date_range_label|default:"Last 30 days" }})</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div class="kpi-card border-l-4" style="border-left-color: #3B82F6;">
@@ -126,7 +177,13 @@
                         <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">SLA Compliance by Priority</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Percentage of tickets resolved within the agreed SLA target.</p>
                     </div>
-                    <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Bar Chart</span>
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Bar Chart</span>
+                        <button onclick="exportChart('slaChart', 'SLA Compliance')" 
+                                class="btn-ghost p-1 text-text-secondary hover:text-primary transition" title="Export Chart">
+                            {% lucide "download" size=14 %}
+                        </button>
+                    </div>
                 </div>
                 {% if sla_data %}
                     <div style="height: 170px; width: 100%;">
@@ -145,10 +202,16 @@
             <div class="dashboard-card">
                 <div class="flex items-start justify-between mb-2">
                     <div>
-                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Ticket Volume (30 days)</h3>
+                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Ticket Volume</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Daily created vs resolved tickets.</p>
                     </div>
-                    <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Line Chart</span>
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Line Chart</span>
+                        <button onclick="exportChart('volumeChart', 'Ticket Volume')" 
+                                class="btn-ghost p-1 text-text-secondary hover:text-primary transition" title="Export Chart">
+                            {% lucide "download" size=14 %}
+                        </button>
+                    </div>
                 </div>
                 {% if volume_dates %}
                     <div style="height: 170px; width: 100%;">
@@ -157,7 +220,7 @@
                 {% else %}
                     <div class="flex flex-col items-center justify-center py-8 text-text-secondary">
                         {% lucide "inbox" size=24 class="text-text-secondary mb-2" %}
-                        <p class="text-sm font-medium">No tickets in the last 30 days</p>
+                        <p class="text-sm font-medium">No tickets in the selected date range</p>
                         <p class="text-xs text-center max-w-xs">Once tickets are created, volume data will appear here.</p>
                     </div>
                 {% endif %}
@@ -170,7 +233,13 @@
                         <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Open Tickets by Priority</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Breakdown of currently open tickets by priority level.</p>
                     </div>
-                    <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Doughnut Chart</span>
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Doughnut Chart</span>
+                        <button onclick="exportChart('priorityChart', 'Open Tickets by Priority')" 
+                                class="btn-ghost p-1 text-text-secondary hover:text-primary transition" title="Export Chart">
+                            {% lucide "download" size=14 %}
+                        </button>
+                    </div>
                 </div>
                 {% if open_priority_data and open_total > 0 %}
                     <div style="height: 170px; max-width: 220px; margin: 0 auto;">
@@ -192,7 +261,13 @@
                         <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Asset Status Distribution</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Breakdown of assets by their current status.</p>
                     </div>
-                    <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Doughnut Chart</span>
+                    <div class="flex items-center gap-1">
+                        <span class="text-xs text-text-secondary bg-background px-2 py-1 rounded-full border border-border">Doughnut Chart</span>
+                        <button onclick="exportChart('assetStatusChart', 'Asset Status Distribution')" 
+                                class="btn-ghost p-1 text-text-secondary hover:text-primary transition" title="Export Chart">
+                            {% lucide "download" size=14 %}
+                        </button>
+                    </div>
                 </div>
                 {% if asset_status_counts and total_assets > 0 %}
                     <div style="height: 170px; max-width: 220px; margin: 0 auto;">
@@ -259,17 +334,106 @@
     Chart.defaults.font.size = 10;
     Chart.defaults.plugins.legend.labels.boxWidth = 8;
 
-    // ========== SLA Chart ==========
+    // ================================================================
+    // CHART EXPORT FUNCTIONS
+    // ================================================================
+
+    function exportChart(canvasId, chartTitle) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) {
+            showToast('Chart not found.', 'error');
+            return;
+        }
+        
+        try {
+            // Get the chart instance
+            const chartInstance = Chart.getChart(canvasId);
+            if (!chartInstance) {
+                showToast('Chart not initialized.', 'error');
+                return;
+            }
+            
+            // Create a temporary canvas with white background
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = canvas.width * 2;
+            tempCanvas.height = canvas.height * 2;
+            const ctx = tempCanvas.getContext('2d');
+            
+            // Fill white background
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Draw the original canvas onto the temp canvas
+            ctx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Create download link
+            const link = document.createElement('a');
+            link.download = `${chartTitle.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.png`;
+            link.href = tempCanvas.toDataURL('image/png', 1.0);
+            link.click();
+            
+            showToast('Chart exported successfully!', 'success');
+        } catch (error) {
+            console.error('Export error:', error);
+            showToast('Failed to export chart.', 'error');
+        }
+    }
+
+    // ================================================================
+    // DATE RANGE FUNCTIONS
+    // ================================================================
+
+    function applyDateRange() {
+        const startDate = document.getElementById('startDate').value;
+        const endDate = document.getElementById('endDate').value;
+        
+        if (!startDate || !endDate) {
+            showToast('Please select both start and end dates.', 'warning');
+            return;
+        }
+        
+        if (startDate > endDate) {
+            showToast('Start date cannot be after end date.', 'error');
+            return;
+        }
+        
+        const url = new URL(window.location.href);
+        url.searchParams.set('start_date', startDate);
+        url.searchParams.set('end_date', endDate);
+        window.location.href = url.toString();
+    }
+
+    function resetDateRange() {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('start_date');
+        url.searchParams.delete('end_date');
+        window.location.href = url.toString();
+    }
+
+    // ================================================================
+    // CHART INITIALIZATION
+    // ================================================================
+
+    // SLA Chart
     const slaCanvas = document.getElementById('slaChart');
     if (slaCanvas) {
+        const slaData = {{ sla_data|safe }};
+        const labels = slaData.map(item => item.priority);
+        const complianceData = slaData.map(item => item.compliance);
+        const colors = slaData.map(item => {
+            if (item.compliance >= 95) return '#10B981';
+            if (item.compliance >= 80) return '#F59E0B';
+            return '#EF4444';
+        });
+
         new Chart(slaCanvas, {
             type: 'bar',
             data: {
-                labels: [{% for sla in sla_data %}'{{ sla.priority }}'{% if not forloop.last %},{% endif %}{% endfor %}],
+                labels: labels,
                 datasets: [{
                     label: 'Compliance %',
-                    data: [{% for sla in sla_data %}{{ sla.compliance }}{% if not forloop.last %},{% endif %}{% endfor %}],
-                    backgroundColor: ['#EF4444', '#F59E0B', '#3B82F6', '#10B981'],
+                    data: complianceData,
+                    backgroundColor: colors,
                     borderRadius: 3,
                     barPercentage: 0.6
                 }]
@@ -277,7 +441,26 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: { 
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: function(context) {
+                                const index = context[0].dataIndex;
+                                const item = slaData[index];
+                                if (item) {
+                                    return [
+                                        `Total: ${item.total} tickets`,
+                                        `Compliant: ${item.compliant}`,
+                                        `Breached: ${item.breached}`,
+                                        `SLA Target: ${item.sla_display}`
+                                    ];
+                                }
+                                return [];
+                            }
+                        }
+                    }
+                },
                 scales: {
                     y: { beginAtZero: true, max: 100, grid: { color: 'rgba(0,0,0,0.05)' } }
                 }
@@ -285,7 +468,7 @@
         });
     }
 
-    // ========== Volume Chart ==========
+    // Volume Chart
     const volumeCanvas = document.getElementById('volumeChart');
     if (volumeCanvas) {
         new Chart(volumeCanvas, {
@@ -306,7 +489,7 @@
         });
     }
 
-    // ========== Priority Chart ==========
+    // Priority Chart
     const priorityCanvas = document.getElementById('priorityChart');
     if (priorityCanvas) {
         new Chart(priorityCanvas, {
@@ -329,7 +512,7 @@
         });
     }
 
-    // ========== Asset Status Chart ==========
+    // Asset Status Chart
     const assetStatusCanvas = document.getElementById('assetStatusChart');
     if (assetStatusCanvas) {
         const statusLabels = [{% for label in asset_status_labels %}'{{ label }}'{% if not forloop.last %},{% endif %}{% endfor %}];
@@ -354,5 +537,22 @@
             }
         });
     }
+
+    // Enter key support for date inputs
+    document.addEventListener('DOMContentLoaded', function() {
+        const startDate = document.getElementById('startDate');
+        const endDate = document.getElementById('endDate');
+        
+        if (startDate) {
+            startDate.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') applyDateRange();
+            });
+        }
+        if (endDate) {
+            endDate.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') applyDateRange();
+            });
+        }
+    });
 </script>
 {% endblock %}

@@ -17,19 +17,21 @@ class UserAdmin(BaseUserAdmin):
 
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'department')}),  # <-- department moved here
+        ('Personal info', {'fields': ('first_name', 'last_name', 'department')}),
         ('Permissions', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
         }),
+        ('Roles', {
+            'fields': ('role', 'roles', 'active_role'),
+        }),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
-        ('Extra Info', {'fields': ('role', 'avatar', 'created_by')}),
+        ('Extra Info', {'fields': ('avatar', 'created_by')}),
     )
 
-    # Add form (already includes department, but confirm)
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'first_name', 'last_name', 'department', 'role',
+            'fields': ('email', 'first_name', 'last_name', 'department', 'role', 'roles', 'active_role',
                        'password1', 'password2', 'created_by'),
         }),
     )

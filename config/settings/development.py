@@ -3,7 +3,7 @@
 from .base import *
 
 DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver']
 
 # Rate limiting settings for development
 RATELIMIT_ENABLED = False
@@ -42,16 +42,11 @@ if env('EMAIL_HOST', default=None):
     EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')   
     DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL')
     EMAIL_TIMEOUT = 10
-    print(f"📧 Email configured with: {EMAIL_HOST}:{EMAIL_PORT} (TLS: {EMAIL_USE_TLS})")
-    print(f"📧 From: {DEFAULT_FROM_EMAIL}")
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-    print("📧 Email backend set to console (no emails will be sent)")
 
 # Brevo API Key (for API-based sending)
 BREVO_API_KEY = env('BREVO_API_KEY', default='')
-if BREVO_API_KEY:
-    print(f"📧 Brevo API Key configured (length: {len(BREVO_API_KEY)})")
 
 # ================================================================
 # CACHE

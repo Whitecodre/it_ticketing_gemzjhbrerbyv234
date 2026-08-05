@@ -5,8 +5,8 @@
 {% block dashboard_title %}Account Settings{% endblock %}
 {% block page_title_area %}{% endblock %}
 
-{% block role_label %}{{ user.get_role_display }}{% endblock %}
-{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+{% block role_label %}{{ active_role.display_name|default:user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ active_role.display_name|default:user.get_role_display|upper }}{% endblock %}
 
 {% block topbar_search %}{% endblock %}
 
@@ -22,7 +22,7 @@
 
     <h1 class="text-2xl font-semibold mb-2" style="color: var(--color-text-primary);">Account Settings</h1>
 
-    {# Profile Section #}
+    {# ==================== PROFILE SECTION ==================== #}
     <div class="dashboard-card shadow-sm p-6">
         <h2 class="text-lg font-semibold mb-4" style="color: var(--color-text-primary);">Profile Information</h2>
 
@@ -102,7 +102,132 @@
         </form>
     </div>
 
-    {# Preferences Section #}
+    {# ==================== COMPANY BRANDING SECTION ==================== #}
+    {# Only visible to Admin users #}
+    {% if active_role and active_role.name == 'ADMIN' or user.role == 'ADMIN' %}
+    <div class="dashboard-card shadow-sm p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                {% lucide "building" size=16 %}
+            </div>
+            <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Company Branding</h2>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">Admin Only</span>
+        </div>
+
+        <p class="text-sm text-text-secondary mb-4">
+            Upload your company logo and set company name. The logo will appear on reports and exported documents.
+        </p>
+
+        <form method="post" enctype="multipart/form-data" action="{% url 'accounts:client_logo_upload' %}" id="brandingForm">
+            {% csrf_token %}
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {# Logo Preview #}
+                <div class="md:col-span-1">
+                    <div class="flex flex-col items-center">
+                        <div class="relative">
+                            {% if client_settings and client_settings.logo_url %}
+                                <img src="{{ client_settings.logo_url }}" 
+                                     alt="Company Logo" 
+                                     class="rounded-lg border" 
+                                     style="max-height: 100px; max-width: 200px; object-fit: contain; border-color: var(--color-border);">
+                            {% else %}
+                                <div class="flex h-24 w-48 items-center justify-center rounded-lg border-2 border-dashed" 
+                                     style="border-color: var(--color-border); color: var(--color-text-secondary); background-color: var(--color-background);">
+                                    <span class="text-xs">No logo uploaded</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <p class="text-xs text-text-secondary mt-2 text-center">Logo appears on reports<br>and exported documents</p>
+                    </div>
+                </div>
+
+                {# Form fields #}
+                <div class="md:col-span-2 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                            Company Name
+                        </label>
+                        <input type="text" name="company_name" value="{{ client_settings.company_name|default:'My Company' }}" 
+                               class="w-full max-w-sm rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                               placeholder="Enter company name">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                            Company Logo
+                            <span class="text-xs font-normal text-text-secondary">(PNG, JPG, GIF, WEBP - max 2MB)</span>
+                        </label>
+                        <div class="flex items-center gap-3">
+                            <input type="file" name="logo" accept="image/*" 
+                                   class="block w-full max-w-sm text-sm text-text-secondary file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition cursor-pointer"
+                                   id="logoInput">
+                            <span id="fileNameDisplay" class="text-xs text-text-secondary hidden"></span>
+                        </div>
+                        <p class="text-xs text-text-secondary mt-1">Recommended size: 200x60 pixels or similar aspect ratio</p>
+                    </div>
+
+                    <div class="flex justify-end pt-2">
+                        <button type="submit" class="btn-primary text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-2">
+                            {% lucide "upload-cloud" size=16 %} Update Branding
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    {# ==================== ROLE SWITCH SECTION ==================== #}
+    {% if available_roles %}
+    <div class="dashboard-card shadow-sm p-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-accent/10 text-accent shrink-0">
+                {% lucide "users" size=16 %}
+            </div>
+            <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Switch Role</h2>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">Dual Roles</span>
+        </div>
+
+        <p class="text-sm text-text-secondary mb-4">
+            Select which role you want to use currently.
+            <span class="block text-xs mt-1">Active role: <strong>{{ active_role_display|default:"None" }}</strong></span>
+        </p>
+
+        {% if available_roles|length > 1 %}
+        <form method="post" action="{% url 'accounts:switch_role' %}" id="roleSwitchForm">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            
+            <div class="flex flex-wrap gap-3 items-center">
+                {% for role in available_roles %}
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="role" value="{{ role.name }}"
+                        {% if active_role_name == role.name %}checked{% endif %}
+                        class="h-4 w-4 text-primary border-border focus:ring-primary focus:ring-2">
+                    <span class="text-sm font-medium {% if active_role_name == role.name %}text-primary{% else %}text-text-secondary{% endif %}">
+                        {{ role.display_name }}
+                    </span>
+                    {% if active_role_name == role.name %}
+                        <span class="text-xs text-success">✓ Active</span>
+                    {% endif %}
+                </label>
+                {% endfor %}
+                
+                <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg ml-2">
+                    Switch Role
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <div class="rounded-lg border border-border bg-background p-4 text-sm text-text-secondary">
+            You only have one active role assigned at the moment. Role switching will appear here when additional roles are assigned.
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {# ==================== PREFERENCES SECTION ==================== #}
     <div class="dashboard-card shadow-sm p-6">
         <h2 class="text-lg font-semibold mb-4" style="color: var(--color-text-primary);">Preferences</h2>
 
@@ -149,8 +274,6 @@
                 </div>
             </div>
 
-            {# Ticket signature removed as requested #}
-
             <div class="flex justify-end mt-6 pt-4 border-t" style="border-color: var(--color-border);">
                 <button type="submit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5 rounded-lg">
                     {% lucide "save" size=16 %} Save Preferences
@@ -159,7 +282,7 @@
         </form>
     </div>
 
-    {# Push Notifications Section #}
+    {# ==================== PUSH NOTIFICATIONS SECTION ==================== #}
     <div class="dashboard-card shadow-sm p-6">
         <h2 class="text-lg font-semibold mb-4" style="color: var(--color-text-primary);">Push Notifications</h2>
         <p class="text-sm text-text-secondary mb-4">Receive browser notifications even when you're not on the page. Works on desktop and mobile browsers.</p>
@@ -186,7 +309,7 @@
         </div>
     </div>
 
-    {# Change Password Section #}
+    {# ==================== CHANGE PASSWORD SECTION ==================== #}
     <div class="dashboard-card shadow-sm p-6">
         <h2 class="text-lg font-semibold mb-4" style="color: var(--color-text-primary);">Security</h2>
 

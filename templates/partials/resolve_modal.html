@@ -1,0 +1,54 @@
+{% load lucide %}
+
+<div class="p-4">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success shrink-0">
+            {% lucide "check-circle" size=20 %}
+        </div>
+        <div>
+            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Confirm Resolution</h3>
+            <p class="text-sm text-text-secondary">Ticket: {{ ticket.number }}</p>
+        </div>
+    </div>
+    
+    <p class="text-sm mb-4" style="color: var(--color-text-primary);">
+        Are you sure this ticket is ready to be resolved? The requester will be asked to confirm.
+    </p>
+    
+    <form method="post" action="{% url 'tickets:resolve_ticket' ticket.pk %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="confirm">
+        
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                Optional comment
+            </label>
+            <textarea name="comment" rows="3" 
+                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      placeholder="Add any notes about the resolution..."></textarea>
+        </div>
+        
+        <div class="flex justify-end gap-2">
+            <button type="button" onclick="closeResolveModal()" 
+                    class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" 
+                    class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+                {% lucide "check" size=14 %} Confirm Resolution
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+    function closeResolveModal() {
+        document.getElementById('resolveModalOverlay').classList.add('hidden');
+        document.getElementById('resolveModalContainer').innerHTML = '';
+    }
+    
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeResolveModal();
+        }
+    });
+</script>

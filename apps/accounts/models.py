@@ -3,6 +3,25 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.utils import timezone
+
+
+# ================================================================
+# ROLE MODEL - MUST BE DEFINED BEFORE USER
+# ================================================================
+class Role(models.Model):
+    """Role model for user roles - supports multiple roles per user."""
+    name = models.CharField(max_length=20, unique=True)
+    display_name = models.CharField(max_length=50)
+    priority = models.PositiveSmallIntegerField(default=5)  # 1=highest (SUPERADMIN)
+    
+    class Meta:
+        ordering = ['priority']
+        verbose_name = 'Role'
+        verbose_name_plural = 'Roles'
+    
+    def __str__(self):
+        return self.display_name
 
 
 class UserManager(BaseUserManager):
@@ -36,23 +55,45 @@ class UserManager(BaseUserManager):
         return self._create_user(email, password, **extra_fields)
 
 
+# ================================================================
+# USER MODEL
+# ================================================================
 class User(AbstractUser):
     username = None
 
     email = models.EmailField(_('email address'), unique=True)
 
+    # ================================================================
+    # KEEP EXISTING ROLE SYSTEM (Backward Compatible)
+    # ================================================================
     class Role(models.TextChoices):
         SUPERADMIN = 'SUPERADMIN', _('Super Admin')
         ADMIN = 'ADMIN', _('Admin')
         TEAM_LEAD = 'TEAM_LEAD', _('Team Lead')
-        # APPROVER = 'APPROVER', _('Approver')  # <-- REMOVED
         AGENT = 'AGENT', _('Support Team')
         END_USER = 'END_USER', _('User')
 
+    # PRIMARY ROLE - Kept for backward compatibility
     role = models.CharField(
         max_length=20,
         choices=Role.choices,
         default=Role.END_USER,
+    )
+
+    # ================================================================
+    # NEW: Multiple Roles (Many-to-Many) - For Dual Roles
+    # ================================================================
+    roles = models.ManyToManyField('Role', related_name='users', blank=True)
+    
+    # ================================================================
+    # NEW: Active Role - Which role the user is currently using
+    # ================================================================
+    active_role = models.ForeignKey(
+        'Role',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='active_users'
     )
 
     DEPARTMENT_CHOICES = [
@@ -86,16 +127,145 @@ class User(AbstractUser):
         blank=True,
         related_name='created_users'
     )
-
-    def get_full_name_with_role(self):
-        """Returns full name with role in parentheses, e.g. 'John Doe (Agent)'"""
-        name = self.get_full_name() or self.email
-        return f"{name} ({self.get_role_display()})"
+    password_changed = models.BooleanField(default=False, help_text="Whether user has changed their password after first login")
+    position = models.CharField(max_length=100, blank=True, help_text="Job title or position (e.g., Senior Developer, HR Manager)")
 
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['first_name', 'last_name', 'department']
+
+    def __str__(self):
+        return f"{self.get_full_name()} ({self.role_names})"
+
+    def get_full_name_with_role(self):
+        """Return the full name plus the active role label."""
+        role_label = self.get_active_role_display() or self.get_role_display()
+        return f"{self.get_full_name()} ({role_label})"
+
+    @property
+    def role_names(self):
+        """Return comma-separated list of role display names."""
+        if not self.pk:
+            return self.get_role_display()
+        if self.roles.exists():
+            return ', '.join([r.display_name for r in self.roles.all().order_by('priority')])
+        return self.get_role_display()
+
+    # ================================================================
+    # DUAL ROLE METHODS (Check BOTH systems)
+    # ================================================================
+    
+    def has_role(self, role_name):
+        """Check if user has a specific role (checks both systems)."""
+        # Check new roles system first
+        if self.roles.filter(name=role_name).exists():
+            return True
+        # Fallback to legacy role
+        return self.role == role_name
+
+    def has_any_role(self, role_names):
+        """Check if user has any of the specified roles."""
+        for role_name in role_names:
+            if self.has_role(role_name):
+                return True
+        return False
+
+    def get_highest_role(self):
+        """Return the highest priority role."""
+        # Check new roles system
+        if self.roles.exists():
+            return self.roles.order_by('priority').first()
+        # Fallback to legacy role
+        return self._get_legacy_role_object()
+
+    def _get_legacy_role_object(self):
+        """Get Role object for legacy role."""
+        role_map = {
+            'SUPERADMIN': ('SUPERADMIN', 'Super Admin', 1),
+            'ADMIN': ('ADMIN', 'Admin', 2),
+            'TEAM_LEAD': ('TEAM_LEAD', 'Team Lead', 3),
+            'AGENT': ('AGENT', 'Support Team', 4),
+            'END_USER': ('END_USER', 'User', 5),
+        }
+        if self.role in role_map:
+            name, display, priority = role_map[self.role]
+            role, _ = Role.objects.get_or_create(
+                name=name,
+                defaults={'display_name': display, 'priority': priority}
+            )
+            return role
+        return None
+    
+    def get_active_role_display(self):
+        """Get the display name of the active role."""
+        if self.active_role and self.roles.filter(id=self.active_role.id).exists():
+            return self.active_role.display_name
+        highest = self.get_highest_role()
+        return highest.display_name if highest else 'No role'
+    
+    def get_active_role_name(self):
+        """Get the name of the active role."""
+        if self.active_role and self.roles.filter(id=self.active_role.id).exists():
+            return self.active_role.name
+        highest = self.get_highest_role()
+        return highest.name if highest else None
+    
+    def set_active_role(self, role_name):
+        """Set the active role for the user."""
+        if not self.pk:
+            return False
+        try:
+            role = self.roles.get(name=role_name)
+            self.active_role = role
+            self.active_role_id = role.id
+            self.role = role.name  # Keep legacy field in sync
+            self.save(update_fields=['active_role', 'active_role_id', 'role'])
+            return True
+        except Role.DoesNotExist:
+            return False
+    
+    def get_active_role(self):
+        """Get the active role or the highest priority role."""
+        if self.active_role_id:
+            try:
+                role = self.roles.get(pk=self.active_role_id)
+                self.active_role = role
+                return role
+            except Role.DoesNotExist:
+                pass
+        if self.active_role and self.roles.filter(id=self.active_role.id).exists():
+            return self.active_role
+        return self.get_highest_role()
+    
+    def sync_roles(self):
+        """Sync legacy role with new roles system."""
+        if not self.pk:
+            return
+
+        role_map = {
+            'SUPERADMIN': ('SUPERADMIN', 'Super Admin', 1),
+            'ADMIN': ('ADMIN', 'Admin', 2),
+            'TEAM_LEAD': ('TEAM_LEAD', 'Team Lead', 3),
+            'AGENT': ('AGENT', 'Support Team', 4),
+            'END_USER': ('END_USER', 'User', 5),
+        }
+
+        if self.role in role_map and not self.roles.filter(name=role_map[self.role][0]).exists():
+            name, display, priority = role_map[self.role]
+            role, _ = Role.objects.get_or_create(
+                name=name,
+                defaults={'display_name': display, 'priority': priority}
+            )
+            self.roles.add(role)
+
+        if self.roles.exists():
+            if not self.active_role_id:
+                highest_role = self.get_highest_role()
+                if highest_role:
+                    self.active_role = highest_role
+                    self.active_role_id = highest_role.id
+                    User.objects.filter(pk=self.pk).update(active_role=highest_role)
 
     def save(self, *args, **kwargs):
         # Delete the old avatar file if a new one is being uploaded
@@ -107,18 +277,17 @@ class User(AbstractUser):
             except User.DoesNotExist:
                 pass
 
+        # Sync legacy role with new roles system
+        self.sync_roles()
+
         # Auto-set staff / superuser based on role
-        if self.role in [self.Role.SUPERADMIN, self.Role.ADMIN, self.Role.TEAM_LEAD,
-                         self.Role.AGENT]:  # Removed APPROVER
+        if self.role in [self.Role.SUPERADMIN, self.Role.ADMIN, self.Role.TEAM_LEAD, self.Role.AGENT]:
             self.is_staff = True
         else:
             self.is_staff = False
         self.is_superuser = (self.role == self.Role.SUPERADMIN)
 
         super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.get_full_name()} ({self.role})"
 
 
 class UserProfile(models.Model):
@@ -146,3 +315,62 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return self.user.email
+
+
+class ImpersonationLog(models.Model):
+    """Audit log for impersonation events."""
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='impersonations_initiated')
+    target_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='impersonations_received')
+    reason = models.CharField(max_length=255)
+    started_at = models.DateTimeField(auto_now_add=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-started_at']
+    
+    def __str__(self):
+        return f"{self.admin.email} → {self.target_user.email} at {self.started_at}"
+
+
+class ImpersonationToken(models.Model):
+    """One-time token for impersonation."""
+    token = models.CharField(max_length=64, unique=True)
+    admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='impersonation_tokens')
+    target_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='impersonation_tokens_received')
+    reason = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.admin.email} → {self.target_user.email} ({self.token[:8]}...)"
+    
+    def is_valid(self):
+        """Check if token is still valid."""
+        if self.used_at:
+            return False
+        if timezone.now() > self.expires_at:
+            return False
+        return True
+    
+    def use(self):
+        """Mark token as used."""
+        self.used_at = timezone.now()
+        self.save()
+
+
+class ClientSettings(models.Model):
+    """Client company settings - logo, name, etc."""
+    company_name = models.CharField(max_length=200, default='My Company')
+    logo = models.ImageField(upload_to='client_logos/', blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        verbose_name_plural = 'Client Settings'
+    
+    def __str__(self):
+        return f"Client Settings - {self.company_name}"

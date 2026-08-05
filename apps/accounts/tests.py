@@ -1,11 +1,18 @@
-from django.test import TestCase, Client
+from datetime import timedelta
+
+from django.test import TestCase, Client, RequestFactory
 from django.contrib.auth import get_user_model
+from django.contrib.admin.sites import AdminSite
 from django.urls import reverse
 from django.utils import timezone
 from django.core import mail
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
+
+from apps.accounts.admin import UserAdmin
+from apps.accounts.models import ImpersonationToken, Role
+from apps.common.context_processors import impersonation_context
 
 User = get_user_model()
 
@@ -89,6 +96,99 @@ class UserModelTests(TestCase):
             role=User.Role.END_USER
         )
         self.assertFalse(user.is_staff)
+
+
+class AdminRoleAssignmentTests(TestCase):
+    """Test that Django admin exposes the dual-role fields for user assignment."""
+
+    def test_admin_form_exposes_roles_and_active_role_fields(self):
+        admin = UserAdmin(User, AdminSite())
+        form_class = admin.get_form(None)
+
+        self.assertIn('roles', form_class.base_fields)
+        self.assertIn('active_role', form_class.base_fields)
+
+
+class TemplateRoleSwitchTests(TestCase):
+    """Test that the profile UI supports switching the active role."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='template-role@example.com',
+            password='TestPass123!',
+            first_name='Template',
+            last_name='User',
+            department='IT',
+            role=User.Role.END_USER,
+        )
+        self.client = Client()
+        self.client.login(email='template-role@example.com', password='TestPass123!')
+
+    def test_profile_page_shows_role_switch_controls_when_user_has_multiple_roles(self):
+        agent_role = Role.objects.create(name='AGENT', display_name='Support Team', priority=4)
+        team_lead_role = Role.objects.create(name='TEAM_LEAD', display_name='Team Lead', priority=3)
+        self.user.roles.add(agent_role, team_lead_role)
+        self.user.active_role = agent_role
+        self.user.save(update_fields=['active_role'])
+
+        response = self.client.get(reverse('accounts:profile'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="switch_role"')
+        self.assertContains(response, 'Switch Role')
+        self.assertContains(response, 'Support Team')
+        self.assertContains(response, 'Team Lead')
+        self.assertNotContains(response, 'name="manage_roles"')
+
+    def test_profile_post_can_switch_active_role(self):
+        agent_role = Role.objects.create(name='AGENT', display_name='Support Team', priority=4)
+        team_lead_role = Role.objects.create(name='TEAM_LEAD', display_name='Team Lead', priority=3)
+        self.user.roles.add(agent_role, team_lead_role)
+        self.user.active_role = agent_role
+        self.user.save(update_fields=['active_role'])
+
+        response = self.client.post(reverse('accounts:profile'), {
+            'switch_role': '1',
+            'role': 'TEAM_LEAD',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.get_active_role().name, 'TEAM_LEAD')
+        self.assertEqual(self.user.role, 'TEAM_LEAD')
+
+
+class DualRoleTests(TestCase):
+    """Test dual-role switching and active role behavior."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            email='dual@example.com',
+            password='TestPass123!',
+            first_name='Dual',
+            last_name='User',
+            department='IT',
+            role=User.Role.END_USER
+        )
+        self.client.login(email='dual@example.com', password='TestPass123!')
+
+    def test_role_switch_updates_active_role(self):
+        """Switching roles should update the active role used by the UI."""
+        agent_role = Role.objects.create(name='AGENT', display_name='Support Team', priority=4)
+        team_lead_role = Role.objects.create(name='TEAM_LEAD', display_name='Team Lead', priority=3)
+        self.user.roles.add(agent_role, team_lead_role)
+        self.user.active_role = agent_role
+        self.user.save(update_fields=['active_role'])
+
+        response = self.client.post(reverse('accounts:profile'), {
+            'switch_role': '1',
+            'role': 'TEAM_LEAD',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.get_active_role().name, 'TEAM_LEAD')
+        self.assertEqual(self.user.get_active_role_display(), 'Team Lead')
 
 
 class RegistrationTests(TestCase):
@@ -287,6 +387,64 @@ class LoginTests(TestCase):
         self.assertRedirects(response, reverse('dashboard'))
         # Session should expire on browser close (0) or default
         self.assertIn(self.client.session.get_expiry_age(), [0, 86400])
+
+    def test_impersonation_context_is_populated_from_session(self):
+        """Impersonation context should be available from the session so the banner can render."""
+        request = RequestFactory().get('/')
+        request.session = self.client.session
+        request.session['impersonate'] = {
+            'original_user_id': 1,
+            'original_user_email': 'admin@example.com',
+            'target_user_id': 2,
+            'target_user_email': 'target@example.com',
+            'reason': 'Support review',
+            'starts_at': timezone.now().isoformat(),
+            'expires_at': (timezone.now() + timedelta(hours=1)).isoformat(),
+        }
+        request.session.save()
+
+        context = impersonation_context(request)
+
+        self.assertTrue(context['is_impersonating'])
+        self.assertEqual(context['impersonation_target'], 'target@example.com')
+        self.assertEqual(context['impersonation_reason'], 'Support review')
+        self.assertEqual(context['impersonation_original'], 'admin@example.com')
+
+    def test_impersonation_token_login_redirects_to_dashboard(self):
+        """Impersonation should log the target user in and redirect to the dashboard."""
+        admin = User.objects.create_superuser(
+            email='admin-impersonate@example.com',
+            password='AdminPass123!',
+            first_name='Admin',
+            last_name='User',
+            department='IT',
+        )
+        target = User.objects.create_user(
+            email='target-user@example.com',
+            password='TestPass123!',
+            first_name='Target',
+            last_name='User',
+            department='IT',
+            is_active=True,
+            email_verified=True,
+            role=User.Role.END_USER,
+        )
+        token = ImpersonationToken.objects.create(
+            token='impersonation-test-token',
+            admin=admin,
+            target_user=target,
+            reason='Support check',
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+
+        response = self.client.get(
+            reverse('accounts:impersonate_token', args=[token.token]),
+            follow=True,
+        )
+
+        self.assertRedirects(response, reverse('dashboard'))
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+        self.assertEqual(response.wsgi_request.user.pk, target.pk)
 
 
 class PasswordResetTests(TestCase):
@@ -523,6 +681,36 @@ class AdminUserManagementTests(TestCase):
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertEqual(user.first_name, 'New')
+
+    def test_admin_edit_user_assigns_multiple_roles(self):
+        """Test admin editing a user with multiple assigned roles."""
+        agent_role = Role.objects.create(name='AGENT', display_name='Support Team', priority=4)
+        team_lead_role = Role.objects.create(name='TEAM_LEAD', display_name='Team Lead', priority=3)
+        user = User.objects.create_user(
+            email='multi@example.com',
+            password='TestPass123!',
+            first_name='Multi',
+            last_name='Role',
+            department='IT'
+        )
+        response = self.client.post(
+            reverse('accounts:admin_user_edit', args=[user.pk]),
+            {
+                'first_name': 'Multi',
+                'last_name': 'Role',
+                'role': 'AGENT',
+                'department': 'IT',
+                'is_active': 'true',
+                'selected_roles': ['AGENT', 'TEAM_LEAD'],
+                'active_role': 'TEAM_LEAD'
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.roles.filter(name='AGENT').exists())
+        self.assertTrue(user.roles.filter(name='TEAM_LEAD').exists())
+        self.assertEqual(user.get_active_role().name, 'TEAM_LEAD')
 
     def test_admin_toggle_user_active(self):
         """Test admin toggling user active status."""

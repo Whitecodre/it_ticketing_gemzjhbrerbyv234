@@ -248,29 +248,26 @@
         };
 
         // ================================================================
-        // TICKET ACTION BUTTON CLICK - FIXED
+        // TICKET ACTION BUTTON CLICK
         // ================================================================
         window.ticketActionBtnClick = function(btn) {
-            console.log('🔵 ticketActionBtnClick called');
             closeDropdown();
 
             const dataset = btn.dataset;
-            console.log('🔵 Dataset:', dataset);
             
             activeButton = btn;
             activeData = {
                 slideoverUrl: dataset.slideoverUrl || null,
                 claimUrl: dataset.claimUrl || null,
                 conversationUrl: dataset.conversationUrl || null,
-                isAssigned: dataset.isAssigned === 'true'
+                isAssigned: dataset.isAssigned === 'true',
+                ticketId: dataset.ticketId || null,
+                ticketNumber: dataset.ticketNumber || null,
             };
 
-            console.log('🔵 activeData:', activeData);
-
-            // Fallback: try to get from attribute if dataset failed
+            // Fallback for slideover URL
             if (!activeData.slideoverUrl) {
                 const attr = btn.getAttribute('data-slideover-url');
-                console.log('🔵 Fallback - data-slideover-url attribute:', attr);
                 if (attr) activeData.slideoverUrl = attr;
             }
 
@@ -301,11 +298,9 @@
         viewBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            console.log('🔵 View Details clicked, activeData:', activeData);
 
             if (!activeData.slideoverUrl) {
                 console.error('❌ slideoverUrl is null or undefined!');
-                console.log('🔵 Check if button has data-slideover-url attribute');
                 closeDropdown();
                 return;
             }
@@ -315,19 +310,75 @@
         });
 
         // ================================================================
-        // CLAIM TICKET BUTTON
+        // CLAIM TICKET BUTTON - with page reload
         // ================================================================
         claimBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            if (activeData.claimUrl) {
-                console.log('🔵 Claiming ticket:', activeData.claimUrl);
-                htmx.ajax('POST', activeData.claimUrl, {
-                    target: '#ticketTable',
-                    swap: 'innerHTML',
-                });
+            
+            if (!activeData.claimUrl) {
+                console.error('❌ claimUrl is missing');
+                closeDropdown();
+                return;
             }
+
+            const source = window.bulkSource || 'unassigned';
+            console.log(`🔵 Claiming ticket ${activeData.ticketNumber} from source: ${source}`);
+            
+            // Close dropdown immediately
             closeDropdown();
+            
+            // Get CSRF token
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            
+            // Disable button visual
+            claimBtn.style.opacity = '0.5';
+            claimBtn.style.pointerEvents = 'none';
+            
+            // Show loading toast
+            if (typeof showToast === 'function') {
+                showToast('⏳ Claiming ticket...', 'info');
+            }
+            
+            fetch(activeData.claimUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'source': source
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Show success message
+                    if (typeof showToast === 'function') {
+                        showToast(data.message || '✅ Ticket claimed successfully!', 'success');
+                    }
+                    
+                    // RELOAD THE PAGE after a short delay to show the notification
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 800);
+                } else {
+                    // Show error
+                    if (typeof showToast === 'function') {
+                        showToast(data.message || 'Failed to claim ticket.', 'error');
+                    }
+                    claimBtn.style.opacity = '1';
+                    claimBtn.style.pointerEvents = 'auto';
+                }
+            })
+            .catch(error => {
+                console.error('Error claiming ticket:', error);
+                if (typeof showToast === 'function') {
+                    showToast('An error occurred while claiming the ticket.', 'error');
+                }
+                claimBtn.style.opacity = '1';
+                claimBtn.style.pointerEvents = 'auto';
+            });
         });
 
         // ================================================================
@@ -337,7 +388,6 @@
             e.preventDefault();
             e.stopPropagation();
             if (activeData.conversationUrl) {
-                console.log('🔵 Opening conversation:', activeData.conversationUrl);
                 window.location.href = activeData.conversationUrl;
             }
             closeDropdown();

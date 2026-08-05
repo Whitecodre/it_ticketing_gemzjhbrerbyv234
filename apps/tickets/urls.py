@@ -35,6 +35,10 @@ urlpatterns = [
     path('reports/', views.reports_dashboard, name='reports'),
     path('attachment/<int:pk>/preview/', views.attachment_preview, name='attachment_preview'),
     path('attachment/<int:pk>/', views.attachment_download, name='attachment_download'),
+    # Resolution Confirmation & Feedback
+    path('<int:pk>/resolve/', views.resolve_ticket, name='resolve_ticket'),
+    path('<int:pk>/confirm-resolution/', views.confirm_resolution, name='confirm_resolution'),
+    path('<int:pk>/feedback/', views.submit_feedback, name='submit_feedback'),
 
     path('catalogue/', views.catalogue, name='catalogue'),
     path('connectors/', views.connectors, name='connectors'),
@@ -43,9 +47,12 @@ urlpatterns = [
     path('assets/create-page/', views.asset_create_page, name='asset_create_page'),
     path('assets/<int:pk>/edit-page/', views.asset_edit_page, name='asset_edit_page'),
     path('assets/<int:pk>/reassign/', views.asset_reassign, name='asset_reassign'),
+    path('assets/<int:pk>/reassign-modal/', views.asset_reassign_modal, name='asset_reassign_modal'),
     path('assets/<int:pk>/detail/', views.asset_detail, name='asset_detail'),
     path('assets/<int:pk>/scrap-request/', views.asset_scrap_request, name='asset_scrap_request'),
+    path('assets/<int:pk>/scrap-request-modal/', views.scrap_request_modal, name='scrap_request_modal'),
     path('assets/<int:pk>/scrap-approve/', views.asset_scrap_approve, name='asset_scrap_approve'),
+    path('assets/<int:pk>/scrap-approve-modal/', views.scrap_approve_modal, name='scrap_approve_modal'),
     path('assets/calculate-warranty/', views.asset_calculate_warranty, name='asset_calculate_warranty'),
     path('<int:pk>/request-remote-session/', views.request_remote_session, name='request_remote_session'),
     path('remote-session/<int:session_pk>/', views.remote_session_detail, name='remote_session_detail'),
@@ -53,6 +60,7 @@ urlpatterns = [
     path('remote-sessions/', views.remote_sessions_list, name='remote_sessions_list'),
     path('escalated/', views.escalated_tickets, name='escalated_tickets'),
     path('escalated/<int:pk>/reassign/', views.reassign_escalated, name='reassign_escalated'),
+    path('escalated/<int:pk>/reassign-modal/', views.escalated_reassign_modal, name='escalated_reassign_modal'),
     path('escalated/<int:pk>/return-to-pool/', views.return_escalated_to_pool, name='return_escalated_to_pool'),
     path('kb-suggestions/', views.kb_suggestions, name='kb_suggestions'),
     # future: detail, list
@@ -84,4 +92,9 @@ urlpatterns = [
     path('assets/fulfill/<int:pk>/', views.fulfill_asset_request, name='fulfill_asset_request'),
     path('assets/available/', views.available_assets_for_fulfillment, name='available_assets_for_fulfillment'),
     path('assets/fulfill-modal/<int:pk>/', views.fulfill_asset_modal, name='fulfill_asset_modal'),
+
+    # EXPORTABLES
+    path('exportables/', views.exportables, name='exportables'),
+    path('export/service-requests/', views.export_service_requests, name='export_service_requests'),
+    path('export/incidents/', views.export_incidents, name='export_incidents'),
 ]

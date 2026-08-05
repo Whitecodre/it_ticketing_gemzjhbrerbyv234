@@ -55,10 +55,11 @@ class RegistrationForm(UserCreationForm):
     first_name = forms.CharField(max_length=30, required=True)
     last_name = forms.CharField(max_length=30, required=True)
     department = forms.ChoiceField(choices=User.DEPARTMENT_CHOICES, required=True)
+    position = forms.CharField(max_length=100, required=False)
 
     class Meta:
         model = User
-        fields = ('email', 'first_name', 'last_name', 'department', 'password1', 'password2')
+        fields = ('email', 'first_name', 'last_name', 'department', 'position', 'password1', 'password2')
 
     def clean_email(self):
         email = self.cleaned_data.get('email')
@@ -118,6 +119,7 @@ class RegistrationStep1Form(forms.Form):
     last_name = forms.CharField(max_length=30, required=True)
     email = forms.EmailField(required=True)
     department = forms.ChoiceField(choices=User.DEPARTMENT_CHOICES, required=True)
+    position = forms.CharField(max_length=100, required=False)
 
     def clean_email(self):
         email = self.cleaned_data.get('email')

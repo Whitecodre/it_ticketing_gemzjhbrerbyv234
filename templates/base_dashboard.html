@@ -11,18 +11,19 @@
     {# Mobile backdrop #}
     <div id="sidebarBackdrop" class="fixed inset-0 z-40 bg-black/50 hidden" onclick="closeSidebar()"></div>
 
+    {# ========== IMPERSONATION BANNER ========== #}
+    {% include "partials/impersonation_banner.html" %}
+
     {# ========== TOP HORIZONTAL NAVBAR ========== #}
-    <header class="fixed top-0 left-0 right-0 z-50 flex items-center border-b px-4 md:px-6"
-            style="background-color: var(--color-surface); border-color: var(--color-border); height: 4.4rem;">
+    <header class="fixed left-0 right-0 z-40 flex items-center border-b px-4 md:px-6"
+            style="background-color: var(--color-surface); border-color: var(--color-border); height: 4.4rem; top: {% if is_impersonating %}48px{% else %}0{% endif %};">
 
         {# Left: Brand + Collapse button + Hamburger #}
         <div class="flex items-center gap-3">
-            {# Logo #}
             <span class="inline-flex items-center gap-2">
                 <span class="text-lg font-cursive font-semibold text-primary">TicketSwipe</span>
             </span>
             
-            {# Menu button - hamburger icon for both mobile and desktop #}
             <button id="sidebarToggleBtn"
                     class="inline-flex items-center justify-center rounded-md p-1.5 text-text-secondary hover:bg-black/5 focus:outline-none transition-transform duration-200"
                     onclick="toggleSidebarMain()"
@@ -32,49 +33,145 @@
             </button>
         </div>
 
-        {# Center: Search (hidden for now) #}
         <div class="flex-1"></div>
 
-        {# Right: Utilities #}
-        <div class="flex items-center gap-2 md:gap-3">
-            {# Notifications #}
-            <div class="relative">
-                <button id="notificationBell"
+        {# ========== RIGHT SIDE NAVBAR ITEMS (Alpine.js) ========== #}
+        <div x-data="navbarComponents()" 
+             x-init="initNavbar()"
+             class="flex items-center gap-2 md:gap-3">
+
+            {# ============================================================ #}
+            {# 1. NOTIFICATION BELL with Alpine.js                             #}
+            {# ============================================================ #}
+            <div class="relative" @click.away="notificationOpen = false">
+                <button @click="toggleNotifications()"
                         class="relative rounded-full p-1.5 transition cursor-pointer hover:bg-black/5"
                         style="color: var(--color-text-secondary);"
-                        onclick="toggleNotificationDropdown()">
+                        aria-label="Notifications">
                     {% lucide "bell" size=18 class="h-4.5 w-4.5" %}
                     <div id="notificationBadgeContainer"
                         hx-get="{% url 'notifications:unread_count' %}"
                         hx-trigger="every 30s"
-                        hx-swap="innerHTML">
+                        hx-swap="innerHTML"
+                        x-init="setupNotificationBadge()">
                         {% include "partials/notification_badge.html" with count=0 %}
                     </div>
                 </button>
-                <div id="notificationDropdown"
-                    class="absolute right-0 mt-2 w-64 rounded-md shadow-lg border hidden"
-                    style="background-color: var(--color-surface); border-color: var(--color-border); z-index: 50;"
-                    onclick="event.stopPropagation()">
+                
+                <div x-show="notificationOpen"
+                     x-cloak
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-150"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="absolute right-0 mt-2 w-80 rounded-md shadow-lg border"
+                     style="background-color: var(--color-surface); border-color: var(--color-border); z-index: 50;"
+                     @click.stop>
+                    <div class="p-3 border-b" style="border-color: var(--color-border);">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-semibold" style="color: var(--color-text-primary);">Notifications</span>
+                            <a href="{% url 'notifications:list' %}" 
+                               class="text-xs text-primary hover:underline">View all</a>
+                        </div>
+                    </div>
+                    <div id="notificationDropdownContent" 
+                         class="max-h-96 overflow-y-auto">
+                        {# Loaded via HTMX #}
+                        <div class="px-3 py-4 text-center text-xs text-text-secondary">
+                            Loading notifications...
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {# Role badge for desktop #}
+            {# ============================================================ #}
+            {# 2. ROLE SWITCHER with Alpine.js                               #}
+            {# ============================================================ #}
+            {% if available_roles|length > 1 %}
+            <div class="relative" @click.away="roleDropdownOpen = false">
+                <button @click="roleDropdownOpen = !roleDropdownOpen"
+                        class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition hover:bg-black/5"
+                        style="background-color: var(--color-surface); border-color: var(--color-border); color: var(--color-text-primary);"
+                        aria-label="Switch role">
+                    <span>{{ active_role_display|default:user.get_role_display }}</span>
+                    <span x-show="!roleDropdownOpen" x-transition:enter.duration.200ms>{% lucide "chevron-down" size=14 %}</span>
+                    <span x-show="roleDropdownOpen" x-transition:enter.duration.200ms>{% lucide "chevron-up" size=14 %}</span>
+                </button>
+                
+                <div x-show="roleDropdownOpen"
+                     x-cloak
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 scale-95"
+                     x-transition:enter-end="opacity-100 scale-100"
+                     x-transition:leave="transition ease-in duration-150"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95"
+                     class="absolute right-0 mt-2 w-48 rounded-md shadow-lg border py-1 z-50"
+                     style="background-color: var(--color-surface); border-color: var(--color-border);">
+                    
+                    {% for role in available_roles %}
+                    <form method="post" action="{% url 'accounts:switch_role' %}" 
+                          class="block"
+                          @submit="roleDropdownOpen = false">
+                        {% csrf_token %}
+                        <input type="hidden" name="role" value="{{ role.name }}">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <button type="submit" 
+                                class="w-full text-left px-4 py-2 text-sm transition flex items-center justify-between
+                                    {% if active_role_name == role.name %}bg-primary/10 text-primary font-medium{% else %}hover:bg-black/5{% endif %}"
+                                style="color: {% if active_role_name == role.name %}var(--color-primary){% else %}var(--color-text-primary){% endif %};">
+                            <span class="flex items-center gap-2">
+                                {% if role.name == 'SUPERADMIN' %}
+                                    {% lucide "crown" size=14 %}
+                                {% elif role.name == 'ADMIN' %}
+                                    {% lucide "shield" size=14 %}
+                                {% elif role.name == 'TEAM_LEAD' %}
+                                    {% lucide "users" size=14 %}
+                                {% elif role.name == 'AGENT' %}
+                                    {% lucide "headset" size=14 %}
+                                {% else %}
+                                    {% lucide "user" size=14 %}
+                                {% endif %}
+                                {{ role.display_name }}
+                            </span>
+                            <span x-show="activeRoleName === '{{ role.name }}'" 
+                                  class="text-xs text-primary">✓</span>
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            {# Single role - just show the badge #}
             <div class="hidden md:flex items-center">
                 <span class="text-xs font-medium px-2 py-1 rounded-full border"
                     style="background-color: var(--color-surface); border-color: var(--color-border); color: var(--color-text-primary);">
-                    {{ user.get_role_display }}
+                    {{ active_role_display|default:user.get_role_display }}
                 </span>
             </div>
+            {% endif %}
 
-            {# Theme toggle #}
-            <div class="theme-radio-group" id="themeRadioGroup">
-                <label class="theme-radio" id="themeRadioLight">
+            {# ============================================================ #}
+            {# 3. THEME TOGGLE with Alpine.js                                #}
+            {# ============================================================ #}
+            <div class="theme-radio-group" id="themeRadioGroup"
+                 x-data="themeToggle()"
+                 x-init="initTheme()">
+                <label class="theme-radio cursor-pointer" 
+                       @click="setTheme('light')"
+                       :class="{ 'active': theme === 'light' }">
                     {% lucide "sun" size=14 class="w-3.5 h-3.5" %}
-                    <input type="radio" name="theme" value="light">
+                    <input type="radio" name="theme" value="light" 
+                           :checked="theme === 'light'">
                 </label>
-                <label class="theme-radio" id="themeRadioDark">
+                <label class="theme-radio cursor-pointer" 
+                       @click="setTheme('dark')"
+                       :class="{ 'active': theme === 'dark' }">
                     {% lucide "moon" size=14 class="w-3.5 h-3.5" %}
-                    <input type="radio" name="theme" value="dark">
+                    <input type="radio" name="theme" value="dark" 
+                           :checked="theme === 'dark'">
                 </label>
             </div>
         </div>
@@ -84,31 +181,23 @@
     <aside id="sidebar"
            class="fixed inset-y-0 left-0 z-40 flex flex-col border-r transition-all duration-300 ease-in-out
                   w-64 overflow-y-auto overflow-x-hidden"
-           style="background-color: var(--color-surface); border-color: var(--color-border); margin-top: 4.4rem; height: calc(100% - 4.4rem);">
+           style="background-color: var(--color-surface); border-color: var(--color-border); top: {% if is_impersonating %}calc(48px){% else %}0px{% endif %}; height: {% if is_impersonating %}calc(100% - 4.4rem - 48px){% else %}calc(100% - 4.4rem){% endif %};">
 
-        {# ========== SIDEBAR NAVIGATION ========== #}
-        <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto" id="sidebarNav">
+        <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto" id="sidebarNav"
+             x-data="sidebarAccordion()"
+             x-init="init()">
             {% block sidebar_nav %}
-                {# Dashboard - Standalone link #}
-                <a href="{% url 'dashboard' %}"
-                   id="dashboardLink"
-                   class="sidebar-link standalone flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition"
-                   style="{% if request.path == '/' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-                    <span class="shrink-0">{% lucide "layout-dashboard" size=18 class="h-5 w-5" %}</span>
-                    <span>Dashboard</span>
-                </a>
-
-                {# Role-specific grouped sections #}
-                {% block sidebar_groups %}
-                    {# Each role template will override this #}
-                {% endblock %}
+                {# Dynamic sidebar based on active role #}
+                {% if sidebar_template %}
+                    {% include sidebar_template %}
+                {% else %}
+                    {% include "partials/sidebar_end_user.html" %}
+                {% endif %}
             {% endblock %}
         </nav>
 
-        {# ========== SIDEBAR FOOTER: User + Actions ========== #}
         <div class="border-t px-3 py-3" style="border-color: var(--color-border);">
             <div class="flex items-center gap-3">
-                {# Avatar #}
                 <div class="shrink-0">
                     {% if user.avatar %}
                         <img src="{{ user.avatar.url }}" alt="Avatar" class="h-9 w-9 rounded-full object-cover">
@@ -119,18 +208,14 @@
                         </div>
                     {% endif %}
                 </div>
-                
-                {# User info #}
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">
                         {{ user.get_full_name|default:user.email }}
                     </p>
                     <p class="text-xs truncate" style="color: var(--color-text-secondary);">
-                        {% block role_label %}{% endblock %}
+                        {% block role_label %}{{ active_role_display|default:user.get_role_display }}{% endblock %}
                     </p>
                 </div>
-                
-                {# Action icons #}
                 <div class="flex items-center gap-1 shrink-0">
                     <a href="{% url 'accounts:profile' %}"
                        class="p-1.5 rounded-md transition hover:bg-black/5"
@@ -150,13 +235,11 @@
     </aside>
 
     {# ========== MAIN CONTENT AREA ========== #}
-    <div id="mainContent" class="flex flex-1 flex-col min-w-0 ml-0 transition-all duration-300 mt-[4.4rem]">
-        {# Hidden form to ensure CSRF token is set #}
+    <div id="mainContent" class="flex flex-1 flex-col min-w-0 ml-0 transition-all duration-300" style="margin-top: {% if is_impersonating %}calc(4.4rem + 48px){% else %}4.4rem{% endif %};">
         <form style="display:none;">
             {% csrf_token %}
         </form>
 
-        {# Main content #}
         <main class="flex-1 overflow-y-auto{% block main_content_class %} pt-4 px-4 sm:px-5 md:px-6 pb-6 md:pb-8{% endblock %}">
             {% block page_title_area %}
             <h1 class="text-xl font-semibold truncate mb-4" style="color: var(--color-text-primary);">
@@ -166,39 +249,88 @@
             {% block dashboard_content %}{% endblock %}
         </main>
 
-        {# ========== SLIDE-OVER PANEL (right) ========== #}
-        <div id="slideoverBackdrop"
-            class="fixed inset-0 z-50 bg-black/50 hidden transition-opacity duration-300"
-            onclick="closeSlideover()"></div>
+        {# ============================================================ #}
+        {# SLIDEOVER (Ticket Detail Panel) with Alpine.js                #}
+        {# ============================================================ #}
+        <div x-data="slideover()" 
+             x-init="initSlideover()"
+             x-cloak>
+            
+            <div id="slideoverBackdrop"
+                 class="fixed inset-0 z-50 bg-black/50"
+                 x-show="isOpen"
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 style="display: none;"
+                 @click="close()"></div>
 
-        <div id="ticketSlideover"
-            class="fixed top-0 right-0 z-50 h-full w-full max-w-lg bg-surface border-l shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out overflow-y-auto"
-            style="background-color: var(--color-surface); border-color: var(--color-border);">
-            <div id="slideoverContent" class="p-6">
-                {# Content loaded via HTMX #}
+            <div id="ticketSlideover"
+                 class="fixed top-0 right-0 z-50 h-full w-full max-w-lg bg-surface border-l shadow-2xl overflow-y-auto"
+                 style="background-color: var(--color-surface); border-color: var(--color-border);"
+                 x-show="isOpen"
+                 x-transition:enter="transition ease-out duration-300 transform"
+                 x-transition:enter-start="translate-x-full"
+                 x-transition:enter-end="translate-x-0"
+                 x-transition:leave="transition ease-in duration-200 transform"
+                 x-transition:leave-start="translate-x-0"
+                 x-transition:leave-end="translate-x-full"
+                 style="display: none;">
+                <div id="slideoverContent" class="p-6">
+                    {# Content loaded via HTMX #}
+                </div>
             </div>
         </div>
 
-        {# ========== GLOBAL CONFIRMATION MODAL ========== #}
-        <div id="confirmationModal" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 hidden" onclick="closeConfirmationModal(event)">
-            <div class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4 p-6" onclick="event.stopPropagation()" style="background-color: var(--color-surface);">
-                <div class="flex items-start gap-3 mb-4">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning shrink-0">
-                        {% lucide "alert-triangle" size=20 %}
+        {# ============================================================ #}
+        {# REUSABLE CONFIRMATION MODAL - REDESIGNED                    #}
+        {# ============================================================ #}
+        <div id="confirmationModal" 
+             class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 hidden" 
+             onclick="closeConfirmationModal(event)">
+            <div class="bg-surface rounded-xl shadow-2xl w-full max-w-md mx-4 p-0 overflow-hidden" 
+                 style="background-color: var(--color-surface);"
+                 onclick="event.stopPropagation()">
+                
+                {# Header with icon #}
+                <div class="px-6 pt-6 pb-4 flex flex-col items-center gap-4">
+                    <div id="confirmModalIcon" 
+                         class="flex h-12 w-12 items-center justify-center rounded-full shrink-0"
+                         style="background-color: var(--color-warning);">
+                        {% lucide "alert-triangle" size=24 class="text-white" %}
                     </div>
-                    <div>
-                        <h3 id="confirmModalTitle" class="text-base font-semibold" style="color: var(--color-text-primary);">Confirm Action</h3>
-                        <p id="confirmModalMessage" class="text-sm mt-1" style="color: var(--color-text-secondary);">Are you sure you want to perform this action?</p>
+                    <div class="flex-1 min-w-0 text-center">
+                        <h3 id="confirmModalTitle" class="text-lg font-semibold" style="color: var(--color-text-primary);">
+                            Confirm Action
+                        </h3>
+                        <p id="confirmModalMessage" class="text-sm mt-1" style="color: var(--color-text-secondary);">
+                            Are you sure you want to perform this action?
+                        </p>
+                        <p id="confirmModalDetail" class="text-xs mt-2 p-3 rounded-lg" 
+                           style="background-color: var(--color-background); color: var(--color-text-secondary); display: none;">
+                        </p>
                     </div>
                 </div>
-                <div class="flex justify-end gap-2 mt-4">
-                    <button onclick="closeConfirmationModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
-                    <button id="confirmModalBtn" class="btn-danger text-sm px-4 py-2 rounded-lg">Confirm</button>
+                
+                {# Action buttons #}
+                <div class="px-6 py-4 border-t flex flex-col sm:flex-row gap-2 sm:gap-3 sm:justify-center" 
+                     style="border-color: var(--color-border);">
+                    <button onclick="closeConfirmationModal()" 
+                            class="btn-ghost text-sm px-5 py-2.5 rounded-lg transition order-2 sm:order-1">
+                        No, cancel
+                    </button>
+                    <button id="confirmModalBtn" 
+                            class="text-sm px-5 py-2.5 rounded-lg transition flex items-center justify-center gap-2 order-1 sm:order-2"
+                            onclick="executeConfirmedAction()">
+                        <span id="confirmModalBtnText">Yes, I'm sure</span>
+                    </button>
                 </div>
             </div>
         </div>
 
-        {# Django messages data for JavaScript toast display #}
         {% if messages %}
         <div id="django-messages-data" style="display:none;"
              data-messages='[
@@ -209,13 +341,45 @@
         </div>
         {% endif %}
 
-        {# Toast container #}
-        <div id="toastContainer" class="toast-container"></div>
+        {# Toast Container #}
+        <div id="toastContainer" class="toast-container"
+             x-data="toastManager()"
+             x-init="initToastManager()">
+            <template x-for="toast in toasts" :key="toast.id">
+                <div x-show="toast.visible"
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0 transform translate-x-full"
+                     x-transition:enter-end="opacity-100 transform translate-x-0"
+                     x-transition:leave="transition ease-in duration-200"
+                     x-transition:leave-start="opacity-100 transform translate-x-0"
+                     x-transition:leave-end="opacity-0 transform translate-x-full"
+                     class="toast-item mb-3 p-4 rounded-lg shadow-lg border"
+                     :class="{
+                         'bg-success/10 border-success/30': toast.type === 'success',
+                         'bg-error/10 border-error/30': toast.type === 'error',
+                         'bg-warning/10 border-warning/30': toast.type === 'warning',
+                         'bg-info/10 border-info/30': toast.type === 'info'
+                     }"
+                     style="background-color: var(--color-surface);">
+                    <div class="flex items-start gap-3">
+                        <span class="shrink-0 mt-0.5" x-html="toast.icon"></span>
+                        <div class="flex-1">
+                            <p class="text-sm" style="color: var(--color-text-primary);" x-text="toast.message"></p>
+                        </div>
+                        <button @click="removeToast(toast.id)" 
+                                class="shrink-0 text-text-secondary hover:text-text-primary transition">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
 
-    </div> {# end main content wrapper #}
-</div> {# end flex h-screen #}
+    </div>
+</div>
 
-{# Hidden logout form #}
 <form id="logoutForm" action="{% url 'accounts:logout' %}" method="post" style="display:none;">
     {% csrf_token %}
 </form>
@@ -227,463 +391,15 @@
 
 {% block scripts %}
 {{ block.super }}
+
+{# Load external JS files #}
 <script src="{% static 'js/global.js' %}"></script>
 <script src="{% static 'js/keyboard_shortcuts.js' %}"></script>
-<script>
-    // ========== CONFIGURATION ==========
-    window.notificationsUrl = "{% url 'notifications:list' %}";
-    window.vapidPublicKey = "{{ VAPID_PUBLIC_KEY }}";
+<script src="{% static 'js/confirmation-modal.js' %}"></script>
 
-    // ========== SIDEBAR STATE (Separate for Desktop & Mobile) ==========
-    let isMobile = window.innerWidth < 768;
-    
-    // Desktop: track visibility (stored in localStorage)
-    let desktopSidebarVisible = localStorage.getItem('sidebar_visible') !== 'false';
-    
-    // Mobile: track visibility (not stored, defaults to closed)
-    let mobileSidebarOpen = false;
+{# Alpine.js components - loaded after Alpine.js itself #}
+<script src="{% static 'js/alpine-components.js' %}"></script>
 
-    function toggleSidebarMain() {
-        if (isMobile) {
-            // Mobile: independent toggle
-            mobileSidebarOpen = !mobileSidebarOpen;
-            updateMobileSidebar();
-        } else {
-            // Desktop: toggle visibility
-            desktopSidebarVisible = !desktopSidebarVisible;
-            localStorage.setItem('sidebar_visible', desktopSidebarVisible);
-            updateDesktopSidebar();
-        }
-    }
-
-    function updateMobileSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        const backdrop = document.getElementById('sidebarBackdrop');
-        const toggleIcon = document.getElementById('toggleIcon');
-        
-        if (mobileSidebarOpen) {
-            // Open sidebar
-            sidebar.classList.remove('-translate-x-full');
-            backdrop.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-            if (toggleIcon) {
-                toggleIcon.innerHTML = `{% lucide "x" size=20 class="h-5 w-5" %}`;
-            }
-        } else {
-            // Close sidebar
-            sidebar.classList.add('-translate-x-full');
-            backdrop.classList.add('hidden');
-            document.body.style.overflow = '';
-            if (toggleIcon) {
-                toggleIcon.innerHTML = `{% lucide "menu" size=20 class="h-5 w-5" %}`;
-            }
-        }
-    }
-
-    function updateDesktopSidebar() {
-        const sidebar = document.getElementById('sidebar');
-        const mainContent = document.getElementById('mainContent');
-        const toggleIcon = document.getElementById('toggleIcon');
-        
-        if (desktopSidebarVisible) {
-            // Show sidebar
-            sidebar.classList.remove('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
-            sidebar.classList.add('w-64');
-            mainContent.classList.remove('md:ml-0');
-            mainContent.classList.add('md:ml-64');
-            if (toggleIcon) {
-                toggleIcon.innerHTML = `{% lucide "menu" size=20 class="h-5 w-5" %}`;
-            }
-        } else {
-            // Hide sidebar completely
-            sidebar.classList.remove('w-64');
-            sidebar.classList.add('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
-            mainContent.classList.remove('md:ml-64');
-            mainContent.classList.add('md:ml-0');
-            if (toggleIcon) {
-                toggleIcon.innerHTML = `{% lucide "menu" size=20 class="h-5 w-5" %}`;
-            }
-        }
-    }
-
-    // ========== MOBILE SIDEBAR FUNCTIONS ==========
-    function toggleSidebar() {
-        // Alias for backward compatibility
-        toggleSidebarMain();
-    }
-
-    function closeSidebar() {
-        if (isMobile) {
-            mobileSidebarOpen = false;
-            updateMobileSidebar();
-        }
-    }
-
-    // ========== SIDEBAR ACCORDION SECTIONS ==========
-    document.addEventListener('DOMContentLoaded', function() {
-        // Apply desktop sidebar state
-        updateDesktopSidebar();
-        
-        // Ensure mobile sidebar starts closed
-        if (isMobile) {
-            mobileSidebarOpen = false;
-            updateMobileSidebar();
-        }
-
-        // Get all section toggles
-        const sectionToggles = document.querySelectorAll('.sidebar-section-toggle');
-        const sectionContents = {};
-        let activeSectionId = null;
-        
-        // Check if we just came from a dashboard click
-        let dashboardClicked = localStorage.getItem('dashboard_clicked') === 'true';
-        
-        // Store references to all sections
-        sectionToggles.forEach(function(header) {
-            const sectionId = header.getAttribute('data-section');
-            const section = document.getElementById(sectionId);
-            if (section) {
-                sectionContents[sectionId] = {
-                    header: header,
-                    content: section,
-                    chevron: header.querySelector('.section-chevron')
-                };
-            }
-        });
-
-        // Function to close all sections except the one being opened
-        function closeAllSections(exceptId) {
-            Object.keys(sectionContents).forEach(function(id) {
-                if (id !== exceptId) {
-                    const section = sectionContents[id];
-                    section.content.style.maxHeight = '0';
-                    section.content.style.opacity = '0';
-                    section.content.style.paddingTop = '0';
-                    section.content.style.paddingBottom = '0';
-                    section.content.style.marginTop = '0';
-                    section.content.style.marginBottom = '0';
-                    section.content.style.overflow = 'hidden';
-                    setTimeout(function() {
-                        section.content.classList.add('hidden');
-                    }, 300);
-                    if (section.chevron) {
-                        section.chevron.style.transform = 'rotate(-90deg)';
-                    }
-                    localStorage.setItem('sidebar_section_' + id, 'collapsed');
-                }
-            });
-            activeSectionId = exceptId;
-        }
-
-        // Function to open a section with animation
-        function openSection(sectionId) {
-            const section = sectionContents[sectionId];
-            if (!section) return;
-            section.content.classList.remove('hidden');
-            section.content.style.maxHeight = section.content.scrollHeight + 'px';
-            section.content.style.opacity = '1';
-            section.content.style.paddingTop = '';
-            section.content.style.paddingBottom = '';
-            section.content.style.marginTop = '';
-            section.content.style.marginBottom = '';
-            section.content.style.overflow = '';
-            if (section.chevron) {
-                section.chevron.style.transform = 'rotate(0deg)';
-            }
-            localStorage.setItem('sidebar_section_' + sectionId, 'expanded');
-            activeSectionId = sectionId;
-        }
-
-        // Function to close a section with animation
-        function closeSection(sectionId) {
-            const section = sectionContents[sectionId];
-            if (!section) return;
-            section.content.style.maxHeight = section.content.scrollHeight + 'px';
-            // Force reflow
-            section.content.offsetHeight;
-            section.content.style.maxHeight = '0';
-            section.content.style.opacity = '0';
-            section.content.style.paddingTop = '0';
-            section.content.style.paddingBottom = '0';
-            section.content.style.marginTop = '0';
-            section.content.style.marginBottom = '0';
-            section.content.style.overflow = 'hidden';
-            setTimeout(function() {
-                section.content.classList.add('hidden');
-            }, 300);
-            if (section.chevron) {
-                section.chevron.style.transform = 'rotate(-90deg)';
-            }
-            localStorage.setItem('sidebar_section_' + sectionId, 'collapsed');
-            if (activeSectionId === sectionId) {
-                activeSectionId = null;
-            }
-        }
-
-        // ========== DASHBOARD LINK CLOSES ALL SECTIONS ==========
-        const dashboardLink = document.getElementById('dashboardLink');
-        if (dashboardLink) {
-            dashboardLink.addEventListener('click', function(e) {
-                // Close all sections
-                Object.keys(sectionContents).forEach(function(id) {
-                    const section = sectionContents[id];
-                    if (!section.content.classList.contains('hidden')) {
-                        closeSection(id);
-                    }
-                });
-                // Set flag so sections stay closed after page reload
-                localStorage.setItem('dashboard_clicked', 'true');
-                // Clear any expanded state in localStorage for all sections
-                Object.keys(sectionContents).forEach(function(id) {
-                    localStorage.setItem('sidebar_section_' + id, 'collapsed');
-                });
-                // Allow navigation to proceed
-            });
-        }
-
-        // ========== INITIALIZE SECTIONS ==========
-        // If dashboard was clicked, keep all sections closed and clear the flag
-        if (dashboardClicked) {
-            // Close all sections
-            Object.keys(sectionContents).forEach(function(id) {
-                const section = sectionContents[id];
-                section.content.classList.add('hidden');
-                section.content.style.maxHeight = '0';
-                section.content.style.opacity = '0';
-                section.content.style.overflow = 'hidden';
-                if (section.chevron) section.chevron.style.transform = 'rotate(-90deg)';
-                localStorage.setItem('sidebar_section_' + id, 'collapsed');
-            });
-            // Clear the flag so next load behaves normally
-            localStorage.removeItem('dashboard_clicked');
-        } else {
-            // Normal initialization: restore from localStorage
-            let hasExpanded = false;
-            Object.keys(sectionContents).forEach(function(id) {
-                const section = sectionContents[id];
-                const savedState = localStorage.getItem('sidebar_section_' + id);
-                if (savedState === 'expanded') {
-                    section.content.classList.remove('hidden');
-                    section.content.style.maxHeight = section.content.scrollHeight + 'px';
-                    section.content.style.opacity = '1';
-                    section.content.style.overflow = '';
-                    if (section.chevron) section.chevron.style.transform = 'rotate(0deg)';
-                    hasExpanded = true;
-                    activeSectionId = id;
-                } else {
-                    section.content.classList.add('hidden');
-                    section.content.style.maxHeight = '0';
-                    section.content.style.opacity = '0';
-                    section.content.style.overflow = 'hidden';
-                    if (section.chevron) section.chevron.style.transform = 'rotate(-90deg)';
-                    if (savedState === null) {
-                        localStorage.setItem('sidebar_section_' + id, 'collapsed');
-                    }
-                }
-            });
-
-            // If no sections are expanded, expand the first one
-            if (!hasExpanded && Object.keys(sectionContents).length > 0) {
-                const firstId = Object.keys(sectionContents)[0];
-                openSection(firstId);
-            }
-        }
-
-        // Toggle on click with accordion behavior
-        sectionToggles.forEach(function(header) {
-            header.addEventListener('click', function(e) {
-                e.preventDefault();
-                // Don't toggle if desktop sidebar is hidden
-                if (!isMobile && !desktopSidebarVisible) return;
-                // Don't toggle if mobile sidebar is closed
-                if (isMobile && !mobileSidebarOpen) return;
-                
-                const sectionId = header.getAttribute('data-section');
-                const section = sectionContents[sectionId];
-                if (!section) return;
-                
-                const isHidden = section.content.classList.contains('hidden');
-                
-                if (isHidden) {
-                    // Close all other sections first (accordion behavior)
-                    closeAllSections(sectionId);
-                    
-                    // Open this section with a small delay for smooth transition
-                    setTimeout(function() {
-                        openSection(sectionId);
-                    }, 50);
-                } else {
-                    // Close this section
-                    closeSection(sectionId);
-                }
-            });
-        });
-    });
-
-    // ========== HANDLE WINDOW RESIZE ==========
-    let resizeTimeout;
-    window.addEventListener('resize', function() {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(function() {
-            const wasMobile = isMobile;
-            isMobile = window.innerWidth < 768;
-            
-            if (window.innerWidth >= 768) {
-                // Switching to desktop
-                const sidebar = document.getElementById('sidebar');
-                const backdrop = document.getElementById('sidebarBackdrop');
-                
-                // Ensure mobile state is cleared
-                sidebar.classList.remove('-translate-x-full');
-                backdrop.classList.add('hidden');
-                document.body.style.overflow = '';
-                mobileSidebarOpen = false;
-                
-                // Restore desktop state
-                updateDesktopSidebar();
-                
-                // Reset toggle icon to menu
-                const toggleIcon = document.getElementById('toggleIcon');
-                if (toggleIcon) {
-                    toggleIcon.innerHTML = `{% lucide "menu" size=20 class="h-5 w-5" %}`;
-                }
-            } else {
-                // Switching to mobile
-                const sidebar = document.getElementById('sidebar');
-                const backdrop = document.getElementById('sidebarBackdrop');
-                
-                // Ensure mobile sidebar is closed
-                sidebar.classList.add('-translate-x-full');
-                backdrop.classList.add('hidden');
-                document.body.style.overflow = '';
-                mobileSidebarOpen = false;
-                
-                // Reset toggle icon to menu
-                const toggleIcon = document.getElementById('toggleIcon');
-                if (toggleIcon) {
-                    toggleIcon.innerHTML = `{% lucide "menu" size=20 class="h-5 w-5" %}`;
-                }
-                
-                // Remove desktop w-0 class if present (mobile uses translate-x-full)
-                sidebar.classList.remove('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
-                sidebar.classList.add('w-64');
-            }
-        }, 200);
-    });
-
-    // ========== CONFIRM LOGOUT ==========
-    function confirmLogout() {
-        openConfirmationModal(
-            'Are you sure you want to log out? You will need to log in again.',
-            'Log Out',
-            'Log Out',
-            'btn-danger',
-            function() {
-                document.getElementById('logoutForm').submit();
-            }
-        );
-    }
-
-    // ========== WEBSOCKET NOTIFICATIONS ==========
-    let ws = null;
-    let notificationSocketConnected = false;
-
-    function connectNotificationWebSocket() {
-        fetch('{% url "notifications:ws_init" %}')
-            .then(response => response.json())
-            .then(data => {
-                const wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') 
-                    + window.location.host 
-                    + data.websocket_url;
-                ws = new WebSocket(wsUrl);
-
-                ws.onopen = function() {
-                    notificationSocketConnected = true;
-                    console.log('WebSocket connected for notifications.');
-                };
-
-                ws.onmessage = function(event) {
-                    const data = JSON.parse(event.data);
-                    console.log('Notification received:', data);
-
-                    if (data.unread_count !== undefined) {
-                        updateBellBadge(data.unread_count);
-                    }
-
-                    showToast(data.message, data.notification_type || 'info');
-
-                    if (data.url) {
-                        window.__pendingNotificationUrl = data.url;
-                    }
-                };
-
-                ws.onclose = function() {
-                    notificationSocketConnected = false;
-                    console.log('WebSocket disconnected. Reconnecting in 3 seconds...');
-                    setTimeout(connectNotificationWebSocket, 3000);
-                };
-
-                ws.onerror = function(error) {
-                    console.error('WebSocket error:', error);
-                    ws.close();
-                };
-            })
-            .catch(error => {
-                console.error('Failed to get WebSocket config:', error);
-            });
-    }
-
-    function updateBellBadge(count) {
-        const badgeContainer = document.getElementById('notificationBadgeContainer');
-        if (badgeContainer) {
-            if (count > 0) {
-                badgeContainer.innerHTML = `
-                    <span class="absolute -top-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[0.55rem] font-bold text-white"
-                          style="background-color: var(--color-error);">
-                        ${count}
-                    </span>
-                `;
-            } else {
-                badgeContainer.innerHTML = '';
-            }
-        }
-    }
-
-    // ========== DJANGO MESSAGES AS TOASTS ==========
-    document.addEventListener('DOMContentLoaded', function() {
-        // Connect WebSocket
-        if (document.getElementById('notificationBell')) {
-            connectNotificationWebSocket();
-        }
-
-        // Register Service Worker for Push Notifications
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js', { scope: '/' })
-                .then(function(registration) {
-                    console.log('Service Worker registered for push notifications.');
-                })
-                .catch(function(error) {
-                    console.error('Service Worker registration failed:', error);
-                });
-        }
-
-        // Display Django messages as toasts
-        const messagesData = document.getElementById('django-messages-data');
-        if (messagesData) {
-            try {
-                const messages = JSON.parse(messagesData.dataset.messages);
-                messages.forEach(function(msg) {
-                    let type = 'info';
-                    if (msg.tags.includes('success')) type = 'success';
-                    else if (msg.tags.includes('error')) type = 'error';
-                    else if (msg.tags.includes('warning')) type = 'warning';
-                    showToast(msg.text, type);
-                });
-            } catch (e) {
-                console.error('Failed to parse messages:', e);
-            }
-        }
-    });
-</script>
+{# Page-specific JS #}
 {% block extra_scripts %}{% endblock %}
 {% endblock %}

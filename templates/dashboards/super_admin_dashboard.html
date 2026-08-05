@@ -4,11 +4,7 @@
 
 {% block dashboard_title %}Super Admin Dashboard{% endblock %}
 {% block page_title_area %}{% endblock %}
-{% block role_label %}Super Admin{% endblock %}
+{% block role_label %}{{ active_role_display|default:"Super Admin" }}{% endblock %}
 {% block role_badge %}SUPER ADMIN{% endblock %}
-
-{% block sidebar_nav %}
-    {% include "partials/sidebar_superadmin.html" %}
-{% endblock %}
 
 {# All other content comes from admin_dashboard.html #}
