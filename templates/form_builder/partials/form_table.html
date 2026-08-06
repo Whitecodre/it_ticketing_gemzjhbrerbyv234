@@ -1,0 +1,154 @@
+{% load lucide %}
+
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b" style="border-color: var(--color-border);">
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Title</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Type</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Category</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Submissions</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Created</th>
+                <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in forms %}
+            <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                <td class="py-3 px-4">
+                    <div>
+                        <div class="font-medium" style="color: var(--color-text-primary);">
+                            {{ form.title }}
+                        </div>
+                        <div class="text-xs text-text-secondary">{{ form.slug }}</div>
+                        {% if form.description %}
+                        <div class="text-xs text-text-secondary truncate max-w-xs">{{ form.description|truncatechars:60 }}</div>
+                        {% endif %}
+                    </div>
+                </td>
+                <td class="py-3 px-4">
+                    <span class="text-xs text-text-secondary">{{ form.get_form_type_display }}</span>
+                </td>
+                <td class="py-3 px-4">
+                    {% if form.category %}
+                    <span class="text-xs">{{ form.category.name }}</span>
+                    {% else %}
+                    <span class="text-xs text-text-secondary">—</span>
+                    {% endif %}
+                </td>
+                <td class="py-3 px-4">
+                    <span class="status-chip 
+                        {% if form.status == 'PUBLISHED' %}success
+                        {% elif form.status == 'DRAFT' %}warning
+                        {% elif form.status == 'ARCHIVED' %}neutral
+                        {% else %}open{% endif %} text-xs">
+                        {{ form.get_status_display }}
+                    </span>
+                </td>
+                <td class="py-3 px-4 text-center">
+                    <span class="text-sm font-medium" style="color: var(--color-text-primary);">
+                        {{ form.submission_count }}
+                    </span>
+                </td>
+                <td class="py-3 px-4">
+                    <span class="text-xs text-text-secondary">{{ form.created_at|date:"M d, Y" }}</span>
+                </td>
+                <td class="py-3 px-4 text-center">
+                    <div class="flex items-center justify-center gap-1">
+                        <a href="{% url 'form_builder:builder' form.pk %}"
+                           class="p-1.5 rounded transition hover:bg-black/5"
+                           style="color: var(--color-text-secondary);"
+                           title="Edit Form">
+                            {% lucide "edit" size=15 %}
+                        </a>
+                        <a href="{% url 'form_builder:preview' form.pk %}"
+                           target="_blank"
+                           class="p-1.5 rounded transition hover:bg-black/5"
+                           style="color: var(--color-text-secondary);"
+                           title="Preview Form">
+                            {% lucide "eye" size=15 %}
+                        </a>
+                        <a href="{% url 'form_builder:submissions' form.pk %}"
+                           class="p-1.5 rounded transition hover:bg-black/5"
+                           style="color: var(--color-text-secondary);"
+                           title="View Submissions">
+                            {% lucide "list" size=15 %}
+                        </a>
+                        <button onclick="duplicateForm({{ form.pk }})"
+                                class="p-1.5 rounded transition hover:bg-black/5"
+                                style="color: var(--color-text-secondary);"
+                                title="Duplicate Form">
+                            {% lucide "copy" size=15 %}
+                        </button>
+                        <button onclick="openDeleteModal({{ form.pk }}, '{{ form.title|escapejs }}')"
+                                class="p-1.5 rounded transition hover:bg-black/5"
+                                style="color: var(--color-text-secondary);"
+                                title="Delete Form">
+                            {% lucide "trash-2" size=15 %}
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="text-center py-12 text-text-secondary">
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-4xl opacity-30">📝</span>
+                        <p class="text-sm font-medium">No forms found</p>
+                        <p class="text-xs">Create your first form to get started.</p>
+                        <a href="{% url 'form_builder:builder' %}" class="btn-primary text-sm mt-2">Create Form</a>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+{% if forms.has_other_pages %}
+<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--color-border);">
+    <span class="text-sm text-text-secondary">
+        Showing {{ forms.start_index }} - {{ forms.end_index }} of {{ forms.paginator.count }}
+    </span>
+    <div class="flex gap-1.5">
+        {% if forms.has_previous %}
+        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
+                hx-get="{% url 'form_builder:list' %}?page={{ forms.previous_page_number }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
+                hx-target="#formTableContainer"
+                hx-swap="innerHTML">
+            ← Prev
+        </button>
+        {% endif %}
+        
+        <span class="px-3 py-1 text-sm rounded bg-primary text-white">
+            {{ forms.number }}
+        </span>
+        
+        {% if forms.has_next %}
+        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
+                hx-get="{% url 'form_builder:list' %}?page={{ forms.next_page_number }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
+                hx-target="#formTableContainer"
+                hx-swap="innerHTML">
+            Next →
+        </button>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<script>
+function duplicateForm(formId) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = `{% url 'form_builder:duplicate' 0 %}`.replace('0', formId);
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrfmiddlewaretoken';
+    csrf.value = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    form.appendChild(csrf);
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>

@@ -1,8 +1,10 @@
 from django import forms
-from .models import Ticket, TicketComment, Asset
+from .models import Ticket, TicketComment, Asset, AssetCategory
 from apps.common.models import Category
 from django.utils.text import slugify
+from django.contrib.auth import get_user_model
 
+User = get_user_model()
 
 class TicketForm(forms.ModelForm):
     # Override category field to handle "OTHER"
@@ -109,8 +111,25 @@ class CommentForm(forms.ModelForm):
         }
 
 
+# apps/tickets/forms.py - Replace the AssetForm with this updated version
+
 class AssetForm(forms.ModelForm):
-    # Override the fields completely to bypass model choices validation
+    """Enhanced Asset Form with all new fields."""
+    
+    # ================================================================
+    # EXPLICIT FIELD DECLARATIONS (to control widgets and choices)
+    # ================================================================
+    
+    # Category - explicit ModelChoiceField
+    category = forms.ModelChoiceField(
+        queryset=AssetCategory.objects.all().order_by('name'),
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        }),
+        empty_label="-- Select Category --"
+    )
+    
     asset_type = forms.CharField(
         max_length=20,
         required=False,
@@ -135,7 +154,15 @@ class AssetForm(forms.ModelForm):
         })
     )
     
-    # Custom field for "Other" location
+    condition = forms.CharField(
+        max_length=20,
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        })
+    )
+    
+    # "Other" fields
     location_other = forms.CharField(
         max_length=200,
         required=False,
@@ -147,7 +174,6 @@ class AssetForm(forms.ModelForm):
         label='Custom Location'
     )
     
-    # Custom field for "Other" asset type
     asset_type_other = forms.CharField(
         max_length=100,
         required=False,
@@ -159,7 +185,6 @@ class AssetForm(forms.ModelForm):
         label='Custom Asset Type'
     )
     
-    # Custom field for "Other" status
     status_other = forms.CharField(
         max_length=100,
         required=False,
@@ -174,10 +199,40 @@ class AssetForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Populate the select choices
+        # Populate select choices
         self.fields['asset_type'].widget.choices = [('', '-- Select Type --')] + list(Asset.AssetType.choices)
         self.fields['location'].widget.choices = [('', '-- Select Location --')] + list(Asset.Location.choices)
         self.fields['status'].widget.choices = [('', '-- Select Status --')] + list(Asset.Status.choices)
+        self.fields['condition'].widget.choices = [('', '-- Select Condition --')] + list(Asset.Condition.choices)
+        
+        # Category queryset is already set above, but we can add additional filtering if needed
+        # The category field is already defined as a ModelChoiceField with the queryset set
+        
+        # Filter assigned_to to active users only
+        if 'assigned_to' in self.fields:
+            self.fields['assigned_to'].queryset = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
+        
+        # Set depreciation years choices
+        if 'depreciation_years' in self.fields:
+            self.fields['depreciation_years'].widget.choices = [
+                ('', '-- Select --'),
+                (1, '1 Year'),
+                (2, '2 Years'),
+                (3, '3 Years'),
+                (4, '4 Years'),
+                (5, '5 Years'),
+            ]
+        
+        # Set warranty duration choices
+        if 'warranty_duration_years' in self.fields:
+            self.fields['warranty_duration_years'].widget.choices = [
+                (0, 'None'),
+                (1, '1 Year'),
+                (2, '2 Years'),
+                (3, '3 Years'),
+                (4, '4 Years'),
+                (5, '5 Years'),
+            ]
 
     def clean(self):
         cleaned_data = super().clean()
@@ -192,7 +247,7 @@ class AssetForm(forms.ModelForm):
             else:
                 self.add_error('asset_type_other', 'Please enter a custom asset type.')
         elif not asset_type:
-            self.add_error('asset_type', 'Asset type is required.')
+            cleaned_data['asset_type'] = ''
         
         # --- Handle "OTHER" for location ---
         location = cleaned_data.get('location')
@@ -216,19 +271,43 @@ class AssetForm(forms.ModelForm):
             else:
                 self.add_error('status_other', 'Please enter a custom status.')
         elif not status:
-            cleaned_data['status'] = 'ACTIVE'
+            cleaned_data['status'] = Asset.Status.IN_STORE
         
         return cleaned_data
 
     class Meta:
         model = Asset
         fields = [
-            'name', 'asset_type', 'status', 'serial_number', 'model', 
-            'manufacturer', 'location', 'purchase_date', 'warranty_duration_years',
-            'warranty_expiry', 'assigned_to', 'notes'
+            # Basic
+            'name', 'category', 'asset_type', 'serial_number', 'model', 
+            'manufacturer', 'location',
+            
+            # Financial
+            'purchase_date', 'purchase_price', 'depreciation_years', 'salvage_value',
+            
+            # Warranty
+            'warranty_expiry', 'warranty_duration_years', 'warranty_provider', 'warranty_notes',
+            
+            # Assignment
+            'assigned_to', 'assigned_to_department',
+            
+            # Status & Condition
+            'status', 'condition', 'condition_notes',
+            
+            # Maintenance
+            'last_maintenance', 'next_maintenance', 'maintenance_interval_months', 'maintenance_notes',
+            
+            # Supplier
+            'supplier', 'invoice_number', 'po_number', 'purchase_order',
+            
+            # Notes
+            'notes',
         ]
         widgets = {
             'name': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'category': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
             'serial_number': forms.TextInput(attrs={
@@ -244,19 +323,91 @@ class AssetForm(forms.ModelForm):
                 'type': 'date',
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
-            'warranty_duration_years': forms.Select(attrs={
+            'purchase_price': forms.NumberInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'step': '0.01',
+                'placeholder': '0.00'
+            }),
+            'depreciation_years': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'salvage_value': forms.NumberInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'step': '0.01',
+                'placeholder': '0.00'
             }),
             'warranty_expiry': forms.DateInput(attrs={
                 'type': 'date',
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm bg-gray-100 text-gray-600 cursor-not-allowed focus:outline-none',
                 'readonly': True
             }),
+            'warranty_duration_years': forms.Select(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'warranty_provider': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Warranty provider name'
+            }),
+            'warranty_notes': forms.Textarea(attrs={
+                'rows': 2,
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Additional warranty notes...'
+            }),
             'assigned_to': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
+            'assigned_to_department': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Department name'
+            }),
+            'status': forms.Select(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'condition': forms.Select(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'condition_notes': forms.Textarea(attrs={
+                'rows': 2,
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Notes about asset condition...'
+            }),
+            'last_maintenance': forms.DateInput(attrs={
+                'type': 'date',
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'next_maintenance': forms.DateInput(attrs={
+                'type': 'date',
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'maintenance_interval_months': forms.NumberInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'min': 1,
+                'max': 60
+            }),
+            'maintenance_notes': forms.Textarea(attrs={
+                'rows': 2,
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Maintenance notes...'
+            }),
+            'supplier': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Supplier/Vendor name'
+            }),
+            'invoice_number': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Invoice number'
+            }),
+            'po_number': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'PO number'
+            }),
+            'purchase_order': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'Purchase Order number'
+            }),
             'notes': forms.Textarea(attrs={
                 'rows': 3,
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'General notes about this asset...'
             }),
         }

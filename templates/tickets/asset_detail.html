@@ -11,7 +11,7 @@
 {% endblock %}
 
 {% block dashboard_content %}
-<div class="max-w-4xl mx-auto">
+<div class="max-w-5xl mx-auto">
     <div class="mb-4 flex items-center gap-3">
         <a href="{% url 'tickets:assets' %}" class="btn-ghost text-sm flex items-center gap-1">
             {% lucide "arrow-left" size=16 %} Back to Assets
@@ -19,133 +19,332 @@
     </div>
 
     <div class="dashboard-card">
+        <!-- Header -->
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
             <div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
                     <h1 class="text-xl font-bold" style="color: var(--color-text-primary);">{{ asset.name }}</h1>
                     <span class="status-chip 
-                        {% if asset.status == 'ACTIVE' %}resolved
-                        {% elif asset.status == 'IN_STORE' %}open
-                        {% elif asset.status == 'MAINTENANCE' %}in-progress
-                        {% elif asset.status == 'DAMAGED' %}escalated
-                        {% elif asset.status == 'SCRAPPED' %}closed
-                        {% else %}open{% endif %} text-xs">
-                        {{ asset.status|default:"—" }}
+                        {% if asset.status == 'IN_STORE' or asset.status == 'READY' %}success
+                        {% elif asset.status == 'CHECKED_OUT' or asset.status == 'IN_USE' %}primary
+                        {% elif asset.status == 'MAINTENANCE' or asset.status == 'REPAIR' %}warning
+                        {% elif asset.status == 'RETIRED' or asset.status == 'SCRAPPED' %}neutral
+                        {% elif asset.status == 'LOST' or asset.status == 'STOLEN' %}danger
+                        {% else %}info{% endif %} text-xs">
+                        {{ asset.get_status_display }}
+                    </span>
+                    <span class="status-chip 
+                        {% if asset.condition == 'EXCELLENT' %}success
+                        {% elif asset.condition == 'GOOD' %}info
+                        {% elif asset.condition == 'FAIR' %}warning
+                        {% elif asset.condition == 'POOR' %}danger
+                        {% elif asset.condition == 'DAMAGED' %}danger
+                        {% else %}neutral{% endif %} text-xs">
+                        {{ asset.get_condition_display }}
                     </span>
                 </div>
                 <p class="text-sm text-text-secondary">{{ asset.tracking_id }}</p>
+                {% if asset.category %}
+                <p class="text-xs text-text-secondary mt-1">
+                    Category: {{ asset.category.full_name }}
+                </p>
+                {% endif %}
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-wrap">
                 {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
                 <a href="{% url 'tickets:asset_edit_page' asset.pk %}" 
-                class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                   class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "pencil" size=14 %} Edit
                 </a>
                 {% endif %}
-                {% if asset.status != 'SCRAPPED' and asset.status != 'DAMAGED' %}
+                {% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' %}
                 <button class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1"
                         onclick="openScrapRequestModal({{ asset.pk }})">
                     {% lucide "trash-2" size=14 %} Request Scrap
                 </button>
                 {% endif %}
-                {% if asset.status == 'DAMAGED' and user.role in 'ADMIN,SUPERADMIN' %}
+                {% if asset.status == 'MAINTENANCE' and user.role in 'ADMIN,SUPERADMIN' %}
                 <button class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1"
-                        onclick="openScrapApproveModal({{ asset.pk }})">
-                    {% lucide "check-circle" size=14 %} Approve Scrap
+                        onclick="markMaintenanceComplete({{ asset.pk }})">
+                    {% lucide "check-circle" size=14 %} Complete Maintenance
                 </button>
                 {% endif %}
             </div>
         </div>
 
-        <!-- Asset Info Grid -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <div>
-                <h3 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Details</h3>
-                <dl class="space-y-2 text-sm">
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Tracking ID</dt>
-                        <dd class="font-mono text-primary">{{ asset.tracking_id }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Type</dt>
-                        <dd>{{ asset.asset_type|default:"—" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Serial Number</dt>
-                        <dd>{{ asset.serial_number|default:"—" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Model</dt>
-                        <dd>{{ asset.model|default:"—" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Manufacturer</dt>
-                        <dd>{{ asset.manufacturer|default:"—" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Location</dt>
-                        <dd>{{ asset.location|default:"—" }}</dd>
-                    </div>
-                </dl>
+        <!-- Stats Row -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold text-primary">${{ current_value|floatformat:2 }}</p>
+                <p class="text-xs text-text-secondary">Current Value</p>
             </div>
-            <div>
-                <h3 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Assignment & Warranty</h3>
-                <dl class="space-y-2 text-sm">
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Assigned To</dt>
-                        <dd>{{ asset.assigned_to.get_full_name|default:"Unassigned" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Purchase Date</dt>
-                        <dd>{{ asset.purchase_date|date:"M d, Y"|default:"—" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Warranty Expiry</dt>
-                        <dd>{{ asset.warranty_expiry|date:"M d, Y"|default:"—" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Created</dt>
-                        <dd>{{ asset.created_at|date:"M d, Y H:i" }}</dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="text-text-secondary">Last Updated</dt>
-                        <dd>{{ asset.updated_at|date:"M d, Y H:i" }}</dd>
-                    </div>
-                </dl>
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold text-info">{{ asset.days_checked_out }}</p>
+                <p class="text-xs text-text-secondary">Days Checked Out</p>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold {% if asset.warranty_status == 'VALID' %}text-success{% elif asset.warranty_status == 'EXPIRING_SOON' %}text-warning{% elif asset.warranty_status == 'EXPIRED' %}text-danger{% else %}text-text-secondary{% endif %}">
+                    {% if asset.warranty_status == 'VALID' %}✓
+                    {% elif asset.warranty_status == 'EXPIRING_SOON' %}⚠
+                    {% elif asset.warranty_status == 'EXPIRED' %}✗
+                    {% else %}?{% endif %}
+                </p>
+                <p class="text-xs text-text-secondary">
+                    {% if asset.warranty_status == 'VALID' %}Warranty Active
+                    {% elif asset.warranty_status == 'EXPIRING_SOON' %}Expiring Soon
+                    {% elif asset.warranty_status == 'EXPIRED' %}Warranty Expired
+                    {% else %}No Warranty{% endif %}
+                </p>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold text-accent">{{ asset.maintenance_logs.count }}</p>
+                <p class="text-xs text-text-secondary">Maintenance Records</p>
             </div>
         </div>
 
-        <!-- Notes -->
-        {% if asset.notes %}
-        <div class="mt-6 pt-4 border-t" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold mb-2" style="color: var(--color-text-secondary);">Notes</h3>
-            <p class="text-sm" style="color: var(--color-text-primary);">{{ asset.notes|linebreaks }}</p>
-        </div>
-        {% endif %}
+        <!-- Tabs -->
+        <div x-data="{ tab: 'details' }" class="mt-4">
+            <div class="flex border-b gap-1 mb-4" style="border-color: var(--color-border);">
+                <button @click="tab = 'details'" 
+                        :class="tab === 'details' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
+                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                    Details
+                </button>
+                <button @click="tab = 'history'" 
+                        :class="tab === 'history' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
+                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                    History
+                </button>
+                <button @click="tab = 'maintenance'" 
+                        :class="tab === 'maintenance' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
+                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                    Maintenance
+                </button>
+                <button @click="tab = 'checkout'" 
+                        :class="tab === 'checkout' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
+                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                    Checkout History
+                </button>
+            </div>
 
-        <!-- Activity Log -->
-        <div class="mt-6 pt-4 border-t" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Activity Log</h3>
-            {% if logs %}
-            <div class="space-y-2">
-                {% for log in logs %}
-                <div class="flex justify-between text-sm py-1 border-b" style="border-color: var(--color-border);">
-                    <span>
-                        <span class="font-medium" style="color: var(--color-text-primary);">{{ log.get_action_display }}</span>
-                        <span class="text-text-secondary ml-2">{{ log.details|default:"" }}</span>
-                    </span>
-                    <span class="text-text-secondary text-xs">{{ log.created_at|date:"M d, Y H:i" }}</span>
+            <!-- Tab: Details -->
+            <div x-show="tab === 'details'" class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Asset Details</h4>
+                        <dl class="space-y-2 text-sm">
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Tracking ID</dt>
+                                <dd class="font-mono text-primary">{{ asset.tracking_id }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Type</dt>
+                                <dd>{{ asset.asset_type|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Serial Number</dt>
+                                <dd>{{ asset.serial_number|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Model</dt>
+                                <dd>{{ asset.model|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Manufacturer</dt>
+                                <dd>{{ asset.manufacturer|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Location</dt>
+                                <dd>{{ asset.location|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Supplier</dt>
+                                <dd>{{ asset.supplier|default:"—" }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                    <div>
+                        <h4 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Assignment & Financial</h4>
+                        <dl class="space-y-2 text-sm">
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Assigned To</dt>
+                                <dd>{{ asset.assigned_to.get_full_name|default:"Unassigned" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Department</dt>
+                                <dd>{{ asset.assigned_to_department|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Purchase Date</dt>
+                                <dd>{{ asset.purchase_date|date:"M d, Y"|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Purchase Price</dt>
+                                <dd>${{ asset.purchase_price|floatformat:2|default:"—" }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Current Value</dt>
+                                <dd class="font-semibold">${{ current_value|floatformat:2 }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Depreciation (Years)</dt>
+                                <dd>{{ asset.depreciation_years|default:"3" }} years</dd>
+                            </div>
+                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                                <dt class="text-text-secondary">Warranty Expiry</dt>
+                                <dd>{{ asset.warranty_expiry|date:"M d, Y"|default:"—" }}</dd>
+                            </div>
+                        </dl>
+                    </div>
                 </div>
-                {% endfor %}
+
+                {% if asset.notes or asset.condition_notes %}
+                <div class="pt-4 border-t" style="border-color: var(--color-border);">
+                    <h4 class="text-sm font-semibold mb-2" style="color: var(--color-text-secondary);">Notes</h4>
+                    {% if asset.notes %}
+                    <p class="text-sm" style="color: var(--color-text-primary);">{{ asset.notes|linebreaks }}</p>
+                    {% endif %}
+                    {% if asset.condition_notes %}
+                    <p class="text-sm mt-2" style="color: var(--color-text-secondary);">
+                        <strong>Condition Notes:</strong> {{ asset.condition_notes }}
+                    </p>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
-            {% else %}
-            <p class="text-sm text-text-secondary">No activity recorded.</p>
-            {% endif %}
+
+            <!-- Tab: History -->
+            <div x-show="tab === 'history'">
+                {% if logs %}
+                <div class="space-y-2">
+                    {% for log in logs %}
+                    <div class="flex justify-between text-sm py-2 border-b" style="border-color: var(--color-border);">
+                        <span>
+                            <span class="font-medium" style="color: var(--color-text-primary);">{{ log.get_action_display }}</span>
+                            <span class="text-text-secondary ml-2">{{ log.details|default:"" }}</span>
+                        </span>
+                        <span class="text-text-secondary text-xs">{{ log.created_at|date:"M d, Y H:i" }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-text-secondary text-center py-4">No activity recorded.</p>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Maintenance -->
+            <div x-show="tab === 'maintenance'">
+                <div class="flex items-center justify-between mb-4">
+                    <h4 class="text-sm font-semibold" style="color: var(--color-text-secondary);">Maintenance Records</h4>
+                    {% if user.role in 'ADMIN,SUPERADMIN' %}
+                    <button onclick="openMaintenanceModal({{ asset.pk }})" 
+                            class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                        {% lucide "plus" size=12 %} Add Record
+                    </button>
+                    {% endif %}
+                </div>
+                {% if maintenance_logs %}
+                <div class="space-y-3">
+                    {% for log in maintenance_logs %}
+                    <div class="p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="font-medium text-sm" style="color: var(--color-text-primary);">{{ log.title }}</span>
+                                <span class="status-chip info text-xs ml-2">{{ log.get_maintenance_type_display }}</span>
+                            </div>
+                            <span class="text-xs text-text-secondary">{{ log.performed_at|date:"M d, Y" }}</span>
+                        </div>
+                        <p class="text-sm text-text-secondary mt-1">{{ log.description|truncatechars:100 }}</p>
+                        {% if log.cost %}
+                        <p class="text-xs text-text-secondary mt-1">Cost: ${{ log.cost|floatformat:2 }}</p>
+                        {% endif %}
+                        {% if log.next_maintenance_date %}
+                        <p class="text-xs text-text-secondary mt-1">Next Maintenance: {{ log.next_maintenance_date|date:"M d, Y" }}</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-text-secondary text-center py-4">No maintenance records.</p>
+                {% endif %}
+                
+                {% if asset.last_maintenance or asset.next_maintenance %}
+                <div class="mt-4 p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                            <span class="text-text-secondary">Last Maintenance:</span>
+                            <span class="font-medium" style="color: var(--color-text-primary);">
+                                {{ asset.last_maintenance|date:"M d, Y"|default:"Never" }}
+                            </span>
+                        </div>
+                        <div>
+                            <span class="text-text-secondary">Next Maintenance:</span>
+                            <span class="font-medium" style="color: var(--color-text-primary);">
+                                {{ asset.next_maintenance|date:"M d, Y"|default:"Not scheduled" }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-xs text-text-secondary">
+                        Interval: Every {{ asset.maintenance_interval_months }} months
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Checkout History -->
+            <div x-show="tab === 'checkout'">
+                {% if checkout_history %}
+                <div class="space-y-3">
+                    {% for record in checkout_history %}
+                    <div class="p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <span class="font-medium text-sm" style="color: var(--color-text-primary);">
+                                    {{ record.checked_out_to.get_full_name|default:record.checked_out_to.email }}
+                                </span>
+                                <span class="text-xs text-text-secondary ml-2">
+                                    {{ record.checked_out_at|date:"M d, Y" }}
+                                </span>
+                            </div>
+                            {% if record.checked_in_at %}
+                            <span class="status-chip success text-xs">Returned</span>
+                            {% else %}
+                            <span class="status-chip warning text-xs">Active</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-xs text-text-secondary mt-1">
+                            Checked out by: {{ record.checked_out_by.get_full_name|default:record.checked_out_by.email }}
+                        </div>
+                        {% if record.expected_return_date %}
+                        <div class="text-xs text-text-secondary">
+                            Expected Return: {{ record.expected_return_date|date:"M d, Y" }}
+                        </div>
+                        {% endif %}
+                        {% if record.checked_in_at %}
+                        <div class="text-xs text-text-secondary mt-1">
+                            Returned: {{ record.checked_in_at|date:"M d, Y" }}
+                            {% if record.return_reason %}
+                            | Reason: {{ record.get_return_reason_display }}
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if record.notes %}
+                        <div class="text-xs text-text-secondary mt-1">
+                            Notes: {{ record.notes }}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-sm text-text-secondary text-center py-4">No checkout history.</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Modal Overlay for Edit/Actions -->
+<!-- Modal Overlay -->
 <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
      onclick="if(event.target===this) closeModal()">
     <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);">
@@ -153,7 +352,7 @@
 </div>
 
 <script>
-    // Base URLs for actions (same as in asset_list.html)
+    // Base URLs for actions
     const scrapApproveUrl = "{% url 'tickets:asset_scrap_approve' 0 %}";
     const scrapRequestUrl = "{% url 'tickets:asset_scrap_request' 0 %}";
     
@@ -208,6 +407,16 @@
             </div>
         `;
         document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function openMaintenanceModal(assetId) {
+        // You'll need to implement this - could use HTMX or a separate view
+        showToast('Maintenance logging coming soon!', 'info');
+    }
+
+    function markMaintenanceComplete(assetId) {
+        // You'll need to implement this - could use HTMX or a separate view
+        showToast('Maintenance completion coming soon!', 'info');
     }
 </script>
 {% endblock %}

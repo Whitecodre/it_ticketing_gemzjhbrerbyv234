@@ -1,0 +1,98 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Submissions - {{ form_instance.title }}{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="w-full">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+            <div class="flex items-center gap-3">
+                <a href="{% url 'form_builder:list' %}" class="btn-ghost text-sm flex items-center gap-1">
+                    {% lucide "arrow-left" size=16 %} Forms
+                </a>
+                <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+                    Submissions: {{ form_instance.title }}
+                </h2>
+                <span class="text-sm text-text-secondary">({{ form_instance.submission_count }})</span>
+            </div>
+            <p class="text-sm text-text-secondary mt-1">{{ form_instance.description }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'form_builder:builder' form_instance.pk %}" 
+               class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "edit" size=16 %} Edit Form
+            </a>
+            <div class="relative">
+                <button class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2"
+                        onclick="toggleExportDropdown()">
+                    {% lucide "download" size=16 %} Export
+                    <span class="ml-1">▾</span>
+                </button>
+                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999]"
+                    style="background-color: var(--color-surface); border-color: var(--color-border);">
+                    <a href="{% url 'form_builder:export' form_instance.pk %}?format=csv" 
+                       class="block px-4 py-2 text-xs hover:bg-black/5 transition">CSV</a>
+                    <a href="{% url 'form_builder:export' form_instance.pk %}?format=excel" 
+                       class="block px-4 py-2 text-xs hover:bg-black/5 transition">Excel</a>
+                    <a href="{% url 'form_builder:export' form_instance.pk %}?format=json" 
+                       class="block px-4 py-2 text-xs hover:bg-black/5 transition">JSON</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex flex-wrap items-center gap-3 mb-4">
+        <form class="flex flex-wrap items-center gap-3" 
+              hx-get="{% url 'form_builder:submissions' form_instance.pk %}"
+              hx-target="#submissionTableContainer"
+              hx-trigger="change, input delay:300ms from:input">
+            
+            <input type="text" name="search" value="{{ search }}"
+                   placeholder="Search submissions..."
+                   class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary w-48">
+            
+            <select name="status" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                <option value="">All Status</option>
+                {% for value, label in status_choices %}
+                <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            
+            <button type="reset" class="btn-ghost text-sm">Reset</button>
+        </form>
+    </div>
+
+    <!-- Table -->
+    <div id="submissionTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
+        {% include "form_builder/partials/submission_table.html" %}
+    </div>
+</div>
+
+<script>
+    function toggleExportDropdown() {
+        const dropdown = document.getElementById('exportDropdown');
+        if (dropdown) {
+            dropdown.classList.toggle('hidden');
+        }
+    }
+    
+    // Close dropdown on outside click
+    document.addEventListener('click', function(event) {
+        const dropdown = document.getElementById('exportDropdown');
+        if (dropdown && !dropdown.contains(event.target)) {
+            dropdown.classList.add('hidden');
+        }
+    });
+</script>
+
+{% endblock %}

@@ -1,0 +1,59 @@
+{% load lucide %}
+
+<div id="checkoutModal" class="modal-overlay">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3 class="modal-title">{% lucide "log-out" size=18 %} Check Out Asset</h3>
+            <button class="modal-close" onclick="closeModal('checkoutModal')">×</button>
+        </div>
+        
+        <form method="post" 
+              action="{% url 'tickets:asset_checkout' asset.pk %}"
+              class="modal-body">
+            {% csrf_token %}
+            
+            <div class="asset-summary">
+                <p><strong>{{ asset.name }}</strong></p>
+                <p class="text-sm text-text-secondary">{{ asset.tracking_id }}</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="user_id" class="form-label">Check Out To <span class="text-error">*</span></label>
+                <select name="user_id" id="user_id" required class="form-select">
+                    <option value="">Select a user...</option>
+                    {% for user in users %}
+                        <option value="{{ user.pk }}">{{ user.get_full_name|default:user.email }} ({{ user.get_department_display }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="expected_return_date" class="form-label">Expected Return Date</label>
+                <input type="date" name="expected_return_date" id="expected_return_date" class="form-input">
+                <p class="form-help">Optional. Leave blank if not applicable.</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="notes" class="form-label">Notes</label>
+                <textarea name="notes" id="notes" rows="2" class="form-textarea" placeholder="Any additional information..."></textarea>
+            </div>
+            
+            <div class="modal-footer">
+                <button type="button" class="btn-ghost" onclick="closeModal('checkoutModal')">Cancel</button>
+                <button type="submit" class="btn-primary">
+                    {% lucide "log-out" size=16 %}
+                    Check Out
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Auto-close on backdrop click
+    document.getElementById('checkoutModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeModal('checkoutModal');
+        }
+    });
+</script>

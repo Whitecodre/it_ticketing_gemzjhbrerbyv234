@@ -291,3 +291,76 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('🔵 Asset management JS initialized');
 });
+
+// ================================================================
+// ASSET CHECK-IN/CHECK-OUT
+// ================================================================
+
+function openCheckoutModal(assetId) {
+    const url = `/tickets/assets/${assetId}/checkout-modal/`;
+    const container = document.getElementById('modalContainer');
+    const overlay = document.getElementById('modalOverlay');
+    
+    if (!container || !overlay) return;
+    
+    container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+    overlay.classList.remove('hidden');
+    
+    htmx.ajax('GET', url, {
+        target: '#modalContainer',
+        swap: 'innerHTML',
+        onError: function() {
+            container.innerHTML = '<div class="p-6 text-center text-error">Failed to load checkout form.</div>';
+        }
+    });
+}
+
+function openCheckinModal(assetId) {
+    const url = `/tickets/assets/${assetId}/checkin-modal/`;
+    const container = document.getElementById('modalContainer');
+    const overlay = document.getElementById('modalOverlay');
+    
+    if (!container || !overlay) return;
+    
+    container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+    overlay.classList.remove('hidden');
+    
+    htmx.ajax('GET', url, {
+        target: '#modalContainer',
+        swap: 'innerHTML',
+        onError: function() {
+            container.innerHTML = '<div class="p-6 text-center text-error">Failed to load checkin form.</div>';
+        }
+    });
+}
+
+function openCheckoutHistory(assetId) {
+    const url = `/tickets/assets/${assetId}/checkout-history/`;
+    const container = document.getElementById('modalContainer');
+    const overlay = document.getElementById('modalOverlay');
+    
+    if (!container || !overlay) return;
+    
+    container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+    overlay.classList.remove('hidden');
+    
+    htmx.ajax('GET', url, {
+        target: '#modalContainer',
+        swap: 'innerHTML',
+        onError: function() {
+            container.innerHTML = '<div class="p-6 text-center text-error">Failed to load history.</div>';
+        }
+    });
+}
+
+// Modal close function
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.remove();
+    }
+    const overlay = document.getElementById('modalOverlay');
+    const container = document.getElementById('modalContainer');
+    if (overlay) overlay.classList.add('hidden');
+    if (container) container.innerHTML = '';
+}

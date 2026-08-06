@@ -58,6 +58,7 @@ class UserManager(BaseUserManager):
 # ================================================================
 # USER MODEL
 # ================================================================
+
 class User(AbstractUser):
     username = None
 
@@ -128,7 +129,20 @@ class User(AbstractUser):
         related_name='created_users'
     )
     password_changed = models.BooleanField(default=False, help_text="Whether user has changed their password after first login")
+
     position = models.CharField(max_length=100, blank=True, help_text="Job title or position (e.g., Senior Developer, HR Manager)")
+
+    # ================================================================
+    # ORGANOGRAM / REPORTING LINE
+    # ================================================================
+    manager = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='subordinates',
+        help_text="This user's manager/reporting line"
+    )
 
     objects = UserManager()
 
@@ -158,29 +172,22 @@ class User(AbstractUser):
     
     def has_role(self, role_name):
         """Check if user has a specific role (checks both systems)."""
-        # Check new roles system first
         if self.roles.filter(name=role_name).exists():
             return True
-        # Fallback to legacy role
         return self.role == role_name
 
     def has_any_role(self, role_names):
-        """Check if user has any of the specified roles."""
         for role_name in role_names:
             if self.has_role(role_name):
                 return True
         return False
 
     def get_highest_role(self):
-        """Return the highest priority role."""
-        # Check new roles system
         if self.roles.exists():
             return self.roles.order_by('priority').first()
-        # Fallback to legacy role
         return self._get_legacy_role_object()
 
     def _get_legacy_role_object(self):
-        """Get Role object for legacy role."""
         role_map = {
             'SUPERADMIN': ('SUPERADMIN', 'Super Admin', 1),
             'ADMIN': ('ADMIN', 'Admin', 2),
@@ -198,35 +205,31 @@ class User(AbstractUser):
         return None
     
     def get_active_role_display(self):
-        """Get the display name of the active role."""
         if self.active_role and self.roles.filter(id=self.active_role.id).exists():
             return self.active_role.display_name
         highest = self.get_highest_role()
         return highest.display_name if highest else 'No role'
     
     def get_active_role_name(self):
-        """Get the name of the active role."""
         if self.active_role and self.roles.filter(id=self.active_role.id).exists():
             return self.active_role.name
         highest = self.get_highest_role()
         return highest.name if highest else None
     
     def set_active_role(self, role_name):
-        """Set the active role for the user."""
         if not self.pk:
             return False
         try:
             role = self.roles.get(name=role_name)
             self.active_role = role
             self.active_role_id = role.id
-            self.role = role.name  # Keep legacy field in sync
+            self.role = role.name
             self.save(update_fields=['active_role', 'active_role_id', 'role'])
             return True
         except Role.DoesNotExist:
             return False
     
     def get_active_role(self):
-        """Get the active role or the highest priority role."""
         if self.active_role_id:
             try:
                 role = self.roles.get(pk=self.active_role_id)
@@ -239,7 +242,6 @@ class User(AbstractUser):
         return self.get_highest_role()
     
     def sync_roles(self):
-        """Sync legacy role with new roles system."""
         if not self.pk:
             return
 
@@ -268,7 +270,6 @@ class User(AbstractUser):
                     User.objects.filter(pk=self.pk).update(active_role=highest_role)
 
     def save(self, *args, **kwargs):
-        # Delete the old avatar file if a new one is being uploaded
         if self.pk:
             try:
                 old = User.objects.get(pk=self.pk)
@@ -277,10 +278,8 @@ class User(AbstractUser):
             except User.DoesNotExist:
                 pass
 
-        # Sync legacy role with new roles system
         self.sync_roles()
 
-        # Auto-set staff / superuser based on role
         if self.role in [self.Role.SUPERADMIN, self.Role.ADMIN, self.Role.TEAM_LEAD, self.Role.AGENT]:
             self.is_staff = True
         else:

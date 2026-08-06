@@ -1,0 +1,68 @@
+{% load lucide %}
+
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" 
+     onclick="if(event.target === this) this.remove();">
+    <div class="bg-surface rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+         style="background-color: var(--color-surface);"
+         onclick="event.stopPropagation()">
+        
+        <div class="text-center">
+            <div class="flex h-14 w-14 items-center justify-center rounded-full mx-auto mb-4"
+                 style="background-color: rgba(16, 185, 129, 0.15);">
+                {% lucide "check-circle" size=28 class="text-success" %}
+            </div>
+            <h3 class="text-lg font-semibold mb-2" style="color: var(--color-text-primary);">
+                Confirm Maintenance Completion
+            </h3>
+            <p class="text-sm" style="color: var(--color-text-secondary);">
+                Are you sure this maintenance has been completed?
+            </p>
+            <p class="text-xs mt-2 p-3 rounded-lg" style="background-color: var(--color-background); color: var(--color-text-secondary);">
+                <strong>{{ schedule.title }}</strong><br>
+                {{ schedule.get_department_display }} — {{ schedule.scheduled_date|date:"M d, Y" }}
+                {% if schedule.assigned_to %}
+                    <br>Assigned to: {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
+                {% endif %}
+            </p>
+        </div>
+        
+        <form method="post" 
+              hx-post="{% url 'maintenance:confirm' schedule.pk %}"
+              hx-target="#confirmModalContainer"
+              hx-swap="outerHTML"
+              hx-on::after-request="if(event.detail.successful) { setTimeout(() => location.reload(), 500); }"
+              class="mt-6">
+            
+            {% csrf_token %}
+            
+            <div class="mb-4">
+                <label for="confirm_comment" class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                    Comment (Optional)
+                </label>
+                <textarea name="comment" id="confirm_comment" rows="2"
+                          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                          style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); ring-color: var(--color-primary);"
+                          placeholder="Any notes about the maintenance..."></textarea>
+            </div>
+            
+            <div class="flex items-center justify-end gap-3">
+                <button type="button" onclick="this.closest('.fixed').remove()"
+                        class="px-4 py-2 text-sm rounded-lg border transition"
+                        style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                    Cancel
+                </button>
+                <button type="submit" 
+                        class="px-6 py-2 text-sm font-medium text-white rounded-lg transition flex items-center gap-2"
+                        style="background-color: var(--color-success);">
+                    <span class="htmx-indicator">
+                        <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                    Confirm
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

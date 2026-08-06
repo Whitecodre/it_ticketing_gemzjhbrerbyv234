@@ -97,3 +97,36 @@
         </a>
     </div>
 </div>
+
+{# Maintenance Section #}
+<div class="space-y-1">
+    <div data-section="maintenance-section">
+        <button type="button" 
+                class="sidebar-section-toggle w-full flex items-center justify-between"
+                @click="toggleSection('maintenance-section-content')">
+            <span class="flex items-center gap-2">
+                <span class="section-icon">
+                    {% lucide "clipboard-list" size=18 %}
+                </span>
+                <span class="text-sm font-medium">Maintenance</span>
+            </span>
+            <span class="section-chevron transition-transform duration-200">
+                {% lucide "chevron-down" size=16 %}
+            </span>
+        </button>
+        
+        <div id="maintenance-section-content" 
+             class="section-content pl-2 space-y-0.5">
+            <a href="{% url 'maintenance:list' %}" 
+               class="sidebar-link text-sm block {% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' %}active{% endif %}">
+                {% lucide "calendar" size=16 %}
+                My Schedules
+            </a>
+            <a href="{% url 'maintenance:calendar' %}" 
+               class="sidebar-link text-sm block {% if request.resolver_match.url_name == 'calendar' and request.resolver_match.app_name == 'maintenance' %}active{% endif %}">
+                {% lucide "calendar-days" size=16 %}
+                Calendar View
+            </a>
+        </div>
+    </div>
+</div>

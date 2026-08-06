@@ -1,0 +1,20 @@
+{% load lucide %}
+{% load organogram_filters %}
+
+<div class="org-node">
+    <div class="node-card" style="border-color: {{ node.color|default:'#64748B' }};">
+        <div class="avatar" style="background-color: {{ node.color|default:'#0D9488' }};">
+            {{ node.label|slice:":1"|upper }}
+        </div>
+        <div class="name">{{ node.label }}</div>
+        <div class="title">{{ node.position }}</div>
+    </div>
+    {% if node.children %}
+        <div class="node-connector"></div>
+        <div class="org-children">
+            {% for child in node.children %}
+                {% include "organogram/partials/node_organization.html" with node=child %}
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>

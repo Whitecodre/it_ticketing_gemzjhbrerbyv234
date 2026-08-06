@@ -85,6 +85,65 @@
     </div>
 </div>
 
+<!-- ========== SECTION: ORGANOGRAM ========== -->
+<div class="mt-2">
+    <button @click="toggleSection('organogram-section')"
+            class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+            data-section="organogram-section"
+            style="color: var(--color-text-secondary);">
+        <span class="section-icon">{% lucide "network" size=16 %}</span>
+        <span>Organogram</span>
+        <span class="section-chevron ml-auto transition-transform duration-200"
+              :style="{ transform: isSectionOpen('organogram-section') ? 'rotate(0deg)' : 'rotate(-90deg)' }">
+            {% lucide "chevron-down" size=14 %}
+        </span>
+    </button>
+    <div id="organogram-section" 
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out"
+         x-show="isSectionOpen('organogram-section')"
+         x-collapse>
+        
+        <a href="{% url 'organogram:system' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/organogram/system/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "cpu" size=16 class="h-4 w-4" %}</span>
+            <span>System Organogram</span>
+        </a>
+        
+        {% comment %} <a href="{% url 'organogram:org_view' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/organogram/organization/' in request.path and not '/list/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "building" size=16 class="h-4 w-4" %}</span>
+            <span>Organization Chart</span>
+        </a> {% endcomment %}
+        
+        {% comment %} {% if user.role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
+        <a href="{% url 'organogram:org_list' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/organogram/organization/list/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "edit" size=16 class="h-4 w-4" %}</span>
+            <span>Manage Org Charts</span>
+        </a>
+        {% endif %} {% endcomment %}
+        
+        {% if user.role in 'ADMIN,SUPERADMIN' %}
+        <a href="{% url 'organogram:org_approvals' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/organogram/organization/approvals/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "clipboard-check" size=16 class="h-4 w-4" %}</span>
+            <span>Approvals</span>
+            <span id="pendingApprovalBadge" class="ml-auto text-[0.55rem] px-1.5 py-0.5 rounded-full"
+                  style="background-color: var(--color-warning); color: white;"
+                  hx-get="{% url 'organogram:api_pending_count' %}"
+                  hx-trigger="every 30s"
+                  hx-swap="innerHTML">
+                0
+            </span>
+        </a>
+        {% endif %}
+    </div>
+</div>
+
 {# ========== SECTION: PRODUCTIVITY ========== #}
 <div class="mt-2">
     <button @click="toggleSection('productivity-section')"
@@ -121,6 +180,52 @@
             </span>
             <span>Remote Sessions</span>
         </a>
+       <!-- Form Builder -->
+        <a href="{% url 'form_builder:list' %}"
+        class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+        style="{% if '/form-builder/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "file-text" size=16 class="h-4 w-4" %}</span>
+            <span>Form Builder</span>
+        </a>
+    </div>
+</div>
+
+
+{# Maintenance Section #}
+<div class="space-y-1">
+    <div data-section="maintenance-section">
+        <button type="button" 
+                class="sidebar-section-toggle w-full flex items-center justify-between"
+                @click="toggleSection('maintenance-section-content')">
+            <span class="flex items-center gap-2">
+                <span class="section-icon">
+                    {% lucide "clipboard-list" size=18 %}
+                </span>
+                <span class="text-sm font-medium">Maintenance</span>
+            </span>
+            <span class="section-chevron transition-transform duration-200">
+                {% lucide "chevron-down" size=16 %}
+            </span>
+        </button>
+        
+        <div id="maintenance-section-content" 
+             class="section-content pl-2 space-y-0.5">
+            <a href="{% url 'maintenance:list' %}" 
+               class="sidebar-link text-sm block {% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' %}active{% endif %}">
+                {% lucide "calendar" size=16 %}
+                Schedule
+            </a>
+            <a href="{% url 'maintenance:create' %}" 
+               class="sidebar-link text-sm block {% if request.resolver_match.url_name == 'create' and request.resolver_match.app_name == 'maintenance' %}active{% endif %}">
+                {% lucide "plus-circle" size=16 %}
+                New Schedule
+            </a>
+            <a href="{% url 'maintenance:calendar' %}" 
+               class="sidebar-link text-sm block {% if request.resolver_match.url_name == 'calendar' and request.resolver_match.app_name == 'maintenance' %}active{% endif %}">
+                {% lucide "calendar-days" size=16 %}
+                Calendar View
+            </a>
+        </div>
     </div>
 </div>
 

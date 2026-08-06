@@ -97,4 +97,12 @@ urlpatterns = [
     path('exportables/', views.exportables, name='exportables'),
     path('export/service-requests/', views.export_service_requests, name='export_service_requests'),
     path('export/incidents/', views.export_incidents, name='export_incidents'),
+
+    # apps/tickets/urls.py - Add these to urlpatterns
+    path('assets/<int:pk>/checkout-modal/', views.asset_checkout_modal, name='asset_checkout_modal'),
+    path('assets/<int:pk>/checkout/', views.asset_checkout, name='asset_checkout'),
+    path('assets/<int:pk>/checkin-modal/', views.asset_checkin_modal, name='asset_checkin_modal'),
+    path('assets/<int:pk>/checkin/', views.asset_checkin, name='asset_checkin'),
+    path('assets/<int:pk>/checkout-history/', views.asset_checkout_history, name='asset_checkout_history'),
+
 ]

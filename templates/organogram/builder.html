@@ -1,0 +1,665 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Org Chart Builder{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .builder-page {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 100px);
+        overflow: hidden;
+    }
+    
+    .builder-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0;
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--color-border);
+        margin-bottom: 1rem;
+    }
+    
+    .builder-header .title-section h1 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    
+    .builder-header .title-section .subtitle {
+        font-size: 0.8125rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .builder-header .actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .builder-header .actions .btn {
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.8125rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    
+    .builder-header .actions .btn-primary {
+        background-color: var(--color-primary);
+        color: white;
+    }
+    
+    .builder-header .actions .btn-primary:hover {
+        opacity: 0.85;
+    }
+    
+    .builder-header .actions .btn-outline {
+        background: transparent;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-primary);
+    }
+    
+    .builder-header .actions .btn-outline:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+    
+    .builder-header .actions .btn-success {
+        background-color: var(--color-success);
+        color: white;
+    }
+    
+    .builder-header .actions .btn-success:hover {
+        opacity: 0.85;
+    }
+    
+    .builder-header .actions .btn-warning {
+        background-color: var(--color-warning);
+        color: white;
+    }
+    
+    .builder-header .actions .btn-warning:hover {
+        opacity: 0.85;
+    }
+    
+    .builder-header .status-badge {
+        padding: 0.2rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    
+    .builder-header .status-badge.draft {
+        background-color: rgba(100, 116, 139, 0.15);
+        color: #64748B;
+    }
+    
+    .builder-header .status-badge.pending {
+        background-color: rgba(245, 158, 11, 0.15);
+        color: #F59E0B;
+    }
+    
+    .builder-header .status-badge.approved {
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #10B981;
+    }
+    
+    .builder-header .status-badge.published {
+        background-color: rgba(13, 148, 136, 0.15);
+        color: #0D9488;
+    }
+    
+    .builder-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 0;
+    }
+    
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 300px;
+        color: var(--color-text-secondary);
+        text-align: center;
+        padding: 2rem;
+    }
+    
+    .empty-state .icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+    
+    .empty-state h3 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Tree styles (same as chart.html) */
+    .org-tree {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        padding: 0.5rem 0;
+    }
+    
+    .org-tree-root {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+    
+    .org-node {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+    
+    .org-node .node-card {
+        background-color: var(--color-surface);
+        border: 2px solid var(--color-border);
+        border-radius: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        min-width: 140px;
+        max-width: 190px;
+        text-align: center;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        position: relative;
+        cursor: pointer;
+    }
+    
+    .org-node .node-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+        border-color: var(--color-primary);
+    }
+    
+    .org-node .node-card .avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        margin: 0 auto 0.3rem auto;
+        background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        font-weight: 600;
+        overflow: hidden;
+    }
+    
+    .org-node .node-card .name {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    
+    .org-node .node-card .title {
+        font-size: 0.6rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .org-node .node-card .node-actions {
+        position: absolute;
+        top: -0.5rem;
+        right: -0.5rem;
+        display: flex;
+        gap: 0.2rem;
+    }
+    
+    .org-node .node-card .node-actions button {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: 1px solid var(--color-border);
+        background: var(--color-surface);
+        cursor: pointer;
+        font-size: 0.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+    
+    .org-node .node-card .node-actions .add-btn:hover {
+        border-color: var(--color-success);
+        color: var(--color-success);
+    }
+    
+    .org-node .node-card .node-actions .del-btn:hover {
+        border-color: var(--color-error);
+        color: var(--color-error);
+    }
+    
+    .org-node .node-connector {
+        width: 2px;
+        height: 16px;
+        background-color: var(--color-border);
+        position: relative;
+    }
+    
+    .org-children {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1.5rem 2.5rem;
+        margin-top: 0.3rem;
+        position: relative;
+        padding: 0 1rem;
+        width: 100%;
+    }
+    
+    .org-children::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 10%;
+        right: 10%;
+        height: 2px;
+        background-color: var(--color-border);
+    }
+    
+    .org-children .org-node::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 2px;
+        height: 16px;
+        background-color: var(--color-border);
+    }
+</style>
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="builder-page">
+    
+    <!-- Header -->
+    <div class="builder-header">
+        <div class="title-section">
+            <h1>📊 Org Chart Builder</h1>
+            <p class="subtitle">
+                {{ draft.name }} 
+                <span class="status-badge {{ draft.status|lower }}">
+                    {{ draft.get_status_display }}
+                </span>
+            </p>
+        </div>
+        <div class="actions">
+            {% if draft.status == 'DRAFT' %}
+                <button onclick="submitForApproval()" class="btn btn-warning">
+                    {% lucide "send" size=14 %} Submit for Approval
+                </button>
+                <button onclick="saveDraft()" class="btn btn-primary">
+                    {% lucide "save" size=14 %} Save Draft
+                </button>
+            {% endif %}
+            
+            {% if draft.status == 'PENDING' and can_approve %}
+                <button onclick="approveDraft()" class="btn btn-success">
+                    {% lucide "check-circle" size=14 %} Approve
+                </button>
+                <button onclick="rejectDraft()" class="btn btn-outline">
+                    {% lucide "x-circle" size=14 %} Reject
+                </button>
+            {% endif %}
+            
+            {% if draft.status == 'APPROVED' and can_publish %}
+                <button onclick="publishDraft()" class="btn btn-success">
+                    {% lucide "globe" size=14 %} Publish
+                </button>
+            {% endif %}
+            
+            <a href="{% url 'organogram:list' %}" class="btn btn-outline">
+                {% lucide "arrow-left" size=14 %} Back
+            </a>
+        </div>
+    </div>
+    
+    <!-- Builder Body -->
+    <div class="builder-body">
+        <div class="org-tree" 
+             x-data="orgBuilder()" 
+             x-init="init({{ draft.structure|safe }})">
+            
+            <!-- Toolbar -->
+            <div class="flex flex-wrap items-center gap-2 mb-4 w-full">
+                <button @click="addRoot()" class="btn btn-primary text-xs px-3 py-1.5 rounded-lg">
+                    {% lucide "plus" size=12 %} Add Root
+                </button>
+                <button @click="addNode()" class="btn btn-outline text-xs px-3 py-1.5 rounded-lg">
+                    {% lucide "plus" size=12 %} Add Child
+                </button>
+                <span class="text-xs text-text-secondary ml-2">
+                    {{ draft.structure.nodes|default:0 }} nodes
+                </span>
+            </div>
+            
+            <!-- Tree -->
+            <div class="org-tree-root">
+                <template x-for="(node, index) in structure" :key="index">
+                    <div class="org-node">
+                        <div class="node-card" :style="{borderColor: node.color || '#64748B'}">
+                            <div class="node-actions">
+                                <button class="add-btn" @click="addChild(index)" title="Add Child">
+                                    {% lucide "plus" size=12 %}
+                                </button>
+                                <button class="del-btn" @click="removeNode(index)" title="Remove">
+                                    {% lucide "trash-2" size=12 %}
+                                </button>
+                            </div>
+                            <div class="avatar" :style="{backgroundColor: node.color || '#0D9488'}">
+                                <span x-text="node.label ? node.label.charAt(0).toUpperCase() : '?'"></span>
+                            </div>
+                            <div class="name" x-text="node.label || 'Untitled'"></div>
+                            <div class="title" x-text="node.position || 'Position'"></div>
+                            
+                            <!-- Edit inline -->
+                            <div class="mt-1 space-y-1">
+                                <input type="text" x-model="node.label" 
+                                       placeholder="Name" 
+                                       class="w-full text-xs rounded border px-1 py-0.5 bg-background border-border text-text-primary">
+                                <input type="text" x-model="node.position" 
+                                       placeholder="Title" 
+                                       class="w-full text-xs rounded border px-1 py-0.5 bg-background border-border text-text-primary">
+                                <input type="color" x-model="node.color" 
+                                       class="w-full h-5 rounded border border-border cursor-pointer">
+                            </div>
+                        </div>
+                        
+                        <!-- Children -->
+                        <template x-if="node.children && node.children.length">
+                            <div>
+                                <div class="node-connector"></div>
+                                <div class="org-children">
+                                    <template x-for="(child, childIndex) in node.children" :key="childIndex">
+                                        <!-- Recursive node rendering -->
+                                        <div class="org-node">
+                                            <div class="node-card" :style="{borderColor: child.color || '#64748B'}">
+                                                <div class="node-actions">
+                                                    <button class="add-btn" @click="addChildToNode(index, childIndex)" title="Add Child">
+                                                        {% lucide "plus" size=12 %}
+                                                    </button>
+                                                    <button class="del-btn" @click="removeChild(index, childIndex)" title="Remove">
+                                                        {% lucide "trash-2" size=12 %}
+                                                    </button>
+                                                </div>
+                                                <div class="avatar" :style="{backgroundColor: child.color || '#0D9488'}">
+                                                    <span x-text="child.label ? child.label.charAt(0).toUpperCase() : '?'"></span>
+                                                </div>
+                                                <div class="name" x-text="child.label || 'Untitled'"></div>
+                                                <div class="title" x-text="child.position || 'Position'"></div>
+                                                
+                                                <div class="mt-1 space-y-1">
+                                                    <input type="text" x-model="child.label" 
+                                                           placeholder="Name" 
+                                                           class="w-full text-xs rounded border px-1 py-0.5 bg-background border-border text-text-primary">
+                                                    <input type="text" x-model="child.position" 
+                                                           placeholder="Title" 
+                                                           class="w-full text-xs rounded border px-1 py-0.5 bg-background border-border text-text-primary">
+                                                    <input type="color" x-model="child.color" 
+                                                           class="w-full h-5 rounded border border-border cursor-pointer">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+            
+            <!-- Empty state -->
+            <div x-show="structure.length === 0" class="empty-state">
+                <div class="icon">🏢</div>
+                <h3>No Structure Defined</h3>
+                <p class="text-sm text-text-secondary">Click "Add Root" to start building your org chart.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- ALPINE.JS ORG BUILDER                                           -->
+<!-- ================================================================ -->
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('orgBuilder', () => ({
+            structure: [],
+            nextId: 0,
+            
+            init(initialData) {
+                if (initialData && initialData.nodes) {
+                    this.structure = initialData.nodes;
+                    this.nextId = this.getMaxId() + 1;
+                } else {
+                    this.structure = [];
+                    this.nextId = 1;
+                }
+            },
+            
+            getMaxId() {
+                let maxId = 0;
+                const traverse = (nodes) => {
+                    nodes.forEach(node => {
+                        if (node.id && node.id > maxId) maxId = node.id;
+                        if (node.children) traverse(node.children);
+                    });
+                };
+                traverse(this.structure);
+                return maxId;
+            },
+            
+            addRoot() {
+                this.structure.push({
+                    id: this.nextId++,
+                    label: 'New Department',
+                    position: 'Department Head',
+                    color: '#0D9488',
+                    children: []
+                });
+                this.autoSave();
+            },
+            
+            addChild(parentIndex) {
+                if (!this.structure[parentIndex]) return;
+                if (!this.structure[parentIndex].children) {
+                    this.structure[parentIndex].children = [];
+                }
+                this.structure[parentIndex].children.push({
+                    id: this.nextId++,
+                    label: 'New Position',
+                    position: 'Position',
+                    color: '#3B82F6',
+                    children: []
+                });
+                this.autoSave();
+            },
+            
+            addChildToNode(parentIndex, childIndex) {
+                const parent = this.structure[parentIndex];
+                if (!parent || !parent.children || !parent.children[childIndex]) return;
+                const node = parent.children[childIndex];
+                if (!node.children) node.children = [];
+                node.children.push({
+                    id: this.nextId++,
+                    label: 'New Position',
+                    position: 'Position',
+                    color: '#8B5CF6',
+                    children: []
+                });
+                this.autoSave();
+            },
+            
+            removeNode(index) {
+                if (this.structure.length === 1) {
+                    if (!confirm('Remove the last root node?')) return;
+                }
+                this.structure.splice(index, 1);
+                this.autoSave();
+            },
+            
+            removeChild(parentIndex, childIndex) {
+                const parent = this.structure[parentIndex];
+                if (!parent || !parent.children) return;
+                parent.children.splice(childIndex, 1);
+                this.autoSave();
+            },
+            
+            autoSave() {
+                clearTimeout(this._saveTimeout);
+                this._saveTimeout = setTimeout(() => {
+                    this.saveStructure();
+                }, 1000);
+            },
+            
+            saveStructure() {
+                const data = {
+                    draft_id: {{ draft.pk }},
+                    structure: { nodes: this.structure }
+                };
+                
+                fetch('/organogram/api/save-structure/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    },
+                    body: JSON.stringify(data),
+                })
+                .then(response => response.json())
+                .then(result => {
+                    if (result.success) {
+                        // Update status
+                    }
+                });
+            }
+        }));
+    });
+    
+    // Global functions
+    function saveDraft() {
+        // Trigger save from Alpine
+        const builder = document.querySelector('[x-data]').__x;
+        if (builder) builder.saveStructure();
+    }
+    
+    function submitForApproval() {
+        if (!confirm('Submit this org chart for approval? All admins must approve before publishing.')) return;
+        
+        fetch('/organogram/api/submit-approval/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: new URLSearchParams({
+                draft_id: {{ draft.pk }}
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    }
+    
+    function approveDraft() {
+        if (!confirm('Approve this org chart?')) return;
+        
+        fetch('/organogram/api/approve/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: new URLSearchParams({
+                draft_id: {{ draft.pk }},
+                approved: 'true'
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    }
+    
+    function rejectDraft() {
+        const reason = prompt('Reason for rejection:');
+        if (reason === null) return;
+        
+        fetch('/organogram/api/approve/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: new URLSearchParams({
+                draft_id: {{ draft.pk }},
+                approved: 'false',
+                reason: reason
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                window.location.reload();
+            }
+        });
+    }
+    
+    function publishDraft() {
+        if (!confirm('Publish this org chart to all users?')) return;
+        
+        fetch('/organogram/api/publish/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: new URLSearchParams({
+                draft_id: {{ draft.pk }}
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                window.location.href = '/organogram/';
+            }
+        });
+    }
+</script>
+
+{% endblock %}

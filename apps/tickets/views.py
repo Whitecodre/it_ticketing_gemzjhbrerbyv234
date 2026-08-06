@@ -2036,6 +2036,7 @@ def scrap_approve_modal(request, pk):
     asset = get_object_or_404(Asset, pk=pk)
     return render(request, 'partials/scrap_approve_modal.html', {'asset': asset})
 
+
 # ==========================================================================
 # ASSET CALCULATE WARRANTY
 # ==========================================================================
@@ -3399,3 +3400,221 @@ def export_incidents(request):
         return response
     
     return HttpResponse('Invalid format', status=400)
+
+# apps/tickets/views.py - Add these new functions
+
+# ==========================================================================
+# ASSET CHECK-IN/CHECK-OUT
+# ==========================================================================
+
+@login_required
+def asset_checkout_modal(request, pk):
+    """Return the checkout modal for an asset."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    
+    # Only allow checkout if asset is available
+    if asset.is_checked_out:
+        return HttpResponse('<div class="p-4 text-center text-error">This asset is already checked out.</div>', status=400)
+    
+    # Get users for dropdown (only active users)
+    users = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
+    
+    return render(request, 'partials/asset_checkout_modal.html', {
+        'asset': asset,
+        'users': users,
+    })
+
+
+@login_required
+@require_POST
+def asset_checkout(request, pk):
+    """Check out an asset to a user."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    
+    # Only allow checkout if asset is available
+    if asset.is_checked_out:
+        messages.error(request, 'This asset is already checked out.')
+        return redirect('tickets:assets')
+    
+    user_id = request.POST.get('user_id')
+    expected_return = request.POST.get('expected_return_date')
+    notes = request.POST.get('notes', '').strip()
+    
+    if not user_id:
+        messages.error(request, 'Please select a user to check out this asset.')
+        return redirect('tickets:assets')
+    
+    try:
+        user = User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        messages.error(request, 'User not found.')
+        return redirect('tickets:assets')
+    
+    # Update asset
+    asset.checked_out_to = user
+    asset.checked_out_at = timezone.now()
+    asset.assigned_to = user  # Keep the existing field in sync
+    if expected_return:
+        try:
+            asset.expected_return_date = datetime.strptime(expected_return, '%Y-%m-%d').date()
+        except ValueError:
+            pass
+    asset.save()
+    
+    # Create history record
+    AssetCheckoutHistory.objects.create(
+        asset=asset,
+        checked_out_by=request.user,
+        checked_out_to=user,
+        checked_out_at=asset.checked_out_at,
+        expected_return_date=asset.expected_return_date,
+        notes=notes
+    )
+    
+    # Create asset log
+    AssetLog.objects.create(
+        asset=asset,
+        action=AssetLog.Action.ASSIGNED,
+        actor=request.user,
+        details={
+            'action': 'checkout',
+            'to': user.get_full_name() or user.email,
+            'notes': notes
+        }
+    )
+    
+    # Add comment to asset notes
+    checkout_note = f"🔄 **Asset checked out** by {request.user.get_full_name()} to {user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+    if notes:
+        checkout_note += f"\nNotes: {notes}"
+    if asset.notes:
+        asset.notes = f"{asset.notes}\n\n{checkout_note}"
+    else:
+        asset.notes = checkout_note
+    asset.save(update_fields=['notes'])
+    
+    # Notify user
+    Notification.objects.create(
+        recipient=user,
+        message=f"📦 Asset {asset.name} ({asset.tracking_id}) has been checked out to you.",
+        url=reverse('tickets:asset_detail', args=[asset.pk])
+    )
+    
+    messages.success(request, f'Asset "{asset.name}" checked out to {user.get_full_name()}.')
+    return redirect('tickets:assets')
+
+
+@login_required
+def asset_checkin_modal(request, pk):
+    """Return the checkin modal for an asset."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    
+    # Only allow checkin if asset is checked out
+    if not asset.is_checked_out:
+        return HttpResponse('<div class="p-4 text-center text-warning">This asset is not currently checked out.</div>', status=400)
+    
+    return render(request, 'partials/asset_checkin_modal.html', {
+        'asset': asset,
+        'return_reasons': Asset.ReturnReason.choices,
+    })
+
+
+@login_required
+@require_POST
+def asset_checkin(request, pk):
+    """Check in an asset."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    
+    # Only allow checkin if asset is checked out
+    if not asset.is_checked_out:
+        messages.error(request, 'This asset is not currently checked out.')
+        return redirect('tickets:assets')
+    
+    return_reason = request.POST.get('return_reason')
+    return_comment = request.POST.get('return_comment', '').strip()
+    return_condition = request.POST.get('return_condition', '').strip()
+    
+    if not return_reason:
+        messages.error(request, 'Please select a return reason.')
+        return redirect('tickets:assets')
+    
+    # Get the active checkout history record
+    history = AssetCheckoutHistory.objects.filter(
+        asset=asset,
+        checked_in_at__isnull=True
+    ).first()
+    
+    # Update asset
+    asset.return_reason = return_reason
+    asset.return_comment = return_comment
+    asset.return_condition = return_condition
+    asset.returned_at = timezone.now()
+    asset.checked_out_to = None
+    asset.assigned_to = None  # Clear the legacy field too
+    asset.save()
+    
+    # Update history record
+    if history:
+        history.checked_in_by = request.user
+        history.checked_in_at = asset.returned_at
+        history.return_reason = return_reason
+        history.return_comment = return_comment
+        history.return_condition = return_condition
+        history.save()
+    
+    # Create asset log
+    AssetLog.objects.create(
+        asset=asset,
+        action=AssetLog.Action.UNASSIGNED,
+        actor=request.user,
+        details={
+            'action': 'checkin',
+            'reason': asset.get_return_reason_display(),
+            'condition': return_condition,
+            'comment': return_comment
+        }
+    )
+    
+    # Add comment to asset notes
+    checkin_note = f"🔄 **Asset checked in** by {request.user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+    checkin_note += f"\nReason: {asset.get_return_reason_display()}"
+    if return_condition:
+        checkin_note += f"\nCondition: {return_condition}"
+    if return_comment:
+        checkin_note += f"\nComment: {return_comment}"
+    
+    if asset.notes:
+        asset.notes = f"{asset.notes}\n\n{checkin_note}"
+    else:
+        asset.notes = checkin_note
+    asset.save(update_fields=['notes'])
+    
+    messages.success(request, f'Asset "{asset.name}" checked in successfully.')
+    return redirect('tickets:assets')
+
+
+@login_required
+def asset_checkout_history(request, pk):
+    """View checkout history for an asset."""
+    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+    
+    asset = get_object_or_404(Asset, pk=pk)
+    history = asset.checkout_history.all().order_by('-checked_out_at')
+    
+    return render(request, 'partials/asset_checkout_history.html', {
+        'asset': asset,
+        'history': history,
+    })

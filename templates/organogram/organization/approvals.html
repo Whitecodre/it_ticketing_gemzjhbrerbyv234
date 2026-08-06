@@ -1,0 +1,152 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Approvals{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="w-full">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+                {% lucide "clipboard-check" size=20 %} Approvals
+            </h2>
+            <p class="text-sm text-text-secondary">Review and approve pending organization charts.</p>
+        </div>
+    </div>
+
+    <!-- Pending Drafts -->
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b" style="border-color: var(--color-border);">
+            <span class="text-sm font-medium" style="color: var(--color-text-primary);">
+                Pending Approvals
+            </span>
+            <span class="text-xs text-text-secondary ml-2">({{ pending_drafts|length }})</span>
+        </div>
+        
+        {% if pending_drafts %}
+            <div class="divide-y divide-border">
+                {% for draft in pending_drafts %}
+                <div class="p-4 hover:bg-black/5 transition-colors">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <div class="font-medium" style="color: var(--color-text-primary);">
+                                {{ draft.name }}
+                            </div>
+                            <div class="text-sm text-text-secondary">
+                                {{ draft.description|truncatechars:60 }}
+                                <span class="text-xs ml-2">v{{ draft.version }}</span>
+                            </div>
+                            <div class="flex items-center gap-3 mt-1">
+                                <span class="text-xs text-text-secondary">
+                                    Created by: {{ draft.created_by.get_full_name }}
+                                </span>
+                                <span class="text-xs text-text-secondary">
+                                    {{ draft.created_at|date:"M d, Y" }}
+                                </span>
+                                <div class="flex items-center gap-1">
+                                    {% for admin_id, data in draft.approval_status.details.items %}
+                                        <span class="inline-block w-2.5 h-2.5 rounded-full 
+                                            {% if data.approved %}bg-success{% else %}bg-text-secondary opacity-30{% endif %}"
+                                              title="{% if data.approved %}Approved{% else %}Pending{% endif %} by {{ data.user.get_full_name }}"></span>
+                                    {% endfor %}
+                                    <span class="text-xs text-text-secondary ml-1">
+                                        {{ draft.approval_status.approved }}/{{ draft.approval_status.total }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <a href="{% url 'organogram:org_builder' draft.pk %}" 
+                               class="btn-outline text-xs px-3 py-1.5 rounded-lg">
+                                View
+                            </a>
+                            {% if not draft.user_has_approved %}
+                                <button onclick="approveFromList({{ draft.pk }})" 
+                                        class="btn-success text-xs px-3 py-1.5 rounded-lg">
+                                    Approve
+                                </button>
+                                <button onclick="rejectFromList({{ draft.pk }})" 
+                                        class="btn-danger text-xs px-3 py-1.5 rounded-lg">
+                                    Reject
+                                </button>
+                            {% else %}
+                                <span class="text-xs text-success">✅ Approved</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-center py-12 text-text-secondary">
+                <span class="text-4xl block mb-3">✅</span>
+                <p class="text-lg font-medium">No pending approvals</p>
+                <p class="text-sm mt-1">All organization charts have been reviewed.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function approveFromList(draftId) {
+        if (!confirm('Approve this org chart?')) return;
+        
+        fetch('/organogram/api/approve/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: new URLSearchParams({
+                draft_id: draftId,
+                approved: 'true'
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                showToast(result.message, 'success');
+                window.location.reload();
+            } else {
+                showToast(result.error || 'Error approving.', 'error');
+            }
+        });
+    }
+    
+    function rejectFromList(draftId) {
+        const reason = prompt('Reason for rejection:');
+        if (reason === null) return;
+        
+        fetch('/organogram/api/approve/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+            body: new URLSearchParams({
+                draft_id: draftId,
+                approved: 'false',
+                reason: reason
+            })
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                showToast('Draft rejected.', 'info');
+                window.location.reload();
+            } else {
+                showToast(result.error || 'Error rejecting.', 'error');
+            }
+        });
+    }
+</script>
+
+{% endblock %}

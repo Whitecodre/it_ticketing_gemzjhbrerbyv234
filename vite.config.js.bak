@@ -1,0 +1,25 @@
+// vite.config.js - For Vite 5.x
+import { defineConfig } from 'vite';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+    build: {
+        outDir: 'static_bundled',
+        emptyOutDir: true,
+        manifest: true,
+        rollupOptions: {
+            input: {
+                'formio-builder': path.resolve(__dirname, 'static/js/formio/builder.js'),
+                'formio-renderer': path.resolve(__dirname, 'static/js/formio/renderer.js'),
+            },
+            output: {
+                entryFileNames: 'js/[name].[hash].js',
+                chunkFileNames: 'js/[name].[hash].js',
+                assetFileNames: 'css/[name].[hash].[ext]',
+            },
+        },
+    },
+});

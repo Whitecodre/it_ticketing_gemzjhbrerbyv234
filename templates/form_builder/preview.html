@@ -1,0 +1,104 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Preview Form{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="max-w-3xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% url 'form_builder:builder' form_instance.pk %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back to Builder
+        </a>
+    </div>
+    
+    <div class="dashboard-card p-6">
+        <h2 class="text-xl font-semibold mb-2" style="color: var(--color-text-primary);">{{ form_instance.title }}</h2>
+        {% if form_instance.description %}
+        <p class="text-sm text-text-secondary mb-6">{{ form_instance.description }}</p>
+        {% endif %}
+        
+        <div id="form-preview" class="space-y-4">
+            <p class="text-sm text-text-secondary">Loading form preview...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const schema = {{ form_instance.schema|safe }};
+        const container = document.getElementById('form-preview');
+        
+        if (!schema.fields || schema.fields.length === 0) {
+            container.innerHTML = '<p class="text-center text-text-secondary">No fields in this form.</p>';
+            return;
+        }
+        
+        let html = '';
+        schema.fields.forEach(function(field) {
+            html += '<div class="form-group mb-4">';
+            html += '<label class="block text-sm font-medium mb-1 text-text-primary">' + field.label + (field.required ? ' <span class="text-error">*</span>' : '') + '</label>';
+            
+            switch(field.type) {
+                case 'text':
+                case 'email':
+                case 'number':
+                    html += '<input type="' + field.type + '" class="w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary" placeholder="' + (field.placeholder_text || '') + '" ' + (field.required ? 'required' : '') + '>';
+                    break;
+                case 'textarea':
+                    html += '<textarea rows="3" class="w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary" placeholder="' + (field.placeholder_text || '') + '" ' + (field.required ? 'required' : '') + '></textarea>';
+                    break;
+                case 'date':
+                    html += '<input type="date" class="w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary" ' + (field.required ? 'required' : '') + '>';
+                    break;
+                case 'select':
+                    html += '<select class="w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary" ' + (field.required ? 'required' : '') + '>';
+                    html += '<option value="">Select...</option>';
+                    if (field.options) {
+                        field.options.split(',').forEach(function(opt) {
+                            opt = opt.trim();
+                            html += '<option value="' + opt + '">' + opt + '</option>';
+                        });
+                    }
+                    html += '</select>';
+                    break;
+                case 'radio':
+                    if (field.options) {
+                        field.options.split(',').forEach(function(opt) {
+                            opt = opt.trim();
+                            html += '<label class="flex items-center gap-2 text-sm text-text-primary">';
+                            html += '<input type="radio" name="' + field.key + '" value="' + opt + '" ' + (field.required ? 'required' : '') + '> ' + opt;
+                            html += '</label>';
+                        });
+                    }
+                    break;
+                case 'checkbox':
+                    html += '<label class="flex items-center gap-2 text-sm text-text-primary">';
+                    html += '<input type="checkbox" ' + (field.required ? 'required' : '') + '> ' + field.label;
+                    html += '</label>';
+                    break;
+                case 'file':
+                    html += '<input type="file" class="w-full text-sm text-text-secondary" ' + (field.required ? 'required' : '') + '>';
+                    break;
+                case 'section':
+                    html += '<h3 class="text-base font-semibold mt-4 mb-2 text-text-primary">' + field.label + '</h3>';
+                    break;
+                default:
+                    html += '<p class="text-sm text-text-secondary">Unsupported field type: ' + field.type + '</p>';
+            }
+            
+            html += '</div>';
+        });
+        
+        html += '<button class="btn-primary mt-4 px-6 py-2 rounded-lg">Submit</button>';
+        container.innerHTML = html;
+    });
+</script>
+
+{% endblock %}

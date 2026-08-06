@@ -52,6 +52,9 @@ INSTALLED_APPS = [
     'apps.tickets.apps.TicketsConfig',
     'apps.knowledge_base',
     'apps.common',
+    'apps.maintenance',
+    'apps.form_builder',
+    'apps.organogram',
 ]
 
 # VAPID for Web Push Notifications

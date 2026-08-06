@@ -14,6 +14,24 @@ document.addEventListener('alpine:init', () => {
             this.activeRoleName = document.body.dataset.activeRole || '';
         },
         
+        // Add missing method
+        initNavbar() {
+            this.activeRoleName = document.body.dataset.activeRole || '';
+            // Setup notification badge refresh if needed
+            this.setupNotificationBadge();
+        },
+        
+        // Add missing method
+        setupNotificationBadge() {
+            // This is called from x-init
+            // The HTMX will handle refreshing the badge
+            // We just need to ensure it exists
+            const badgeContainer = document.getElementById('notificationBadgeContainer');
+            if (badgeContainer) {
+                // HTMX will auto-refresh via hx-trigger
+            }
+        },
+        
         toggleNotifications() {
             this.notificationOpen = !this.notificationOpen;
             if (this.notificationOpen) {
@@ -60,6 +78,12 @@ document.addEventListener('alpine:init', () => {
         init() {
             this.applyTheme(this.theme);
             this.$watch('theme', (value) => this.applyTheme(value));
+        },
+        
+        // Add missing method
+        initTheme() {
+            this.theme = localStorage.getItem('theme') || 'light';
+            this.applyTheme(this.theme);
         },
         
         setTheme(value) {
@@ -128,6 +152,11 @@ document.addEventListener('alpine:init', () => {
             };
         },
         
+        // Add missing method
+        initSlideover() {
+            // Nothing needed - just ensure it exists
+        },
+        
         open(content = '') {
             this.isOpen = true;
             this.content = content;
@@ -148,48 +177,7 @@ document.addEventListener('alpine:init', () => {
     }));
 
     // ================================================================
-    // 4. CONFIRMATION MODAL COMPONENT
-    // ================================================================
-    Alpine.data('modal', () => ({
-        isOpen: false,
-        title: 'Confirm Action',
-        message: 'Are you sure you want to perform this action?',
-        confirmCallback: null,
-        
-        init() {
-            window.openConfirmationModal = (title, message, callback) => {
-                this.open(title, message, callback);
-            };
-            window.closeConfirmationModal = () => {
-                this.close();
-            };
-            window.confirmModal = this;
-        },
-        
-        open(title = 'Confirm Action', message = 'Are you sure you want to perform this action?', callback = null) {
-            this.title = title;
-            this.message = message;
-            this.confirmCallback = callback;
-            this.isOpen = true;
-            document.body.style.overflow = 'hidden';
-        },
-        
-        close() {
-            this.isOpen = false;
-            document.body.style.overflow = '';
-            this.confirmCallback = null;
-        },
-        
-        confirm() {
-            if (this.confirmCallback && typeof this.confirmCallback === 'function') {
-                this.confirmCallback();
-            }
-            this.close();
-        }
-    }));
-
-    // ================================================================
-    // 5. TOAST MANAGER COMPONENT (FIXED - single definition)
+    // 5. TOAST MANAGER COMPONENT (FIXED)
     // ================================================================
     Alpine.data('toastManager', () => ({
         toasts: [],
@@ -209,6 +197,17 @@ document.addEventListener('alpine:init', () => {
                 this.processDjangoMessages();
             }, 100);
         },
+        
+        // Add missing method
+        initToastManager() {
+            // Already initialized
+            setTimeout(() => {
+                this.processDjangoMessages();
+            }, 100);
+        },
+        
+        // ... rest of toastManager methods (addToast, removeToast, processDjangoMessages) remain the same
+
         
         addToast(message, type = 'info', duration = 5000) {
             const icons = {

@@ -1,0 +1,850 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load organogram_filters %}
+
+{% block dashboard_title %}Organogram{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    /* ================================================================
+       ORGANOGRAM - FAMILY TREE STYLE WITH LINES
+       ================================================================ */
+    
+    /* ----- Page Layout ----- */
+    .org-page {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 100px);
+        overflow: hidden;
+    }
+    
+    /* ----- Header ----- */
+    .org-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0;
+        flex-shrink: 0;
+    }
+    
+    .org-header .title-section {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    
+    .org-header .title-section h1 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    
+    .org-header .title-section .dept-name {
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: 0.2rem 0.75rem;
+        border-radius: 9999px;
+        color: white;
+    }
+    
+    .org-header .title-section .stats {
+        font-size: 0.7rem;
+        color: var(--color-text-secondary);
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+        background-color: var(--color-background);
+        border: 1px solid var(--color-border);
+    }
+    
+    .org-header .actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .org-header .actions .filter-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .org-header .actions .filter-group select {
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-background);
+        color: var(--color-text-primary);
+        font-size: 0.8125rem;
+        cursor: pointer;
+        min-width: 150px;
+    }
+    
+    .org-header .actions .filter-group select:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+    }
+    
+    .org-header .actions .btn {
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.8125rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: none;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: transparent;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-primary);
+    }
+    
+    .org-header .actions .btn:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+        background-color: rgba(13, 148, 136, 0.05);
+    }
+    
+    .org-header .actions .btn-primary {
+        background-color: var(--color-primary);
+        color: white;
+        border-color: var(--color-primary);
+    }
+    
+    .org-header .actions .btn-primary:hover {
+        opacity: 0.85;
+        color: white;
+    }
+    
+    /* ----- Scrollable Container ----- */
+    .org-scroll-container {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 0 1rem 0;
+    }
+    
+    .org-scroll-container::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .org-scroll-container::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    
+    .org-scroll-container::-webkit-scrollbar-thumb {
+        background: var(--color-border);
+        border-radius: 3px;
+    }
+    
+    /* ----- Tree ----- */
+    .org-tree {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        padding: 0.5rem 0;
+        min-height: 200px;
+    }
+    
+    .org-tree-root {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+    
+    /* ----- NODE WITH FAMILY TREE LINES ----- */
+    .org-node {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    /* Vertical line from parent to children container */
+    .org-node .node-connector {
+        width: 2px;
+        height: 20px;
+        background-color: var(--color-border);
+        position: relative;
+        margin-top: 2px;
+    }
+    
+    .org-node .node-connector::after {
+        content: '';
+        position: absolute;
+        bottom: -4px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: var(--color-border);
+    }
+    
+    /* Children container with horizontal line */
+    .org-children {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 2rem 3rem;
+        margin-top: 0.5rem;
+        position: relative;
+        padding: 0 1rem;
+        width: 100%;
+    }
+    
+    /* Horizontal line across children */
+    .org-children::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 10%;
+        right: 10%;
+        height: 2px;
+        background-color: var(--color-border);
+    }
+    
+    /* Vertical line from horizontal line to each child */
+    .org-children .org-node::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 2px;
+        height: 20px;
+        background-color: var(--color-border);
+    }
+    
+    /* Remove vertical line for first child? No, keep it consistent */
+    
+    .org-children .org-node:first-child::before {
+        /* Keep it - all children need a line */
+    }
+    
+    /* ----- Node Card ----- */
+    .org-node .node-card {
+        background-color: var(--color-surface);
+        border: 2px solid var(--color-border);
+        border-radius: 0.75rem;
+        padding: 0.75rem 1.25rem;
+        min-width: 140px;
+        max-width: 190px;
+        text-align: center;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        position: relative;
+        z-index: 2;
+    }
+    
+    .org-node .node-card:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        border-color: var(--color-primary);
+    }
+    
+    .org-node .node-card .avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        margin: 0 auto 0.4rem auto;
+        background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        font-weight: 600;
+        overflow: hidden;
+        flex-shrink: 0;
+        transition: transform 0.2s ease;
+    }
+    
+    .org-node .node-card:hover .avatar {
+        transform: scale(1.05);
+    }
+    
+    .org-node .node-card .avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    
+    .org-node .node-card .name {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        line-height: 1.2;
+        margin-bottom: 0.05rem;
+    }
+    
+    .org-node .node-card .title {
+        font-size: 0.65rem;
+        color: var(--color-text-secondary);
+        margin-top: 0.05rem;
+        line-height: 1.2;
+    }
+    
+    .org-node .node-card .department-badge {
+        display: inline-block;
+        font-size: 0.5rem;
+        font-weight: 600;
+        padding: 0.1rem 0.5rem;
+        border-radius: 9999px;
+        margin-top: 0.2rem;
+        color: white;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    
+    .org-node .node-card .expand-toggle {
+        position: absolute;
+        bottom: -0.7rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        color: var(--color-text-secondary);
+        z-index: 3;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+    }
+    
+    .org-node .node-card .expand-toggle:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+        background-color: var(--color-background);
+        transform: translateX(-50%) scale(1.1);
+    }
+    
+    /* ----- Vacant Position ----- */
+    .org-node.vacant .node-card {
+        border-color: var(--color-warning);
+        border-style: dashed;
+        background: linear-gradient(135deg, var(--color-surface), rgba(245, 158, 11, 0.03));
+    }
+    
+    .org-node.vacant .node-card .vacant-badge {
+        font-size: 0.5rem;
+        background-color: var(--color-warning);
+        color: white;
+        padding: 0.1rem 0.4rem;
+        border-radius: 9999px;
+        display: inline-block;
+        margin-top: 0.2rem;
+        font-weight: 600;
+    }
+    
+    .org-node.vacant .node-card .avatar {
+        background: linear-gradient(135deg, var(--color-warning), #d97706);
+        opacity: 0.6;
+    }
+    
+    /* ----- Department Header ----- */
+    .org-dept-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--color-surface);
+        border-radius: 0.75rem;
+        border: 1px solid var(--color-border);
+        width: 100%;
+        max-width: 600px;
+    }
+    
+    .org-dept-header .dept-icon {
+        font-size: 1.5rem;
+    }
+    
+    .org-dept-header .dept-info h3 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin: 0;
+    }
+    
+    .org-dept-header .dept-info p {
+        font-size: 0.7rem;
+        color: var(--color-text-secondary);
+        margin: 0;
+    }
+    
+    /* ----- Empty State ----- */
+    .org-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 300px;
+        color: var(--color-text-secondary);
+        text-align: center;
+        padding: 2rem;
+    }
+    
+    .org-empty .icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+        opacity: 0.3;
+    }
+    
+    .org-empty h3 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: 0.5rem;
+    }
+    
+    .org-empty p {
+        max-width: 400px;
+        margin: 0 auto;
+        font-size: 0.875rem;
+    }
+    
+    .org-empty .dept-selector {
+        margin-top: 1.5rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    .org-empty .dept-selector a {
+        padding: 0.4rem 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        text-decoration: none;
+        font-size: 0.8125rem;
+        color: var(--color-text-primary);
+        transition: all 0.15s ease;
+    }
+    
+    .org-empty .dept-selector a:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+        background-color: rgba(13, 148, 136, 0.05);
+    }
+    
+    /* ----- Legend (Sticky at Bottom) ----- */
+    .org-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem 1.25rem;
+        padding: 0.6rem 1.25rem;
+        background-color: var(--color-surface);
+        border-top: 1px solid var(--color-border);
+        flex-shrink: 0;
+        margin-top: auto;
+        min-height: 3rem;
+        backdrop-filter: blur(8px);
+    }
+    
+    .org-legend .legend-label {
+        font-size: 0.6rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-text-secondary);
+    }
+    
+    .org-legend .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.7rem;
+        color: var(--color-text-secondary);
+        transition: color 0.15s ease;
+    }
+    
+    .org-legend .legend-item:hover {
+        color: var(--color-text-primary);
+    }
+    
+    .org-legend .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    
+    .org-legend .legend-vacant {
+        border: 2px dashed var(--color-warning);
+        background: transparent;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    
+    .org-legend .legend-divider {
+        width: 1px;
+        height: 1.5rem;
+        background-color: var(--color-border);
+        flex-shrink: 0;
+    }
+    
+    .org-legend .legend-line {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.65rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .org-legend .legend-line .line-sample {
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+    }
+    
+    .org-legend .legend-line .line-sample .v-line {
+        width: 2px;
+        height: 12px;
+        background-color: var(--color-border);
+    }
+    
+    .org-legend .legend-line .line-sample .h-line {
+        width: 16px;
+        height: 2px;
+        background-color: var(--color-border);
+    }
+    
+    /* ----- Responsive ----- */
+    @media (max-width: 768px) {
+        .org-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.5rem;
+        }
+        
+        .org-header .title-section {
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .org-header .actions {
+            justify-content: center;
+        }
+        
+        .org-header .actions .filter-group {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .org-node .node-card {
+            min-width: 90px;
+            max-width: 120px;
+            padding: 0.4rem 0.5rem;
+        }
+        
+        .org-node .node-card .avatar {
+            width: 32px;
+            height: 32px;
+            font-size: 0.75rem;
+        }
+        
+        .org-node .node-card .name {
+            font-size: 0.7rem;
+        }
+        
+        .org-node .node-card .title {
+            font-size: 0.55rem;
+        }
+        
+        .org-children {
+            gap: 0.5rem 1.5rem;
+        }
+        
+        .org-legend {
+            padding: 0.4rem 0.75rem;
+            gap: 0.3rem 0.6rem;
+        }
+        
+        .org-legend .legend-divider {
+            display: none;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .org-node .node-card {
+            min-width: 70px;
+            max-width: 90px;
+            padding: 0.3rem 0.35rem;
+        }
+        
+        .org-node .node-card .avatar {
+            width: 24px;
+            height: 24px;
+            font-size: 0.6rem;
+        }
+        
+        .org-node .node-card .name {
+            font-size: 0.6rem;
+        }
+        
+        .org-node .node-card .title {
+            font-size: 0.45rem;
+        }
+        
+        .org-node .node-card .department-badge {
+            font-size: 0.4rem;
+            padding: 0.05rem 0.3rem;
+        }
+        
+        .org-children {
+            gap: 0.25rem 0.75rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="org-page">
+
+    <!-- ================================================================ -->
+    <!-- HEADER                                                           -->
+    <!-- ================================================================ -->
+    <div class="org-header">
+        <div class="title-section">
+            <h1>📊 Organizational Chart</h1>
+            {% if department and department_name %}
+                <span class="dept-name" style="background-color: {{ department_colors|get_item:department|default:'#64748B' }};">
+                    {{ department_name }}
+                </span>
+                <span class="stats">{{ dept_user_count }} members • {{ dept_lead_count }} leads</span>
+            {% endif %}
+        </div>
+        
+        <div class="actions">
+            <div class="filter-group">
+                <select id="departmentFilter" onchange="window.location.href='?department=' + this.value">
+                    <option value="">🏢 Select Department</option>
+                    {% for code, label in department_choices %}
+                        <option value="{{ code }}" {% if department == code %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            {% if department %}
+                <a href="{% url 'organogram:print' %}?department={{ department }}" 
+                   target="_blank" class="btn" title="Print">
+                    {% lucide "printer" size=14 %} Print
+                </a>
+                <a href="{% url 'organogram:export' %}?department={{ department }}" 
+                   class="btn" title="Export CSV">
+                    {% lucide "download" size=14 %} Export CSV
+                </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- SCROLLABLE CONTENT                                              -->
+    <!-- ================================================================ -->
+    <div class="org-scroll-container">
+        <div class="org-tree" x-data="orgTree()" x-init="init()">
+
+            {% if no_department %}
+                <div class="org-empty">
+                    <div class="icon">🏢</div>
+                    <h3>Select a Department</h3>
+                    <p>Choose a department from the dropdown above to view its organizational chart.</p>
+                    <div class="dept-selector">
+                        {% for code, label in department_choices %}
+                            <a href="?department={{ code }}">{{ label }}</a>
+                        {% endfor %}
+                    </div>
+                </div>
+                
+            {% elif roots %}
+                <div class="org-tree-root">
+                    {% for root in roots %}
+                        <!-- Root Node -->
+                        <div class="org-node" 
+                             :class="{ 'expanded': expandedNodes.includes({{ root.user.id }}) }"
+                             x-data="orgNode({{ root.user.id }}, {{ root.depth }}, {{ root.has_children|yesno:'true,false' }})">
+                            
+                            <!-- Card -->
+                            <div class="node-card" 
+                                 style="border-color: {{ department_colors|get_item:root.user.department|default:'var(--color-border)' }};
+                                        {% if root.has_children %}border-width: 3px;{% endif %}">
+                                
+                                <div class="avatar">
+                                    {% if root.user.avatar %}
+                                        <img src="{{ root.user.avatar.url }}" alt="{{ root.user.get_full_name }}">
+                                    {% else %}
+                                        {{ root.user.first_name.0|upper }}{{ root.user.last_name.0|upper }}
+                                    {% endif %}
+                                </div>
+                                
+                                <div class="name">{{ root.user.get_full_name|default:root.user.email }}</div>
+                                <div class="title">{{ root.user.position|default:root.user.get_role_display }}</div>
+                                
+                                <span class="department-badge" 
+                                      style="background-color: {{ department_colors|get_item:root.user.department|default:'#64748B' }};">
+                                    {{ root.user.get_department_display }}
+                                </span>
+                                
+                                {% if root.has_children %}
+                                    <div class="expand-toggle" @click="toggleExpand($event, {{ root.user.id }})">
+                                        <span x-show="!isExpanded">{% lucide "chevron-down" size=14 %}</span>
+                                        <span x-show="isExpanded">{% lucide "chevron-up" size=14 %}</span>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Connector vertical line -->
+                            {% if root.has_children %}
+                                <div class="node-connector"></div>
+                            {% endif %}
+                            
+                            <!-- Children -->
+                            {% if root.has_children %}
+                                <div class="org-children" 
+                                     x-show="isExpanded"
+                                     x-collapse.duration.300ms>
+                                    
+                                    {% for child in root.children %}
+                                        {% include "organogram/partials/node.html" with node=child depth=root.depth|add:1 %}
+                                    {% endfor %}
+                                    
+                                    <!-- Vacant positions -->
+                                    {% for vacant in vacant_positions %}
+                                        {% if vacant.reports_to.id == root.user.id %}
+                                            <div class="org-node vacant">
+                                                <div class="node-card">
+                                                    <div class="avatar">🔲</div>
+                                                    <div class="name" style="color: var(--color-text-secondary);">
+                                                        {{ vacant.position_title }}
+                                                    </div>
+                                                    <div class="title">Vacant Position</div>
+                                                    <span class="vacant-badge">Open</span>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                </div>
+                
+            {% else %}
+                <div class="org-empty">
+                    <div class="icon">👥</div>
+                    <h3>No Hierarchy Found for {{ department_name }}</h3>
+                    <p>This department doesn't have any team leads or managers assigned yet.</p>
+                    <p class="text-xs text-text-secondary mt-2">Add users with roles: Super Admin, Admin, or Team Lead to build the hierarchy.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- LEGEND (Sticky at Bottom)                                       -->
+    <!-- ================================================================ -->
+    <div class="org-legend">
+        <span class="legend-label">Legend</span>
+        
+        {% if department_colors %}
+            {% for code, label in department_choices %}
+                {% if code == department %}
+                    <span class="legend-item">
+                        <span class="legend-dot" style="background-color: {{ department_colors|get_item:code|default:'#64748B' }};"></span>
+                        {{ label }}
+                    </span>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        
+        <span class="legend-divider"></span>
+        
+        <span class="legend-item">
+            <span class="legend-vacant"></span>
+            Vacant Position
+        </span>
+        
+        <span class="legend-divider"></span>
+        
+        <span class="legend-line">
+            <span class="line-sample">
+                <span class="v-line"></span>
+                <span class="h-line"></span>
+            </span>
+            Reporting Lines
+        </span>
+        
+        <span class="legend-divider"></span>
+        
+        <span class="legend-item">
+            <span class="legend-dot" style="border: 3px solid var(--color-primary); background: transparent; width: 10px; height: 10px;"></span>
+            Has Direct Reports
+        </span>
+    </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- ALPINE.JS COMPONENTS                                             -->
+<!-- ================================================================ -->
+<script>
+    document.addEventListener('alpine:init', () => {
+        
+        Alpine.data('orgTree', () => ({
+            expandedNodes: [],
+            
+            init() {
+                // Auto-expand first two levels
+            }
+        }));
+        
+        Alpine.data('orgNode', (nodeId, depth, hasChildren) => ({
+            nodeId: nodeId,
+            depth: depth,
+            hasChildren: hasChildren,
+            isExpanded: false,
+            
+            init() {
+                // Auto-expand first two levels
+                if (this.depth < 2) {
+                    this.isExpanded = true;
+                }
+            },
+            
+            toggleExpand(event, id) {
+                event.stopPropagation();
+                this.isExpanded = !this.isExpanded;
+            }
+        }));
+    });
+</script>
+
+{% endblock %}

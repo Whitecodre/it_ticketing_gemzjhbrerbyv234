@@ -1,0 +1,275 @@
+{% extends "base_registration.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block title %}{{ form_instance.title }} - TicketSwipe{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .form-page {
+        min-height: 100vh;
+        background-color: var(--color-background);
+        padding: 2rem 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .form-container {
+        max-width: 800px;
+        width: 100%;
+        background-color: var(--color-surface);
+        border-radius: 1rem;
+        border: 1px solid var(--color-border);
+        padding: 2rem;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+    }
+    
+    .form-header {
+        margin-bottom: 1.5rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+    
+    .form-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+    }
+    
+    .form-header p {
+        color: var(--color-text-secondary);
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+    }
+    
+    .form-footer {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--color-border);
+        text-align: center;
+        font-size: 0.75rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .form-group {
+        margin-bottom: 1rem;
+    }
+    
+    .form-group label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--color-text-primary);
+        margin-bottom: 0.25rem;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-background);
+        color: var(--color-text-primary);
+        font-size: 0.875rem;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+    }
+    
+    .form-group .radio-group,
+    .form-group .checkbox-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .form-group .radio-group label,
+    .form-group .checkbox-group label {
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .form-group .radio-group input,
+    .form-group .checkbox-group input {
+        width: auto;
+        width: 1rem;
+        height: 1rem;
+        accent-color: var(--color-primary);
+    }
+    
+    .success-message {
+        text-align: center;
+        padding: 2rem 0;
+    }
+    
+    .success-message .icon {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="form-page">
+    <div class="form-container">
+        <div class="form-header">
+            <div class="brand">
+                <span class="text-lg font-cursive font-semibold text-primary">TicketSwipe</span>
+            </div>
+            <h1>{{ form_instance.title }}</h1>
+            {% if form_instance.description %}
+            <p>{{ form_instance.description }}</p>
+            {% endif %}
+        </div>
+        
+        <div id="form-render">
+            <p class="text-sm text-text-secondary">Loading form...</p>
+        </div>
+        
+        <div class="form-footer">
+            Powered by TicketSwipe &bull; {{ form_instance.created_at|date:"Y" }}
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const schema = {{ form_instance.schema|safe }};
+        const container = document.getElementById('form-render');
+        const submitUrl = "{% url 'form_builder:render' form_instance.slug %}";
+        
+        if (!schema.fields || schema.fields.length === 0) {
+            container.innerHTML = '<p class="text-center text-text-secondary">No fields in this form.</p>';
+            return;
+        }
+        
+        let html = '<form id="dynamicForm">';
+        html += '<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">';
+        
+        schema.fields.forEach(function(field) {
+            html += '<div class="form-group">';
+            html += '<label>' + field.label + (field.required ? ' <span class="text-error">*</span>' : '') + '</label>';
+            
+            switch(field.type) {
+                case 'text':
+                case 'email':
+                case 'number':
+                    html += '<input type="' + field.type + '" name="' + field.key + '" class="form-control" placeholder="' + (field.placeholder_text || '') + '" ' + (field.required ? 'required' : '') + '>';
+                    break;
+                case 'textarea':
+                    html += '<textarea name="' + field.key + '" rows="3" class="form-control" placeholder="' + (field.placeholder_text || '') + '" ' + (field.required ? 'required' : '') + '></textarea>';
+                    break;
+                case 'date':
+                    html += '<input type="date" name="' + field.key + '" class="form-control" ' + (field.required ? 'required' : '') + '>';
+                    break;
+                case 'select':
+                    html += '<select name="' + field.key + '" class="form-control" ' + (field.required ? 'required' : '') + '>';
+                    html += '<option value="">Select...</option>';
+                    if (field.options) {
+                        field.options.split(',').forEach(function(opt) {
+                            opt = opt.trim();
+                            html += '<option value="' + opt + '">' + opt + '</option>';
+                        });
+                    }
+                    html += '</select>';
+                    break;
+                case 'radio':
+                    html += '<div class="radio-group">';
+                    if (field.options) {
+                        field.options.split(',').forEach(function(opt) {
+                            opt = opt.trim();
+                            html += '<label>';
+                            html += '<input type="radio" name="' + field.key + '" value="' + opt + '" ' + (field.required ? 'required' : '') + '> ' + opt;
+                            html += '</label>';
+                        });
+                    }
+                    html += '</div>';
+                    break;
+                case 'checkbox':
+                    html += '<div class="checkbox-group">';
+                    html += '<label>';
+                    html += '<input type="checkbox" name="' + field.key + '" ' + (field.required ? 'required' : '') + '> ' + field.label;
+                    html += '</label>';
+                    html += '</div>';
+                    break;
+                case 'file':
+                    html += '<input type="file" name="' + field.key + '" class="form-control" ' + (field.required ? 'required' : '') + '>';
+                    break;
+                case 'section':
+                    html += '<h3 class="text-base font-semibold mt-2 mb-1 text-text-primary">' + field.label + '</h3>';
+                    break;
+                default:
+                    html += '<p class="text-sm text-text-secondary">Unsupported field type</p>';
+            }
+            
+            html += '</div>';
+        });
+        
+        html += '<button type="submit" class="btn-primary px-6 py-2 rounded-lg">Submit</button>';
+        html += '</form>';
+        
+        container.innerHTML = html;
+        
+        // Handle form submission
+        document.getElementById('dynamicForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = {};
+            for (let [key, value] of formData.entries()) {
+                if (key !== 'csrfmiddlewaretoken') {
+                    data[key] = value;
+                }
+            }
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            
+            fetch(submitUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                },
+                body: JSON.stringify({ data: data }),
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    container.innerHTML = `
+                        <div class="success-message">
+                            <div class="icon">✅</div>
+                            <h3 class="text-lg font-semibold text-text-primary">Success!</h3>
+                            <p class="text-sm text-text-secondary mt-1">${result.message}</p>
+                            ${result.redirect_url ? `<a href="${result.redirect_url}" class="btn-primary mt-4 inline-block">Continue</a>` : ''}
+                        </div>
+                    `;
+                } else {
+                    alert(result.error || 'Failed to submit form.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit';
+                }
+            })
+            .catch(error => {
+                console.error('Submission error:', error);
+                alert('Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit';
+            });
+        });
+    });
+</script>
+
+{% endblock %}

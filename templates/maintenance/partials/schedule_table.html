@@ -1,0 +1,200 @@
+{% load lucide %}
+
+<div class="rounded-lg border overflow-hidden" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    
+    {% if schedules %}
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Department
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Title
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Date
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        IT Personnel
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Status
+                    </th>
+                    <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Confirmation
+                    </th>
+                    <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Actions
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for schedule in schedules %}
+                <tr class="border-t group" style="border-color: var(--color-border);">
+                    <td class="px-4 py-3">
+                        <span class="text-sm" style="color: var(--color-text-primary);">
+                            {{ schedule.get_department_display }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3">
+                        <a href="{% url 'maintenance:detail' schedule.pk %}" 
+                           class="font-medium hover:underline"
+                           style="color: var(--color-primary);">
+                            {{ schedule.title }}
+                        </a>
+                        {% if schedule.description %}
+                        <p class="text-xs truncate max-w-xs" style="color: var(--color-text-secondary);">
+                            {{ schedule.description|truncatechars:60 }}
+                        </p>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <span class="text-sm" style="color: var(--color-text-primary);">
+                            {{ schedule.scheduled_date|date:"M d, Y" }}
+                        </span>
+                        {% if schedule.start_time and schedule.end_time %}
+                        <span class="text-xs block" style="color: var(--color-text-secondary);">
+                            {{ schedule.start_time|time:"g:i A" }} - {{ schedule.end_time|time:"g:i A" }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if schedule.assigned_to %}
+                            <span class="text-sm" style="color: var(--color-text-primary);">
+                                {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
+                            </span>
+                        {% else %}
+                            <span class="text-xs" style="color: var(--color-text-secondary);">Unassigned</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% include "maintenance/partials/status_badge.html" with status=schedule.status %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if schedule.status == 'COMPLETED' %}
+                            {% if schedule.confirmed_by %}
+                                <div class="flex items-center gap-1">
+                                    <span class="text-success">✓</span>
+                                    <span class="text-xs" style="color: var(--color-text-secondary);">
+                                        {{ schedule.confirmed_by.get_full_name|default:schedule.confirmed_by.email }}
+                                    </span>
+                                    <span class="text-xs" style="color: var(--color-text-secondary);">
+                                        {{ schedule.confirmed_at|date:"M d" }}
+                                    </span>
+                                </div>
+                            {% else %}
+                                <span class="text-xs status-chip status-chip-warning">Pending Confirmation</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-xs" style="color: var(--color-text-secondary);">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-right">
+                        <div class="flex items-center justify-end gap-1">
+                            {# Edit - Only for Admin/Superadmin/Team Lead #}
+                            {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' and schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
+                                <a href="{% url 'maintenance:edit' schedule.pk %}"
+                                   class="p-1.5 rounded transition hover:bg-black/5"
+                                   style="color: var(--color-text-secondary);"
+                                   title="Edit">
+                                    {% lucide "edit" size=16 %}
+                                </a>
+                            {% endif %}
+                            
+                            {# Confirm - Only for Manager (Team Lead/Admin/Superadmin) #}
+                            {% if schedule.status == 'COMPLETED' and not schedule.confirmed_by %}
+                                {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
+                                    <button onclick="openConfirmModal({{ schedule.pk }})"
+                                            class="p-1.5 rounded transition hover:bg-black/5"
+                                            style="color: var(--color-success);"
+                                            title="Confirm Completion">
+                                        {% lucide "check-circle" size=16 %}
+                                    </button>
+                                {% endif %}
+                            {% endif %}
+                            
+                            {# View - Everyone #}
+                            <a href="{% url 'maintenance:detail' schedule.pk %}"
+                               class="p-1.5 rounded transition hover:bg-black/5"
+                               style="color: var(--color-text-secondary);"
+                               title="View Details">
+                                {% lucide "eye" size=16 %}
+                            </a>
+                            
+                            {# Update Status - Only assigned IT or Admin/Team Lead #}
+                            {% if schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
+                                {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' or schedule.assigned_to == user %}
+                                    <button onclick="openStatusModal({{ schedule.pk }})"
+                                            class="p-1.5 rounded transition hover:bg-black/5"
+                                            style="color: var(--color-primary);"
+                                            title="Update Status">
+                                        {% lucide "refresh-cw" size=16 %}
+                                    </button>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {# Pagination #}
+    {% if schedules.paginator.num_pages > 1 %}
+    <div class="px-4 py-3 border-t flex items-center justify-between" style="border-color: var(--color-border);">
+        <span class="text-xs" style="color: var(--color-text-secondary);">
+            Showing {{ schedules.start_index }} - {{ schedules.end_index }} of {{ schedules.paginator.count }}
+        </span>
+        <div class="flex gap-1">
+            {% if schedules.has_previous %}
+                <button hx-get="{% url 'maintenance:list' %}?page={{ schedules.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                        hx-target="#scheduleTableContainer"
+                        class="px-3 py-1 text-sm rounded border transition"
+                        style="border-color: var(--color-border); color: var(--color-text-primary);">
+                    Previous
+                </button>
+            {% endif %}
+            
+            {% for num in schedules.paginator.page_range %}
+                {% if num == schedules.number %}
+                    <span class="px-3 py-1 text-sm rounded bg-primary text-white">{{ num }}</span>
+                {% else %}
+                    <button hx-get="{% url 'maintenance:list' %}?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                            hx-target="#scheduleTableContainer"
+                            class="px-3 py-1 text-sm rounded border transition"
+                            style="border-color: var(--color-border); color: var(--color-text-primary);">
+                        {{ num }}
+                    </button>
+                {% endif %}
+            {% endfor %}
+            
+            {% if schedules.has_next %}
+                <button hx-get="{% url 'maintenance:list' %}?page={{ schedules.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                        hx-target="#scheduleTableContainer"
+                        class="px-3 py-1 text-sm rounded border transition"
+                        style="border-color: var(--color-border); color: var(--color-text-primary);">
+                    Next
+                </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <div class="py-12 text-center">
+        <div class="text-4xl mb-3 opacity-50">📋</div>
+        <p class="text-sm" style="color: var(--color-text-secondary);">
+            No maintenance schedules found.
+        </p>
+        {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
+        <a href="{% url 'maintenance:create' %}" 
+           class="inline-block mt-3 text-sm font-medium text-primary hover:underline">
+            Create your first schedule
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

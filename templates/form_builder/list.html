@@ -1,0 +1,516 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Form Builder{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="w-full">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+            <h2 class="text-base font-semibold inline-flex gap-2" style="color: var(--color-text-primary);">
+                {% lucide "file-text" size=20 %} Form Builder
+            </h2>
+            <p class="text-sm text-text-secondary">Create and manage dynamic forms for your organization.</p>
+        </div>
+        <button onclick="window.openCreateModal()" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+            {% lucide "plus" size=16 %} New Form
+        </button>
+    </div>
+
+    <!-- Templates Section -->
+    <div class="mb-6">
+        <h3 class="text-sm font-semibold mb-3 inline-flex gap-2" style="color: var(--color-text-secondary);">
+            {% lucide "layout-template" size=16 %} Start from Template
+        </h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {% for template in templates %}
+            <button onclick="window.createFromTemplate('{{ template.key }}')" 
+                    class="p-4 rounded-lg border text-left transition hover:shadow-md hover:border-primary"
+                    style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <div class="text-2xl mb-2">{{ template.icon }}</div>
+                <div class="text-sm font-medium" style="color: var(--color-text-primary);">{{ template.name }}</div>
+                <div class="text-xs text-text-secondary truncate">{{ template.description|truncatechars:50 }}</div>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Existing Forms -->
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b" style="border-color: var(--color-border);">
+            <span class="text-sm font-medium" style="color: var(--color-text-primary);">Your Forms</span>
+            <span class="text-xs text-text-secondary ml-2">({{ forms|length }})</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b" style="border-color: var(--color-border);">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Title</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Type</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                        <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Submissions</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Created</th>
+                        <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in forms %}
+                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                        <td class="py-3 px-4">
+                            <div>
+                                <div class="font-medium" style="color: var(--color-text-primary);">
+                                    {{ form.title }}
+                                </div>
+                                <div class="text-xs text-text-secondary">{{ form.slug }}</div>
+                            </div>
+                        </td>
+                        <td class="py-3 px-4">
+                            <span class="text-xs text-text-secondary">{{ form.get_form_type_display }}</span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <span class="status-chip 
+                                {% if form.status == 'PUBLISHED' %}success
+                                {% elif form.status == 'DRAFT' %}warning
+                                {% elif form.status == 'ARCHIVED' %}neutral
+                                {% else %}open{% endif %} text-xs">
+                                {{ form.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="text-sm font-medium" style="color: var(--color-text-primary);">
+                                {{ form.submission_count }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4">
+                            <span class="text-xs text-text-secondary">{{ form.created_at|date:"M d, Y" }}</span>
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <div class="flex items-center justify-center gap-1">
+                                <a href="{% url 'form_builder:builder' form.pk %}"
+                                   class="p-1.5 rounded transition hover:bg-black/5"
+                                   style="color: var(--color-text-secondary);"
+                                   title="Edit Form">
+                                    {% lucide "edit" size=15 %}
+                                </a>
+                                <a href="{% url 'form_builder:preview' form.pk %}"
+                                   target="_blank"
+                                   class="p-1.5 rounded transition hover:bg-black/5"
+                                   style="color: var(--color-text-secondary);"
+                                   title="Preview Form">
+                                    {% lucide "eye" size=15 %}
+                                </a>
+                                <button onclick="window.openSettingsModal('{{ form.pk }}')"
+                                        class="p-1.5 rounded transition hover:bg-black/5"
+                                        style="color: var(--color-text-secondary);"
+                                        title="Form Settings">
+                                    {% lucide "settings" size=15 %}
+                                </button>
+                                <button onclick="window.duplicateForm('{{ form.pk }}')"
+                                        class="p-1.5 rounded transition hover:bg-black/5"
+                                        style="color: var(--color-text-secondary);"
+                                        title="Duplicate Form">
+                                    {% lucide "copy" size=15 %}
+                                </button>
+                                <button onclick="window.openDeleteModal('{{ form.pk }}', '{{ form.title|escapejs }}')"
+                                        class="p-1.5 rounded transition hover:bg-black/5"
+                                        style="color: var(--color-text-secondary);"
+                                        title="Delete Form">
+                                    {% lucide "trash-2" size=15 %}
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center py-12 text-text-secondary">
+                            <div class="flex flex-col items-center gap-2">
+                                <span class="text-4xl opacity-30">📝</span>
+                                <p class="text-sm font-medium">No forms found</p>
+                                <p class="text-xs">Create your first form to get started.</p>
+                                <button onclick="window.openCreateModal()" class="btn-primary text-sm mt-2">Create Form</button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create Form Modal -->
+<div id="createModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) window.closeCreateModal()">
+    <div id="createModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" 
+         style="background-color: var(--color-surface);">
+        <div class="p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold" style="color: var(--color-text-primary);">Create New Form</h3>
+                <button onclick="window.closeCreateModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+            </div>
+            <div id="createModalBody">
+                <div class="text-center py-8 text-text-secondary">
+                    <div class="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) window.closeSettingsModal()">
+    <div id="settingsModalBody" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto p-6" 
+         style="background-color: var(--color-surface);">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold" style="color: var(--color-text-primary);">Form Settings</h3>
+            <button onclick="window.closeSettingsModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+        </div>
+        <div id="settingsModalContent">
+            <div class="text-center py-8 text-text-secondary">
+                <div class="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
+                Loading...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Modal -->
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) window.closeModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4" style="background-color: var(--color-surface);">
+    </div>
+</div>
+
+{{ templates|json_script:"templateData" }}
+
+{% endblock %}
+
+
+{% block scripts %}
+{{ block.super }}
+
+<script>
+    // ================================================================
+    // TEMPLATE DATA (from Django context via json_script)
+    // ================================================================
+    
+    const templateData = JSON.parse(document.getElementById('templateData').textContent);
+    console.log('✅ Template data loaded:', templateData);
+    
+    // ================================================================
+    // CREATE MODAL FUNCTIONS
+    // ================================================================
+    
+    window.openCreateModal = function() {
+        const modal = document.getElementById('createModal');
+        const body = document.getElementById('createModalBody');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        
+        body.innerHTML = '<div class="text-center py-8 text-text-secondary"><div class="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mx-auto mb-4"></div>Loading...</div>';
+        
+        fetch('/form-builder/create-modal/')
+            .then(response => response.text())
+            .then(html => {
+                body.innerHTML = html;
+                // Re-bind the create form function after content loads
+                bindCreateFormFunction();
+            })
+            .catch(() => {
+                body.innerHTML = '<div class="text-center py-8 text-error">Failed to load. Please try again.</div>';
+            });
+    };
+    
+    window.closeCreateModal = function() {
+        const modal = document.getElementById('createModal');
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    };
+    
+    // ================================================================
+    // BIND CREATE FORM FUNCTION
+    // ================================================================
+    
+    function bindCreateFormFunction() {
+        // The button uses onclick="window.createFormFromModal()" - this is already global
+        // Just ensure the template preview works
+        const templateSelect = document.getElementById('modalFormTemplate');
+        if (templateSelect) {
+            templateSelect.addEventListener('change', function() {
+                const key = this.value;
+                const preview = document.getElementById('templatePreview');
+                const description = document.getElementById('templateDescription');
+                const fields = document.getElementById('templateFields');
+                
+                if (key === 'BLANK') {
+                    preview.classList.add('hidden');
+                    return;
+                }
+                
+                const template = templateData.find(t => t.key === key);
+                if (template) {
+                    preview.classList.remove('hidden');
+                    description.textContent = template.description;
+                    
+                    let fieldHtml = '';
+                    if (template.schema && template.schema.fields) {
+                        const iconMap = {
+                            'text': '📝',
+                            'textarea': '📄',
+                            'number': '🔢',
+                            'email': '✉️',
+                            'date': '📅',
+                            'select': '📋',
+                            'radio': '⭕',
+                            'checkbox': '✅',
+                            'file': '📎',
+                            'section': '📦'
+                        };
+                        template.schema.fields.slice(0, 5).forEach(function(field) {
+                            fieldHtml += `<div class="flex items-center gap-2 text-xs text-text-secondary">
+                                <span>${iconMap[field.type] || '📝'}</span>
+                                <span>${field.label}</span>
+                                ${field.required ? '<span class="text-error text-[0.55rem]">*</span>' : ''}
+                            </div>`;
+                        });
+                        if (template.schema.fields.length > 5) {
+                            fieldHtml += `<div class="text-xs text-text-secondary">+ ${template.schema.fields.length - 5} more fields</div>`;
+                        }
+                    }
+                    fields.innerHTML = fieldHtml;
+                }
+            });
+        }
+    }
+    
+    // ================================================================
+    // CREATE FORM (Global - called from onclick)
+    // ================================================================
+    
+    window.createFormFromModal = function() {
+        const title = document.getElementById('modalFormTitle').value.trim();
+        const description = document.getElementById('modalFormDescription').value.trim();
+        const formType = document.getElementById('modalFormType').value;
+        const templateKey = document.getElementById('modalFormTemplate').value;
+        
+        console.log('🔵 createFormFromModal called');
+        console.log('🔵 Title:', title);
+        console.log('🔵 TemplateKey:', templateKey);
+        
+        if (!title) {
+            if (typeof showToast === 'function') {
+                showToast('Please enter a form title.', 'error');
+            } else {
+                alert('Please enter a form title.');
+            }
+            return;
+        }
+        
+        // Get schema from template - with better handling
+        let schema = { fields: [] };
+        if (templateKey && templateKey !== 'BLANK') {
+            const template = templateData.find(t => t.key === templateKey);
+            if (template && template.schema && template.schema.fields) {
+                schema = template.schema;
+                console.log('✅ Found template schema with', schema.fields.length, 'fields');
+            } else {
+                console.warn('⚠️ Template not found or has no fields:', templateKey);
+            }
+        }
+        
+        const data = {
+            title: title,
+            description: description,
+            form_type: formType,
+            status: 'DRAFT',
+            schema: schema,
+            require_login: true,
+            confirmation_message: 'Thank you! Your submission has been received.',
+            redirect_url: '',
+        };
+        
+        console.log('🔵 Data being sent:', data);
+        
+        // Get CSRF token
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        
+        if (!csrfToken) {
+            console.error('❌ CSRF token not found!');
+            if (typeof showToast === 'function') {
+                showToast('Security token missing. Please refresh the page.', 'error');
+            }
+            return;
+        }
+        
+        // Find the proceed button directly by its ID
+        const saveBtn = document.getElementById('proceedToBuilderBtn');
+        const originalText = saveBtn ? saveBtn.innerHTML : 'Proceed to Builder';
+        
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = 'Creating...';
+            saveBtn.classList.add('opacity-70');
+        }
+        
+        console.log('🔵 Sending request to /form-builder/save/');
+        
+        fetch('/form-builder/save/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(data),
+        })
+        .then(response => {
+            console.log('🔵 Response status:', response.status);
+            return response.json().then(data => ({
+                status: response.status,
+                data: data
+            }));
+        })
+        .then(({ status, data }) => {
+            console.log('🔵 Response data:', data);
+            
+            if (status === 200 && data.success) {
+                if (typeof showToast === 'function') {
+                    showToast(data.message, 'success');
+                }
+                window.closeCreateModal();
+                window.location.href = '/form-builder/builder/' + data.form_id + '/';
+            } else {
+                console.error('❌ Server error:', data.error || 'Unknown error');
+                if (typeof showToast === 'function') {
+                    showToast(data.error || 'Error creating form. Status: ' + status, 'error');
+                }
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalText;
+                    saveBtn.classList.remove('opacity-70');
+                }
+            }
+        })
+        .catch(error => {
+            console.error('❌ Network error:', error);
+            if (typeof showToast === 'function') {
+                showToast('Network error: ' + error.message, 'error');
+            }
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+                saveBtn.classList.remove('opacity-70');
+            }
+        });
+    };
+    
+    // ================================================================
+    // CREATE FROM TEMPLATE
+    // ================================================================
+    
+    window.createFromTemplate = function(templateKey) {
+        window.openCreateModal();
+        // Wait for modal to load, then select template
+        setTimeout(() => {
+            const select = document.getElementById('modalFormTemplate');
+            if (select) {
+                select.value = templateKey;
+                select.dispatchEvent(new Event('change'));
+            }
+        }, 500);
+    };
+    
+    // ================================================================
+    // SETTINGS MODAL
+    // ================================================================
+    
+    window.openSettingsModal = function(formId) {
+        const modal = document.getElementById('settingsModal');
+        const content = document.getElementById('settingsModalContent');
+        
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        
+        content.innerHTML = '<div class="text-center py-8 text-text-secondary"><div class="animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mx-auto mb-4"></div>Loading...</div>';
+        
+        fetch('/form-builder/settings/' + formId + '/')
+            .then(response => response.text())
+            .then(html => {
+                content.innerHTML = html;
+            })
+            .catch(() => {
+                content.innerHTML = '<div class="text-center py-8 text-error">Failed to load settings. Please try again.</div>';
+            });
+    };
+    
+    window.closeSettingsModal = function() {
+        const modal = document.getElementById('settingsModal');
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+    };
+    
+    // ================================================================
+    // DELETE MODAL
+    // ================================================================
+    
+    window.openDeleteModal = function(formId, formTitle) {
+        const modal = document.getElementById('modalContainer');
+        modal.innerHTML = `
+            <div class="p-6">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-error/10 text-error">
+                        {% lucide "alert-triangle" size=24 %}
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold" style="color: var(--color-text-primary);">Delete Form</h3>
+                        <p class="text-sm text-text-secondary">This action cannot be undone.</p>
+                    </div>
+                </div>
+                <p class="text-sm" style="color: var(--color-text-primary);">
+                    Are you sure you want to delete "<strong>${formTitle}</strong>"?
+                </p>
+                <div class="flex justify-end gap-2 mt-6">
+                    <button onclick="window.closeModal()" class="btn-ghost text-sm">Cancel</button>
+                    <form method="post" action="/form-builder/delete/${formId}/">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-danger text-sm">Delete</button>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.getElementById('modalOverlay').classList.remove('hidden');
+    };
+    
+    window.closeModal = function() {
+        document.getElementById('modalOverlay').classList.add('hidden');
+        document.getElementById('modalContainer').innerHTML = '';
+    };
+    
+    // ================================================================
+    // DUPLICATE FORM
+    // ================================================================
+    
+    window.duplicateForm = function(formId) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/form-builder/duplicate/' + formId + '/';
+        const csrf = document.createElement('input');
+        csrf.type = 'hidden';
+        csrf.name = 'csrfmiddlewaretoken';
+        csrf.value = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        form.appendChild(csrf);
+        document.body.appendChild(form);
+        form.submit();
+    };
+</script>
+
+{% endblock %}

@@ -1,0 +1,235 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block page_title %}Maintenance Calendar{% endblock %}
+
+{% block dashboard_content %}
+
+{# ============================================================ #}
+{# USER HELP / INTRODUCTION #}
+{# ============================================================ #}
+<div class="calendar-intro">
+    <p>
+        <span class="intro-icon">📅</span>
+        <span>Click on a day to view its maintenance schedules.</span>
+        <span class="intro-icon">🟢</span>
+        <span>Colored dots indicate the number and status of events.</span>
+    </p>
+</div>
+
+{# ============================================================ #}
+{# CALENDAR + EVENTS PANEL - SIDE BY SIDE #}
+{# ============================================================ #}
+<div class="calendar-layout">
+    
+    {# LEFT: Calendar #}
+    <div class="calendar-container" id="calendarContainer">
+        {# Navigation #}
+        <div class="calendar-nav">
+            <div class="flex items-center gap-2">
+                <button class="calendar-nav-btn" onclick="changeMonth(-1)" title="Previous Month">
+                    {% lucide "chevron-left" size=18 %}
+                </button>
+                <span class="calendar-month-title" id="monthTitle">{{ month_name }} {{ year }}</span>
+                <button class="calendar-nav-btn" onclick="changeMonth(1)" title="Next Month">
+                    {% lucide "chevron-right" size=18 %}
+                </button>
+            </div>
+            <button class="calendar-today-btn" onclick="goToToday()">
+                {% lucide "calendar" size=14 %}
+                Today
+            </button>
+        </div>
+
+        {# Grid Wrapper - This is what gets swapped #}
+        <div id="calendarGridWrapper">
+            {% include "maintenance/partials/calendar_grid.html" %}
+        </div>
+
+        {# Legend #}
+        <div class="calendar-legend">
+            <span class="legend-label">Status:</span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background-color: #3B82F6;"></span>
+                Scheduled
+            </span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background-color: #F59E0B;"></span>
+                In Progress
+            </span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background-color: #10B981;"></span>
+                Completed
+            </span>
+            <span class="legend-item">
+                <span class="legend-dot" style="background-color: #6B7280;"></span>
+                Cancelled
+            </span>
+        </div>
+    </div>
+
+    {# RIGHT: Events Panel #}
+    <div class="events-panel-container">
+        <div id="dayEventsPanel" class="day-events-panel">
+            <div class="panel-header">
+                <span class="panel-title">
+                    {% lucide "calendar" size=16 %}
+                    <span id="selectedDateDisplay">{{ month_name }} {{ year }}</span>
+                </span>
+                <span class="panel-event-count" id="eventCount">{{ schedules|length }} events</span>
+            </div>
+            <div id="dayEventsContent" class="panel-content">
+                {% if schedules %}
+                    {% for schedule in schedules %}
+                        <div class="day-event-item" style="border-left-color: {% if schedule.status == 'SCHEDULED' %}#3B82F6{% elif schedule.status == 'IN_PROGRESS' %}#F59E0B{% elif schedule.status == 'COMPLETED' %}#10B981{% else %}#6B7280{% endif %};">
+                            <div class="event-info">
+                                <span class="event-title-text">{{ schedule.title }}</span>
+                                <span class="event-department">{{ schedule.get_department_display }}</span>
+                            </div>
+                            <a href="{% url 'maintenance:detail' schedule.pk %}" 
+                               class="event-view-link">
+                                View
+                            </a>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="panel-empty">
+                        {% lucide "calendar" size=24 class="text-text-secondary opacity-50" %}
+                        <p>No maintenance events for this month.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+    // ================================================================
+    // CALENDAR STATE & FUNCTIONS
+    // ================================================================
+    
+    let currentMonth = {{ month }};
+    let currentYear = {{ year }};
+    
+    function changeMonth(delta) {
+        currentMonth += delta;
+        if (currentMonth > 12) {
+            currentMonth = 1;
+            currentYear += 1;
+        } else if (currentMonth < 1) {
+            currentMonth = 12;
+            currentYear -= 1;
+        }
+        
+        // ✅ CORRECT: Swap only the grid wrapper
+        htmx.ajax('GET', `/maintenance/calendar/?month=${currentMonth}&year=${currentYear}`, {
+            target: '#calendarGridWrapper',
+            swap: 'innerHTML',
+            pushUrl: true,
+            onAfterSwap: function() {
+                updateMonthTitle();
+                restoreSelectedDay();
+            }
+        });
+    }
+    
+    function goToToday() {
+        const today = new Date();
+        const month = today.getMonth() + 1;
+        const year = today.getFullYear();
+        
+        htmx.ajax('GET', `/maintenance/calendar/?month=${month}&year=${year}`, {
+            target: '#calendarGridWrapper',
+            swap: 'innerHTML',
+            pushUrl: true,
+            onAfterSwap: function() {
+                updateMonthTitle();
+                restoreSelectedDay();
+            }
+        });
+    }
+    
+    function updateMonthTitle() {
+        const titleEl = document.getElementById('monthTitle');
+        if (titleEl) {
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+            titleEl.textContent = monthNames[currentMonth - 1] + ' ' + currentYear;
+        }
+    }
+    
+    function restoreSelectedDay() {
+        // If we have a selected day stored, restore it
+        const selectedDate = document.querySelector('.calendar-day.selected');
+        if (selectedDate) {
+            return; // Already selected
+        }
+        
+        // Try to select today if in current month
+        const today = new Date();
+        if (today.getMonth() + 1 === currentMonth && today.getFullYear() === currentYear) {
+            const todayStr = today.toISOString().split('T')[0];
+            const todayEl = document.querySelector(`.calendar-day[data-date="${todayStr}"]`);
+            if (todayEl && !todayEl.classList.contains('selected')) {
+                todayEl.classList.add('selected');
+                loadDayEvents(todayStr);
+            }
+        }
+    }
+    
+    function loadDayEvents(dateStr) {
+        // Highlight the selected day
+        document.querySelectorAll('.calendar-day').forEach(el => {
+            el.classList.remove('selected');
+        });
+        document.querySelectorAll(`.calendar-day[data-date="${dateStr}"]`).forEach(el => {
+            el.classList.add('selected');
+        });
+        
+        // Update the panel title
+        const date = new Date(dateStr + 'T00:00:00');
+        const displayEl = document.getElementById('selectedDateDisplay');
+        if (displayEl) {
+            displayEl.textContent = date.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric'
+            });
+        }
+        
+        // Load events for this day
+        htmx.ajax('GET', `/maintenance/calendar/day-events/?date=${dateStr}`, {
+            target: '#dayEventsContent',
+            swap: 'innerHTML',
+            onAfterSwap: function() {
+                // Update event count
+                const count = document.querySelectorAll('#dayEventsContent .day-event-item').length;
+                const countEl = document.getElementById('eventCount');
+                if (countEl) {
+                    countEl.textContent = count + ' events';
+                }
+            }
+        });
+    }
+    
+    // Auto-select today if it's in the current month
+    document.addEventListener('DOMContentLoaded', function() {
+        const today = new Date();
+        if (today.getMonth() + 1 === currentMonth && today.getFullYear() === currentYear) {
+            const todayStr = today.toISOString().split('T')[0];
+            const todayEl = document.querySelector(`.calendar-day[data-date="${todayStr}"]`);
+            if (todayEl) {
+                todayEl.classList.add('selected');
+                setTimeout(function() {
+                    loadDayEvents(todayStr);
+                }, 100);
+            }
+        }
+    });
+</script>
+{% endblock %}

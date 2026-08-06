@@ -5,104 +5,230 @@
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Tracking ID</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Name</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Type</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Serial</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assigned To</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Location</th>
-                <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-10">ID</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Type</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Serial</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assigned To</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Condition</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Warranty</th>
+                <th class="text-center py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-24">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for asset in assets %}
             <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
-                <td class="py-3 px-4 font-mono text-xs text-primary">{{ asset.tracking_id }}</td>
-                <td class="py-3 px-4 text-text-primary">{{ asset.name }}</td>
-                <td class="py-3 text-text-secondary">{{ asset.asset_type|default:"—" }}</td>
-                <td class="py-3 px-4 text-text-secondary">{{ asset.serial_number|default:"—" }}</td>
-                {% comment %} Assigned TO {% endcomment %}
-                <td class="py-3 px-4 text-text-secondary">
-                    <div class="flex items-center gap-2">
-                        <span>
-                            {% if asset.assigned_to %}
-                                {{ asset.assigned_to.get_full_name|default:asset.assigned_to.email }}
-                            {% else %}
-                                <span class="text-text-secondary">—</span>
-                            {% endif %}
+                
+                <!-- Row Number -->
+                <td class="py-3 px-2 text-center text-text-secondary text-xs font-mono">
+                    {{ forloop.counter0|add:assets.start_index }}
+                </td>
+                
+                <!-- Asset Info -->
+                <td class="py-3 px-3">
+                    <div>
+                        <div class="font-medium text-sm" style="color: var(--color-text-primary);">
+                            {{ asset.name }}
+                        </div>
+                        <div class="text-xs font-mono text-primary">{{ asset.tracking_id }}</div>
+                    </div>
+                </td>
+                
+                <!-- Type -->
+                <td class="py-3 px-3">
+                    <span class="text-sm" style="color: var(--color-text-primary);">
+                        {{ asset.asset_type|default:"—" }}
+                    </span>
+                </td>
+                
+                <!-- Serial -->
+                <td class="py-3 px-3">
+                    <span class="text-sm font-mono text-text-secondary">
+                        {{ asset.serial_number|default:"—" }}
+                    </span>
+                </td>
+                
+                <!-- Status -->
+                <td class="py-3 px-3">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="status-chip 
+                            {% if asset.status == 'IN_STORE' or asset.status == 'READY' or asset.status == 'ACTIVE' %}success
+                            {% elif asset.status == 'CHECKED_OUT' or asset.status == 'IN_USE' %}primary
+                            {% elif asset.status == 'MAINTENANCE' or asset.status == 'REPAIR' %}warning
+                            {% elif asset.status == 'RETIRED' or asset.status == 'SCRAPPED' %}neutral
+                            {% elif asset.status == 'LOST' or asset.status == 'STOLEN' %}danger
+                            {% elif asset.status == 'REQUESTED' or asset.status == 'APPROVED' or asset.status == 'ORDERED' %}info
+                            {% else %}open{% endif %} text-xs">
+                            {{ asset.get_status_display|default:asset.status }}
                         </span>
                         
-                        {# Reassign Trail Indicator #}
-                        {% if asset|has_reassignment_indicator %}
-                        <div class="reassign-trigger-wrapper inline-flex items-center">
-                            <span class="reassign-indicator cursor-pointer inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:bg-primary/10 transition-colors"
-                                data-tooltip-html="{{ asset|format_assignment_history }}"
-                                data-has-tooltip="true"
-                                title="Click to view reassign history">
-                                <span class="text-xs font-medium" style="color: var(--color-warning);">{% lucide "rotate-cw" size=16 %}</span>
-                                <span class="text-[0.55rem] font-bold px-1 rounded-full" 
-                                    style="background-color: var(--color-warning); color: white; min-width: 14px; text-align: center;">
-                                    {{ asset|reassign_count }}
-                                </span>
+                        {% if asset.is_checked_out %}
+                            <span class="text-[0.6rem] text-warning">
+                                Checked Out {% if asset.checked_out_at %}{{ asset.checked_out_at|date:"M d" }}{% endif %}
                             </span>
-                        </div>
+                        {% else %}
+                            <span class="text-[0.6rem] text-success">Available</span>
                         {% endif %}
                     </div>
                 </td>
-                {% comment %} Assigned TO {% endcomment %}
-                <td class="py-3 px-4">
+                
+                <!-- Assigned To -->
+                <td class="py-3 px-3">
+                    {% if asset.assigned_to %}
+                        <div>
+                            <div class="text-sm" style="color: var(--color-text-primary);">
+                                {{ asset.assigned_to.get_full_name|default:asset.assigned_to.email }}
+                            </div>
+                            {% if asset.assigned_to_department %}
+                                <div class="text-xs text-text-secondary">
+                                    {{ asset.assigned_to_department }}
+                                </div>
+                            {% endif %}
+                            {# Reassign Trail Indicator #}
+                            {% if asset|has_reassignment_indicator %}
+                            <span class="reassign-indicator cursor-pointer inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[0.55rem] hover:bg-primary/10 transition-colors"
+                                data-tooltip-html="{{ asset|format_assignment_history }}"
+                                data-has-tooltip="true"
+                                title="Click to view reassign history">
+                                <span style="color: var(--color-warning);">{% lucide "rotate-cw" size=12 %}</span>
+                                <span class="font-bold px-1 rounded-full" 
+                                    style="background-color: var(--color-warning); color: white; min-width: 12px; text-align: center; font-size: 0.45rem;">
+                                    {{ asset|reassign_count }}
+                                </span>
+                            </span>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <span class="text-sm text-text-secondary">—</span>
+                    {% endif %}
+                </td>
+                
+                <!-- Condition -->
+                <td class="py-3 px-3">
                     <span class="status-chip 
-                        {% if asset.status == 'ACTIVE' %}resolved
-                        {% elif asset.status == 'IN_STORE' %}open
-                        {% elif asset.status == 'MAINTENANCE' %}in-progress
-                        {% elif asset.status == 'DAMAGED' %}escalated
-                        {% elif asset.status == 'SCRAPPED' %}closed
-                        {% else %}open{% endif %} text-xs">
-                        {{ asset.status|default:"—" }}
+                        {% if asset.condition == 'EXCELLENT' %}success
+                        {% elif asset.condition == 'GOOD' %}info
+                        {% elif asset.condition == 'FAIR' %}warning
+                        {% elif asset.condition == 'POOR' or asset.condition == 'DAMAGED' %}danger
+                        {% else %}neutral{% endif %} text-xs">
+                        {{ asset.get_condition_display|default:asset.condition|default:"—" }}
                     </span>
                 </td>
-                <td class="py-3 px-4 text-text-secondary">{{ asset.location|default:"—" }}</td>
-                <td class="py-3 px-4 text-center">
-                    <div class="flex items-center justify-center gap-1">
+                
+                <!-- Warranty -->
+                <td class="py-3 px-3">
+                    {% if asset.warranty_expiry %}
+                        {% with warranty_status=asset.warranty_status %}
+                            <div class="flex flex-col gap-0.5">
+                                <span class="text-xs font-medium 
+                                    {% if warranty_status == 'VALID' %}text-success
+                                    {% elif warranty_status == 'EXPIRING_SOON' %}text-warning
+                                    {% elif warranty_status == 'EXPIRED' %}text-danger
+                                    {% else %}text-text-secondary{% endif %}">
+                                    {{ asset.warranty_expiry|date:"M d, Y" }}
+                                </span>
+                                <span class="text-[0.6rem] 
+                                    {% if warranty_status == 'VALID' %}text-success
+                                    {% elif warranty_status == 'EXPIRING_SOON' %}text-warning
+                                    {% elif warranty_status == 'EXPIRED' %}text-danger
+                                    {% else %}text-text-secondary{% endif %}">
+                                    {% if warranty_status == 'VALID' %}
+                                        ✅ Active
+                                    {% elif warranty_status == 'EXPIRING_SOON' %}
+                                        ⚠️ {{ asset.warranty_expiry|timeuntil }}
+                                    {% elif warranty_status == 'EXPIRED' %}
+                                        ❌ Expired
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </span>
+                            </div>
+                        {% endwith %}
+                    {% else %}
+                        <span class="text-sm text-text-secondary">—</span>
+                    {% endif %}
+                </td>
+                
+                <!-- Actions -->
+                <td class="py-3 px-2 text-center">
+                    <div class="flex items-center justify-center gap-0.5">
                         <a href="{% url 'tickets:asset_detail' asset.pk %}"
-                        class="btn-ghost p-1 text-text-secondary hover:text-primary transition"
-                        title="View Details">
-                            {% lucide "eye" size=16 %}
+                           class="p-1.5 rounded transition hover:bg-black/5"
+                           style="color: var(--color-text-secondary);"
+                           title="View Details">
+                            {% lucide "eye" size=15 %}
                         </a>
-                        <!-- Asset reassign button -->
-                        <button class="btn-ghost p-1 text-text-secondary hover:text-primary transition"
-                                onclick="openAssetReassignModal({{ asset.pk }})"
-                                title="Reassign">
-                            {% lucide "user-plus" size=16 %}
+                        
+                        {% if asset.is_checked_out %}
+                            <button onclick="openCheckinModal({{ asset.pk }})"
+                                    class="p-1.5 rounded transition hover:bg-black/5"
+                                    style="color: var(--color-text-secondary);"
+                                    title="Check In">
+                                {% lucide "log-in" size=15 %}
+                            </button>
+                        {% else %}
+                            <button onclick="openCheckoutModal({{ asset.pk }})"
+                                    class="p-1.5 rounded transition hover:bg-black/5"
+                                    style="color: var(--color-text-secondary);"
+                                    title="Check Out">
+                                {% lucide "log-out" size=15 %}
+                            </button>
+                        {% endif %}
+                        
+                        <button onclick="openCheckoutHistory({{ asset.pk }})"
+                                class="p-1.5 rounded transition hover:bg-black/5"
+                                style="color: var(--color-text-secondary);"
+                                title="History">
+                            {% lucide "clock" size=15 %}
                         </button>
-                        <!-- Edit button - Changed to regular link -->
+                        
+                        <button onclick="openAssetReassignModal({{ asset.pk }})"
+                                class="p-1.5 rounded transition hover:bg-black/5"
+                                style="color: var(--color-text-secondary);"
+                                title="Reassign">
+                            {% lucide "user-plus" size=15 %}
+                        </button>
+                        
                         {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
                         <a href="{% url 'tickets:asset_edit_page' asset.pk %}?source=list&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
-                        class="btn-ghost p-1 text-text-secondary hover:text-primary transition"
-                        title="Edit">
-                            {% lucide "pencil" size=16 %}
+                           class="p-1.5 rounded transition hover:bg-black/5"
+                           style="color: var(--color-text-secondary);"
+                           title="Edit">
+                            {% lucide "pencil" size=15 %}
                         </a>
                         {% endif %}
-                        {% if asset.status != 'SCRAPPED' and asset.status != 'DAMAGED' %}
-                        <button class="btn-ghost p-1 text-text-secondary hover:text-danger transition"
-                                onclick="openScrapRequestModal({{ asset.pk }})"
+                        
+                        {% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' %}
+                        <button onclick="openScrapRequestModal({{ asset.pk }})"
+                                class="p-1.5 rounded transition hover:bg-black/5"
+                                style="color: var(--color-text-secondary);"
                                 title="Request Scrap">
-                            {% lucide "trash-2" size=16 %}
+                            {% lucide "trash-2" size=15 %}
                         </button>
                         {% endif %}
+                        
                         {% if asset.status == 'DAMAGED' and user.role in 'ADMIN,SUPERADMIN' %}
-                        <button class="btn-ghost p-1 text-text-secondary hover:text-success transition"
-                                onclick="openScrapApproveModal({{ asset.pk }})"
+                        <button onclick="openScrapApproveModal({{ asset.pk }})"
+                                class="p-1.5 rounded transition hover:bg-black/5"
+                                style="color: var(--color-text-secondary);"
                                 title="Approve Scrap">
-                            {% lucide "check-circle" size=16 %}
+                            {% lucide "check-circle" size=15 %}
                         </button>
                         {% endif %}
                     </div>
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="8" class="text-center py-10 text-text-secondary">No assets found.</td></tr>
+            <tr>
+                <td colspan="9" class="text-center py-12 text-text-secondary">
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-4xl opacity-30">📦</span>
+                        <p class="text-sm font-medium">No assets found</p>
+                        <p class="text-xs">Try adjusting your filters or add a new asset.</p>
+                    </div>
+                </td>
+            </tr>
             {% endfor %}
         </tbody>
     </table>
@@ -111,19 +237,30 @@
 <!-- Pagination -->
 {% if assets.has_other_pages %}
 <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--color-border);">
-    <span class="text-sm text-text-secondary">Page {{ assets.number }} of {{ assets.paginator.num_pages }}</span>
+    <span class="text-sm text-text-secondary">
+        Showing {{ assets.start_index }} - {{ assets.end_index }} of {{ assets.paginator.count }}
+    </span>
     <div class="flex gap-1.5">
         {% if assets.has_previous %}
         <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
+                hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
                 hx-target="#assetTableContainer"
-                hx-swap="innerHTML">← Prev</button>
+                hx-swap="innerHTML">
+            ← Prev
+        </button>
         {% endif %}
+        
+        <span class="px-3 py-1 text-sm rounded bg-primary text-white">
+            {{ assets.number }}
+        </span>
+        
         {% if assets.has_next %}
         <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
+                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
                 hx-target="#assetTableContainer"
-                hx-swap="innerHTML">Next →</button>
+                hx-swap="innerHTML">
+            Next →
+        </button>
         {% endif %}
     </div>
 </div>

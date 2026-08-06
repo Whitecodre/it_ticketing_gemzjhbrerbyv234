@@ -10,6 +10,7 @@
     {# FAVICON #}
     <link rel="shortcut icon" href="{% static 'img/favicon.ico' %}" />
 
+    {% block extra_head %}{% endblock extra_head %}
 
     {# Tailwind CSS #}
     {% tailwind_css %}
@@ -54,40 +55,35 @@
     {% endblock footer %}
 
     {# -------- THEME SWITCHER SCRIPT (radio version) -------- #}
-    {% block scripts %}
-<!-- Alpine.js - Lightweight reactive framework -->
-<script src="{% static 'js/alpine.min.js' %}" defer></script>
-<!-- Alpine.js Focus plugin -->
-<script src="{% static 'js/alpine-focus.min.js' %}" defer></script>
-
-<script>
-    (function() {
-        const savedTheme = localStorage.getItem('theme');
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+            
+            if (initialTheme === 'dark') {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
         
-        if (initialTheme === 'dark') {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    })();
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        const messages = document.querySelectorAll('.alert-message, .alert-error, .alert-success, .alert-warning');
-        messages.forEach(function(msg) {
-            setTimeout(function() {
-                msg.style.transition = 'opacity 0.5s ease';
-                msg.style.opacity = '0';
+        document.addEventListener('DOMContentLoaded', function() {
+            const messages = document.querySelectorAll('.alert-message, .alert-error, .alert-success, .alert-warning');
+            messages.forEach(function(msg) {
                 setTimeout(function() {
-                    msg.remove();
-                }, 500);
-            }, 5000);
+                    msg.style.transition = 'opacity 0.5s ease';
+                    msg.style.opacity = '0';
+                    setTimeout(function() {
+                        msg.remove();
+                    }, 500);
+                }, 5000);
+            });
         });
-    });
-</script>
-{{ block.super }}
-{% endblock scripts %}
+    </script>
+
+    {# Alpine.js and other scripts are loaded in base_dashboard.html #}
+    {% block scripts %}{% endblock %}
 
 </body>
 </html>

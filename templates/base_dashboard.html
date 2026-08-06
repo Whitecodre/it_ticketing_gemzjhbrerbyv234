@@ -388,16 +388,33 @@
 
 {% block content %}{% endblock %}
 
-
 {% block scripts %}
 {{ block.super }}
 
-{# Load external JS files #}
+{# ================================================================ #}
+{# 1. ALPINE.JS WITH COLLAPSE PLUGIN - CORRECT ORDER              #}
+{# ================================================================ #}
+
+{# IMPORTANT: The Collapse plugin MUST be registered BEFORE Alpine initializes #}
+{# The CDN script registers the plugin automatically when loaded before Alpine #}
+
+{# Load Collapse Plugin (CDN) - This registers the plugin with Alpine #}
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+
+{# Then load Alpine Core #}
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
+<script defer src="{% static 'js/alpine-focus.min.js' %}"></script>
+
+{# ================================================================ #}
+{# 2. OTHER JS FILES                                              #}
+{# ================================================================ #}
+
+{# Load external JS files (these use Alpine and HTMX) #}
 <script src="{% static 'js/global.js' %}"></script>
 <script src="{% static 'js/keyboard_shortcuts.js' %}"></script>
 <script src="{% static 'js/confirmation-modal.js' %}"></script>
 
-{# Alpine.js components - loaded after Alpine.js itself #}
+{# Alpine.js components - must be loaded after Alpine core #}
 <script src="{% static 'js/alpine-components.js' %}"></script>
 
 {# Page-specific JS #}

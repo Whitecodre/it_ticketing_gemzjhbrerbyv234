@@ -1,0 +1,23 @@
+{% load lucide %}
+
+{% if status == 'SCHEDULED' %}
+    <span class="status-chip status-chip-info">
+        {% lucide "calendar" size=12 %}
+        Scheduled
+    </span>
+{% elif status == 'IN_PROGRESS' %}
+    <span class="status-chip status-chip-warning">
+        {% lucide "loader" size=12 %}
+        In Progress
+    </span>
+{% elif status == 'COMPLETED' %}
+    <span class="status-chip status-chip-success">
+        {% lucide "check" size=12 %}
+        Completed
+    </span>
+{% elif status == 'CANCELLED' %}
+    <span class="status-chip status-chip-neutral">
+        {% lucide "x" size=12 %}
+        Cancelled
+    </span>
+{% endif %}

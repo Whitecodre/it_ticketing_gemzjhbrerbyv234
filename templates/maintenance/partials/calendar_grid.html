@@ -1,0 +1,54 @@
+{# ============================================================ #}
+{# CALENDAR GRID - This gets swapped by HTMX #}
+{# ============================================================ #}
+<div class="calendar-grid" id="calendarGrid">
+    {# Weekday Headers #}
+    <div class="calendar-header-cell">Mon</div>
+    <div class="calendar-header-cell">Tue</div>
+    <div class="calendar-header-cell">Wed</div>
+    <div class="calendar-header-cell">Thu</div>
+    <div class="calendar-header-cell">Fri</div>
+    <div class="calendar-header-cell">Sat</div>
+    <div class="calendar-header-cell">Sun</div>
+    
+    {# Days #}
+    {% for day in calendar_days %}
+        {% if day.day %}
+            <div class="calendar-day {% if day.is_today %}today{% endif %}" 
+                 onclick="loadDayEvents('{{ day.date }}')"
+                 data-date="{{ day.date }}"
+                 data-events="{{ day.events|length }}">
+                <div class="calendar-day-number">{{ day.day }}</div>
+                
+                {# Event Dots #}
+                {% if day.events %}
+                    <div class="calendar-day-dots">
+                        {% for event in day.events|slice:":4" %}
+                            <span class="event-dot" style="background-color: {{ event.color }};" 
+                                  title="{{ event.title }} ({{ event.status }})"></span>
+                        {% endfor %}
+                        {% if day.events|length > 4 %}
+                            <span class="event-dot-more">+{{ day.events|length|add:"-4" }}</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+                
+                {# Event Titles (visible on larger screens) #}
+                {% if day.events %}
+                    <div class="calendar-day-titles">
+                        {% for event in day.events|slice:":2" %}
+                            <a href="{{ event.url }}" 
+                               class="event-title" 
+                               style="background-color: {{ event.color }};"
+                               onclick="event.stopPropagation();">
+                                {{ event.title|truncatechars:12 }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="calendar-day empty"></div>
+        {% endif %}
+    {% endfor %}
+</div>

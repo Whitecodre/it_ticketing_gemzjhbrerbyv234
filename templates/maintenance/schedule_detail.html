@@ -1,0 +1,264 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block page_title %}{{ schedule.title }}{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="max-w-4xl mx-auto">
+    
+    {# Status Banner #}
+    <div class="mb-6 rounded-lg p-4 border flex items-center justify-between" 
+         style="background-color: var(--color-surface); border-color: var(--color-border);">
+        <div class="flex items-center gap-3">
+            {% include "maintenance/partials/status_badge.html" with status=schedule.status %}
+            <span class="text-sm" style="color: var(--color-text-secondary);">
+                {{ schedule.scheduled_date|date:"l, F j, Y" }}
+                {% if schedule.start_time %}
+                    at {{ schedule.start_time|time:"g:i A" }}
+                {% endif %}
+            </span>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="{% url 'maintenance:edit' schedule.pk %}" 
+               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition"
+               style="border-color: var(--color-border); color: var(--color-text-primary);">
+                {% lucide "edit" size=14 %}
+                Edit
+            </a>
+            <button onclick="openStatusModal({{ schedule.pk }})"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition text-white"
+                    style="background-color: var(--color-primary);">
+                {% lucide "refresh-cw" size=14 %}
+                Update Status
+            </button>
+        </div>
+    </div>
+    
+    {# Main Content #}
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {# Left Column - Details #}
+        <div class="lg:col-span-2">
+            <div class="rounded-lg border p-6" style="background-color: var(--color-surface); border-color: var(--color-border);">
+                
+                <div class="space-y-4">
+                    {# Department #}
+                    <div>
+                        <label class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                            Department
+                        </label>
+                        <p class="text-sm mt-1" style="color: var(--color-text-primary);">
+                            {{ schedule.get_department_display }}
+                        </p>
+                    </div>
+                    
+                    {# Description #}
+                    {% if schedule.description %}
+                    <div>
+                        <label class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                            Description
+                        </label>
+                        <p class="text-sm mt-1 whitespace-pre-wrap" style="color: var(--color-text-primary);">
+                            {{ schedule.description|linebreaks }}
+                        </p>
+                    </div>
+                    {% endif %}
+                    
+                    {# Checklist #}
+                    {% if schedule.checklist_items %}
+                    <div>
+                        <label class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                            Checklist
+                        </label>
+                        <ul class="mt-2 space-y-1.5">
+                            {% for item in schedule.checklist_items %}
+                            <li class="flex items-center gap-2 text-sm" style="color: var(--color-text-primary);">
+                                <span style="color: var(--color-text-secondary);">•</span>
+                                {{ item }}
+                                {% if schedule.status == 'COMPLETED' and item in schedule.completed_checklist %}
+                                    <span class="text-success text-xs">✓</span>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    
+                    {# Timeline #}
+                    <div class="pt-4 border-t" style="border-color: var(--color-border);">
+                        <label class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                            Timeline
+                        </label>
+                        <div class="mt-2 space-y-1.5 text-sm" style="color: var(--color-text-secondary);">
+                            <div class="flex justify-between">
+                                <span>Created</span>
+                                <span>{{ schedule.created_at|date:"M d, Y g:i A" }}</span>
+                            </div>
+                            {% if schedule.updated_at != schedule.created_at %}
+                            <div class="flex justify-between">
+                                <span>Last Updated</span>
+                                <span>{{ schedule.updated_at|date:"M d, Y g:i A" }}</span>
+                            </div>
+                            {% endif %}
+                            {% if schedule.completed_at %}
+                            <div class="flex justify-between text-success">
+                                <span>Completed</span>
+                                <span>{{ schedule.completed_at|date:"M d, Y g:i A" }}</span>
+                            </div>
+                            {% endif %}
+                            {% if schedule.confirmed_at %}
+                            <div class="flex justify-between text-primary">
+                                <span>Confirmed</span>
+                                <span>{{ schedule.confirmed_at|date:"M d, Y g:i A" }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {# Activity Log #}
+            <div class="rounded-lg border p-6 mt-6" style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <h3 class="text-sm font-semibold mb-4" style="color: var(--color-text-primary);">
+                    Activity Log
+                </h3>
+                <div class="space-y-3">
+                    {% for log in activity_logs %}
+                    <div class="flex items-start gap-3 text-sm">
+                        <span class="shrink-0 mt-0.5" style="color: var(--color-text-secondary);">
+                            {{ log.created_at|date:"M d, H:i" }}
+                        </span>
+                        <span style="color: var(--color-text-secondary);">—</span>
+                        <span style="color: var(--color-text-primary);">
+                            {% if log.actor %}
+                                {{ log.actor.get_full_name|default:log.actor.email }}
+                            {% else %}
+                                System
+                            {% endif %}
+                            {{ log.get_action_display|lower }}
+                            {% if log.details %}
+                                <span class="text-xs" style="color: var(--color-text-secondary);">
+                                    ({{ log.details|join:", " }})
+                                </span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% empty %}
+                    <p class="text-sm" style="color: var(--color-text-secondary);">No activity recorded yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        
+        {# Right Column - Personnel & Confirmation #}
+        <div class="space-y-6">
+            
+            {# Personnel Card #}
+            <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <h4 class="text-xs font-medium uppercase tracking-wider mb-3" style="color: var(--color-text-secondary);">
+                    IT Personnel
+                </h4>
+                {% if schedule.assigned_to %}
+                <div class="flex items-center gap-3">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-full text-white text-sm font-medium shrink-0"
+                         style="background-color: var(--color-primary);">
+                        {{ schedule.assigned_to.email.0|upper }}
+                    </div>
+                    <div>
+                        <p class="text-sm font-medium" style="color: var(--color-text-primary);">
+                            {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
+                        </p>
+                        <p class="text-xs" style="color: var(--color-text-secondary);">
+                            {{ schedule.assigned_to.get_role_display }}
+                        </p>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-sm" style="color: var(--color-text-secondary);">No personnel assigned.</p>
+                {% endif %}
+            </div>
+            
+            {# Confirmation Card #}
+            {% if schedule.status == 'COMPLETED' %}
+            <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <h4 class="text-xs font-medium uppercase tracking-wider mb-3" style="color: var(--color-text-secondary);">
+                    Manager Confirmation
+                </h4>
+                {% if schedule.confirmed_by %}
+                    <div class="flex items-center gap-2 text-success">
+                        <span>✓ Confirmed</span>
+                        <span class="text-sm" style="color: var(--color-text-secondary);">
+                            by {{ schedule.confirmed_by.get_full_name|default:schedule.confirmed_by.email }}
+                        </span>
+                    </div>
+                    {% if schedule.confirmed_at %}
+                    <p class="text-xs mt-1" style="color: var(--color-text-secondary);">
+                        {{ schedule.confirmed_at|date:"M d, Y g:i A" }}
+                    </p>
+                    {% endif %}
+                {% else %}
+                    <div class="flex flex-col gap-3">
+                        <p class="text-sm" style="color: var(--color-warning);">
+                            ⚠️ Awaiting manager confirmation
+                        </p>
+                        <button onclick="openConfirmModal({{ schedule.pk }})"
+                                class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition"
+                                style="background-color: var(--color-success);">
+                            {% lucide "check-circle" size=16 %}
+                            Confirm Completion
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            {# Email Status #}
+            <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <h4 class="text-xs font-medium uppercase tracking-wider mb-3" style="color: var(--color-text-secondary);">
+                    Notifications
+                </h4>
+                <div class="space-y-1.5 text-sm" style="color: var(--color-text-secondary);">
+                    <div class="flex items-center gap-2">
+                        {% if schedule.email_sent %}
+                            <span class="text-success">✓</span>
+                            <span>Email sent to manager</span>
+                        {% else %}
+                            <span class="text-warning">⏳</span>
+                            <span>Email pending</span>
+                        {% endif %}
+                    </div>
+                    {% if schedule.email_sent_at %}
+                    <div class="text-xs">
+                        {{ schedule.email_sent_at|date:"M d, Y g:i A" }}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Confirmation Modal (HTMX) #}
+<div id="confirmModalContainer"></div>
+
+{# Status Update Modal #}
+<div id="statusModalContainer"></div>
+
+<script>
+function openConfirmModal(scheduleId) {
+    htmx.ajax('GET', `/maintenance/${scheduleId}/confirm-modal/`, {
+        target: '#confirmModalContainer',
+        swap: 'innerHTML'
+    });
+}
+
+function openStatusModal(scheduleId) {
+    htmx.ajax('GET', `/maintenance/${scheduleId}/status-modal/`, {
+        target: '#statusModalContainer',
+        swap: 'innerHTML'
+    });
+}
+</script>
+{% endblock %}

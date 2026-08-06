@@ -1,0 +1,25 @@
+{% load lucide %}
+
+{% if schedules %}
+    {% for schedule in schedules %}
+        <div class="day-event-item" style="border-left-color: {% if schedule.status == 'SCHEDULED' %}#3B82F6{% elif schedule.status == 'IN_PROGRESS' %}#F59E0B{% elif schedule.status == 'COMPLETED' %}#10B981{% else %}#6B7280{% endif %};">
+            <div class="event-info">
+                <span class="event-title-text">{{ schedule.title }}</span>
+                <span class="event-department">{{ schedule.get_department_display }}</span>
+                <span class="text-xs text-text-secondary">
+                    {{ schedule.scheduled_date|date:"M d" }}
+                </span>
+                {% include "maintenance/partials/status_badge.html" with status=schedule.status %}
+            </div>
+            <a href="{% url 'maintenance:detail' schedule.pk %}" 
+               class="text-xs text-primary hover:underline shrink-0 ml-2">
+                View
+            </a>
+        </div>
+    {% endfor %}
+{% else %}
+    <div class="panel-empty">
+        {% lucide "calendar" size=24 class="text-text-secondary opacity-50 mx-auto mb-2" %}
+        <p>No maintenance events scheduled for this day.</p>
+    </div>
+{% endif %}

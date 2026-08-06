@@ -1,0 +1,12 @@
+{
+  "name": "it_ticketing",
+  "version": "1.0.0",
+  "description": "IT Ticketing System with Form Builder",
+  "dependencies": {
+    "font-awesome": "^4.7.0",
+    "formiojs": "4.21.7"
+  },
+  "scripts": {
+    "install-formio": "npm install formiojs@4.21.7"
+  }
+}

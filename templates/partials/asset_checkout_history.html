@@ -1,0 +1,102 @@
+{% load lucide %}
+
+<div class="checkout-history">
+    <div class="flex items-center justify-between mb-4">
+        <h4 class="text-sm font-semibold" style="color: var(--color-text-primary);">
+            {% lucide "clock" size=16 %}
+            Checkout History ({{ history|length }})
+        </h4>
+    </div>
+    
+    {% if history %}
+        <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
+            {% for record in history %}
+                <div class="history-item {% if not record.checked_in_at %}active{% endif %}">
+                    <div class="history-header">
+                        <span class="history-user">
+                            {{ record.checked_out_to.get_full_name|default:record.checked_out_to.email }}
+                        </span>
+                        <span class="history-date">
+                            {{ record.checked_out_at|date:"M d, Y" }}
+                        </span>
+                    </div>
+                    <div class="history-details">
+                        <span class="text-xs text-text-secondary">
+                            Checked out by: {{ record.checked_out_by.get_full_name|default:record.checked_out_by.email }}
+                        </span>
+                        {% if record.expected_return_date %}
+                            <span class="text-xs text-text-secondary">
+                                Expected: {{ record.expected_return_date|date:"M d, Y" }}
+                            </span>
+                        {% endif %}
+                    </div>
+                    {% if record.checked_in_at %}
+                        <div class="history-return">
+                            <span class="text-xs text-success">✓ Returned</span>
+                            <span class="text-xs text-text-secondary">
+                                {{ record.checked_in_at|date:"M d, Y" }}
+                            </span>
+                            {% if record.return_reason %}
+                                <span class="text-xs text-text-secondary">
+                                    Reason: {{ record.get_return_reason_display }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="history-return">
+                            <span class="text-xs text-warning">● Currently checked out</span>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center py-4 text-text-secondary text-sm">
+            <p>No checkout history for this asset.</p>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .history-item {
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-surface);
+        transition: background-color 0.15s ease;
+    }
+    .history-item:hover {
+        background-color: var(--color-background);
+    }
+    .history-item.active {
+        border-left: 3px solid var(--color-warning);
+    }
+    .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.15rem;
+    }
+    .history-user {
+        font-weight: 600;
+        font-size: 0.8125rem;
+        color: var(--color-text-primary);
+    }
+    .history-date {
+        font-size: 0.7rem;
+        color: var(--color-text-secondary);
+    }
+    .history-details {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.15rem;
+    }
+    .history-return {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        padding-top: 0.15rem;
+        border-top: 1px solid var(--color-border);
+    }
+</style>

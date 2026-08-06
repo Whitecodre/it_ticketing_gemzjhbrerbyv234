@@ -20,6 +20,10 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         
         # Permissions policy (blocks features that could be abused)
         response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+
+         # Allow FullCalendar CDN resources (if CSP is enabled)
+        # Uncomment if you have CSP headers:
+        # response['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:;"
         
         return response
     
