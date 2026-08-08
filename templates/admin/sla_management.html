@@ -13,9 +13,12 @@
 
 {% block dashboard_content %}
 <div class="w-full space-y-6">
-    <div>
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Service Level Agreement and Calendar Configuration</h2>
-        <p class="text-sm text-text-secondary">Manage SLA policies, business calendars, and escalation rules.</p>
+    <div class="flex items-center gap-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "timer-reset" size=19 %}</span>
+        <div>
+            <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">SLA configuration</h2>
+            <p class="text-sm text-text-secondary">Manage SLA policies, business calendars, and escalation rules.</p>
+        </div>
     </div>
 
     <!-- ======== 1. SLA Policies ======== -->

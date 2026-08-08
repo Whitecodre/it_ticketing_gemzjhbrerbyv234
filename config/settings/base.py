@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 import environ
 
@@ -34,6 +35,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'channels',
     'webpush',
+    'tinymce',
     
     # Tailwind Helper App
     'theme',
@@ -184,7 +186,76 @@ ASGI_APPLICATION = "config.asgi.application"
 # Email (console backend for development)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-NPM_BIN_PATH = r"C:\Program Files\nodejs\npm.cmd"
+# ================================================================
+# NPM BINARY PATH - Cross-platform
+# ================================================================
+
+# Option 1: Use environment variable with fallback
+NPM_BIN_PATH = os.environ.get('NPM_BIN_PATH', 'npm')
+
+# Option 2: Platform-specific paths (if Option 1 doesn't work)
+# if sys.platform == 'win32':
+#     NPM_BIN_PATH = 'npm.cmd'
+# elif sys.platform == 'darwin':
+#     NPM_BIN_PATH = '/opt/homebrew/bin/npm'  # macOS with Homebrew
+# else:
+#     NPM_BIN_PATH = '/usr/bin/npm'  # Linux
+
+# Option 3: Let django-tailwind auto-detect (simplest)
+NPM_BIN_PATH = 'npm'  # Works if npm is in system PATH
+
+# ================================================================
+# TINYMCE CONFIGURATION
+# ================================================================
+
+TINYMCE_DEFAULT_CONFIG = {
+    "height": "500px",
+    "width": "100%",
+    "menubar": "file edit view insert format tools table help",
+    "plugins": """
+        advlist autolink lists link image charmap print preview anchor
+        searchreplace visualblocks code fullscreen
+        insertdatetime media table paste code help wordcount
+        image imagetools
+    """,
+    "toolbar": """
+        undo redo | bold italic underline strikethrough | 
+        forecolor backcolor | alignleft aligncenter alignright alignjustify | 
+        bullist numlist | outdent indent | 
+        link image media | table | code | 
+        removeformat | help
+    """,
+    "relative_urls": False,
+    "remove_script_host": False,
+    "convert_urls": True,
+    "paste_as_text": False,
+    "paste_data_images": True,  # Allow pasting images directly
+    "image_advtab": True,
+    "image_class_list": [
+        {"title": "Responsive", "value": "img-fluid"},
+        {"title": "Border", "value": "img-border"},
+        {"title": "Rounded", "value": "img-rounded"},
+    ],
+    "style_formats": [
+        {"title": "Paragraph", "block": "p"},
+        {"title": "Heading 2", "block": "h2"},
+        {"title": "Heading 3", "block": "h3"},
+        {"title": "Heading 4", "block": "h4"},
+        {"title": "Code Block", "block": "pre", "classes": "code-block"},
+        {"title": "Note", "block": "div", "classes": "note"},
+        {"title": "Warning", "block": "div", "classes": "warning"},
+    ],
+    "branding": False,
+    "resize": True,
+    "statusbar": True,
+    "autosave_ask_before_unload": True,
+    "autosave_interval": "30s",
+    "autosave_prefix": "kb-autosave",
+}
+
+# TinyMCE file upload settings
+TINYMCE_COMPRESSOR = True
+TINYMCE_UPLOAD_PATH = 'kb_images/'  # Where images will be stored
 
 # Authentication Redirects
 LOGIN_URL = 'accounts:login'

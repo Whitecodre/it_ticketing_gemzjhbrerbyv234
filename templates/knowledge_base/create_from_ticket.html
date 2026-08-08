@@ -1,0 +1,201 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Create KB Article from Ticket #{{ ticket.number }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+{{ form.media }}  {# Load TinyMCE #}
+<style>
+    .comment-item {
+        transition: background-color 0.2s ease;
+    }
+    .comment-item:hover {
+        background-color: var(--color-background);
+    }
+    .comment-checkbox:checked + .comment-body {
+        opacity: 1;
+    }
+    .comment-body {
+        opacity: 0.6;
+    }
+    .comment-checkbox:checked ~ .comment-body {
+        opacity: 1;
+    }
+    .preview-box {
+        max-height: 400px;
+        overflow-y: auto;
+        background-color: var(--color-background);
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 1rem;
+        font-size: 0.8rem;
+        line-height: 1.6;
+    }
+    .step-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+        margin-bottom: 1rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+    .step-indicator .step {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: var(--color-text-secondary);
+    }
+    .step-indicator .step.active {
+        color: var(--color-primary);
+        font-weight: 600;
+    }
+    .step-indicator .step .num {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background-color: var(--color-border);
+        color: var(--color-text-secondary);
+        font-size: 0.6rem;
+    }
+    .step-indicator .step.active .num {
+        background-color: var(--color-primary);
+        color: white;
+    }
+    .step-indicator .line {
+        flex: 1;
+        height: 2px;
+        background-color: var(--color-border);
+        max-width: 60px;
+    }
+    .tox-tinymce {
+        border-radius: 0.5rem !important;
+    }
+</style>
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="w-full max-w-4xl mx-auto">
+    <div class="step-indicator">
+        <span class="step active"><span class="num">1</span> Ticket Summary</span>
+        <span class="line"></span>
+        <span class="step active"><span class="num">2</span> Select Comments</span>
+        <span class="line"></span>
+        <span class="step active"><span class="num">3</span> Draft Article</span>
+    </div>
+
+    <h2 class="text-lg font-semibold mb-4">📝 Create Knowledge Article from Ticket #{{ ticket.number }}</h2>
+    <p class="text-xs text-text-secondary mb-4">
+        Select the relevant parts of the conversation and edit the draft below.
+        The final article will be saved as a draft for you to review.
+    </p>
+
+    <form method="post" id="kbForm" class="space-y-6">
+        {% csrf_token %}
+        {{ form.errors }}
+
+        <!-- Ticket Summary (read-only) -->
+        <div class="dashboard-card p-4">
+            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2">
+                {% lucide "ticket" size=16 %} Ticket Summary
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div><span class="font-medium">Title:</span> {{ ticket.title }}</div>
+                <div><span class="font-medium">Status:</span> {{ ticket_status }}</div>
+                <div><span class="font-medium">Category:</span> {{ ticket.category.name|default:"Uncategorized" }}</div>
+                <div><span class="font-medium">Priority:</span> {{ ticket.get_priority_display }}</div>
+            </div>
+            <div class="mt-2">
+                <span class="font-medium text-xs">Description:</span>
+                <div class="bg-background p-3 rounded border border-border text-xs max-h-32 overflow-y-auto mt-1">
+                    {{ ticket.description|linebreaks }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Comments Selection -->
+        <div class="dashboard-card p-4">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold flex items-center gap-2">
+                    {% lucide "message-square" size=16 %} Conversation Timeline
+                </h3>
+                <div class="flex items-center gap-2 text-xs">
+                    <button type="button" id="selectAll" class="btn-ghost text-xs px-2 py-0.5">Select All</button>
+                    <button type="button" id="deselectAll" class="btn-ghost text-xs px-2 py-0.5">Deselect All</button>
+                </div>
+            </div>
+            <p class="text-xs text-text-secondary mb-2">
+                Tick the comments you want to include in the article's "Conversation Summary" section.
+            </p>
+            <div class="max-h-80 overflow-y-auto pr-1">
+                {{ form.include_comment }}
+            </div>
+        </div>
+
+        <!-- Draft Editor -->
+        <div class="dashboard-card p-4">
+            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2">
+                {% lucide "edit" size=16 %} Draft Article
+            </h3>
+
+            <div class="mb-3">
+                <label class="block text-xs font-medium mb-1">Title</label>
+                {{ form.title }}
+                {% if form.title.errors %}
+                    <p class="text-xs text-error mt-1">{{ form.title.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium mb-1">Content</label>
+                {{ form.content }}
+                {% if form.content.errors %}
+                    <p class="text-xs text-error mt-1">{{ form.content.errors.0 }}</p>
+                {% endif %}
+                <p class="text-xs text-text-secondary mt-1">Use the toolbar to format your article. You can insert images, tables, and code blocks.</p>
+            </div>
+
+            <div class="mt-3">
+                <label class="block text-xs font-medium mb-1">Visibility</label>
+                {{ form.visibility }}
+                {% if form.visibility.errors %}
+                    <p class="text-xs text-error mt-1">{{ form.visibility.errors.0 }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex justify-end gap-3 pt-2">
+            <a href="{% url 'tickets:detail' ticket.pk %}" class="btn-ghost text-xs px-4 py-2 rounded-lg">Cancel</a>
+            <button type="submit" class="btn-primary text-xs px-4 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "save" size=14 %} Save as Draft
+            </button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    // Select/Deselect all comments
+    document.getElementById('selectAll').addEventListener('click', function() {
+        document.querySelectorAll('#id_include_comment input[type="checkbox"]').forEach(cb => cb.checked = true);
+    });
+    document.getElementById('deselectAll').addEventListener('click', function() {
+        document.querySelectorAll('#id_include_comment input[type="checkbox"]').forEach(cb => cb.checked = false);
+    });
+</script>
+{% endblock %}

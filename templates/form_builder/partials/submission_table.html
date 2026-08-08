@@ -1,4 +1,5 @@
 {% load lucide %}
+{% load form_builder_tags %}
 
 <div class="overflow-x-auto">
     <table class="w-full text-sm">
@@ -110,16 +111,3 @@
     </div>
 </div>
 {% endif %}
-
-<!-- Template filter for getting dict values -->
-<script>
-    // Add a template filter for getting dict values
-    if (!window.django) window.django = {};
-    if (!window.django.template) window.django.template = {};
-    window.django.template.get_item = function(dict, key) {
-        if (dict && key in dict) {
-            return dict[key];
-        }
-        return null;
-    };
-</script>

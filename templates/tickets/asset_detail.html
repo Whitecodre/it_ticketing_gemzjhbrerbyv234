@@ -103,32 +103,24 @@
         </div>
 
         <!-- Tabs -->
-        <div x-data="{ tab: 'details' }" class="mt-4">
+        <div class="mt-4" id="assetTabs">
             <div class="flex border-b gap-1 mb-4" style="border-color: var(--color-border);">
-                <button @click="tab = 'details'" 
-                        :class="tab === 'details' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
-                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                <button type="button" data-asset-tab="details" class="px-4 py-2 text-sm font-medium border-b-2 transition border-primary text-primary">
                     Details
                 </button>
-                <button @click="tab = 'history'" 
-                        :class="tab === 'history' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
-                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                <button type="button" data-asset-tab="history" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     History
                 </button>
-                <button @click="tab = 'maintenance'" 
-                        :class="tab === 'maintenance' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
-                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                <button type="button" data-asset-tab="maintenance" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     Maintenance
                 </button>
-                <button @click="tab = 'checkout'" 
-                        :class="tab === 'checkout' ? 'border-primary text-primary' : 'text-text-secondary hover:text-text-primary'"
-                        class="px-4 py-2 text-sm font-medium border-b-2 transition">
+                <button type="button" data-asset-tab="checkout" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     Checkout History
                 </button>
             </div>
 
             <!-- Tab: Details -->
-            <div x-show="tab === 'details'" class="space-y-6">
+            <div data-asset-panel="details" class="space-y-6">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <h4 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Asset Details</h4>
@@ -214,7 +206,7 @@
             </div>
 
             <!-- Tab: History -->
-            <div x-show="tab === 'history'">
+            <div data-asset-panel="history" class="hidden">
                 {% if logs %}
                 <div class="space-y-2">
                     {% for log in logs %}
@@ -233,7 +225,7 @@
             </div>
 
             <!-- Tab: Maintenance -->
-            <div x-show="tab === 'maintenance'">
+            <div data-asset-panel="maintenance" class="hidden">
                 <div class="flex items-center justify-between mb-4">
                     <h4 class="text-sm font-semibold" style="color: var(--color-text-secondary);">Maintenance Records</h4>
                     {% if user.role in 'ADMIN,SUPERADMIN' %}
@@ -292,7 +284,7 @@
             </div>
 
             <!-- Tab: Checkout History -->
-            <div x-show="tab === 'checkout'">
+            <div data-asset-panel="checkout" class="hidden">
                 {% if checkout_history %}
                 <div class="space-y-3">
                     {% for record in checkout_history %}

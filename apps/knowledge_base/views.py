@@ -1,13 +1,18 @@
 import time
+from datetime import date
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from django.utils.text import slugify
 from .models import Article, ArticleVersion, Category, ArticleFeedback
+from .forms import ArticleForm, KBFromTicketForm
 from django.db.models import Count, Q
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from apps.tickets.models import Ticket
+from apps.common.models import Tag
+from apps.tickets.views import get_sidebar_template
 
 
 @login_required
@@ -41,51 +46,93 @@ def kb_management(request):
 
 @login_required
 def article_create(request):
-    """Create a new article draft."""
+    """Create a new article draft with rich text editor."""
     if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return HttpResponseForbidden()
 
     if request.method == 'POST':
-        title = request.POST.get('title')
-        content = request.POST.get('content')
-        category_id = request.POST.get('category')
-        visibility = request.POST.get('visibility', 'INTERNAL')
-        slug = slugify(title) + '-' + str(int(time.time()))
-        article = Article.objects.create(
-            title=title,
-            slug=slug,
-            content=content,
-            category_id=category_id if category_id else None,
-            visibility=visibility,
-            author=request.user,
-            status=Article.Status.DRAFT
-        )
-        ArticleVersion.objects.create(article=article, content=content, edited_by=request.user)
-        return redirect('kb:management')
+        form = ArticleForm(request.POST)
+        if form.is_valid():
+            # Create the article manually
+            title = form.cleaned_data['title']
+            content = form.cleaned_data['content']
+            category = form.cleaned_data['category']
+            visibility = form.cleaned_data['visibility']
+            tags_input = form.cleaned_data.get('tags_input', [])
+            
+            # Create article
+            article = Article.objects.create(
+                title=title,
+                slug=slugify(title) + '-' + str(int(time.time())),
+                content=content,
+                category=category,
+                visibility=visibility,
+                author=request.user,
+                status=Article.Status.DRAFT
+            )
+            
+            # Handle tags
+            if tags_input:
+                tag_objects = []
+                for name in tags_input:
+                    tag, created = Tag.objects.get_or_create(name=name)
+                    tag_objects.append(tag)
+                article.tags.set(tag_objects)
+            
+            # Create version
+            ArticleVersion.objects.create(
+                article=article,
+                content=article.content,
+                edited_by=request.user
+            )
+            
+            from django.contrib import messages
+            messages.success(request, f'Article "{article.title}" created as a draft.')
+            return redirect('kb:management')
+        else:
+            from django.contrib import messages
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = ArticleForm()
 
-    categories = Category.objects.all()
-    return render(request, 'knowledge_base/article_form.html', {'categories': categories})
+    context = {
+        'form': form,
+        'article': None,
+        'sidebar_template': get_sidebar_template(request.user),
+        'is_create': True,
+    }
+    return render(request, 'knowledge_base/article_form.html', context)
 
 
 @login_required
 def article_edit(request, pk):
-    """Edit an existing draft (author only)."""
+    """Edit an existing draft with rich text editor."""
     article = get_object_or_404(Article, pk=pk)
     if request.user != article.author and request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return HttpResponseForbidden()
 
     if request.method == 'POST':
-        article.title = request.POST.get('title', article.title)
-        article.content = request.POST.get('content', article.content)
-        article.visibility = request.POST.get('visibility', article.visibility)
-        if request.POST.get('category'):
-            article.category_id = request.POST.get('category')
-        article.save()
-        ArticleVersion.objects.create(article=article, content=article.content, edited_by=request.user)
-        return redirect('kb:management')
+        form = ArticleForm(request.POST, instance=article)
+        if form.is_valid():
+            article = form.save()
+            ArticleVersion.objects.create(
+                article=article,
+                content=article.content,
+                edited_by=request.user
+            )
+            from django.contrib import messages
+            messages.success(request, f'Article "{article.title}" updated.')
+            return redirect('kb:management')
+    else:
+        form = ArticleForm(instance=article)
 
-    categories = Category.objects.all()
-    return render(request, 'knowledge_base/article_form.html', {'article': article, 'categories': categories})
+    context = {
+        'form': form,
+        'article': article,
+        'sidebar_template': get_sidebar_template(request.user),
+        'is_create': False,
+    }
+    return render(request, 'knowledge_base/article_form.html', context)
 
 
 @login_required
@@ -121,20 +168,43 @@ def article_archive(request, pk):
 def kb_portal(request):
     query = request.GET.get('q', '')
     category_id = request.GET.get('category', '')
+    tag_name = request.GET.get('tag', '')
+    
     articles = Article.objects.filter(status=Article.Status.PUBLISHED, visibility='PUBLIC')
-
+    
     if query:
-        articles = articles.filter(Q(title__icontains=query) | Q(content__icontains=query))
+        articles = articles.filter(
+            Q(title__icontains=query) |
+            Q(content__icontains=query) |
+            Q(tags__name__icontains=query)  # Search tags
+        ).distinct()
+    
     if category_id:
         articles = articles.filter(category_id=category_id)
-
-    categories = Category.objects.annotate(article_count=Count('articles', filter=Q(articles__status=Article.Status.PUBLISHED, articles__visibility='PUBLIC')))
-
+    
+    if tag_name:
+        articles = articles.filter(tags__name=tag_name)
+    
+    # Get categories with counts
+    categories = Category.objects.annotate(
+        article_count=Count('articles', filter=Q(articles__status=Article.Status.PUBLISHED, articles__visibility='PUBLIC'))
+    )
+    
+    # Get all tags with counts (for filtering)
+    all_tags = Tag.objects.filter(
+        article__status=Article.Status.PUBLISHED,
+        article__visibility='PUBLIC'
+    ).annotate(
+        count=Count('article')
+    ).order_by('name')
+    
     context = {
         'articles': articles,
         'categories': categories,
+        'all_tags': all_tags,
         'query': query,
         'selected_category': category_id,
+        'selected_tag': tag_name,
     }
     return render(request, 'knowledge_base/portal.html', context)
 
@@ -172,25 +242,187 @@ def kb_feedback(request, pk):
         'not_helpful_count': not_helpful_count,
     })
 
+
 @login_required
 def convert_ticket_to_kb(request, ticket_pk):
     ticket = get_object_or_404(Ticket, pk=ticket_pk)
+    
     if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
-        return HttpResponseForbidden()
+        return HttpResponseForbidden("You don't have permission to create KB articles.")
+    
+    if request.method == 'POST':
+        form = KBFromTicketForm(ticket, request.POST)
+        if form.is_valid():
+            title = form.cleaned_data['title']
+            content = form.cleaned_data['content']
+            visibility = form.cleaned_data['visibility']
+            selected_comment_ids = form.cleaned_data.get('include_comment', [])
+            
+            # Build conversation summary
+            if selected_comment_ids:
+                selected_comments = ticket.comments.filter(pk__in=selected_comment_ids).order_by('created_at')
+                conversation_summary = "\n\n---\n\n**Conversation Summary**\n\n"
+                for comment in selected_comments:
+                    conversation_summary += f"**{comment.author.get_full_name()}** ({comment.created_at.strftime('%b %d, %Y %H:%M')}):\n{comment.body}\n\n"
+                final_content = content + conversation_summary
+            else:
+                final_content = content
+            
+            # Create article
+            slug = slugify(title) + '-' + str(int(time.time()))
+            article = Article.objects.create(
+                title=title,
+                slug=slug,
+                content=final_content,
+                category=ticket.category,
+                visibility=visibility,
+                author=request.user,
+                status=Article.Status.DRAFT
+            )
+            ArticleVersion.objects.create(article=article, content=final_content, edited_by=request.user)
+            
+            from django.contrib import messages
+            messages.success(request, f'Article "{title}" created as a draft.')
+            return redirect('kb:management')
+    else:
+        initial_content = f"**Original Issue:**\n{ticket.description}\n\n"
+        initial_content += "**Resolution Steps:**\n\n1. \n2. \n3. \n\n**Additional Notes:**\n\n"
+        
+        form = KBFromTicketForm(
+            ticket=ticket,
+            initial={
+                'title': f"How to resolve: {ticket.title}",
+                'content': initial_content,
+                'visibility': 'INTERNAL',
+            }
+        )
+    
+    context = {
+        'form': form,
+        'ticket': ticket,
+        'sidebar_template': get_sidebar_template(request.user),
+        'ticket_status': ticket.get_status_display(),
+    }
+    return render(request, 'knowledge_base/create_from_ticket.html', context)
 
-    # Create draft article from ticket
-    title = ticket.title
-    content = ticket.description
-    slug = slugify(title) + '-' + str(int(time.time()))
+# apps/knowledge_base/views.py
 
-    article = Article.objects.create(
-        title=title,
-        slug=slug,
-        content=content,
-        visibility='INTERNAL',   # default internal – agent can change
-        author=request.user,
-        status=Article.Status.DRAFT
+@login_required
+def kb_suggestions_ajax(request):
+    """
+    HTMX endpoint to return article suggestions based on a query.
+    Used during ticket creation to show relevant articles.
+    """
+    # Check both 'title' and 'q' parameters (for compatibility)
+    query = request.GET.get('title', '') or request.GET.get('q', '')
+    query = query.strip()
+    
+    # Only search if query is at least 2 characters
+    if len(query) < 2:
+        return render(request, 'partials/kb_suggestions.html', {'articles': []})
+    
+    # Search published, public articles
+    articles = Article.objects.filter(
+        status=Article.Status.PUBLISHED,
+        visibility='PUBLIC'
+    ).filter(
+        Q(title__icontains=query) | Q(content__icontains=query)
+    ).annotate(
+        title_match=Q(title__icontains=query)
+    ).order_by('-title_match', '-updated_at')[:5]
+    
+    return render(request, 'partials/kb_suggestions.html', {'articles': articles})
+
+
+@login_required
+def article_history(request, pk):
+    """
+    Display the version history of an article.
+    Only accessible to agents, team leads, admins, and superadmins.
+    """
+    article = get_object_or_404(Article, pk=pk)
+    
+    # Permission: only users who can edit the article can view history
+    if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponseForbidden("You don't have permission to view article history.")
+    
+    # If the article is a draft and the user is not the author (and not admin/lead), deny
+    if article.status == Article.Status.DRAFT and request.user != article.author and request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponseForbidden("You can only view history of your own drafts.")
+    
+    versions = article.versions.all().order_by('-created_at')
+    
+    context = {
+        'article': article,
+        'versions': versions,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'knowledge_base/article_history.html', context)
+
+
+@login_required
+def article_version_detail(request, pk, version_pk):
+    """
+    Return the content of a specific version (for preview modal).
+    """
+    article = get_object_or_404(Article, pk=pk)
+    version = get_object_or_404(ArticleVersion, pk=version_pk, article=article)
+    
+    # Permission check
+    if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+    
+    return JsonResponse({
+        'content': version.content,
+        'edited_by': version.edited_by.get_full_name(),
+        'created_at': version.created_at.strftime('%Y-%m-%d %H:%M'),
+    })
+
+
+@login_required
+@require_POST
+def article_revert(request, pk, version_pk):
+    """
+    Revert the article to a previous version.
+    Only team leads, admins, and superadmins can revert.
+    """
+    article = get_object_or_404(Article, pk=pk)
+    
+    # Only team leads, admins, superadmins can revert (or the author if draft? but we'll restrict)
+    if request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponseForbidden("Only team leads and admins can revert articles.")
+    
+    version = get_object_or_404(ArticleVersion, pk=version_pk, article=article)
+    
+    # Store the old content for audit (we'll create a new version anyway)
+    old_content = article.content
+    
+    # Revert: set article content to version content
+    article.content = version.content
+    article.save()
+    
+    # Create a new version entry with a note
+    ArticleVersion.objects.create(
+        article=article,
+        content=article.content,
+        edited_by=request.user,
     )
-    ArticleVersion.objects.create(article=article, content=content, edited_by=request.user)
+    
+    # Optionally, add a note to the article (you could store this in a separate field)
+    # We'll just log it via messages and version creation (the new version has the editor)
+    
+    messages.success(request, f'Article "{article.title}" has been reverted to the version from {version.created_at.strftime("%b %d, %Y")}.')
+    
+    return redirect('kb:management')
 
-    return redirect('kb:edit', pk=article.pk)
+
+def tag_autocomplete(request):
+    """
+    Return a JSON list of tag names matching the query for autocomplete.
+    """
+    query = request.GET.get('q', '').strip()
+    if len(query) < 1:
+        return JsonResponse([], safe=False)
+    
+    tags = Tag.objects.filter(name__icontains=query).values_list('name', flat=True)[:10]
+    return JsonResponse(list(tags), safe=False)

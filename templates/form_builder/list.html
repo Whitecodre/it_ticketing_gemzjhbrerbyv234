@@ -14,11 +14,12 @@
 <div class="w-full">
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-            <h2 class="text-base font-semibold inline-flex gap-2" style="color: var(--color-text-primary);">
-                {% lucide "file-text" size=20 %} Form Builder
-            </h2>
-            <p class="text-sm text-text-secondary">Create and manage dynamic forms for your organization.</p>
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "files" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Form builder</h2>
+                <p class="text-sm text-text-secondary">Create and manage dynamic forms for your organization.</p>
+            </div>
         </div>
         <button onclick="window.openCreateModal()" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
             {% lucide "plus" size=16 %} New Form

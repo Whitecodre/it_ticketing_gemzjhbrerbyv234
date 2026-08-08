@@ -16,6 +16,10 @@ python manage.py seed_macros
 echo "=== Seeding Assets ==="
 python manage.py seed_assets
 
+# start.sh
+echo "=== Checking npm version ==="
+npm --version || echo "npm not found"
+
 
 # Optional: create a superuser if it doesn't exist (requires env vars)
 if [ -n "$SUPERUSER_EMAIL" ] && [ -n "$SUPERUSER_PASSWORD" ]; then

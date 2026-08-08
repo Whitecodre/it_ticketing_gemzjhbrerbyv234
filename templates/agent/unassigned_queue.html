@@ -16,9 +16,15 @@
 {% block dashboard_content %}
 <script>window.bulkSource = "unassigned";</script>
 <div class="w-full">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Unassigned Queue</h2>
-        <span class="text-xs" style="color: var(--color-text-secondary);">{{ tickets|length }} ticket(s)</span>
+    <div class="flex items-center justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "inbox" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Unassigned queue</h2>
+                <p class="text-sm text-text-secondary">Review and claim incoming support work.</p>
+            </div>
+        </div>
+        <span class="status-chip info text-xs">{{ tickets|length }} open</span>
     </div>
 
     {# Ticket table #}
@@ -29,9 +35,5 @@
     </div>
 </div>
 {% endblock %}
-{% block extra_scripts %}
-<script src="{% static 'js/bulk_actions.js' %}"></script>
-<script>
-    window.bulkActionUrl = "{% url 'tickets:bulk_action' %}";
-</script>
-{% endblock %}
+
+{% block extra_scripts %}{% endblock %}

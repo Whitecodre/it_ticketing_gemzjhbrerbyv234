@@ -43,9 +43,10 @@ class CustomLoginView(LoginView):
             self.request.session.set_expiry(30 * 24 * 60 * 60)
         else:
             self.request.session.set_expiry(0)
-        
+
         user = form.get_user()
         
+        # Check if user needs to change password
         if not user.password_changed:
             # Log the user in
             from django.contrib.auth import login
@@ -53,7 +54,10 @@ class CustomLoginView(LoginView):
             # Redirect to force password change
             return redirect('accounts:force_password_change')
         
-        # Normal flow
+        # Clear sidebar state on fresh login - set session flag
+        self.request.session['clear_sidebar'] = True
+        
+        # Normal flow - call parent
         return super().form_valid(form)
 
     def form_invalid(self, form):

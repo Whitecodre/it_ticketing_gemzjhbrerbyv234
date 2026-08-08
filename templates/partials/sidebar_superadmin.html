@@ -109,6 +109,10 @@
             <span class="shrink-0">{% lucide "cpu" size=16 class="h-4 w-4" %}</span>
             <span>System Organogram</span>
         </a>
+
+        <a href="{% url 'organogram:org_view' %}" class="sidebar-link {% if request.resolver_match.url_name == 'org_view' %}active{% endif %}">
+            {% lucide "building-2" size=18 %} Organization Chart
+        </a>
         
         {% comment %} <a href="{% url 'organogram:org_view' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
@@ -179,13 +183,6 @@
                 </div>
             </span>
             <span>Remote Sessions</span>
-        </a>
-        <!-- Form Builder -->
-        <a href="{% url 'form_builder:list' %}"
-        class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-        style="{% if '/form-builder/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "file-text" size=16 class="h-4 w-4" %}</span>
-            <span>Form Builder</span>
         </a>
     </div>
 </div>

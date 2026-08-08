@@ -635,6 +635,10 @@
 {% block scripts %}
 {{ block.super }}
 
+{# Temporary page-local compatibility while this advanced editor is migrated
+   from its reactive renderer to vanilla DOM code. #}
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
+
 <script>
     // ================================================================
     // ALPINE.JS FORM BUILDER COMPONENT

@@ -1,0 +1,51 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ title|default:"Deprecated" }}{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-2xl mx-auto">
+    <div class="dashboard-card p-8 text-center">
+        <div class="flex justify-center mb-6">
+            <div class="flex h-20 w-20 items-center justify-center rounded-full bg-warning/10 text-warning">
+                {% lucide "alert-triangle" size=40 %}
+            </div>
+        </div>
+        
+        <h2 class="text-2xl font-bold mb-3" style="color: var(--color-text-primary);">
+            {{ title|default:"Feature Deprecated" }}
+        </h2>
+        
+        <p class="text-text-secondary mb-6 text-lg">
+            {{ message|default:"This feature has been deprecated and is no longer available." }}
+        </p>
+        
+        <div class="rounded-lg border border-warning/20 p-4 mb-6 text-left" style="background-color: rgba(245, 158, 11, 0.05);">
+            <p class="text-sm text-text-secondary">
+                <strong>📌 Why?</strong> The Form Builder has been deprecated in favor of the standard ticket creation process.
+                All existing form data remains intact and can be restored if needed in the future.
+            </p>
+        </div>
+        
+        <div class="flex flex-wrap justify-center gap-3">
+            <a href="{% url 'dashboard' %}" class="btn-primary text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-2">
+                {% lucide "layout-dashboard" size=16 %} Go to Dashboard
+            </a>
+            <a href="{% url 'tickets:create' %}" class="btn-outline text-sm px-6 py-2.5 rounded-lg inline-flex items-center gap-2">
+                {% lucide "ticket" size=16 %} Create Ticket
+            </a>
+        </div>
+        
+        <div class="mt-8 pt-6 border-t border-border text-xs text-text-secondary">
+            <p>The Form Builder code and data are still present in the system for future reference.</p>
+            <p>Contact your administrator if you need to restore this feature.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

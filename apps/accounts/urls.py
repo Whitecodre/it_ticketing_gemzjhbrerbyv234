@@ -1,5 +1,6 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
+from django.http import HttpResponseNotFound
 from . import views
 from .views.admin_users import (
     admin_user_list, admin_user_create, admin_user_edit, admin_user_toggle_active, admin_user_change_password, client_logo_upload
@@ -9,13 +10,17 @@ from .views.role_switch import switch_role, get_current_role
 
 app_name = 'accounts'
 
+def registration_disabled(request):
+    return HttpResponseNotFound("Registration is currently disabled.")
+
 urlpatterns = [
     path('login/', views.CustomLoginView.as_view(), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('validate-email/', views.validate_email_ajax, name='validate_email'),
     path('validate-password/', views.validate_password_ajax, name='validate_password'),
     path('force-password-change/', views.force_password_change, name='force_password_change'), 
-    path('register/', views.register, name='register'),
+    # path('register/', views.register, name='register'),
+    path('register/', registration_disabled, name='register'),
     path('verify/<uidb64>/<token>/', views.verify_email, name='verify_email'),
     # ---- Password Reset ----
     path('password-reset/',

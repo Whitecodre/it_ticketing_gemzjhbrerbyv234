@@ -1,0 +1,311 @@
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Version History: {{ article.title }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .version-timeline {
+        position: relative;
+        padding-left: 2rem;
+    }
+    .version-timeline::before {
+        content: '';
+        position: absolute;
+        left: 8px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background-color: var(--color-border);
+    }
+    .version-item {
+        position: relative;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-surface);
+        transition: background-color 0.15s ease;
+    }
+    .version-item:hover {
+        background-color: var(--color-background);
+    }
+    .version-item::before {
+        content: '';
+        position: absolute;
+        left: -1.5rem;
+        top: 1.25rem;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: var(--color-primary);
+        border: 2px solid var(--color-surface);
+        box-shadow: 0 0 0 2px var(--color-border);
+    }
+    .version-item.current::before {
+        background-color: var(--color-success);
+        box-shadow: 0 0 0 2px var(--color-success);
+    }
+    .version-item .version-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 1rem;
+        font-size: 0.75rem;
+        color: var(--color-text-secondary);
+    }
+    .version-item .version-meta .version-label {
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .version-item .version-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    .version-item .version-actions button,
+    .version-item .version-actions a {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.7rem;
+        border-radius: 0.375rem;
+        border: 1px solid var(--color-border);
+        background: transparent;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-decoration: none;
+        color: var(--color-text-secondary);
+    }
+    .version-item .version-actions .btn-view:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+    .version-item .version-actions .btn-revert:hover {
+        border-color: var(--color-warning);
+        color: var(--color-warning);
+    }
+    .version-item .version-actions .btn-revert.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+    .version-item .version-actions .btn-revert.loading {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+    /* Modal styles */
+    .version-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+    }
+    .version-modal-overlay.visible {
+        opacity: 1;
+    }
+    .version-modal {
+        max-width: 700px;
+        width: 90%;
+        max-height: 80vh;
+        background: var(--color-surface);
+        border-radius: 0.75rem;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        transform: scale(0.95);
+        transition: transform 0.25s ease;
+    }
+    .version-modal.visible {
+        transform: scale(1);
+    }
+    .version-modal-header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--color-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+    }
+    .version-modal-header h3 {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+    }
+    .version-modal-header .close-btn {
+        background: none;
+        border: none;
+        font-size: 1.25rem;
+        cursor: pointer;
+        color: var(--color-text-secondary);
+        padding: 0 0.25rem;
+    }
+    .version-modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        color: var(--color-text-primary);
+        white-space: pre-wrap;
+    }
+    .version-modal-footer {
+        padding: 0.75rem 1.5rem;
+        border-top: 1px solid var(--color-border);
+        display: flex;
+        justify-content: flex-end;
+        flex-shrink: 0;
+    }
+</style>
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="w-full max-w-3xl mx-auto">
+
+    <div class="flex items-center gap-3 mb-4">
+        <a href="{% url 'kb:management' %}" class="btn-ghost text-xs flex items-center gap-1">
+            {% lucide "arrow-left" size=14 %} Back
+        </a>
+        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+            📜 Version History: {{ article.title }}
+        </h2>
+        <span class="text-xs text-text-secondary ml-auto">{{ versions|length }} versions</span>
+    </div>
+
+    <div class="dashboard-card p-4">
+        <div class="version-timeline">
+            {% for version in versions %}
+            <div class="version-item {% if forloop.first %}current{% endif %}">
+                <div class="version-meta">
+                    <span class="version-label">
+                        {% if forloop.first %}Current Version{% else %}Version {{ forloop.revcounter }}{% endif %}
+                    </span>
+                    <span>
+                        {{ version.edited_by.get_full_name }}
+                    </span>
+                    <span>
+                        {{ version.created_at|date:"M d, Y H:i" }}
+                    </span>
+                    <span class="text-[0.6rem] text-text-secondary">
+                        ({{ version.created_at|timesince }} ago)
+                    </span>
+                </div>
+                <div class="version-actions">
+                    <button class="btn-view" onclick="previewVersion({{ version.pk }})">View</button>
+                    {% if not forloop.first %}
+                        {% if user.role in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
+                            <button class="btn-revert" onclick="revertVersion({{ version.pk }})">Revert to this</button>
+                        {% else %}
+                            <button class="btn-revert disabled" disabled>Revert (Leads only)</button>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <div class="text-center py-8 text-text-secondary">
+                <p class="text-sm">No versions found.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<!-- Preview Modal -->
+<div id="versionModal" class="version-modal-overlay">
+    <div class="version-modal">
+        <div class="version-modal-header">
+            <h3>Version Preview</h3>
+            <button class="close-btn" onclick="closeModal()">✕</button>
+        </div>
+        <div id="versionModalBody" class="version-modal-body">
+            Loading...
+        </div>
+        <div class="version-modal-footer">
+            <button class="btn-ghost text-xs px-3 py-1.5 rounded" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Preview version (fetch content via AJAX)
+    function previewVersion(versionPk) {
+        const modal = document.getElementById('versionModal');
+        const body = document.getElementById('versionModalBody');
+        body.innerHTML = 'Loading...';
+        modal.classList.add('visible');
+        document.querySelector('.version-modal').classList.add('visible');
+        
+        fetch(`{% url 'kb:version_detail' article.pk 0 %}`.replace('0', versionPk))
+            .then(response => response.json())
+            .then(data => {
+                if (data.content) {
+                    // Render as plain text with line breaks (or HTML if safe)
+                    body.innerHTML = data.content.replace(/\n/g, '<br>');
+                } else {
+                    body.innerHTML = 'Could not load version content.';
+                }
+            })
+            .catch(err => {
+                body.innerHTML = 'Error loading version.';
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('versionModal').classList.remove('visible');
+        document.querySelector('.version-modal').classList.remove('visible');
+    }
+
+    // Revert version (POST)
+    function revertVersion(versionPk) {
+        if (!confirm('Are you sure you want to revert to this version? This will replace the current article content.')) return;
+        
+        const btn = event.target;
+        btn.classList.add('loading');
+        btn.textContent = 'Reverting...';
+        
+        fetch(`{% url 'kb:revert' article.pk 0 %}`.replace('0', versionPk), {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+            },
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                // If not redirected, reload the page to show updated history
+                window.location.reload();
+            }
+        })
+        .catch(err => {
+            alert('Error reverting. Please try again.');
+            btn.classList.remove('loading');
+            btn.textContent = 'Revert to this';
+        });
+    }
+
+    // Close modal on overlay click
+    document.getElementById('versionModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeModal();
+    });
+</script>
+
+{% endblock %}

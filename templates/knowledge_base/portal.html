@@ -15,13 +15,19 @@
 <div class="w-full">
 
     {# Header #}
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Knowledge Base</h2>
-        <span class="text-xs text-text-secondary">{{ articles|length }} article(s)</span>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "book-open" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Knowledge base</h2>
+                <p class="text-sm text-text-secondary">Find proven fixes, guides, and self-service answers.</p>
+            </div>
+        </div>
+        <span class="status-chip info text-xs">{{ articles|length }} articles</span>
     </div>
 
     {# Search Bar #}
-    <form method="get" class="mb-4">
+    <form method="get" class="mb-5 rounded-xl border p-3" style="background-color: var(--color-surface); border-color: var(--color-border);">
         <div class="relative max-w-xl">
             {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style="color: var(--color-text-secondary);" %}
             <input type="text" name="q" value="{{ query }}" placeholder="Search articles…"
@@ -31,17 +37,34 @@
     </form>
 
     {# Category Chips #}
-    <div class="flex flex-wrap gap-2 mb-6">
+    <div class="flex flex-wrap gap-2 mb-2">
         <a href="{% url 'kb:portal' %}" class="filter-chip {% if not selected_category %}active{% endif %}">
-            All
+            All Categories
         </a>
         {% for cat in categories %}
-        <a href="{% url 'kb:portal' %}?category={{ cat.pk }}{% if query %}&q={{ query }}{% endif %}" 
+        <a href="{% url 'kb:portal' %}?category={{ cat.pk }}{% if query %}&q={{ query }}{% endif %}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}" 
            class="filter-chip {% if selected_category == cat.pk|stringformat:'s' %}active{% endif %}">
             {{ cat.name }} ({{ cat.article_count }})
         </a>
         {% endfor %}
     </div>
+
+    {# Tag Filter Chips #}
+    {% if all_tags %}
+    <div class="flex flex-wrap items-center gap-2 mb-4 py-2 px-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-surface);">
+        <span class="text-xs text-text-secondary font-medium">🏷️ Filter by Tag:</span>
+        {% for tag in all_tags %}
+            <a href="{% url 'kb:portal' %}?tag={{ tag.name }}{% if query %}&q={{ query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}" 
+               class="text-[0.6rem] px-2 py-0.5 rounded-full border transition hover:border-primary {% if selected_tag == tag.name %}active-tag{% else %}border-border text-text-secondary{% endif %}"
+               style="{% if selected_tag == tag.name %}border-color: var(--color-primary); color: var(--color-primary); background-color: rgba(var(--color-primary-rgb), 0.08);{% endif %}">
+                #{{ tag.name }} ({{ tag.count }})
+            </a>
+        {% endfor %}
+        {% if selected_tag %}
+            <a href="{% url 'kb:portal' %}" class="text-[0.55rem] text-error hover:underline ml-1">Clear tag</a>
+        {% endif %}
+    </div>
+    {% endif %}
 
     {# Article Grid #}
     {% if articles %}
@@ -49,21 +72,40 @@
         {% for article in articles %}
         <a href="{% url 'kb:article_detail' article.slug %}" class="group block rounded-lg overflow-hidden border hover:shadow-md transition-shadow duration-200"
            style="border-color: var(--color-border); background-color: var(--color-surface);">
-            {# Image – full width, no padding #}
+            
+            {# Image #}
             <div class="w-full h-48 bg-gray-100 overflow-hidden flex items-center justify-center py-3">
                 <img src="{% static 'img/undraw_faq_pgxi.svg' %}" alt="{{ article.title }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200">
             </div>
-            {# Content – padded #}
+            
+            {# Content #}
             <div class="p-4 flex flex-col">
                 <div class="flex-1">
                     <div class="flex items-start justify-between gap-2 mb-1.5">
                         <h3 class="text-sm font-semibold line-clamp-2" style="color: var(--color-text-primary);">{{ article.title }}</h3>
-                        <span class="text-[0.6rem] px-2 py-0.5 rounded-full border border-border text-text-secondary whitespace-nowrap shrink-0">
+                        <span class="text-[0.55rem] px-2 py-0.5 rounded-full border border-border text-text-secondary whitespace-nowrap shrink-0">
                             {{ article.category.name|default:"Uncategorized" }}
                         </span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
+                    
+                    {# Tags on card #}
+                    {% if article.tags.all %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        {% for tag in article.tags.all|slice:":3" %}
+                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                #{{ tag.name }}
+                            </span>
+                        {% endfor %}
+                        {% if article.tags.all|length > 3 %}
+                            <span class="text-[0.5rem] px-1.5 py-0.5 text-text-secondary">
+                                +{{ article.tags.all|length|add:"-3" }} more
+                            </span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 </div>
+                
                 <div class="flex items-center gap-2 mt-3 pt-2.5 border-t text-[0.65rem] text-text-secondary" style="border-color: var(--color-border);">
                     <span>{% lucide "book-open" size=12 %}</span>
                     <span>{{ article.updated_at|date:"M d, Y" }}</span>
@@ -80,8 +122,40 @@
             {% lucide "book-open" size=40 class="text-text-secondary" %}
         </div>
         <p class="text-text-secondary text-sm">No articles found.</p>
-        <p class="text-text-secondary text-xs">Try adjusting your search or category filter.</p>
+        <p class="text-text-secondary text-xs">Try adjusting your search, category, or tag filter.</p>
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    .filter-chip {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        border: 1px solid var(--color-border);
+        background-color: transparent;
+        color: var(--color-text-secondary);
+        transition: all 0.15s ease;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .filter-chip:hover {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+    .filter-chip.active {
+        background-color: var(--color-primary);
+        color: white;
+        border-color: var(--color-primary);
+    }
+    .active-tag {
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+        background-color: rgba(var(--color-primary-rgb), 0.08);
+    }
+</style>
 {% endblock %}

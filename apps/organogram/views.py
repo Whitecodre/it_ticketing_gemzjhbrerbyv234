@@ -44,10 +44,31 @@ def can_edit_org(user):
 # SYSTEM ORGANOGRAM (Auto-generated)
 # ================================================================
 
-def build_system_tree(user, depth=0, max_depth=5, department=None):
-    """Build hierarchical tree from user's subordinates."""
+# apps/organogram/views.py
+
+def build_system_tree(user, depth=0, max_depth=10, department=None, search_query=None):
+    """Build hierarchical tree from user's subordinates with improved metadata."""
     if depth >= max_depth:
         return None
+    
+    # If search query, check if this user matches
+    if search_query:
+        search_lower = search_query.lower()
+        name_match = search_lower in user.get_full_name().lower() or search_lower in user.email.lower()
+        # If this user doesn't match and has no subordinates that match, skip
+        if not name_match:
+            # Check subordinates recursively before returning None
+            subordinates = user.subordinates.filter(is_active=True)
+            if department:
+                subordinates = subordinates.filter(department=department)
+            
+            for sub in subordinates.order_by('first_name', 'last_name'):
+                child_tree = build_system_tree(sub, depth + 1, max_depth, department, search_query)
+                if child_tree:
+                    # Found a match in subordinates - include this node
+                    break
+            else:
+                return None
     
     subordinates = user.subordinates.filter(is_active=True)
     if department:
@@ -55,15 +76,31 @@ def build_system_tree(user, depth=0, max_depth=5, department=None):
     
     children = []
     for sub in subordinates.order_by('first_name', 'last_name'):
-        child_tree = build_system_tree(sub, depth + 1, max_depth, department)
+        child_tree = build_system_tree(sub, depth + 1, max_depth, department, search_query)
         if child_tree:
             children.append(child_tree)
+    
+    # Get department color
+    color = '#64748B'
+    try:
+        config = SystemOrgConfig.objects.filter(department=user.department).first()
+        if config:
+            color = config.color
+    except:
+        pass
     
     return {
         'user': user,
         'children': children,
         'depth': depth,
-        'has_children': len(children) > 0
+        'has_children': len(children) > 0,
+        'direct_report_count': user.subordinates.filter(is_active=True).count(),
+        'department_color': color,
+        'full_name': user.get_full_name() or user.email,
+        'position': user.position or user.get_role_display(),
+        'department_display': user.get_department_display(),
+        'email': user.email,
+        'avatar': user.avatar.url if user.avatar else None,
     }
 
 
@@ -79,16 +116,21 @@ def get_department_colors():
     return colors
 
 
+# apps/organogram/views.py
+
 @login_required
 def system_org(request):
-    """System organogram view - auto-generated from users."""
+    """System organogram view - auto-generated from users with search."""
     
     user = request.user
     department = request.GET.get('department', '')
+    search_query = request.GET.get('search', '').strip()
     
     # If no department selected, use user's department
     if not department and user.department:
         department = user.department
+    
+    roots = []
     
     if department:
         # Find top-level person for this department
@@ -97,25 +139,32 @@ def system_org(request):
             is_active=True
         ).order_by('first_name')
         
-        roots = []
         for dept_user in dept_users:
             if not dept_user.manager or dept_user.manager.department != department:
-                tree = build_system_tree(dept_user, department=department)
+                tree = build_system_tree(dept_user, department=department, search_query=search_query)
                 if tree:
                     roots.append(tree)
         
         if not roots and dept_users.exists():
-            tree = build_system_tree(dept_users.first(), department=department)
+            tree = build_system_tree(dept_users.first(), department=department, search_query=search_query)
             if tree:
                 roots.append(tree)
     else:
         # Show all roots
-        roots = []
         root_users = User.objects.filter(is_active=True, manager__isnull=True).order_by('first_name', 'last_name')
         for root in root_users:
-            tree = build_system_tree(root)
+            tree = build_system_tree(root, search_query=search_query)
             if tree:
                 roots.append(tree)
+    
+     # Get IT stats
+    it_dept_users = User.objects.filter(department='IT', is_active=True)
+    it_dept_stats = {
+        'total': it_dept_users.count(),
+        'managers': it_dept_users.filter(role__in=['TEAM_LEAD', 'ADMIN']).count(),
+        'agents': it_dept_users.filter(role='AGENT').count(),
+        'end_users': it_dept_users.filter(role='END_USER').count(),
+    }
     
     context = {
         'roots': roots,
@@ -123,10 +172,18 @@ def system_org(request):
         'department_name': dict(User.DEPARTMENT_CHOICES).get(department, 'All') if department else 'All Departments',
         'department_choices': User.DEPARTMENT_CHOICES,
         'department_colors': get_department_colors(),
+        'search_query': search_query,
+        'it_dept_stats': it_dept_stats,
         'sidebar_template': get_sidebar_template(user),
         'user_role': user.role,
         'is_system': True,
     }
+
+     # ================================================================
+    # HTMX REQUEST: Return only the tree container
+    # ================================================================
+    if request.headers.get('HX-Request'):
+        return render(request, 'organogram/partials/system_tree_container.html', context)
     
     return render(request, 'organogram/system.html', context)
 
@@ -137,68 +194,16 @@ def system_org(request):
 
 @login_required
 def org_list(request):
-    """List all organization organogram drafts."""
-    
-    if not can_edit_org(request.user):
-        messages.warning(request, 'You do not have permission to manage organization organograms.')
-        return redirect('dashboard')
-    
-    drafts = OrgDraft.objects.all().order_by('-created_at')
-    
-    # Get approval status for each draft
-    for draft in drafts:
-        draft.approval_status = draft.get_approval_status()
-    
-    context = {
-        'drafts': drafts,
-        'sidebar_template': get_sidebar_template(request.user),
-        'user_role': request.user.role,
-    }
-    return render(request, 'organogram/organization/list.html', context)
+    """Deprecated - Organization chart editing has been moved to DCC."""
+    messages.warning(request, 'Organization chart editing is now handled by DCC.')
+    return redirect('dashboard')
 
 
 @login_required
-def org_builder(request, pk=None):
-    """Build/edit organization organogram."""
-    
-    if not can_edit_org(request.user):
-        messages.warning(request, 'You do not have permission to edit organization organograms.')
-        return redirect('dashboard')
-    
-    draft = None
-    is_new = False
-    
-    if pk:
-        draft = get_object_or_404(OrgDraft, pk=pk)
-        if not draft.can_edit(request.user):
-            messages.warning(request, 'This draft cannot be edited in its current state.')
-            return redirect('organogram:org_list')
-    else:
-        is_new = True
-        draft = OrgDraft.objects.create(
-            name='New Organization Structure',
-            created_by=request.user,
-            structure={'nodes': []},
-            status=OrgDraft.Status.DRAFT
-        )
-        return redirect('organogram:org_builder', pk=draft.pk)
-    
-    # Check if user can approve (for showing approve buttons)
-    can_approve = draft.can_approve(request.user)
-    
-    # Get approval status
-    approval_status = draft.get_approval_status()
-    
-    context = {
-        'draft': draft,
-        'can_approve': can_approve,
-        'can_publish': draft.status == OrgDraft.Status.APPROVED and request.user.role in ['ADMIN', 'SUPERADMIN'],
-        'approval_status': approval_status,
-        'sidebar_template': get_sidebar_template(request.user),
-        'user_role': request.user.role,
-        'is_edit': not is_new,
-    }
-    return render(request, 'organogram/organization/builder.html', context)
+def org_builder(request):
+    """Deprecated - Organization chart editing has been moved to DCC."""
+    messages.warning(request, 'Organization chart editing is now handled by DCC.')
+    return redirect('dashboard')
 
 
 @login_required
@@ -216,20 +221,19 @@ def org_preview(request, pk):
 
 @login_required
 def org_view(request):
-    """View the published organization organogram."""
+    """View the DCC-provided organization chart."""
     
-    published = OrgPublished.objects.first()  # Get latest published version
+    # Get the latest published version (from DCC upload)
+    published = OrgPublished.objects.first()
     
-    if not published:
-        context = {
-            'has_published': False,
-            'sidebar_template': get_sidebar_template(request.user),
-        }
-        return render(request, 'organogram/organization/view.html', context)
+    # Alternatively, if DCC provides via JSON file:
+    # structure = load_dcc_structure()  # custom function
     
     context = {
         'published': published,
-        'has_published': True,
+        'has_published': published is not None,
+        'is_dcc_provided': True,
+        'last_updated': published.published_at if published else None,
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'organogram/organization/view.html', context)
@@ -237,45 +241,16 @@ def org_view(request):
 
 @login_required
 def org_approvals(request):
-    """Approval dashboard for organization organograms."""
-    
-    if not is_admin(request.user):
-        messages.warning(request, 'Only admins can view the approval dashboard.')
-        return redirect('dashboard')
-    
-    pending_drafts = OrgDraft.objects.filter(
-        status=OrgDraft.Status.PENDING
-    ).order_by('-created_at')
-    
-    # Get approval status for each
-    for draft in pending_drafts:
-        draft.approval_status = draft.get_approval_status()
-        draft.user_has_approved = draft.org_approval_records.filter(
-            user=request.user, 
-            approved=True
-        ).exists()
-    
-    context = {
-        'pending_drafts': pending_drafts,
-        'sidebar_template': get_sidebar_template(request.user),
-    }
-    return render(request, 'organogram/organization/approvals.html', context)
+    """Deprecated - Organization chart editing has been moved to DCC."""
+    messages.warning(request, 'Organization chart editing is now handled by DCC.')
+    return redirect('dashboard')
 
 
 @login_required
 def org_publish_history(request):
-    """View history of published organization organograms."""
-    
-    if not can_edit_org(request.user):
-        return redirect('dashboard')
-    
-    published_versions = OrgPublished.objects.all().order_by('-published_at')
-    
-    context = {
-        'published_versions': published_versions,
-        'sidebar_template': get_sidebar_template(request.user),
-    }
-    return render(request, 'organogram/organization/history.html', context)
+    """Deprecated - Organization chart editing has been moved to DCC."""
+    messages.warning(request, 'Organization chart editing is now handled by DCC.')
+    return redirect('dashboard')
 
 # apps/organogram/views.py - Add at the end
 

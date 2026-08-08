@@ -6,9 +6,13 @@
 
 {% block page_title_area %}
 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-    <h1 class="text-xl font-semibold" style="color: var(--color-text-primary);">
-        Maintenance Schedule
-    </h1>
+    <div class="flex items-center gap-3">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "wrench" size=19 %}</span>
+        <div>
+            <h1 class="text-lg font-semibold" style="color: var(--color-text-primary);">Maintenance schedule</h1>
+            <p class="text-sm text-text-secondary">Plan, assign, and track planned maintenance work.</p>
+        </div>
+    </div>
     <div class="flex flex-wrap items-center gap-2">
         {# Show New Schedule only to Admin/Superadmin/Team Lead #}
         {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
@@ -34,19 +38,19 @@
 
 {# Stats Cards - Show differently based on role #}
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-    <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <div class="kpi-card">
         <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Total</p>
         <p class="text-2xl font-bold mt-1" style="color: var(--color-text-primary);">{{ stats.total }}</p>
     </div>
-    <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <div class="kpi-card">
         <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Scheduled</p>
         <p class="text-2xl font-bold mt-1" style="color: var(--color-info);">{{ stats.scheduled }}</p>
     </div>
-    <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <div class="kpi-card">
         <p class="text-xs font-medium" style="color: var(--color-text-secondary);">In Progress</p>
         <p class="text-2xl font-bold mt-1" style="color: var(--color-warning);">{{ stats.in_progress }}</p>
     </div>
-    <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <div class="kpi-card">
         <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Completed</p>
         <p class="text-2xl font-bold mt-1" style="color: var(--color-success);">{{ stats.completed }}</p>
     </div>

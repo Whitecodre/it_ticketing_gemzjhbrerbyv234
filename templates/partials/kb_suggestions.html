@@ -1,1 +1,62 @@
-{# Will be populated in Sprint 5 #}
+{% load lucide %}
+
+{% if articles %}
+<div class="rounded-lg border shadow-lg overflow-hidden" 
+     style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <div class="text-xs font-semibold text-text-secondary uppercase tracking-wider px-4 py-2.5 border-b flex items-center justify-between" 
+         style="border-color: var(--color-border);">
+        <span>💡 Related articles ({{ articles|length }})</span>
+        <button type="button" 
+                onclick="closeSuggestions()"
+                class="text-text-secondary hover:text-primary transition p-1">
+            {% lucide "x" size=16 %}
+        </button>
+    </div>
+    <div class="max-h-60 overflow-y-auto py-1.5">
+        {% for article in articles %}
+        <a href="{% url 'kb:article_detail' article.slug %}" target="_blank"
+           class="block text-sm hover:bg-primary/5 px-4 py-2.5 transition flex items-center gap-3"
+           style="color: var(--color-text-secondary);">
+            <span class="text-primary text-base">•</span>
+            <span class="font-medium" style="color: var(--color-text-primary);">{{ article.title }}</span>
+            {% if article.category %}
+            <span class="text-[0.6rem] px-2 py-0.5 rounded-full border border-border text-text-secondary ml-auto flex-shrink-0">
+                {{ article.category.name }}
+            </span>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
+    <div class="text-xs text-text-secondary px-4 py-2 border-t" style="border-color: var(--color-border);">
+        Click to open in new tab
+    </div>
+</div>
+
+<script>
+function closeSuggestions() {
+    const container = document.getElementById('kbSuggestions');
+    if (container) {
+        container.innerHTML = '';
+    }
+}
+
+// Close suggestions when clicking outside
+document.addEventListener('click', function(e) {
+    const titleInput = document.getElementById('id_title');
+    const suggestions = document.getElementById('kbSuggestions');
+    
+    if (suggestions && titleInput) {
+        if (!suggestions.contains(e.target) && e.target !== titleInput) {
+            suggestions.innerHTML = '';
+        }
+    }
+});
+
+// Close suggestions when pressing Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeSuggestions();
+    }
+});
+</script>
+{% endif %}

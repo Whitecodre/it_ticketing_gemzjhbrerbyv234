@@ -8,7 +8,7 @@
 
 {% block page_title %}My Tickets{% endblock %}
 {% block role_label %}{{ request.user.get_role_display }}{% endblock %}
-{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}proton
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
 
 {% block sidebar_nav %}
     {% include sidebar_template %}
@@ -17,9 +17,15 @@
 {% block dashboard_content %}
 <script>window.bulkSource = "assigned";</script>
 <div class="w-full">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Assigned to Me</h2>
-        <span class="text-xs" style="color: var(--color-text-secondary);">{{ tickets|length }} ticket(s)</span>
+    <div class="flex items-center justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "user-check" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Assigned to me</h2>
+                <p class="text-sm text-text-secondary">Focus on the tickets currently in your care.</p>
+            </div>
+        </div>
+        <span class="status-chip info text-xs">{{ tickets|length }} active</span>
     </div>
 
     <div class="dashboard-card p-0 overflow-hidden">
@@ -30,9 +36,4 @@
 </div>
 {% endblock %}
 
-{% block extra_scripts %}
-<script src="{% static 'js/bulk_actions.js' %}"></script>
-<script>
-    window.bulkActionUrl = "{% url 'tickets:bulk_action' %}";
-</script>
-{% endblock %}
+{% block extra_scripts %}{% endblock %}

@@ -31,12 +31,12 @@
         <header>
             <div class="px-4 sm:px-6 lg:px-8 absolute top-1 right-1">
                 <div class="flex justify-end h-16 items-center">
-                    <div class="theme-radio-group" id="themeRadioGroup">
-                        <label class="theme-radio" id="themeRadioLight">
+                   <div class="theme-radio-group" id="themeRadioGroup">
+                        <label class="theme-radio" data-theme="light" id="themeRadioLight">
                             {% lucide "sun" size=16 class="w-4 h-4" %}
                             <input type="radio" name="theme" value="light">
                         </label>
-                        <label class="theme-radio" id="themeRadioDark">
+                        <label class="theme-radio" data-theme="dark" id="themeRadioDark">
                             {% lucide "moon" size=16 class="w-4 h-4" %}
                             <input type="radio" name="theme" value="dark">
                         </label>
@@ -66,9 +66,53 @@
             } else {
                 document.documentElement.classList.remove('dark');
             }
+            
+            // Set the correct radio button
+            document.querySelectorAll('input[name="theme"]').forEach(function(radio) {
+                if (radio.value === initialTheme) {
+                    radio.checked = true;
+                    // Update label active state
+                    const label = radio.closest('.theme-radio');
+                    if (label) {
+                        document.querySelectorAll('.theme-radio').forEach(function(l) {
+                            l.classList.remove('active');
+                        });
+                        label.classList.add('active');
+                    }
+                }
+            });
         })();
         
         document.addEventListener('DOMContentLoaded', function() {
+            // ================================================================
+            // THEME TOGGLE FOR REGISTRATION PAGES
+            // ================================================================
+            document.querySelectorAll('.theme-radio').forEach(function(label) {
+                label.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    const radio = this.querySelector('input[type="radio"]');
+                    if (!radio) return;
+                    
+                    const theme = radio.value;
+                    
+                    // Update active state
+                    document.querySelectorAll('.theme-radio').forEach(function(l) {
+                        l.classList.remove('active');
+                    });
+                    this.classList.add('active');
+                    
+                    // Apply theme
+                    if (theme === 'dark') {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                    localStorage.setItem('theme', theme);
+                });
+            });
+            
+            // Auto-dismiss messages
             const messages = document.querySelectorAll('.alert-message, .alert-error, .alert-success, .alert-warning');
             messages.forEach(function(msg) {
                 setTimeout(function() {

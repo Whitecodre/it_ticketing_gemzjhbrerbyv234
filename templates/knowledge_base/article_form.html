@@ -3,60 +3,221 @@
 {% load lucide %}
 
 {% block dashboard_title %}{% if article %}Edit Article{% else %}New Article{% endif %}{% endblock %}
-{% block page_title %}{% if article %}Edit Article{% else %}New Article{% endif %}{% endblock %}
-{% block role_label %}{{ user.get_role_display }}{% endblock %}
-{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+{% block page_title_area %}{% endblock %}
 
 {% block sidebar_nav %}
-    {% include "partials/sidebar_agent.html" %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+{{ form.media }}
+<style>
+    .form-section {
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-surface);
+    }
+    .form-section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--color-text-secondary);
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--color-border);
+    }
+    .form-section-header svg {
+        width: 14px;
+        height: 14px;
+    }
+    .form-group {
+        margin-bottom: 0.75rem;
+    }
+    .form-group:last-child {
+        margin-bottom: 0;
+    }
+    .form-label {
+        display: block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: 0.25rem;
+    }
+    .form-label .required {
+        color: var(--color-error);
+        margin-left: 0.15rem;
+    }
+    .form-help {
+        font-size: 0.6rem;
+        color: var(--color-text-secondary);
+        margin-top: 0.25rem;
+    }
+    .metadata-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+    @media (max-width: 640px) {
+        .metadata-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+    .tox-tinymce {
+        border-radius: 0.5rem !important;
+        border-color: var(--color-border) !important;
+    }
+    .tox .tox-editor-container {
+        border-radius: 0.5rem !important;
+    }
+    .tox .tox-toolbar__primary {
+        background-color: var(--color-background) !important;
+        border-bottom: 1px solid var(--color-border) !important;
+    }
+    .tox .tox-statusbar {
+        background-color: var(--color-background) !important;
+        border-top: 1px solid var(--color-border) !important;
+    }
+</style>
 {% endblock %}
 
 {% block dashboard_content %}
-<div class="w-full">
-    <div class="dashboard-card">
-        <h2 class="dashboard-card-header">{% if article %}Edit Article{% else %}New Article{% endif %}</h2>
-
-        <form method="post" class="space-y-4">
-            {% csrf_token %}
-            <div>
-                <label class="block text-xs font-semibold mb-1" style="color: var(--color-text-primary);">Title</label>
-                <input type="text" name="title" value="{{ article.title|default:'' }}" required
-                       class="w-full rounded-lg border py-2 px-3 text-xs focus:outline-none focus:ring-2"
-                       style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);">
-            </div>
-            <div>
-                <label class="block text-xs font-semibold mb-1" style="color: var(--color-text-primary);">Content</label>
-                <textarea name="content" rows="12" required
-                          class="w-full rounded-lg border py-2 px-3 text-xs focus:outline-none focus:ring-2"
-                          style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);">{{ article.content|default:'' }}</textarea>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-semibold mb-1" style="color: var(--color-text-primary);">Category</label>
-                    <select name="category"
-                            class="w-full rounded-lg border py-2 px-3 text-xs focus:outline-none focus:ring-2"
-                            style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);">
-                        <option value="">--</option>
-                        {% for cat in categories %}
-                            <option value="{{ cat.pk }}" {% if article and article.category.pk == cat.pk %}selected{% endif %}>{{ cat.name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold mb-1" style="color: var(--color-text-primary);">Visibility</label>
-                    <select name="visibility"
-                            class="w-full rounded-lg border py-2 px-3 text-xs focus:outline-none focus:ring-2"
-                            style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);">
-                        <option value="INTERNAL" {% if article.visibility == 'INTERNAL' %}selected{% endif %}>Internal</option>
-                        <option value="PUBLIC" {% if article.visibility == 'PUBLIC' %}selected{% endif %}>Public</option>
-                    </select>
-                </div>
-            </div>
-            <div class="flex justify-end gap-3 pt-4 border-t" style="border-color: var(--color-border);">
-                <a href="{% url 'kb:management' %}" class="btn-ghost text-xs">Cancel</a>
-                <button type="submit" class="btn-primary text-xs px-4 py-2 rounded-lg">Save</button>
-            </div>
-        </form>
+<div class="w-full max-w-4xl mx-auto">
+    
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+            {% if article %}✏️ Edit Article{% else %}📝 New Article{% endif %}
+        </h2>
+        <a href="{% url 'kb:management' %}" class="btn-ghost text-xs flex items-center gap-1">
+            {% lucide "arrow-left" size=14 %} Back
+        </a>
     </div>
+
+    <form method="post" class="space-y-4">
+        {% csrf_token %}
+        
+        <!-- ============================================================ -->
+        <!-- SECTION 1: Basic Information -->
+        <!-- ============================================================ -->
+        <div class="form-section">
+            <div class="form-section-header">
+                {% lucide "info" size=14 %} Basic Information
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="{{ form.title.id_for_label }}">
+                    Title <span class="required">*</span>
+                </label>
+                {{ form.title }}
+                {% if form.title.errors %}
+                    <p class="text-xs text-error mt-1">{{ form.title.errors.0 }}</p>
+                {% endif %}
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="{{ form.category.id_for_label }}">
+                    Category
+                </label>
+                {{ form.category }}
+                {% if form.category.errors %}
+                    <p class="text-xs text-error mt-1">{{ form.category.errors.0 }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- SECTION 2: Content (Rich Text Editor) -->
+        <!-- ============================================================ -->
+        <div class="form-section">
+            <div class="form-section-header">
+                {% lucide "edit" size=14 %} Content
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="{{ form.content.id_for_label }}">
+                    Content <span class="required">*</span>
+                </label>
+                {{ form.content }}
+                {% if form.content.errors %}
+                    <p class="text-xs text-error mt-1">{{ form.content.errors.0 }}</p>
+                {% endif %}
+                <p class="form-help">Use the toolbar to format your article. You can insert images, tables, and code blocks.</p>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- SECTION 3: Metadata (Visibility + Tags) -->
+        <!-- ============================================================ -->
+        <div class="form-section">
+            <div class="form-section-header">
+                {% lucide "settings" size=14 %} Metadata
+            </div>
+            
+            <div class="metadata-grid">
+                <div class="form-group">
+                    <label class="form-label" for="{{ form.visibility.id_for_label }}">
+                        Visibility
+                    </label>
+                    {{ form.visibility }}
+                    {% if form.visibility.errors %}
+                        <p class="text-xs text-error mt-1">{{ form.visibility.errors.0 }}</p>
+                    {% endif %}
+                    <p class="form-help">Internal = only support staff can see this article.</p>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="{{ form.tags_input.id_for_label }}">
+                        Tags
+                    </label>
+                    {{ form.tags_input }}
+                    {% if form.tags_input.errors %}
+                        <p class="text-xs text-error mt-1">{{ form.tags_input.errors.0 }}</p>
+                    {% endif %}
+                    <p class="form-help">Enter comma-separated tags. Existing tags will be suggested.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- ACTIONS -->
+        <!-- ============================================================ -->
+        <div class="flex justify-end gap-3 pt-4 border-t" style="border-color: var(--color-border);">
+            <a href="{% url 'kb:management' %}" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</a>
+            <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "save" size=16 %} Save
+            </button>
+        </div>
+    </form>
 </div>
+
+<!-- ============================================================ -->
+<!-- Tag Autocomplete JavaScript -->
+<!-- ============================================================ -->
+<script>
+    const tagsInput = document.getElementById('id_tags_input');
+    const datalist = document.createElement('datalist');
+    datalist.id = 'tag-suggestions';
+    document.body.appendChild(datalist);
+    tagsInput.setAttribute('list', 'tag-suggestions');
+    
+    tagsInput.addEventListener('input', function() {
+        const query = this.value.split(',').pop().trim();
+        if (query.length < 1) {
+            datalist.innerHTML = '';
+            return;
+        }
+        fetch(`/kb/tag-autocomplete/?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                datalist.innerHTML = data.map(tag => `<option value="${tag}">`).join('');
+            });
+    });
+</script>
+
 {% endblock %}

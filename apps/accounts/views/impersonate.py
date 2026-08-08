@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.views.decorators.csrf import csrf_exempt
+# from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from django.urls import reverse
@@ -36,7 +36,7 @@ def impersonate_modal(request):
     })
 
 
-@csrf_exempt
+# @csrf_exempt
 @require_POST
 def impersonate_start(request, user_id):
     """

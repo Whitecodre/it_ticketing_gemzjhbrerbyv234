@@ -55,15 +55,30 @@
                         <span class="status-chip draft text-xs shrink-0">Draft</span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
+                    
+                    {# Tags on card #}
+                    {% if article.tags.all %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        {% for tag in article.tags.all %}
+                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                #{{ tag.name }}
+                            </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
                     <p class="text-xs text-text-secondary mt-2">Updated {{ article.updated_at|timesince }} ago</p>
                 </div>
                 <div class="flex items-center gap-2 mt-3 pt-3 border-t" style="border-color: var(--color-border);">
                     <a href="{% url 'kb:edit' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
                         {% lucide "pencil" size=14 %} Edit
                     </a>
+                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
+                        {% lucide "clock" size=14 %} History
+                    </a>
                     <form method="post" action="{% url 'kb:submit_review' article.pk %}" class="inline ml-auto">
                         {% csrf_token %}
-                        <button class="btn-primary text-xs px-3 py-1.5 rounded">Submit for Review</button>
+                        <button class="btn-primary text-xs px-3 py-1.5 rounded">Submit</button>
                     </form>
                 </div>
             </div>
@@ -91,11 +106,26 @@
                         <span class="status-chip pending_approval text-xs shrink-0">Pending</span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
+                    
+                    {# Tags on card #}
+                    {% if article.tags.all %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        {% for tag in article.tags.all %}
+                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                #{{ tag.name }}
+                            </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
                     <p class="text-xs text-text-secondary mt-2">By {{ article.author.get_full_name }} · {{ article.updated_at|timesince }} ago</p>
                 </div>
                 <div class="flex items-center gap-2 mt-3 pt-3 border-t" style="border-color: var(--color-border);">
                     <a href="{% url 'kb:edit' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
                         {% lucide "eye" size=14 %} Review
+                    </a>
+                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
+                        {% lucide "clock" size=14 %} History
                     </a>
                     <form method="post" action="{% url 'kb:publish' article.pk %}" class="inline ml-auto">
                         {% csrf_token %}
@@ -127,11 +157,26 @@
                         <span class="status-chip resolved text-xs shrink-0">Published</span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
+                    
+                    {# Tags on card #}
+                    {% if article.tags.all %}
+                    <div class="flex flex-wrap gap-1 mt-2">
+                        {% for tag in article.tags.all %}
+                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                #{{ tag.name }}
+                            </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
                     <p class="text-xs text-text-secondary mt-2">Published {{ article.updated_at|timesince }} ago</p>
                 </div>
                 <div class="flex items-center gap-2 mt-3 pt-3 border-t" style="border-color: var(--color-border);">
                     <a href="{% url 'kb:article_detail' article.slug %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5" target="_blank">
                         {% lucide "eye" size=14 %} View
+                    </a>
+                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
+                        {% lucide "clock" size=14 %} History
                     </a>
                     <form method="post" action="{% url 'kb:archive' article.pk %}" class="inline ml-auto">
                         {% csrf_token %}

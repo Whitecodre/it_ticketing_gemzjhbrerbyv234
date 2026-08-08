@@ -69,7 +69,7 @@
                             <button class="w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
                                     hx-post="{% url 'tickets:update_status' ticket.pk %}?status={{ value }}"
                                     hx-swap="none"
-                                    hx-on::after-request="location.reload()">{{ label }}</button>
+                                    hx-on::after-request="if(event.detail.successful) { showToast('Ticket status updated.', 'success'); setTimeout(() => location.reload(), 650); } else { showToast('Unable to update the ticket status.', 'error'); }">{{ label }}</button>
                             {% endfor %}
                         </div>
                     </div>
@@ -116,16 +116,15 @@
                 <button class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]"
                         hx-post="{% url 'tickets:request_remote_session' ticket.pk %}"
                         hx-swap="none"
-                        hx-on::after-request="if(event.detail.successful) { location.reload(); } else { alert('Request failed. Active connector needed?'); }">
+                        hx-on::after-request="if(event.detail.successful) { showToast('Remote-support request sent.', 'success'); setTimeout(() => location.reload(), 700); } else { showToast('Remote-support request failed. An active connector may be required.', 'error'); }">
                     {% lucide "monitor" size=14 %} Request Remote Session
                 </button>
                 
-                <form method="post" action="{% url 'kb:convert_ticket' ticket.pk %}" class="inline">
-                    {% csrf_token %}
-                    <button type="submit" class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]">
-                        {% lucide "file-plus" size=14 %} Convert to KB
-                    </button>
-                </form>
+                {% if ticket.status == 'RESOLVED' or ticket.status == 'CLOSED' %}
+                <a href="{% url 'kb:convert_ticket' ticket.pk %}" class="btn-primary text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                    {% lucide "book-open" size=14 %} Create KB Article
+                </a>
+                {% endif %}
             </div>
             {% endif %}
 

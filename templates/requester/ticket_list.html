@@ -17,8 +17,14 @@
 <div class="w-full">
 
     {# Page header with action buttons #}
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">My Tickets</h2>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "inbox" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">My tickets</h2>
+                <p class="text-sm text-text-secondary">Track updates and communicate with IT.</p>
+            </div>
+        </div>
         
         {# Only show create ticket buttons for END_USER role #}
         {% if user.role == 'END_USER' %}

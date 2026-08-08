@@ -43,6 +43,31 @@
         color: var(--color-text-secondary);
     }
     
+    .org-header .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    
+    .org-header .actions input,
+    .org-header .actions select {
+        font-size: 0.8125rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        padding: 0.4rem 0.75rem;
+        background-color: var(--color-background);
+        color: var(--color-text-primary);
+        transition: border-color 0.2s;
+        min-width: 160px;
+    }
+    
+    .org-header .actions input:focus,
+    .org-header .actions select:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.2);
+    }
+    
     .org-scroll-container {
         flex: 1;
         overflow-y: auto;
@@ -52,16 +77,49 @@
     .org-scroll-container::-webkit-scrollbar {
         width: 6px;
     }
-    
     .org-scroll-container::-webkit-scrollbar-track {
         background: transparent;
     }
-    
     .org-scroll-container::-webkit-scrollbar-thumb {
         background: var(--color-border);
         border-radius: 3px;
     }
     
+    /* IT Stats */
+    .it-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--color-border);
+        background-color: var(--color-surface);
+        margin-bottom: 1rem;
+        flex-shrink: 0;
+    }
+    
+    .it-stats .stat-item {
+        text-align: center;
+    }
+    
+    .it-stats .stat-item .label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--color-text-secondary);
+    }
+    
+    .it-stats .stat-item .value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+    }
+    
+    .it-stats .stat-item .value.managers { color: var(--color-warning); }
+    .it-stats .stat-item .value.agents { color: var(--color-primary); }
+    .it-stats .stat-item .value.end-users { color: var(--color-text-secondary); }
+    
+    /* Tree Styles */
     .org-tree {
         display: flex;
         flex-direction: column;
@@ -82,8 +140,8 @@
         flex-direction: column;
         align-items: center;
         position: relative;
-        cursor: pointer;
-        transition: all 0.2s ease;
+        width: 100%;
+        max-width: 100%;
     }
     
     .org-node .node-card {
@@ -98,12 +156,14 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
         position: relative;
         z-index: 2;
+        cursor: default;
     }
     
     .org-node .node-card:hover {
         transform: translateY(-3px) scale(1.02);
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
         border-color: var(--color-primary);
+        z-index: 5;
     }
     
     .org-node .node-card .avatar {
@@ -119,6 +179,7 @@
         font-size: 1.1rem;
         font-weight: 600;
         overflow: hidden;
+        flex-shrink: 0;
     }
     
     .org-node .node-card .avatar img {
@@ -132,6 +193,7 @@
         font-weight: 600;
         color: var(--color-text-primary);
         line-height: 1.2;
+        word-break: break-word;
     }
     
     .org-node .node-card .title {
@@ -152,12 +214,86 @@
         letter-spacing: 0.04em;
     }
     
+    .org-node .node-card .report-count {
+        font-size: 0.55rem;
+        color: var(--color-text-secondary);
+        margin-top: 0.15rem;
+    }
+    
+    .org-node .node-card .expand-toggle {
+        position: absolute;
+        bottom: -0.7rem;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 50%;
+        width: 22px;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 3;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+        transition: all 0.2s;
+        font-size: 0.6rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .org-node .node-card .expand-toggle:hover {
+        background: var(--color-primary);
+        color: white;
+        border-color: var(--color-primary);
+    }
+    
+    /* Hover details tooltip */
+    .org-node .node-card .hover-details {
+        position: absolute;
+        z-index: 10;
+        left: 50%;
+        transform: translateX(-50%);
+        top: calc(100% + 0.5rem);
+        min-width: 200px;
+        padding: 0.6rem 0.8rem;
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        text-align: left;
+    }
+    
+    .org-node .node-card:hover .hover-details {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    
+    .org-node .node-card .hover-details .detail-row {
+        font-size: 0.65rem;
+        color: var(--color-text-secondary);
+        padding: 0.1rem 0;
+        border-bottom: 1px solid var(--color-border-light);
+    }
+    
+    .org-node .node-card .hover-details .detail-row:last-child {
+        border-bottom: none;
+    }
+    
+    .org-node .node-card .hover-details .detail-row strong {
+        color: var(--color-text-primary);
+        font-weight: 600;
+    }
+    
     .org-node .node-connector {
         width: 2px;
         height: 16px;
         background-color: var(--color-border);
         position: relative;
         margin-top: 2px;
+        flex-shrink: 0;
     }
     
     .org-children {
@@ -192,6 +328,7 @@
         background-color: var(--color-border);
     }
     
+    /* Legend */
     .org-legend {
         display: flex;
         flex-wrap: wrap;
@@ -203,7 +340,6 @@
         flex-shrink: 0;
         margin-top: auto;
         min-height: 3rem;
-        backdrop-filter: blur(8px);
     }
     
     .org-legend .legend-label {
@@ -262,54 +398,80 @@
         margin-left: auto;
     }
     
+    /* Empty state */
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--color-text-secondary);
+    }
+    
+    .empty-state .icon {
+        font-size: 3rem;
+        display: block;
+        margin-bottom: 0.5rem;
+        opacity: 0.4;
+    }
+    
+    .empty-state h3 {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--color-text-primary);
+        margin-bottom: 0.25rem;
+    }
+    
+    /* Responsive */
     @media (max-width: 768px) {
         .org-header {
             flex-direction: column;
             align-items: stretch;
         }
-        
-        .org-header .title-section {
-            justify-content: center;
+        .org-header .actions {
+            flex-direction: column;
         }
-        
+        .org-header .actions input,
+        .org-header .actions select {
+            width: 100%;
+            min-width: unset;
+        }
         .org-node .node-card {
-            min-width: 90px;
-            max-width: 120px;
-            padding: 0.4rem 0.5rem;
+            min-width: 100px;
+            max-width: 140px;
+            padding: 0.5rem 0.75rem;
         }
-        
         .org-node .node-card .avatar {
-            width: 32px;
-            height: 32px;
-            font-size: 0.75rem;
+            width: 36px;
+            height: 36px;
+            font-size: 0.8rem;
         }
-        
         .org-node .node-card .name {
             font-size: 0.7rem;
         }
-        
         .org-node .node-card .title {
             font-size: 0.55rem;
         }
-        
         .org-children {
             gap: 0.5rem 1.5rem;
         }
-        
         .org-legend {
             padding: 0.4rem 0.75rem;
             gap: 0.3rem 0.6rem;
-            flex-wrap: wrap;
         }
-        
         .org-legend .legend-divider {
             display: none;
         }
-        
         .org-legend .legend-info {
             margin-left: 0;
             width: 100%;
             text-align: center;
+        }
+        .it-stats {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+        .org-node .node-card .hover-details {
+            min-width: 160px;
+            left: 0;
+            transform: none;
         }
     }
 </style>
@@ -317,17 +479,33 @@
 
 {% block dashboard_content %}
 
-<div class="org-page">
+<div class="org-page" x-data="{ expandedNodes: {} }">
     
     <!-- Header -->
     <div class="org-header">
         <div class="title-section">
             <h1>🏢 System Organogram</h1>
-            <span class="subtitle">Auto-generated from user management</span>
+            <span class="subtitle">Auto-generated from user management • Reporting lines</span>
         </div>
         <div class="actions">
+            <!-- Search -->
+            <input type="text" id="orgSearch" name="search" 
+                    placeholder="Search employees..." 
+                    value="{{ search_query|default:'' }}"
+                    class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
+                    hx-get="{% url 'organogram:system' %}"
+                    hx-trigger="keyup changed delay:500ms"
+                    hx-target="#orgTreeContainer"
+                    hx-swap="outerHTML"
+                    hx-push-url="true">
+            
+            <!-- Department Filter -->
             <select id="departmentFilter" class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
-                    onchange="window.location.href='?department=' + this.value">
+                    hx-get="{% url 'organogram:system' %}"
+                    hx-trigger="change"
+                    hx-target="#orgTreeContainer"
+                    hx-swap="outerHTML"
+                    hx-push-url="true">
                 <option value="">All Departments</option>
                 {% for code, label in department_choices %}
                     <option value="{{ code }}" {% if department == code %}selected{% endif %}>
@@ -338,105 +516,54 @@
         </div>
     </div>
     
-    <!-- Scrollable Content -->
-    <div class="org-scroll-container">
-        <div class="org-tree">
-            {% if roots %}
-                <div class="org-tree-root">
-                    {% for root in roots %}
-                        <div class="org-node" x-data="{ expanded: true }">
-                            <div class="node-card" 
-                                 style="border-color: {{ department_colors|get_item:root.user.department|default:'var(--color-border)' }};
-                                        {% if root.has_children %}border-width: 3px;{% endif %}">
-                                
-                                <div class="avatar">
-                                    {% if root.user.avatar %}
-                                        <img src="{{ root.user.avatar.url }}" alt="{{ root.user.get_full_name }}">
-                                    {% else %}
-                                        {{ root.user.first_name.0|upper }}{{ root.user.last_name.0|upper }}
-                                    {% endif %}
-                                </div>
-                                
-                                <div class="name">{{ root.user.get_full_name|default:root.user.email }}</div>
-                                <div class="title">{{ root.user.position|default:root.user.get_role_display }}</div>
-                                
-                                <span class="department-badge" 
-                                      style="background-color: {{ department_colors|get_item:root.user.department|default:'#64748B' }};">
-                                    {{ root.user.get_department_display }}
-                                </span>
-                                
-                                {% if root.has_children %}
-                                    <div class="expand-toggle" @click="expanded = !expanded" 
-                                         style="position:absolute;bottom:-0.7rem;left:50%;transform:translateX(-50%);
-                                                background:var(--color-surface);border:1px solid var(--color-border);
-                                                border-radius:50%;width:22px;height:22px;display:flex;align-items:center;
-                                                justify-content:center;cursor:pointer;z-index:3;box-shadow:0 2px 4px rgba(0,0,0,0.06);">
-                                        <span x-show="!expanded">▼</span>
-                                        <span x-show="expanded">▲</span>
-                                    </div>
-                                {% endif %}
-                            </div>
-                            
-                            {% if root.has_children %}
-                                <div class="node-connector"></div>
-                                <div class="org-children" x-show="expanded" x-collapse.duration.300ms>
-                                    {% include "organogram/partials/node_system.html" with node=root depth=1 %}
-                                </div>
-                            {% endif %}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="text-center py-12 text-text-secondary">
-                    <span class="text-4xl block mb-3">👥</span>
-                    <p class="text-lg font-medium">No users found</p>
-                    <p class="text-sm mt-1">Add users and assign managers to build the system organogram.</p>
-                </div>
-            {% endif %}
+    <!-- IT Department Stats (shown when IT is selected or no filter) -->
+    {% if not department or department == 'IT' %}
+    <div class="it-stats">
+        <div class="stat-item">
+            <div class="label">Total IT Staff</div>
+            <div class="value">{{ it_dept_stats.total }}</div>
+        </div>
+        <div class="stat-item">
+            <div class="label">Managers / Leads</div>
+            <div class="value managers">{{ it_dept_stats.managers }}</div>
+        </div>
+        <div class="stat-item">
+            <div class="label">Agents</div>
+            <div class="value agents">{{ it_dept_stats.agents }}</div>
+        </div>
+        <div class="stat-item">
+            <div class="label">End Users</div>
+            <div class="value end-users">{{ it_dept_stats.end_users }}</div>
         </div>
     </div>
+    {% endif %}
     
-    <!-- Legend -->
-    <div class="org-legend">
-        <span class="legend-label">Legend</span>
-        
-        {% for code, label in department_choices %}
-            <span class="legend-item">
-                <span class="legend-dot" style="background-color: {{ department_colors|get_item:code|default:'#64748B' }};"></span>
-                {{ label }}
-            </span>
-        {% endfor %}
-        
-        <span class="legend-divider"></span>
-        
-        <span class="legend-line">
-            <span class="v-line"></span>
-            <span class="h-line"></span>
-            Reporting Lines
-        </span>
-        
-        <span class="legend-divider"></span>
-        
-        <span class="legend-item">
-            <span class="legend-dot" style="border: 3px solid var(--color-primary); background: transparent; width: 10px; height: 10px;"></span>
-            Has Direct Reports
-        </span>
-        
-        <span class="legend-info">
-            {% if department %}
-                {{ department_name }}
-            {% else %}
-                {{ roots|length }} department(s)
-            {% endif %}
-        </span>
+    <!-- Scrollable Tree Container -->
+    <div id="orgTreeContainer" class="org-tree-wrapper">
+        {% include "organogram/partials/system_tree_container.html" %}
     </div>
-</div>
+    
 
+<!-- Temporary page-local compatibility while tree controls are migrated. -->
+<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
+
+<!-- Alpine.js initialization for expand/collapse -->
 <script>
     document.addEventListener('alpine:init', () => {
         Alpine.data('orgNode', () => ({
             expanded: true
         }));
+    });
+</script>
+
+<!-- HTMX will update the container; ensure any Alpine state is re-initialized -->
+<script>
+    document.addEventListener('htmx:afterSwap', function(event) {
+        // Re-initialize Alpine.js on the swapped content
+        if (event.target.id === 'orgTreeContainer') {
+            Alpine.initTree(event.target);
+        }
     });
 </script>
 

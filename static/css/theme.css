@@ -1,4 +1,6 @@
 /* ---------- THEME VARIABLES ---------- */
+[x-cloak] { display: none !important; }
+
     /* Light mode (Palette 2 – Modern Tech) – default */
     :root {
         --color-primary: #0D9488;        /* teal-600 */
@@ -96,13 +98,50 @@
         font-family: 'Edu NSW ACT Cursive', cursive;   
     }
 
-    body {
+body {
         background-color: var(--color-background);
         color: var(--color-text-primary);
         font-family: 'Noto Sans', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         line-height: 1.5;
         transition: background-color 0.3s ease, color 0.2s ease;
   }
+
+/* Shared interaction polish: these rules deliberately use the existing
+   design tokens so every current page benefits without template rewrites. */
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button:not(:disabled), a { touch-action: manipulation; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+    outline-offset: 2px;
+}
+button:disabled { cursor: not-allowed; opacity: .6; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea {
+    background-color: var(--color-surface);
+    border-color: var(--color-border);
+    color: var(--color-text-primary);
+    border-radius: .5rem;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus, select:focus, textarea:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, .14);
+    outline: 0;
+}
+input::placeholder, textarea::placeholder { color: var(--color-text-secondary); opacity: .75; }
+table { border-collapse: separate; border-spacing: 0; }
+thead th { background: color-mix(in srgb, var(--color-background) 72%, var(--color-surface)); }
+tbody tr { transition: background-color .15s ease, box-shadow .15s ease; }
+tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, transparent); }
+
+@media (max-width: 767px) {
+    html { font-size: 100%; }
+    .dashboard-card, .kpi-card { border-radius: .75rem; }
+    #ticketSlideover { max-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
 
     /* Example button classes using CSS variables */
     .btn-primary {
@@ -776,7 +815,7 @@
     position: fixed;
     bottom: 1.5rem;
     right: 1rem;
-    z-index: 100;
+    z-index: 10050;
     display: flex;
     flex-direction: column-reverse;
     gap: 0.75rem;
@@ -791,8 +830,10 @@
     border-radius: 0.75rem;
     background: var(--color-surface);
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
-    transform: translateX(120%);
-    opacity: 0;
+    /* Alpine applies its own x-transition.  Keep the default visible so
+       Alpine-rendered toasts are not permanently hidden by legacy CSS. */
+    transform: translateX(0);
+    opacity: 1;
     transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
                 opacity 0.4s ease;
     max-width: 24rem;
@@ -802,7 +843,12 @@
     border: 1px solid var(--color-border);
 }
 
-.toast-item.show {
+.toast-item.toast-fallback {
+    transform: translateX(120%);
+    opacity: 0;
+}
+
+.toast-item.toast-fallback.show {
     transform: translateX(0);
     opacity: 1;
 }
@@ -2651,4 +2697,186 @@ table.data-table {
     background-color: #0F172A !important;
     border-color: #334155 !important;
     color: #F8FAFC !important;
+}
+
+/* Knowledge base suggestions are populated by HTMX into this container. */
+/* Knowledge base suggestions are populated by HTMX into this container. */
+#kbSuggestions,
+#kb-suggestions {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+#kbSuggestions:not(:empty),
+#kb-suggestions:not(:empty) {
+    opacity: 1;
+}
+#kbSuggestions.htmx-settled,
+#kb-suggestions.htmx-settled {
+    opacity: 1;
+}
+
+/* ================================================================
+   KB SUGGESTIONS - Floating Dropdown
+   ================================================================ */
+
+#kbSuggestions {
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+}
+
+#kbSuggestions:not(:empty) {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+#kbSuggestions.htmx-settled {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Suggestions dropdown animation */
+#kbSuggestions .rounded-lg {
+    animation: kbDropdownIn 0.15s ease-out;
+}
+
+@keyframes kbDropdownIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Scrollbar for suggestions list */
+#kbSuggestions .max-h-48::-webkit-scrollbar {
+    width: 4px;
+}
+
+#kbSuggestions .max-h-48::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#kbSuggestions .max-h-48::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 2px;
+}
+
+#kbSuggestions .max-h-48::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-secondary);
+}
+/* ================================================================
+   KB SUGGESTIONS - Floating Dropdown (Enhanced)
+   ================================================================ */
+
+#kbSuggestions {
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    max-width: 100%;
+}
+
+#kbSuggestions:not(:empty) {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+#kbSuggestions.htmx-settled {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Suggestions dropdown animation */
+#kbSuggestions .rounded-lg {
+    animation: kbDropdownIn 0.15s ease-out;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+@keyframes kbDropdownIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Scrollbar for suggestions list */
+#kbSuggestions .max-h-60::-webkit-scrollbar {
+    width: 6px;
+}
+
+#kbSuggestions .max-h-60::-webkit-scrollbar-track {
+    background: transparent;
+    padding: 2px;
+}
+
+#kbSuggestions .max-h-60::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 3px;
+}
+
+#kbSuggestions .max-h-60::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-secondary);
+}
+
+/* Suggestion item hover effect */
+#kbSuggestions a {
+    border-left: 2px solid transparent;
+    transition: all 0.15s ease;
+}
+
+#kbSuggestions a:hover {
+    border-left-color: var(--color-primary);
+    background-color: rgba(13, 148, 136, 0.05);
+}
+
+/* ================================================================
+   BULK ASSIGNMENT - Clean & Modern
+   ================================================================ */
+
+/* Selected row highlight */
+tr.ticket-row.selected {
+    background-color: rgba(13, 148, 136, 0.05);
+    border-left: 3px solid var(--color-primary);
+}
+
+/* Bulk action bar animation */
+#bulkActionBar {
+    animation: bulkBarSlideUp 0.3s ease-out;
+}
+
+@keyframes bulkBarSlideUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* Checkbox styling */
+.ticket-checkbox {
+    accent-color: var(--color-primary);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+#selectAll {
+    accent-color: var(--color-primary);
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
 }

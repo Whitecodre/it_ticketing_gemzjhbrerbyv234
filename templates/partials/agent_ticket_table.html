@@ -1,64 +1,11 @@
 {% load lucide %}
 
-{% if source %}
-<script>window.bulkSource = "{{ source }}";</script>
-{% endif %}
-
-{# Bulk Action Bar – hidden by default #}
-<div id="bulkActionBar" class="hidden items-center justify-between px-4 py-2 border-b mb-2 gap-2"
-     style="background-color: var(--color-primary); color: white; border-radius: 0.5rem 0.5rem 0 0;">
-    <div class="flex items-center gap-3">
-        <span class="text-xs font-semibold">Selected: <span id="selectedCount">0</span></span>
-        <button class="text-xs bg-white text-primary px-3 py-1 rounded hover:bg-gray-100 cursor-pointer"
-                onclick="clearSelection()">Clear</button>
-    </div>
-    <div class="flex items-center gap-2">
-        {# Bulk Assign – only for Team Leads / Admins #}
-        {% if user.role == 'TEAM_LEAD' or user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
-        <div class="relative">
-            <button id="bulkAssignBtn" class="text-xs bg-white text-primary px-3 py-1 rounded hover:bg-gray-100"
-                    onclick="document.getElementById('bulkAssignDropdown').classList.toggle('hidden')">
-                Assign <span class="ml-1">▾</span>
-            </button>
-            <div id="bulkAssignDropdown" class="absolute left-0 top-full mt-1 w-30 bg-surface border rounded shadow-lg hidden p-1 z-50"
-                 style="background-color: var(--color-surface); border-color: var(--color-border);">
-                {% for agent in assignable_agents %}
-                <button class="block w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
-                        onclick="submitBulkAction('assign', {{ agent.pk }})">
-                    {{ agent.get_full_name_with_role|default:agent.email }}
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        {# Bulk Status Change #}
-        <div class="relative">
-            <button id="bulkStatusBtn" class="text-xs bg-white text-primary px-3 py-1 rounded hover:bg-gray-100"
-                    onclick="document.getElementById('bulkStatusDropdown').classList.toggle('hidden')">
-                Status <span class="ml-1">▾</span>
-            </button>
-            <div id="bulkStatusDropdown" class="absolute -left-3 top-full mt-1 bg-surface border rounded shadow-lg hidden p-1 z-50"
-                 style="background-color: var(--color-surface); border-color: var(--color-border);">
-                {% for value, label in status_choices %}
-                <button class="block w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
-                        onclick="submitBulkAction('status', '{{ value }}')"
-                        style="color: var(--color-text-primary);">
-                    {{ label }}
-                </button>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-</div>
-
-{# Responsive table wrapper #}
 <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="w-full text-sm" id="ticketTable">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
                 <th class="w-8 py-3 px-2">
-                    <input type="checkbox" id="selectAll" class="rounded" onchange="toggleSelectAll(this)">
+                    <input type="checkbox" id="selectAll" class="rounded" onchange="handleSelectAll(this)">
                 </th>
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
@@ -70,14 +17,14 @@
                 <th class="text-right py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-12">Actions</th>
             </tr>
         </thead>
-        <tbody>
+        <tbody id="ticketTableBody">
             {% for ticket in tickets %}
-            <tr class="border-b hover:bg-black/5 transition-colors group 
+            <tr class="border-b hover:bg-black/5 transition-colors group ticket-row
                 {% if ticket.status == 'ESCALATED' %}border-l-4 border-l-red-500{% endif %}" 
                 style="border-color: var(--color-border);"
                 data-ticket-id="{{ ticket.pk }}">
                 <td class="py-3 px-2">
-                    <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox rounded" onchange="updateBulkBar()">
+                    <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox rounded" onchange="handleCheckboxChange(this)">
                 </td>
                 <td class="py-3">
                     <div class="flex items-center gap-2">
@@ -89,8 +36,6 @@
                 <td class="py-3 text-text-secondary">
                     <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
                 </td>
-                
-                {# SLA Column - with individual polling #}
                 <td class="py-3">
                     <div id="sla-container-{{ ticket.pk }}"
                         hx-get="{% url 'tickets:sla_badge' ticket.pk %}"
@@ -118,7 +63,6 @@
                         {% endwith %}
                     </div>
                 </td>
-
                 <td class="py-3">
                     <span class="priority-chip 
                         {% if ticket.priority == 'P1' %}critical
@@ -144,7 +88,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="8" class="text-center py-4">
+                <td colspan="9" class="text-center py-4">
                     <div class="flex flex-col items-center gap-0.5">
                         <p class="text-text-secondary text-sm">No tickets here.</p>
                         <p class="text-text-secondary text-xs">Great job! 🎉</p>
@@ -156,7 +100,43 @@
     </table>
 </div>
 
-{# Global Ticket Actions Dropdown #}
+{# ================================================================ #}
+{# BULK ASSIGNMENT BAR                                              #}
+{# ================================================================ #}
+<div id="bulkActionBar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl shadow-2xl border px-6 py-4"
+     style="background-color: var(--color-surface); border-color: var(--color-primary); box-shadow: 0 8px 40px rgba(13, 148, 136, 0.2);">
+    <div class="flex items-center gap-6">
+        <div class="flex items-center gap-3">
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "users" size=16 %}
+            </span>
+            <div>
+                <span class="text-sm font-semibold" style="color: var(--color-text-primary);">
+                    <span id="selectedCount">0</span> ticket<span id="pluralS">s</span> selected
+                </span>
+                <span class="text-xs text-text-secondary block">Assign them to yourself</span>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <button onclick="clearAllSelections()" 
+                    class="btn-ghost text-sm px-3 py-1.5 rounded-lg">
+                Cancel
+            </button>
+            <button onclick="bulkClaimTickets()" 
+                    id="bulkClaimBtn"
+                    class="btn-primary text-sm px-5 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "user-plus" size=16 %}
+                Assign to Me
+                <span id="bulkCount" class="ml-1"></span>
+            </button>
+        </div>
+    </div>
+</div>
+
+{# ================================================================ #}
+{# GLOBAL TICKET ACTIONS DROPDOWN                                  #}
+{# ================================================================ #}
 <div id="globalTicketDropdown" class="fixed rounded-lg shadow-lg border bg-surface z-[9999] py-1 min-w-44
             opacity-0 scale-95 pointer-events-none transition-all duration-150 ease-out"
      style="border-color: var(--color-border); background-color: var(--color-surface); transform-origin: top center;">
@@ -172,129 +152,371 @@
     </button>
 </div>
 
+{# ================================================================ #}
+{# JAVASCRIPT - ALL FUNCTIONS                                      #}
+{# ================================================================ #}
 <script>
-    (function() {
-        // ================================================================
-        // GLOBAL TICKET ACTION DROPDOWN
-        // ================================================================
-        const dropdown = document.getElementById('globalTicketDropdown');
-        if (!dropdown) {
-            console.warn('⚠️ globalTicketDropdown not found');
+// ================================================================
+// BULK SELECTION - STATE
+// ================================================================
+var selectedIds = new Set();
+
+// ================================================================
+// HANDLE INDIVIDUAL CHECKBOX CHANGE
+// ================================================================
+function handleCheckboxChange(checkbox) {
+    console.log('🔵 Checkbox clicked:', checkbox.checked, 'ID:', checkbox.value);
+    
+    var ticketId = checkbox.value;
+    var row = checkbox.closest('tr');
+    
+    if (checkbox.checked) {
+        selectedIds.add(ticketId);
+        if (row) row.classList.add('bg-primary/5', 'border-l-4', 'border-l-primary');
+    } else {
+        selectedIds.delete(ticketId);
+        if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
+    }
+    
+    console.log('🔵 Selected IDs:', Array.from(selectedIds));
+    updateBulkUI();
+}
+
+// ================================================================
+// HANDLE SELECT ALL
+// ================================================================
+function handleSelectAll(checkbox) {
+    console.log('🔵 Select All clicked:', checkbox.checked);
+    
+    var checkboxes = document.querySelectorAll('.ticket-checkbox');
+    
+    selectedIds.clear();
+    
+    checkboxes.forEach(function(cb) {
+        cb.checked = checkbox.checked;
+        var id = cb.value;
+        var row = cb.closest('tr');
+        
+        if (checkbox.checked) {
+            selectedIds.add(id);
+            if (row) row.classList.add('bg-primary/5', 'border-l-4', 'border-l-primary');
+        } else {
+            selectedIds.delete(id);
+            if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
+        }
+    });
+    
+    console.log('🔵 Selected after Select All:', Array.from(selectedIds));
+    updateBulkUI();
+}
+
+// ================================================================
+// UPDATE BULK UI
+// ================================================================
+function updateBulkUI() {
+    var count = selectedIds.size;
+    var bar = document.getElementById('bulkActionBar');
+    var countEl = document.getElementById('selectedCount');
+    var pluralEl = document.getElementById('pluralS');
+    var bulkCountEl = document.getElementById('bulkCount');
+    var selectAll = document.getElementById('selectAll');
+    
+    console.log('🔵 updateBulkUI called, count:', count);
+    
+    if (count === 0) {
+        if (bar) {
+            bar.style.display = 'none';
+            bar.classList.add('hidden');
+            bar.classList.remove('flex');
+        }
+        if (selectAll) selectAll.checked = false;
+        return;
+    }
+    
+    if (bar) {
+        bar.style.display = 'flex';
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+        console.log('🔵 Bar should now be visible');
+    }
+    
+    if (countEl) countEl.textContent = count;
+    if (pluralEl) pluralEl.textContent = count > 1 ? 's' : '';
+    if (bulkCountEl) bulkCountEl.textContent = '(' + count + ')';
+    
+    var total = document.querySelectorAll('.ticket-checkbox').length;
+    if (selectAll) {
+        selectAll.checked = (count === total && count > 0);
+    }
+}
+
+// ================================================================
+// CLEAR ALL SELECTIONS
+// ================================================================
+function clearAllSelections() {
+    console.log('🔵 Clearing all selections');
+    
+    document.querySelectorAll('.ticket-checkbox').forEach(function(cb) {
+        cb.checked = false;
+        var row = cb.closest('tr');
+        if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
+    });
+    selectedIds.clear();
+    updateBulkUI();
+}
+
+// ================================================================
+// BULK CLAIM TICKETS
+// ================================================================
+function bulkClaimTickets() {
+    var count = selectedIds.size;
+    if (count === 0) return;
+    
+    console.log('🔵 Bulk claiming', count, 'tickets');
+    
+    var btn = document.getElementById('bulkClaimBtn');
+    var originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Assigning...</span>';
+    btn.classList.add('opacity-70');
+    
+    var ticketIds = Array.from(selectedIds);
+    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    var source = window.bulkSource || 'unassigned';
+    
+    var claimed = 0;
+    var failed = 0;
+    var total = ticketIds.length;
+    
+    function claimNext(index) {
+        if (index >= ticketIds.length) {
+            btn.innerHTML = originalHtml;
+            btn.disabled = false;
+            btn.classList.remove('opacity-70');
+            
+            if (claimed > 0) {
+                if (typeof showToast === 'function') {
+                    showToast('✅ Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!', 'success');
+                }
+                setTimeout(function() {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                if (typeof showToast === 'function') {
+                    showToast('Failed to claim tickets. Please try again.', 'error');
+                }
+            }
+            return;
+        }
+        
+        var ticketId = ticketIds[index];
+        var claimUrl = '/tickets/claim/' + ticketId + '/';
+        
+        fetch(claimUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({ source: source })
+        })
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            if (data.success) {
+                claimed++;
+                var row = document.querySelector('tr[data-ticket-id="' + ticketId + '"]');
+                if (row) {
+                    row.style.opacity = '0.3';
+                    row.style.transition = 'opacity 0.3s ease';
+                    setTimeout(function() {
+                        row.remove();
+                        selectedIds.delete(ticketId);
+                        updateBulkUI();
+                    }, 300);
+                }
+            } else {
+                failed++;
+            }
+            btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ' + (claimed + failed) + '/' + total + ' assigned...</span>';
+            claimNext(index + 1);
+        })
+        .catch(function() {
+            failed++;
+            claimNext(index + 1);
+        });
+    }
+    
+    claimNext(0);
+}
+
+// ================================================================
+// KEYBOARD SHORTCUTS
+// ================================================================
+document.addEventListener('keydown', function(e) {
+    if (e.ctrlKey && e.key === 'a') {
+        e.preventDefault();
+        var selectAll = document.getElementById('selectAll');
+        if (selectAll) {
+            selectAll.checked = !selectAll.checked;
+            handleSelectAll(selectAll);
+        }
+    }
+    
+    if (e.key === 'Escape') {
+        clearAllSelections();
+    }
+});
+
+// ================================================================
+// INITIALIZE
+// ================================================================
+function initBulkSelection() {
+    console.log('🔵 Initializing bulk selection...');
+    
+    var checkboxes = document.querySelectorAll('.ticket-checkbox');
+    console.log('🔵 Found', checkboxes.length, 'ticket checkboxes');
+    
+    var bar = document.getElementById('bulkActionBar');
+    if (bar) {
+        bar.style.display = 'none';
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+    }
+    
+    console.log('🔵 Bulk selection initialized');
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBulkSelection);
+} else {
+    setTimeout(initBulkSelection, 100);
+}
+
+document.addEventListener('htmx:afterSwap', function(event) {
+    if (event.target.id === 'ticketTableBody') {
+        console.log('🔵 Table body replaced, re-initializing');
+        selectedIds.clear();
+        setTimeout(function() {
+            var bar = document.getElementById('bulkActionBar');
+            if (bar) {
+                bar.style.display = 'none';
+                bar.classList.add('hidden');
+                bar.classList.remove('flex');
+            }
+        }, 50);
+    }
+});
+
+console.log('🔵 Bulk selection script loaded');
+
+// ================================================================
+// GLOBAL TICKET ACTION DROPDOWN - Individual Actions
+// ================================================================
+(function() {
+    var dropdown = document.getElementById('globalTicketDropdown');
+    if (!dropdown) {
+        console.warn('⚠️ globalTicketDropdown not found');
+        return;
+    }
+
+    var viewBtn = dropdown.querySelector('.dropdown-view');
+    var claimBtn = dropdown.querySelector('.dropdown-claim');
+    var conversationBtn = dropdown.querySelector('.dropdown-conversation');
+
+    var activeButton = null;
+    var activeData = {};
+
+    function positionDropdown(btn) {
+        var rect = btn.getBoundingClientRect();
+        var top = rect.bottom + 6;
+        var left = rect.left + rect.width / 2 - 80;
+
+        if (top + 150 > window.innerHeight) {
+            top = rect.top - 150 - 6;
+        }
+        if (left + 160 > window.innerWidth) {
+            left = window.innerWidth - 170;
+        }
+        if (left < 10) {
+            left = 10;
+        }
+
+        dropdown.style.top = top + 'px';
+        dropdown.style.left = left + 'px';
+    }
+
+    function closeDropdown() {
+        dropdown.classList.remove('opacity-100', 'scale-100');
+        dropdown.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
+        activeButton = null;
+    }
+
+    window.loadTicketSlideoverFromDropdown = function(url) {
+        if (!url) {
+            console.error('❌ slideoverUrl is missing');
             return;
         }
 
-        const viewBtn = dropdown.querySelector('.dropdown-view');
-        const claimBtn = dropdown.querySelector('.dropdown-claim');
-        const conversationBtn = dropdown.querySelector('.dropdown-conversation');
-
-        let activeButton = null;
-        let activeData = {};
-
-        function openPanel() {
-            if (typeof openSlideover === 'function') {
-                openSlideover();
-            } else if (typeof window.openSlideover === 'function') {
-                window.openSlideover();
-            } else {
-                console.error('❌ openSlideover function not found!');
-            }
-        }
-
-        function positionDropdown(btn) {
-            const rect = btn.getBoundingClientRect();
-            let top = rect.bottom + 6;
-            let left = rect.left + rect.width / 2 - 80;
-
-            if (top + 150 > window.innerHeight) {
-                top = rect.top - 150 - 6;
-            }
-            if (left + 160 > window.innerWidth) {
-                left = window.innerWidth - 170;
-            }
-            if (left < 10) {
-                left = 10;
-            }
-
-            dropdown.style.top = top + 'px';
-            dropdown.style.left = left + 'px';
-        }
-
-        function closeDropdown() {
-            dropdown.classList.remove('opacity-100', 'scale-100');
-            dropdown.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
-            activeButton = null;
-        }
-
-        window.loadTicketSlideoverFromDropdown = function(url) {
-            if (!url) {
-                console.error('❌ slideoverUrl is missing');
-                return;
-            }
-
-            closeDropdown();
-            console.log('🔵 Loading slideover from:', url);
-            htmx.ajax('GET', url, {
-                target: '#slideoverContent',
-                swap: 'innerHTML',
-            });
-
-            setTimeout(function() {
-                if (typeof window.openSlideover === 'function') {
-                    window.openSlideover();
-                } else if (typeof openSlideover === 'function') {
-                    openSlideover();
-                }
-            }, 120);
-        };
-
-        // ================================================================
-        // TICKET ACTION BUTTON CLICK
-        // ================================================================
-        window.ticketActionBtnClick = function(btn) {
-            closeDropdown();
-
-            const dataset = btn.dataset;
-            
-            activeButton = btn;
-            activeData = {
-                slideoverUrl: dataset.slideoverUrl || null,
-                claimUrl: dataset.claimUrl || null,
-                conversationUrl: dataset.conversationUrl || null,
-                isAssigned: dataset.isAssigned === 'true',
-                ticketId: dataset.ticketId || null,
-                ticketNumber: dataset.ticketNumber || null,
-            };
-
-            // Fallback for slideover URL
-            if (!activeData.slideoverUrl) {
-                const attr = btn.getAttribute('data-slideover-url');
-                if (attr) activeData.slideoverUrl = attr;
-            }
-
-            // Show/hide claim button
-            claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
-            viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
-
-            positionDropdown(btn);
-            dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
-            dropdown.classList.add('opacity-100', 'scale-100');
-        };
-
-        // ================================================================
-        // EVENT DELEGATION - Click on any ticket action button
-        // ================================================================
-        document.addEventListener('click', function(e) {
-            const btn = e.target.closest('.ticket-action-btn');
-            if (btn) {
-                e.preventDefault();
-                e.stopPropagation();
-                window.ticketActionBtnClick(btn);
-            }
+        closeDropdown();
+        console.log('🔵 Loading slideover from:', url);
+        htmx.ajax('GET', url, {
+            target: '#slideoverContent',
+            swap: 'innerHTML',
         });
 
-        // ================================================================
-        // VIEW DETAILS BUTTON
-        // ================================================================
+        setTimeout(function() {
+            if (typeof window.openSlideover === 'function') {
+                window.openSlideover();
+            } else if (typeof openSlideover === 'function') {
+                openSlideover();
+            }
+        }, 120);
+    };
+
+    window.ticketActionBtnClick = function(btn) {
+        closeDropdown();
+
+        var dataset = btn.dataset;
+        
+        activeButton = btn;
+        activeData = {
+            slideoverUrl: dataset.slideoverUrl || null,
+            claimUrl: dataset.claimUrl || null,
+            conversationUrl: dataset.conversationUrl || null,
+            isAssigned: dataset.isAssigned === 'true',
+            ticketId: dataset.ticketId || null,
+            ticketNumber: dataset.ticketNumber || null,
+        };
+
+        if (!activeData.slideoverUrl) {
+            var attr = btn.getAttribute('data-slideover-url');
+            if (attr) activeData.slideoverUrl = attr;
+        }
+
+        if (claimBtn) {
+            claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
+        }
+        if (viewBtn) {
+            viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
+        }
+
+        positionDropdown(btn);
+        dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
+        dropdown.classList.add('opacity-100', 'scale-100');
+    };
+
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.ticket-action-btn');
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.ticketActionBtnClick(btn);
+        }
+    });
+
+    if (viewBtn) {
         viewBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -308,10 +530,9 @@
             window.loadTicketSlideoverFromDropdown(activeData.slideoverUrl);
             closeDropdown();
         });
+    }
 
-        // ================================================================
-        // CLAIM TICKET BUTTON - with page reload
-        // ================================================================
+    if (claimBtn) {
         claimBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -322,20 +543,16 @@
                 return;
             }
 
-            const source = window.bulkSource || 'unassigned';
-            console.log(`🔵 Claiming ticket ${activeData.ticketNumber} from source: ${source}`);
+            var source = window.bulkSource || 'unassigned';
+            console.log('🔵 Claiming ticket ' + activeData.ticketNumber + ' from source: ' + source);
             
-            // Close dropdown immediately
             closeDropdown();
             
-            // Get CSRF token
-            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
             
-            // Disable button visual
             claimBtn.style.opacity = '0.5';
             claimBtn.style.pointerEvents = 'none';
             
-            // Show loading toast
             if (typeof showToast === 'function') {
                 showToast('⏳ Claiming ticket...', 'info');
             }
@@ -350,20 +567,18 @@
                     'source': source
                 })
             })
-            .then(response => response.json())
-            .then(data => {
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(data) {
                 if (data.success) {
-                    // Show success message
                     if (typeof showToast === 'function') {
                         showToast(data.message || '✅ Ticket claimed successfully!', 'success');
                     }
-                    
-                    // RELOAD THE PAGE after a short delay to show the notification
                     setTimeout(function() {
                         window.location.reload();
                     }, 800);
                 } else {
-                    // Show error
                     if (typeof showToast === 'function') {
                         showToast(data.message || 'Failed to claim ticket.', 'error');
                     }
@@ -371,7 +586,7 @@
                     claimBtn.style.pointerEvents = 'auto';
                 }
             })
-            .catch(error => {
+            .catch(function(error) {
                 console.error('Error claiming ticket:', error);
                 if (typeof showToast === 'function') {
                     showToast('An error occurred while claiming the ticket.', 'error');
@@ -380,10 +595,9 @@
                 claimBtn.style.pointerEvents = 'auto';
             });
         });
+    }
 
-        // ================================================================
-        // OPEN CONVERSATION BUTTON
-        // ================================================================
+    if (conversationBtn) {
         conversationBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -392,34 +606,28 @@
             }
             closeDropdown();
         });
+    }
 
-        // ================================================================
-        // CLOSE DROPDOWN ON OUTSIDE CLICK
-        // ================================================================
-        document.addEventListener('click', function(e) {
-            if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn')) {
-                closeDropdown();
-            }
-        });
+    document.addEventListener('click', function(e) {
+        if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn')) {
+            closeDropdown();
+        }
+    });
 
-        // ================================================================
-        // REPOSITION ON RESIZE
-        // ================================================================
-        window.addEventListener('resize', function() {
-            if (activeButton && !dropdown.classList.contains('pointer-events-none')) {
-                positionDropdown(activeButton);
-            }
-        });
+    window.addEventListener('resize', function() {
+        if (activeButton && !dropdown.classList.contains('pointer-events-none')) {
+            positionDropdown(activeButton);
+        }
+    });
 
-        // ================================================================
-        // CLOSE ON ESCAPE
-        // ================================================================
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeDropdown();
-            }
-        });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeDropdown();
+        }
+    });
 
-        console.log('✅ Agent ticket table JS initialized');
-    })();
+    console.log('✅ Agent ticket dropdown initialized');
+})();
+
+console.log('✅ All scripts loaded');
 </script>

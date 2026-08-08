@@ -50,10 +50,7 @@
                     </label>
                     <select name="category" id="id_category"
                             class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                            onchange="toggleOtherField('category')"
-                            hx-get="{% url 'tickets:kb_suggestions' %}"
-                            hx-target="#kb-suggestions"
-                            hx-trigger="change">
+                            onchange="toggleOtherField('category')">
                         <option value="" disabled {% if not form.category.value %}selected{% endif %}>Select a category</option>
                         {% for value, label in form.category.field.widget.choices %}
                             {% if value != '' %}
@@ -68,13 +65,28 @@
                             placeholder="Enter custom category...">
                         <p class="text-xs text-text-secondary mt-1">Custom category will be created and saved.</p>
                     </div>
-                    <div id="kb-suggestions" class="mt-2"></div>
                 </div>
-                <div>
+                {# Title with floating KB suggestions #}
+                <div class="relative">
                     <label for="id_title" class="block text-sm font-medium mb-1 text-text-primary">
                         Title <span class="text-error">*</span>
                     </label>
-                    {{ form.title }}
+                    <input type="text" name="title" id="id_title" required
+                        value="{{ form.title.value|default:'' }}"
+                        class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                        placeholder="Brief summary of the issue..."
+                        hx-get="{% url 'kb:suggestions' %}"
+                        hx-trigger="keyup changed delay:400ms"
+                        hx-target="#kbSuggestions"
+                        hx-swap="innerHTML"
+                        hx-indicator="#suggestionsSpinner"
+                        hx-params="*"
+                        autocomplete="off">
+                    <div id="suggestionsSpinner" class="htmx-indicator mt-1 text-xs text-text-secondary">
+                        {% lucide "loader-circle" size=14 class="animate-spin inline" %} Searching articles...
+                    </div>
+                    <!-- Suggestions appear as a floating dropdown -->
+                    <div id="kbSuggestions" class="absolute left-0 right-0 z-10 mt-1"></div>
                 </div>
             </div>
 
@@ -157,7 +169,6 @@
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
-        // Check if category is already 'OTHER' (for form errors after submission)
         const categorySelect = document.getElementById('id_category');
         if (categorySelect && categorySelect.value === 'OTHER') {
             const container = document.getElementById('category_other_container');

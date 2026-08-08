@@ -1,0 +1,139 @@
+<!-- ================================================================ -->
+<!-- PARTIAL: System Organogram Tree Container (for HTMX updates)    -->
+<!-- ================================================================ -->
+{% load organogram_filters %}
+-
+
+<!-- IT Department Stats (shown when IT is selected or no filter) -->
+{% if not department or department == 'IT' %}
+<div class="it-stats">
+    <div class="stat-item">
+        <div class="label">Total IT Staff</div>
+        <div class="value">{{ it_dept_stats.total }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="label">Managers / Leads</div>
+        <div class="value managers">{{ it_dept_stats.managers }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="label">Agents</div>
+        <div class="value agents">{{ it_dept_stats.agents }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="label">End Users</div>
+        <div class="value end-users">{{ it_dept_stats.end_users }}</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Tree Container -->
+<div class="org-scroll-container">
+    <div class="org-tree">
+        {% if roots %}
+            <div class="org-tree-root">
+                {% for root in roots %}
+                    <div class="org-node">
+                        <!-- Root Node Card -->
+                        <div class="node-card" 
+                             style="border-color: {{ department_colors|get_item:root.user.department|default:'var(--color-border)' }};
+                                    {% if root.has_children %}border-width: 3px;{% endif %}">
+                            
+                            <div class="avatar">
+                                {% if root.avatar %}
+                                    <img src="{{ root.avatar }}" alt="{{ root.full_name }}">
+                                {% else %}
+                                    {{ root.full_name|slice:":1"|upper }}
+                                {% endif %}
+                            </div>
+                            
+                            <div class="name">{{ root.full_name }}</div>
+                            <div class="title">{{ root.position }}</div>
+                            
+                            <span class="department-badge" 
+                                  style="background-color: {{ department_colors|get_item:root.user.department|default:'#64748B' }};">
+                                {{ root.department_display }}
+                            </span>
+                            
+                            {% if root.direct_report_count > 0 %}
+                                <div class="report-count">👥 {{ root.direct_report_count }} direct report{{ root.direct_report_count|pluralize }}</div>
+                            {% endif %}
+                            
+                            <!-- Hover Details -->
+                            <div class="hover-details">
+                                <div class="detail-row"><strong>Email:</strong> {{ root.email }}</div>
+                                <div class="detail-row"><strong>Role:</strong> {{ root.user.get_role_display }}</div>
+                                <div class="detail-row"><strong>Department:</strong> {{ root.department_display }}</div>
+                                {% if root.user.manager %}
+                                    <div class="detail-row"><strong>Manager:</strong> {{ root.user.manager.get_full_name }}</div>
+                                {% endif %}
+                            </div>
+                            
+                            {% if root.has_children %}
+                                <div class="expand-toggle" 
+                                     @click="expandedNodes[{{ root.user.id }}] = !expandedNodes[{{ root.user.id }}]">
+                                    <span x-show="!expandedNodes[{{ root.user.id }}]">▼</span>
+                                    <span x-show="expandedNodes[{{ root.user.id }}]">▲</span>
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Children -->
+                        {% if root.has_children %}
+                            <div class="node-connector"></div>
+                            <div class="org-children" 
+                                 x-show="expandedNodes[{{ root.user.id }}] !== false" 
+                                 x-collapse.duration.300ms>
+                                {% include "organogram/partials/node_system.html" with node=root depth=1 %}
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <span class="icon">👥</span>
+                <h3>No users found</h3>
+                <p class="text-sm text-text-secondary">Add users and assign managers to build the system organogram.</p>
+                {% if search_query %}
+                    <p class="text-xs text-text-secondary mt-2">Try adjusting your search or filter.</p>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Legend (moved inside the partial so it updates with search results) -->
+<div class="org-legend">
+    <span class="legend-label">Legend</span>
+    
+    {% for code, label in department_choices %}
+        <span class="legend-item">
+            <span class="legend-dot" style="background-color: {{ department_colors|get_item:code|default:'#64748B' }};"></span>
+            {{ label }}
+        </span>
+    {% endfor %}
+    
+    <span class="legend-divider"></span>
+    
+    <span class="legend-line">
+        <span class="v-line"></span>
+        <span class="h-line"></span>
+        Reporting Lines
+    </span>
+    
+    <span class="legend-divider"></span>
+    
+    <span class="legend-item">
+        <span class="legend-dot" style="border: 3px solid var(--color-primary); background: transparent; width: 10px; height: 10px;"></span>
+        Has Direct Reports
+    </span>
+    
+    <span class="legend-info">
+        {% if department %}
+            {{ department_name }}
+        {% else %}
+            {{ roots|length }} department(s)
+        {% endif %}
+        {% if search_query %} • Search: "{{ search_query }}"{% endif %}
+    </span>
+</div>

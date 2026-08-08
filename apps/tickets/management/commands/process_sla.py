@@ -1,165 +1,201 @@
+# apps/tickets/management/commands/process_sla.py
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from django.db.models import Q
-from django.urls import reverse
-from apps.tickets.models import Ticket, SLA, EscalationRule, TicketActivityLog, TicketComment
-from apps.accounts.models import User
+from django.contrib.auth import get_user_model
+from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, EscalationRule, SLA
 from apps.common.models import Notification
+from django.db.models import Q
+
+User = get_user_model()
 
 class Command(BaseCommand):
-    help = 'Process SLA timers and trigger escalation actions'
+    help = 'Process SLA breaches and escalate tickets'
 
     def handle(self, *args, **options):
         now = timezone.now()
-        active_tickets = Ticket.objects.exclude(
-            status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED]
-        ).filter(
-            Q(response_due_at__isnull=False) | Q(resolution_due_at__isnull=False)
-        )
-
-        for ticket in active_tickets:
-            self.process_timer(ticket, 'response', now)
-            self.process_timer(ticket, 'resolution', now)
-
-    def process_timer(self, ticket, timer_type, now):
-        due_field = 'response_due_at' if timer_type == 'response' else 'resolution_due_at'
-        due_at = getattr(ticket, due_field)
-        if not due_at:
-            return
-
-        try:
-            sla = SLA.objects.get(priority=ticket.priority)
-            total_minutes = sla.response_minutes if timer_type == 'response' else sla.resolution_minutes
-            total_display = sla.get_response_display() if timer_type == 'response' else sla.get_resolution_display()
-        except SLA.DoesNotExist:
-            return
-        if total_minutes == 0:
-            return
-
-        elapsed = (now - ticket.created_at).total_seconds() / 60
-        percent_elapsed = (elapsed / total_minutes) * 100
-
-        # Process configured escalation rules (notify, reassign, etc.)
-        rules = EscalationRule.objects.filter(
-            priority=ticket.priority,
-            timer_type=timer_type
-        ).order_by('threshold_percent')
-
-        for rule in rules:
-            if percent_elapsed >= rule.threshold_percent:
-                if TicketActivityLog.objects.filter(
-                    ticket=ticket,
-                    action='escalation',
-                    details__rule_id=rule.pk
-                ).exists():
-                    continue
-                self.execute_escalation(ticket, rule, timer_type, percent_elapsed)
-
-        # --- NEW: Auto‑escalation on SLA breach (100%) ---
-        if percent_elapsed >= 99.99 and ticket.status != Ticket.Status.ESCALATED:
-            if not TicketActivityLog.objects.filter(
-                ticket=ticket,
-                action='escalated',
-                details__reason='sla_breach'
-            ).exists():
-                old_status = ticket.status
-                old_assignee = ticket.assigned_to
-
-                # Find Team Lead for the ticket's department
-                # If no Team Lead, fallback to Admin or Superadmin
-                team_lead = User.objects.filter(
-                    department=ticket.requester.department,
-                    role=User.Role.TEAM_LEAD,
-                    is_active=True
-                ).first()
-                if not team_lead:
-                    team_lead = User.objects.filter(role=User.Role.ADMIN, is_active=True).first()
-                if not team_lead:
-                    team_lead = User.objects.filter(is_superuser=True).first()
-
-                ticket.status = Ticket.Status.ESCALATED
-                ticket.assigned_to = team_lead
-                ticket.save(update_fields=['status', 'assigned_to'])
-
-                # Add a public comment (system message)
-                TicketComment.objects.create(
-                    ticket=ticket,
-                    author=None,
-                    body=f"**Auto‑escalated** due to SLA breach ({timer_type} timer exceeded). Assigned to {team_lead.get_full_name() if team_lead else '—'}.",
-                    visibility='PUBLIC'
-                )
-
-                TicketActivityLog.objects.create(
-                    ticket=ticket,
-                    action='escalated',
-                    actor=None,
-                    details={
-                        'reason': 'sla_breach',
-                        'timer_type': timer_type,
-                        'from_status': old_status,
-                        'to_status': Ticket.Status.ESCALATED,
-                        'previous_assignee': old_assignee.get_full_name() if old_assignee else None,
-                        'new_assignee': team_lead.get_full_name() if team_lead else None,
-                    }
-                )
-
-                # Notify the Team Lead (or Admin)
-                if team_lead:
-                    Notification.objects.create(
-                        recipient=team_lead,
-                        message=f"Ticket {ticket.number} has been escalated due to SLA breach. Please take action.",
-                        url=reverse('tickets:detail', args=[ticket.pk])
-                    )
-
-                # Also notify the requester (optional)
-                Notification.objects.create(
-                    recipient=ticket.requester,
-                    message=f"Ticket {ticket.number} has been automatically escalated due to SLA breach.",
-                    url=reverse('tickets:detail', args=[ticket.pk])
-                )
-
-    def execute_escalation(self, ticket, rule, timer_type, percent_elapsed):
-        # Log the escalation
-        TicketActivityLog.objects.create(
-            ticket=ticket,
-            action='escalation',
-            actor=None,
-            details={
-                'rule_id': rule.pk,
-                'timer_type': timer_type,
-                'threshold': rule.threshold_percent,
-                'elapsed_pct': round(percent_elapsed, 1),
-                'action': rule.action_type,
+        
+        # Get or create a system user
+        system_user, created = User.objects.get_or_create(
+            email='system@ticketswipe.local',
+            defaults={
+                'first_name': 'System',
+                'last_name': 'Bot',
+                'role': User.Role.AGENT,
+                'department': 'IT',
+                'is_active': True,
+                'is_staff': False,
             }
         )
-
-        if rule.action_type == 'notify' and rule.notify_role:
-            recipients = User.objects.filter(role=rule.notify_role, is_active=True)
-            for user in recipients:
+        if created:
+            system_user.set_password(User.objects.make_random_password())
+            system_user.save()
+            self.stdout.write(self.style.SUCCESS('✅ Created system user for automated actions'))
+        
+        # Find all open tickets with SLA breaches
+        # Include tickets where:
+        # - Status is open
+        # - Has a response_due_at or resolution_due_at
+        # - The due date has passed
+        tickets = Ticket.objects.filter(
+            status__in=[
+                Ticket.Status.NEW,
+                Ticket.Status.TRIAGED,
+                Ticket.Status.ASSIGNED,
+                Ticket.Status.IN_PROGRESS,
+                Ticket.Status.PENDING_USER,
+                Ticket.Status.PENDING_VENDOR,
+            ]
+        ).filter(
+            Q(response_due_at__lt=now) | Q(resolution_due_at__lt=now)
+        )
+        
+        self.stdout.write(f'🔍 Found {tickets.count()} tickets with SLA breaches')
+        
+        for ticket in tickets:
+            self.process_ticket(ticket, now, system_user)
+    
+    def process_ticket(self, ticket, now, system_user):
+        """Process a single ticket for SLA breaches."""
+        
+        # Check if already escalated
+        escalated_logs = TicketActivityLog.objects.filter(
+            ticket=ticket,
+            action='escalated'
+        )
+        if escalated_logs.exists():
+            # Already escalated, skip
+            return
+        
+        self.stdout.write(f'⏰ Ticket {ticket.number} has SLA breach!')
+        
+        # Find the breach type
+        breach_types = []
+        if ticket.response_due_at and now > ticket.response_due_at:
+            breach_types.append('response')
+        if ticket.resolution_due_at and now > ticket.resolution_due_at:
+            breach_types.append('resolution')
+        
+        # Get escalation rules for this priority
+        rules = EscalationRule.objects.filter(
+            priority=ticket.priority,
+        ).order_by('threshold_percent')
+        
+        # If no escalation rules exist, create default ones
+        if not rules.exists():
+            self.stdout.write(f'   ⚠️ No escalation rules found for {ticket.priority}, creating defaults...')
+            self.create_default_escalation_rules(ticket.priority)
+            rules = EscalationRule.objects.filter(priority=ticket.priority)
+        
+        # Apply escalation rules
+        for rule in rules:
+            self.execute_escalation(ticket, rule, system_user)
+        
+        # Create escalation comment
+        breach_type = " and ".join(breach_types)
+        comment_body = f"**Auto-escalated** due to SLA breach ({breach_type} timer exceeded)."
+        TicketComment.objects.create(
+            ticket=ticket,
+            author=system_user,
+            body=comment_body,
+            visibility=TicketComment.Visibility.PUBLIC
+        )
+        
+        # Log the activity
+        TicketActivityLog.objects.create(
+            ticket=ticket,
+            action='escalated',
+            actor=system_user,
+            details={
+                'breach_types': breach_types,
+                'response_due': str(ticket.response_due_at),
+                'resolution_due': str(ticket.resolution_due_at),
+                'now': str(now),
+            }
+        )
+        
+        # Find or assign an agent
+        if not ticket.assigned_to:
+            agent = self.find_available_agent()
+            if agent:
+                ticket.assigned_to = agent
+                ticket.status = Ticket.Status.ASSIGNED
+                ticket.save()
+                self.stdout.write(f'   ✅ Assigned to {agent.get_full_name()}')
+                
                 Notification.objects.create(
-                    recipient=user,
-                    message=f'SLA {timer_type} threshold reached for ticket {ticket.number}.',
-                    url=f'/tickets/{ticket.pk}/conversation/'
+                    recipient=agent,
+                    message=f"⚠️ Ticket {ticket.number} has been auto-assigned to you due to SLA breach.",
+                    url=f'/tickets/{ticket.pk}/',
+                    type=Notification.Type.TICKET
                 )
-
-        elif rule.action_type == 'reassign' and rule.reassign_to_role:
-            target = User.objects.filter(role=rule.reassign_to_role, is_active=True).first()
-            if target and target != ticket.assigned_to:
-                old = ticket.assigned_to
-                ticket.assigned_to = target
-                ticket.save(update_fields=['assigned_to'])
-                TicketActivityLog.objects.create(
-                    ticket=ticket,
-                    action='assigned',
-                    actor=None,
-                    details={'from': old.get_full_name() if old else 'Unassigned',
-                             'to': target.get_full_name(),
-                             'reason': f'SLA {timer_type} escalation'}
-                )
-                Notification.objects.create(
-                    recipient=target,
-                    message=f'You have been assigned ticket {ticket.number} due to SLA escalation.',
-                    url=f'/tickets/{ticket.pk}/conversation/'
-                )
-
-        # add_watcher can be added later
+            else:
+                ticket.status = Ticket.Status.ESCALATED
+                ticket.save()
+                self.stdout.write(f'   ⚠️ No agent available, ticket escalated')
+        
+        self.stdout.write(f'   ✅ Escalated ticket {ticket.number}')
+    
+    def create_default_escalation_rules(self, priority):
+        """Create default escalation rules for a priority."""
+        rules = [
+            {'threshold_percent': 75, 'action_type': 'notify', 'notify_role': 'TEAM_LEAD'},
+            {'threshold_percent': 90, 'action_type': 'notify', 'notify_role': 'ADMIN'},
+            {'threshold_percent': 100, 'action_type': 'reassign', 'reassign_to_role': 'TEAM_LEAD'},
+        ]
+        
+        for rule_data in rules:
+            EscalationRule.objects.create(
+                priority=priority,
+                timer_type='response',
+                threshold_percent=rule_data['threshold_percent'],
+                action_type=rule_data['action_type'],
+                notify_role=rule_data.get('notify_role'),
+                reassign_to_role=rule_data.get('reassign_to_role'),
+            )
+        self.stdout.write(f'   ✅ Created {len(rules)} default escalation rules for {priority}')
+    
+    def find_available_agent(self):
+        """Find an available agent with the fewest open tickets."""
+        from django.db.models import Count
+        
+        agents = User.objects.filter(
+            role__in=[User.Role.AGENT, User.Role.TEAM_LEAD],
+            is_active=True
+        ).annotate(
+            open_tickets=Count('assigned_tickets', filter=~Q(assigned_tickets__status__in=['RESOLVED', 'CLOSED']))
+        ).order_by('open_tickets')
+        
+        return agents.first()
+    
+    def execute_escalation(self, ticket, rule, system_user):
+        """Execute an escalation action."""
+        action_type = rule.action_type
+        
+        if action_type == 'notify':
+            if rule.notify_role:
+                users = User.objects.filter(role=rule.notify_role, is_active=True)
+                for user in users:
+                    Notification.objects.create(
+                        recipient=user,
+                        message=f"⚠️ Ticket {ticket.number} has been escalated. Please review.",
+                        url=f'/tickets/{ticket.pk}/',
+                        type=Notification.Type.TICKET
+                    )
+                self.stdout.write(f'   📧 Notified {users.count()} {rule.notify_role}(s)')
+        
+        elif action_type == 'reassign':
+            if rule.reassign_to_role:
+                users = User.objects.filter(role=rule.reassign_to_role, is_active=True)
+                if users.exists():
+                    new_assignee = users.first()
+                    ticket.assigned_to = new_assignee
+                    ticket.save()
+                    
+                    Notification.objects.create(
+                        recipient=new_assignee,
+                        message=f"🔄 Ticket {ticket.number} has been auto-reassigned to you due to SLA breach.",
+                        url=f'/tickets/{ticket.pk}/',
+                        type=Notification.Type.TICKET
+                    )
+                    self.stdout.write(f'   🔄 Reassigned to {new_assignee.get_full_name()}')

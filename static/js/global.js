@@ -51,14 +51,16 @@ function updateDesktopSidebar() {
     const toggleIcon = document.getElementById('toggleIcon');
     
     if (desktopSidebarVisible) {
+        // Sidebar is visible - show X icon
         sidebar.classList.remove('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
         sidebar.classList.add('w-64');
         mainContent.classList.remove('md:ml-0');
         mainContent.classList.add('md:ml-64');
         if (toggleIcon) {
-            toggleIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>`;
+            toggleIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
         }
     } else {
+        // Sidebar is hidden - show menu icon
         sidebar.classList.remove('w-64');
         sidebar.classList.add('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
         mainContent.classList.remove('md:ml-64');
@@ -104,18 +106,220 @@ window.addEventListener('resize', function() {
 });
 
 // ================================================================
-// NOTIFICATIONS DROPDOWN
+// SIDEBAR ACCORDION - Single Open, Default Closed (FIXED)
+// ================================================================
+
+let activeSectionId = null;
+
+function closeAllSections(exceptSectionId = null) {
+    const toggleBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
+    toggleBtns.forEach(function(button) {
+        const sectionId = button.dataset.section;
+        if (sectionId === exceptSectionId) return;
+        if (!sectionId) return;
+        
+        const content = document.getElementById(sectionId);
+        if (!content) return;
+        
+        content.style.maxHeight = '0px';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        
+        if (content._sidebarCloseTimer) {
+            clearTimeout(content._sidebarCloseTimer);
+        }
+
+        content._sidebarCloseTimer = setTimeout(function() {
+            content.classList.add('hidden');
+            content._sidebarCloseTimer = null;
+        }, 300);
+        
+        const chevron = button.querySelector('.section-chevron');
+        if (chevron) chevron.style.transform = 'rotate(-90deg)';
+    });
+}
+
+function openSection(sectionId) {
+    const content = document.getElementById(sectionId);
+    if (!content) return;
+    
+    const button = document.querySelector(`.sidebar-section-toggle[data-section="${sectionId}"]`);
+    if (!button) return;
+
+    // A section can be reopened before its close animation has finished.
+    // Cancel that pending hide so it remains visible.
+    if (content._sidebarCloseTimer) {
+        clearTimeout(content._sidebarCloseTimer);
+        content._sidebarCloseTimer = null;
+    }
+    
+    content.classList.remove('hidden');
+    content.style.maxHeight = '0px';
+    content.style.opacity = '0';
+    content.style.overflow = 'hidden';
+    
+    // Force reflow
+    void content.offsetHeight;
+    
+    const fullHeight = content.scrollHeight + 'px';
+    content.style.maxHeight = fullHeight;
+    content.style.opacity = '1';
+    content.style.overflow = '';
+    
+    const chevron = button.querySelector('.section-chevron');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+}
+
+function handleSectionToggle(e) {
+    // Stop event from bubbling up
+    e.stopPropagation();
+    e.preventDefault();
+    
+    const button = e.currentTarget;
+    const sectionId = button.getAttribute('data-section');
+    if (!sectionId) return;
+    
+    const content = document.getElementById(sectionId);
+    if (!content) return;
+    
+    const isCurrentlyOpen = activeSectionId === sectionId;
+    
+    // If clicking the already open section, close it
+    if (isCurrentlyOpen) {
+        closeAllSections();
+        activeSectionId = null;
+        return;
+    }
+    
+    // Close all, then open this one
+    closeAllSections(sectionId);
+    openSection(sectionId);
+    activeSectionId = sectionId;
+}
+
+function initialiseSidebarAccordion() {
+    const toggleBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
+    
+    if (!toggleBtns || toggleBtns.length === 0) {
+        console.log('⚠️ No accordion buttons found, will retry in 100ms');
+        setTimeout(initialiseSidebarAccordion, 100);
+        return;
+    }
+    
+    console.log('🔵 Found ' + toggleBtns.length + ' accordion buttons');
+    
+    // Remove existing click listeners by cloning and replacing
+    toggleBtns.forEach(function(button) {
+        // Store the section id before cloning
+        const sectionId = button.dataset.section;
+        // Clone the button
+        const newButton = button.cloneNode(true);
+        // Replace the original with the clone
+        button.parentNode.replaceChild(newButton, button);
+    });
+    
+    // Get fresh references after replacement
+    const freshBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
+    
+    // Start all closed
+    freshBtns.forEach(function(button) {
+        const sectionId = button.dataset.section;
+        if (!sectionId) return;
+        
+        const content = document.getElementById(sectionId);
+        if (!content) return;
+        
+        content.classList.add('hidden');
+        content.style.maxHeight = '0px';
+        content.style.opacity = '0';
+        content.style.overflow = 'hidden';
+        
+        const chevron = button.querySelector('.section-chevron');
+        if (chevron) chevron.style.transform = 'rotate(-90deg)';
+    });
+    
+    activeSectionId = null;
+    
+    // Add fresh event listeners
+    freshBtns.forEach(function(button) {
+        button.addEventListener('click', handleSectionToggle);
+    });
+    
+    console.log('🔵 Accordion initialized successfully');
+}
+
+// Also re-initialize after HTMX swaps that affect the sidebar
+document.addEventListener('htmx:afterSwap', function(event) {
+    // Only re-initialize if the sidebar content was swapped
+    if (event.target.id === 'sidebarNav' || event.target.closest('#sidebarNav') || event.target.id === 'sidebar') {
+        console.log('🔵 Sidebar content changed, re-initializing accordion');
+        // Reset and re-initialize after a small delay
+        setTimeout(function() {
+            initialiseSidebarAccordion();
+        }, 100);
+    }
+});
+
+// Handle Dashboard link
+document.addEventListener('DOMContentLoaded', function() {
+    const dashboardLink = document.getElementById('dashboardLink');
+    if (dashboardLink) {
+        dashboardLink.addEventListener('click', function() {
+            closeAllSections();
+            activeSectionId = null;
+        });
+    }
+});
+
+// ================================================================
+// NOTIFICATIONS DROPDOWN - FIXED
 // ================================================================
 
 function toggleNotificationDropdown() {
     const dropdown = document.getElementById('notificationDropdown');
     const bell = document.getElementById('notificationBell');
+    if (!dropdown) return;
     if (dropdown.classList.contains('hidden')) {
-        htmx.trigger('#notificationBell', 'load-notifications');
+        if (window.htmx && bell) {
+            // Load notifications
+            const url = window.notificationsUrl || '/notifications/list/';
+            htmx.ajax('GET', url, {
+                target: '#notificationDropdownContent',
+                swap: 'innerHTML'
+            });
+        }
     }
     dropdown.classList.toggle('hidden');
 }
 
+// ================================================================
+// NOTIFICATIONS - Mark Read and Go
+// ================================================================
+
+function markReadAndGo(url, notificationId) {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    fetch('/notifications/mark-read/' + notificationId + '/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken || ''
+        }
+    }).then(() => {
+        if (!window.htmx) return;
+        htmx.ajax('GET', '/notifications/unread-count/', {
+            target: '#notificationBadgeContainer',
+            swap: 'innerHTML'
+        });
+        htmx.ajax('GET', '/notifications/list/', {
+            target: '#notificationDropdownContent',
+            swap: 'innerHTML'
+        });
+    });
+    if (url) {
+        window.location.href = url;
+    }
+}
+
+// Close notification dropdown on outside click
 document.addEventListener('click', function(event) {
     const dropdown = document.getElementById('notificationDropdown');
     const bell = document.getElementById('notificationBell');
@@ -135,6 +339,7 @@ function openSlideover() {
         panel.classList.remove('translate-x-full');
         panel.classList.add('translate-x-0');
         panel.style.transform = 'translateX(0)';
+        panel.style.display = 'block';
     }
     if (backdrop) {
         backdrop.classList.remove('hidden');
@@ -177,85 +382,50 @@ document.body.addEventListener('htmx:configRequest', function(event) {
 });
 
 // ================================================================
-// MARK NOTIFICATION AS READ
+// THEME TOGGLE
 // ================================================================
 
-function markReadAndGo(url, notificationId) {
-    fetch('/notifications/mark-read/' + notificationId + '/', {
-        method: 'POST',
-        headers: {
-            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-        }
-    }).then(() => {
-        htmx.ajax('GET', '/notifications/unread-count/', {target:'#notificationBadgeContainer', swap:'innerHTML'});
-        htmx.ajax('GET', '/notifications/list/', {target:'#notificationDropdownContent', swap:'innerHTML'});
+function setTheme(theme) {
+    const isDark = theme === 'dark';
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', theme);
+    
+    // Update radio buttons
+    document.querySelectorAll('.theme-radio[data-theme]').forEach(function(label) {
+        const isActive = label.dataset.theme === theme;
+        label.classList.toggle('active', isActive);
+        const radio = label.querySelector('input[type="radio"]');
+        if (radio) radio.checked = isActive;
     });
-    if (url) {
-        window.location.href = url;
-    }
 }
 
 // ================================================================
-// RICH TEXT EDITOR
+// ROLE DROPDOWN
 // ================================================================
 
-let currentEditableDiv = null;
-
-function initRichTextEditor(divId, hiddenInputId) {
-    const editor = document.getElementById(divId);
-    const hidden = document.getElementById(hiddenInputId);
-    if (!editor || !hidden) return;
-    currentEditableDiv = editor;
-
-    const form = editor.closest('form');
-    if (form) {
-        form.addEventListener('submit', function() {
-            hidden.value = editor.innerHTML;
-        });
-    }
-
-    const draftKey = editor.getAttribute('data-draft-key');
-    if (draftKey) {
-        const saved = localStorage.getItem(draftKey);
-        if (saved) editor.innerHTML = saved;
-        editor.addEventListener('input', function() {
-            localStorage.setItem(draftKey, editor.innerHTML);
-        });
-        form.addEventListener('htmx:afterRequest', function() {
-            localStorage.removeItem(draftKey);
-            editor.innerHTML = '';
-        });
+function toggleRoleDropdown() {
+    const dropdown = document.getElementById('roleDropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('hidden');
     }
 }
 
-function formatDocument(command, value = null) {
-    if (!currentEditableDiv) return;
-    currentEditableDiv.focus();
-    document.execCommand(command, false, value);
-}
+// Close role dropdown on outside click
+document.addEventListener('click', function(event) {
+    const dropdown = document.getElementById('roleDropdown');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        const button = event.target.closest('[onclick="toggleRoleDropdown()"]');
+        if (!button && !dropdown.contains(event.target)) {
+            dropdown.classList.add('hidden');
+        }
+    }
+});
 
 // ================================================================
-// TOAST NOTIFICATIONS - DELEGATES TO ALPINE.JS
+// TOAST NOTIFICATIONS
 // ================================================================
 
 function showToast(message, type = 'info', duration = 5000) {
-    // Try to find the Alpine.js toast manager
-    const toastContainer = document.querySelector('[x-data="toastManager"]');
-    
-    if (toastContainer && toastContainer.__x) {
-        try {
-            const data = Alpine.$data(toastContainer);
-            if (data && typeof data.addToast === 'function') {
-                data.addToast(message, type, duration);
-                return;
-            }
-        } catch (e) {
-            console.warn('Alpine.js toast manager not available:', e);
-        }
-    }
-    
-    // Fallback: console log and create a simple toast
-    console.log(`[${type.toUpperCase()}] ${message}`);
     createFallbackToast(message, type, duration);
 }
 
@@ -270,7 +440,7 @@ function createFallbackToast(message, type = 'info', duration = 5000) {
     
     const toast = document.createElement('div');
     const typeClass = type || 'info';
-    toast.className = `toast-item toast-${typeClass}`;
+    toast.className = `toast-item toast-fallback toast-${typeClass}`;
     
     const icons = {
         success: '<svg class="h-5 w-5 text-success" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>',
@@ -318,87 +488,3 @@ function createFallbackToast(message, type = 'info', duration = 5000) {
         setTimeout(() => toast.remove(), 300);
     }, duration);
 }
-
-// Process Django messages after page load
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
-        const messagesData = document.getElementById('django-messages-data');
-        if (messagesData) {
-            try {
-                const messages = JSON.parse(messagesData.dataset.messages);
-                if (messages && messages.length > 0) {
-                    messages.forEach(function(msg) {
-                        let type = 'info';
-                        if (msg.tags && msg.tags.includes('success')) type = 'success';
-                        else if (msg.tags && msg.tags.includes('error')) type = 'error';
-                        else if (msg.tags && msg.tags.includes('warning')) type = 'warning';
-                        showToast(msg.text, type, 5000);
-                    });
-                }
-            } catch (e) {
-                console.error('Failed to parse messages:', e);
-            }
-        }
-    }, 500);
-});
-
-// ================================================================
-// CONFIRMATION MODAL - Legacy support
-// ================================================================
-
-let confirmCallback = null;
-
-function openConfirmationModal(message, title = 'Confirm Action', confirmText = 'Confirm', confirmClass = 'btn-danger', callback) {
-    const modal = document.getElementById('confirmationModal');
-    const titleEl = document.getElementById('confirmModalTitle');
-    const msgEl = document.getElementById('confirmModalMessage');
-    const btn = document.getElementById('confirmModalBtn');
-
-    if (titleEl) titleEl.textContent = title;
-    if (msgEl) msgEl.textContent = message;
-    if (btn) {
-        btn.textContent = confirmText;
-        btn.className = confirmClass + ' text-sm px-4 py-2 rounded-lg';
-        confirmCallback = callback;
-        const newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-        newBtn.addEventListener('click', function(e) {
-            if (typeof confirmCallback === 'function') {
-                confirmCallback();
-            }
-            closeConfirmationModal();
-        });
-    }
-
-    modal.classList.remove('hidden');
-}
-
-function closeConfirmationModal(event) {
-    if (event && event.target !== event.currentTarget) return;
-    const modal = document.getElementById('confirmationModal');
-    modal.classList.add('hidden');
-    confirmCallback = null;
-}
-
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeConfirmationModal();
-    }
-});
-
-// ================================================================
-// SPINNER ON FORM SUBMIT
-// ================================================================
-
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('form[method="post"]').forEach(function(form) {
-        form.addEventListener('submit', function() {
-            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<span class="inline-flex items-center"><svg class="animate-spin h-4 w-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Sending...</span>';
-                submitBtn.classList.add('opacity-70');
-            }
-        });
-    });
-});
