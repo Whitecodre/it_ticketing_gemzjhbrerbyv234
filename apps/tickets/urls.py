@@ -62,7 +62,6 @@ urlpatterns = [
     path('escalated/<int:pk>/reassign/', views.reassign_escalated, name='reassign_escalated'),
     path('escalated/<int:pk>/reassign-modal/', views.escalated_reassign_modal, name='escalated_reassign_modal'),
     path('escalated/<int:pk>/return-to-pool/', views.return_escalated_to_pool, name='return_escalated_to_pool'),
-    path('kb-suggestions/', views.kb_suggestions, name='kb_suggestions'),
     # future: detail, list
 
     # SLA URLS

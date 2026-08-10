@@ -1,25 +1,22 @@
 {% load lucide %}
 
-{# Filter chips #}
+{# Filter chips - Using URL parameters like KB portal #}
 <div class="flex flex-wrap gap-2 px-4 pt-4 pb-2 border-b" style="border-color: var(--color-border);">
-    {# All button – data-status="" #}
-    <button class="filter-chip text-xs rounded-full px-4 py-1.5 border transition font-medium bg-background text-text-secondary border-border hover:bg-primary/10"
-            data-status=""
-            hx-get="{% url 'tickets:my_list' %}{% if base_status %}?base={{ base_status }}{% endif %}"
-            hx-target="#ticketTableContainer"
-            hx-swap="innerHTML">
+    {# All button - clears all filters #}
+    <a href="{% url 'tickets:my_list' %}{% if base_status %}?base={{ base_status }}{% endif %}"
+       class="filter-chip text-xs rounded-full px-4 py-1.5 border transition font-medium 
+              {% if not selected_status %}active{% else %}bg-background text-text-secondary border-border hover:bg-primary/10{% endif %}">
         All
-    </button>
+    </a>
 
-    {# Status buttons #}
+    {# Status buttons - filter by specific status #}
     {% for value, label in status_choices %}
-        <button class="filter-chip text-xs rounded-full px-4 py-1.5 border transition font-medium bg-background text-text-secondary border-border hover:bg-primary/10"
-                data-status="{{ value }}"
-                hx-get="{% url 'tickets:my_list' %}?base={{ base_status }}&status={{ value }}"
-                hx-target="#ticketTableContainer"
-                hx-swap="innerHTML">
+        <a href="{% url 'tickets:my_list' %}?base={{ base_status }}&status={{ value }}"
+           class="filter-chip text-xs rounded-full px-4 py-1.5 border transition font-medium 
+                  {% if selected_status == value %}active{% else %}bg-background text-text-secondary border-border hover:bg-primary/10{% endif %}"
+           data-status="{{ value }}">
             {{ label }}
-        </button>
+        </a>
     {% endfor %}
 </div>
 
@@ -28,33 +25,19 @@
     {% include "partials/ticket_table.html" %}
 </div>
 
-{# JavaScript to manage active state #}
+{# JavaScript to handle active state from URL #}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Function to update active chip based on URL status parameter
-        function updateActiveChip() {
-            const currentUrl = new URL(window.location.href);
-            const status = currentUrl.searchParams.get('status') || '';
-            
-            document.querySelectorAll('.filter-chip').forEach(function(chip) {
-                const chipStatus = chip.getAttribute('data-status') || '';
-                if (status === chipStatus) {
-                    chip.classList.add('bg-primary', 'text-white', 'border-primary');
-                    chip.classList.remove('bg-background', 'text-text-secondary', 'border-border');
-                } else {
-                    chip.classList.remove('bg-primary', 'text-white', 'border-primary');
-                    chip.classList.add('bg-background', 'text-text-secondary', 'border-border');
-                }
-            });
-        }
-
-        // Initial update
-        updateActiveChip();
-
-        // After HTMX swap, update again
-        document.body.addEventListener('htmx:afterSwap', function(event) {
-            if (event.detail.target.id === 'ticketTableContainer') {
-                updateActiveChip();
+        // Get status from URL
+        var urlParams = new URLSearchParams(window.location.search);
+        var status = urlParams.get('status') || '';
+        
+        // Update active chip
+        document.querySelectorAll('.filter-chip').forEach(function(chip) {
+            var chipStatus = chip.getAttribute('data-status') || '';
+            if (status === chipStatus) {
+                chip.classList.add('bg-primary', 'text-white', 'border-primary');
+                chip.classList.remove('bg-background', 'text-text-secondary', 'border-border');
             }
         });
     });

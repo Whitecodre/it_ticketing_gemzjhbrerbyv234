@@ -5,6 +5,8 @@ from django.urls import reverse
 from datetime import datetime
 from django.utils import timezone
 
+# apps/common/middleware.py
+
 class SecurityHeadersMiddleware(MiddlewareMixin):
     """Add additional security headers to all responses."""
     
@@ -18,12 +20,38 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         # Referrer policy
         response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         
-        # Permissions policy (blocks features that could be abused)
+        # Permissions policy
         response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 
-         # Allow FullCalendar CDN resources (if CSP is enabled)
-        # Uncomment if you have CSP headers:
-        # response['Content-Security-Policy'] = "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:;"
+        # ================================================================
+        # FIX: Skip X-Frame-Options for document viewer (PDF/Office previews)
+        # ================================================================
+        skip_frame_options = False
+        
+        # Debug: Print the request path to see what's being requested
+        print(f"🔍 Middleware: {request.path}")
+        
+        # Check if this is a document viewer request or PDF file
+        if '/documents-display/document/' in request.path and '/viewer/' in request.path:
+            skip_frame_options = True
+            print("🔍 Skipping X-Frame-Options for viewer page")
+        
+        if '/media/display_docs/' in request.path:
+            skip_frame_options = True
+            print("🔍 Skipping X-Frame-Options for display_docs file")
+        
+        # Also check if the request is for a PDF
+        if not skip_frame_options and hasattr(response, 'get'):
+            content_type = response.get('Content-Type', '')
+            if 'application/pdf' in content_type:
+                skip_frame_options = True
+                print("🔍 Skipping X-Frame-Options for PDF content-type")
+        
+        if not skip_frame_options:
+            response['X-Frame-Options'] = 'DENY'
+            print("🔍 Added X-Frame-Options: DENY")
+        else:
+            print("🔍 Skipped X-Frame-Options")
         
         return response
     

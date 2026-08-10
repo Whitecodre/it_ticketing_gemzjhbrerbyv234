@@ -95,7 +95,6 @@
                     <form method="post" action="{% url 'accounts:switch_role' %}" class="block">
                         {% csrf_token %}
                         <input type="hidden" name="role" value="{{ role.name }}">
-                        <input type="hidden" name="next" value="{{ request.path }}">
                         <button type="submit" 
                                 class="w-full text-left px-4 py-2 text-sm transition flex items-center justify-between
                                     {% if active_role_name == role.name %}bg-primary/10 text-primary font-medium{% else %}hover:bg-black/5{% endif %}"
@@ -212,7 +211,7 @@
         <main class="flex-1 overflow-y-auto{% block main_content_class %} pt-4 px-4 sm:px-5 md:px-6 pb-6 md:pb-8{% endblock %}">
             {% block page_title_area %}
             <h1 class="text-xl font-semibold truncate mb-4" style="color: var(--color-text-primary);">
-                {% block page_title %}Dashboard{% endblock %}
+                {% block page_title %}{% endblock %}
             </h1>
             {% endblock page_title_area %}
             {% block dashboard_content %}{% endblock %}

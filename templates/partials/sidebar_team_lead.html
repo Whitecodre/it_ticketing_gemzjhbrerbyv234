@@ -6,7 +6,7 @@
    class="sidebar-link standalone flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition"
    style="{% if request.path == '/' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
     <span class="shrink-0">{% lucide "layout-dashboard" size=18 class="h-5 w-5" %}</span>
-    <span>Dashboard</span>
+    <span>Overview</span>
 </a>
 
 {# ========== SECTION: TEAM ========== #}
@@ -140,6 +140,28 @@
            style="{% if '/reports/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "chart-bar" size=16 class="h-4 w-4" %}</span>
             <span>Reports</span>
+        </a>
+    </div>
+</div>
+
+{# ========== SECTION: DOCUMENT DISPLAY ========== #}
+<div class="mt-2">
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+            data-section="display-docs-section"
+            style="color: var(--color-text-secondary);">
+        <span class="section-icon">{% lucide "file-text" size=16 %}</span>
+        <span>Documents</span>
+        <span class="section-chevron ml-auto transition-transform duration-200">
+            {% lucide "chevron-down" size=14 %}
+        </span>
+    </button>
+    <div id="display-docs-section" 
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
+        <a href="{% url 'documents_display:dashboard' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/documents-display/' in request.path and not '/create/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "layout-dashboard" size=16 class="h-4 w-4" %}</span>
+            <span>Dashboard</span>
         </a>
     </div>
 </div>

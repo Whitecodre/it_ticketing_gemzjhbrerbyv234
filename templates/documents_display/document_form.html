@@ -1,0 +1,175 @@
+{# templates/documents_display/document_form.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{% if document %}Edit Document{% else %}Upload Document{% endif %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% if document %}{% url 'documents_display:document_detail' document.slug %}{% else %}{% url 'documents_display:dashboard' %}{% endif %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back
+        </a>
+    </div>
+
+    <div class="dashboard-card p-6 shadow-sm">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% if document %}{% lucide "pencil" size=20 %}{% else %}{% lucide "upload" size=20 %}{% endif %}
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">
+                    {% if document %}Edit Document{% else %}Upload New Document{% endif %}
+                </h2>
+                <p class="text-sm text-text-secondary">
+                    {% if document %}Update document details or replace the file{% else %}Upload a document to the system{% endif %}
+                </p>
+            </div>
+        </div>
+
+        {% if form.errors %}
+        <div class="rounded-lg bg-error/10 p-4 border border-error/30 text-error text-sm mb-4">
+            <ul class="list-disc list-inside space-y-0.5">
+                {% for field, errors in form.errors.items %}
+                    {% for error in errors %}
+                        <li><strong>{{ field|title }}:</strong> {{ error }}</li>
+                    {% endfor %}
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="space-y-5">
+                <!-- Title -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Title <span class="text-error">*</span></label>
+                    {{ form.title }}
+                </div>
+
+                <!-- Category -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Category <span class="text-error">*</span></label>
+                    {{ form.category }}
+                </div>
+
+                <!-- Document Date -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Document Date</label>
+                    {{ form.document_date }}
+                </div>
+
+                <!-- Visibility -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Visibility</label>
+                    {{ form.visibility }}
+                    <p class="text-xs text-text-secondary mt-1">Controls who can see this document. Read access is always included for anyone granted access below; Edit/Download are separate, optional permissions.</p>
+                </div>
+
+                <!-- Public permissions (only for PUBLIC) -->
+                <div id="publicPermissionsGroup" class="{% if form.visibility.value != 'PUBLIC' %}hidden{% endif %} flex items-center gap-6">
+                    <label class="flex items-center gap-2 text-sm text-text-primary">
+                        {{ form.public_can_edit }} Everyone can edit
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-text-primary">
+                        {{ form.public_can_download }} Everyone can download
+                    </label>
+                </div>
+
+                <!-- Department permission matrix (only for RESTRICTED) -->
+                <div id="departmentAccessGroup" class="{% if form.visibility.value != 'RESTRICTED' %}hidden{% endif %}">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Department Permissions</label>
+                    <p class="text-xs text-text-secondary mb-2">Tick "Access" to grant a department read access to this document, plus optionally Edit and/or Download.</p>
+                    {{ formset.management_form }}
+                    <div class="overflow-x-auto rounded-lg border" style="border-color: var(--color-border);">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b text-left text-text-secondary" style="border-color: var(--color-border);">
+                                    <th class="px-3 py-2 font-medium">Department</th>
+                                    <th class="px-3 py-2 font-medium">Access</th>
+                                    <th class="px-3 py-2 font-medium">Edit</th>
+                                    <th class="px-3 py-2 font-medium">Download</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in department_rows %}
+                                <tr class="border-b last:border-0" style="border-color: var(--color-border);">
+                                    <td class="px-3 py-2 text-text-primary">{{ row.label }}</td>
+                                    <td class="px-3 py-2">{{ row.form.department }}{{ row.form.grant }}</td>
+                                    <td class="px-3 py-2">{{ row.form.can_edit }}</td>
+                                    <td class="px-3 py-2">{{ row.form.can_download }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- File -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">File <span class="text-error">*</span></label>
+                    {{ form.file }}
+                    {% if document and document.file %}
+                    <p class="text-xs text-text-secondary mt-1">Current file: <a href="{% url 'documents_display:document_download' document.slug %}" class="text-primary hover:underline">{{ document.file_name }}</a></p>
+                    {% endif %}
+                    <p class="text-xs text-text-secondary mt-1">Accepted: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, CSV, ZIP, PNG, JPG, GIF, WEBP</p>
+                </div>
+
+                <!-- Version Comment (for edit) -->
+                {% if document %}
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Version Comment <span class="text-text-secondary text-xs font-normal">(optional)</span></label>
+                    <input type="text" name="version_comment" placeholder="What changed in this version?" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <p class="text-xs text-text-secondary mt-1">This will be recorded in the version history.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+                <a href="{% if document %}{% url 'documents_display:document_detail' document.slug %}{% else %}{% url 'documents_display:dashboard' %}{% endif %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
+                <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "save" size=16 %} {% if document %}Update Document{% else %}Upload Document{% endif %}
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const visibility = document.getElementById('id_visibility');
+        const publicGroup = document.getElementById('publicPermissionsGroup');
+        const departmentGroup = document.getElementById('departmentAccessGroup');
+        function toggleGroups() {
+            publicGroup.classList.toggle('hidden', visibility.value !== 'PUBLIC');
+            departmentGroup.classList.toggle('hidden', visibility.value !== 'RESTRICTED');
+        }
+        visibility.addEventListener('change', toggleGroups);
+        toggleGroups();
+
+        // Cosmetic nicety: checking Edit or Download auto-checks Access for that row.
+        document.querySelectorAll('#departmentAccessGroup tbody tr').forEach(function(row) {
+            const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+            const accessBox = checkboxes[0];
+            const editBox = checkboxes[1];
+            const downloadBox = checkboxes[2];
+            [editBox, downloadBox].forEach(function(box) {
+                box.addEventListener('change', function() {
+                    if (box.checked) accessBox.checked = true;
+                });
+            });
+        });
+    });
+</script>
+{% endblock %}

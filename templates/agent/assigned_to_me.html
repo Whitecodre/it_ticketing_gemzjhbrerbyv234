@@ -2,7 +2,7 @@
 {% load static %}
 {% load lucide %}
 
-{% block page_title_area %}{% endblock %}   {# <-- suppress the base h1 #}
+{% block page_title_area %}{% endblock %}
 
 {% block dashboard_title %}Assigned to Me{% endblock %}
 
@@ -30,10 +30,14 @@
 
     <div class="dashboard-card p-0 overflow-hidden">
         <div class="overflow-x-auto" id="ticketTable">
-            {% include "partials/agent_ticket_table.html" %}
+            {# Pass hide_checkboxes=True to remove checkboxes from assigned queue #}
+            {% include "partials/agent_ticket_table.html" with tickets=tickets hide_checkboxes=True %}
         </div>
     </div>
 </div>
 {% endblock %}
 
-{% block extra_scripts %}{% endblock %}
+{# Remove the bulk_actions.js reference since we're using the new bulk assignment #}
+{% block extra_scripts %}
+{# No bulk_actions.js needed anymore #}
+{% endblock %}

@@ -1,3 +1,5 @@
+# apps/accounts/admin_users.py
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
@@ -11,6 +13,9 @@ User = get_user_model()
 
 def is_admin(user):
     return user.role in ['ADMIN', 'SUPERADMIN']
+
+def is_superadmin(user):
+    return user.role == 'SUPERADMIN'
 
 @login_required
 @user_passes_test(is_admin)
@@ -61,10 +66,22 @@ def admin_user_create(request):
     role = request.POST.get('role', 'END_USER')
     selected_role_names = request.POST.getlist('selected_roles')
     
+    # ✅ Only Superadmin can create Superadmin
     if role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can create another Superadmin.'}, status=403)
     
     department = request.POST.get('department', '')
+    
+    # ✅ Validate: Support roles only allowed for IT department
+    support_roles = ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+    if role in support_roles and department != 'IT':
+        return JsonResponse({'error': f'"{role}" role can only be assigned to IT department users.'}, status=400)
+    
+    # ✅ Validate selected roles - only IT department can have support roles
+    if selected_role_names:
+        for selected_role in selected_role_names:
+            if selected_role in support_roles and department != 'IT':
+                return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
     
     # Generate random password
     import string
@@ -91,12 +108,9 @@ def admin_user_create(request):
         password_changed=False,
     )
 
-    # ================================================================
     # Get the primary role object
-    # ================================================================
     primary_role_obj = Role.objects.filter(name=role).first()
     
-    # Start building the roles list with the primary role
     roles_to_add = []
     
     if primary_role_obj:
@@ -106,23 +120,18 @@ def admin_user_create(request):
     if selected_role_names:
         selected_roles = Role.objects.filter(name__in=selected_role_names)
         for selected_role in selected_roles:
-            if selected_role.name != role:  # Skip if same as primary
+            if selected_role.name != role:
                 roles_to_add.append(selected_role)
     
-    # Set all roles on the user
     if roles_to_add:
         user.roles.set(roles_to_add)
         
-        # ================================================================
-        # Active role should ALWAYS be the primary role
-        # ================================================================
         if primary_role_obj:
             user.active_role = primary_role_obj
             user.active_role_id = primary_role_obj.id
             user.role = primary_role_obj.name
             user.save(update_fields=['active_role', 'active_role_id', 'role'])
         else:
-            # Fallback: highest priority
             highest_role = user.roles.order_by('priority').first()
             if highest_role:
                 user.active_role = highest_role
@@ -130,7 +139,6 @@ def admin_user_create(request):
                 user.role = highest_role.name
                 user.save(update_fields=['active_role', 'active_role_id', 'role'])
     else:
-        # Edge case: no roles at all (shouldn't happen)
         user.roles.clear()
         user.active_role = None
         user.active_role_id = None
@@ -172,12 +180,24 @@ def admin_user_edit(request, pk):
     if user.role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
         return JsonResponse({'error': 'You cannot edit a Superadmin.'}, status=403)
 
-    # Get the primary role from the dropdown (this is the MAIN role)
+    # Get the primary role from the dropdown
     new_role = request.POST.get('role', user.role)
     selected_role_names = request.POST.getlist('selected_roles')
     
     if new_role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can assign the Superadmin role.'}, status=403)
+
+    # ✅ Validate: Support roles only allowed for IT department
+    support_roles = ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+    new_department = request.POST.get('department', user.department)
+    
+    if new_role in support_roles and new_department != 'IT':
+        return JsonResponse({'error': f'"{new_role}" role can only be assigned to IT department users.'}, status=400)
+    
+    if selected_role_names:
+        for selected_role in selected_role_names:
+            if selected_role in support_roles and new_department != 'IT':
+                return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
 
     new_is_active = request.POST.get('is_active', 'true') == 'true'
     
@@ -189,56 +209,38 @@ def admin_user_edit(request, pk):
         if active_admins <= 1:
             return JsonResponse({'error': 'Cannot deactivate the last admin/superadmin.'}, status=400)
 
-    # ================================================================
     # Update basic user info
-    # ================================================================
     user.first_name = request.POST.get('first_name', user.first_name)
     user.last_name = request.POST.get('last_name', user.last_name)
     user.position = request.POST.get('position', user.position)
-    user.department = request.POST.get('department', user.department)
+    user.department = new_department
     user.is_active = new_is_active
-    user.role = new_role  # Set the primary role
+    user.role = new_role
     user.save()
 
-    # ================================================================
-    # FIX: Handle roles properly
-    # The primary role (from dropdown) is ALWAYS the main role
-    # Additional roles are extra roles that don't override the primary
-    # ================================================================
-    
     # Get the primary role object
     primary_role_obj = Role.objects.filter(name=new_role).first()
     
-    # Start building the roles list with the primary role
     roles_to_add = []
     
     if primary_role_obj:
         roles_to_add.append(primary_role_obj)
     
-    # Add any additional selected roles (excluding duplicates of primary)
     if selected_role_names:
         selected_roles = Role.objects.filter(name__in=selected_role_names)
         for selected_role in selected_roles:
-            # Skip if this role is the same as the primary role
             if selected_role.name != new_role:
                 roles_to_add.append(selected_role)
     
-    # Set all roles on the user
     if roles_to_add:
         user.roles.set(roles_to_add)
         
-        # ================================================================
-        # CRITICAL: Active role should ALWAYS be the primary role
-        # The primary role is what determines the user's main identity
-        # ================================================================
         if primary_role_obj:
-            # Always use the primary role as the active role
             user.active_role = primary_role_obj
             user.active_role_id = primary_role_obj.id
             user.role = primary_role_obj.name
             user.save(update_fields=['active_role', 'active_role_id', 'role'])
         else:
-            # Fallback: if primary role doesn't exist (shouldn't happen)
             highest_role = user.roles.order_by('priority').first()
             if highest_role:
                 user.active_role = highest_role
@@ -251,7 +253,6 @@ def admin_user_edit(request, pk):
                 user.role = new_role
                 user.save(update_fields=['active_role', 'active_role_id', 'role'])
     else:
-        # No roles at all - clear everything
         user.roles.clear()
         user.active_role = None
         user.active_role_id = None
@@ -274,10 +275,8 @@ def admin_user_toggle_active(request, pk):
         return JsonResponse({'error': 'You cannot deactivate your own account.'}, status=400)
     
     if not user.is_active:
-        # Reactivating is always allowed
         pass
     else:
-        # Deactivating: check if this is the last active admin/superadmin
         if user.role in ['ADMIN', 'SUPERADMIN']:
             active_admins = User.objects.filter(role__in=['ADMIN', 'SUPERADMIN'], is_active=True).count()
             if active_admins <= 1:
@@ -304,7 +303,7 @@ def admin_user_change_password(request, pk):
         return JsonResponse({'error': 'Password must be at least 8 characters.'}, status=400)
 
     user.set_password(new_password)
-    user.password_changed = True  # Mark as changed since admin is setting it
+    user.password_changed = True
     user.save()
     
     return JsonResponse({'status': 'ok', 'message': 'Password changed successfully.'})
@@ -317,25 +316,20 @@ def client_logo_upload(request):
     if request.method == 'POST':
         from apps.accounts.models import ClientSettings
         
-        # Get or create client settings
         settings, created = ClientSettings.objects.get_or_create(id=1)
         
-        # Handle logo upload
         if 'logo' in request.FILES:
             logo = request.FILES['logo']
             
-            # Validate file type
             allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
             if logo.content_type not in allowed_types:
                 messages.error(request, 'Please upload a valid image (JPEG, PNG, GIF, or WEBP).')
                 return redirect('accounts:profile')
             
-            # Validate file size (max 2MB)
             if logo.size > 2 * 1024 * 1024:
                 messages.error(request, 'Logo must be less than 2MB.')
                 return redirect('accounts:profile')
             
-            # Delete old logo if exists
             if settings.logo and settings.logo.name != 'logos/default.png':
                 try:
                     settings.logo.delete(save=False)
@@ -348,7 +342,6 @@ def client_logo_upload(request):
             messages.success(request, 'Company logo updated successfully!')
             return redirect('accounts:profile')
         
-        # If company name is being updated
         company_name = request.POST.get('company_name', '').strip()
         if company_name:
             settings.company_name = company_name

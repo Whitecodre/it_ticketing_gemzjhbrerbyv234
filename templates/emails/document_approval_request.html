@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .content { padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 8px 8px; }
+        .button { background: #0D9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; }
+        .footer { margin-top: 20px; font-size: 12px; color: #64748B; }
+        .detail { background: #F8FAFC; padding: 15px; border-radius: 6px; margin: 15px 0; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>📄 Document Approval Request</h2>
+    </div>
+    <div class="content">
+        <p>Dear {{ admin_name }},</p>
+        <p>A document has been submitted for your approval.</p>
+
+        <div class="detail">
+            <h3>{{ document.title }}</h3>
+            <p><strong>Version:</strong> {{ document.version }}</p>
+            <p><strong>Category:</strong> {{ document.category.name }}</p>
+            <p><strong>Uploaded By:</strong> {{ document.uploaded_by.get_full_name|default:document.uploaded_by.email }}</p>
+            <p><strong>Description:</strong> {{ document.description|default:"No description provided." }}</p>
+        </div>
+
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="{{ approval_url }}" class="button">Review Document</a>
+        </p>
+
+        <p>You can also view and approve the document directly:</p>
+        <p style="word-break: break-all;"><a href="{{ document_url }}" style="color: #0D9488;">{{ document_url }}</a></p>
+
+        <div class="footer">
+            <p>This is an automated notification from TicketSwipe.</p>
+            <p>Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>

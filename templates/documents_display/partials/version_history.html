@@ -1,0 +1,39 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+            {% lucide "clock" size=20 %} Version History: {{ document.title }}
+        </h3>
+        <button onclick="closeVersionModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+    </div>
+
+    <div class="space-y-2">
+        {% for version in versions %}
+        <div class="flex items-center justify-between text-sm p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+            <div>
+                <span class="font-medium" style="color: var(--color-text-primary);">v{{ version.version_number }}</span>
+                <span class="text-text-secondary ml-2">{{ version.created_by.get_full_name|default:version.created_by.email }}</span>
+                <span class="text-xs text-text-secondary ml-2">{{ version.created_at|date:"M d, Y H:i" }}</span>
+                {% if version.comment %}
+                <span class="text-xs text-text-secondary ml-2">— {{ version.comment }}</span>
+                {% endif %}
+            </div>
+            {% if version.file and can_download %}
+            <a href="{{ version.file.url }}" class="text-xs text-primary hover:underline" download>Download</a>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="text-center py-8 text-text-secondary">
+            <p>No version history available.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    function closeVersionModal() {
+        document.getElementById('versionModalOverlay').classList.add('hidden');
+        document.getElementById('versionModalContainer').innerHTML = '';
+    }
+</script>

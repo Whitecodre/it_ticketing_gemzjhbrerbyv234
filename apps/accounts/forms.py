@@ -87,11 +87,10 @@ class RegistrationForm(UserCreationForm):
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'department', 'avatar']
+        fields = ['first_name', 'last_name', 'avatar']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
             'last_name': forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
-            'department': forms.Select(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
             'avatar': forms.FileInput(attrs={'class': 'hidden'}),
         }
 

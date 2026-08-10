@@ -36,6 +36,8 @@ INSTALLED_APPS = [
     'channels',
     'webpush',
     'tinymce',
+
+    'django.contrib.postgres',  # For ArrayField and other Postgres features
     
     # Tailwind Helper App
     'theme',
@@ -57,6 +59,7 @@ INSTALLED_APPS = [
     'apps.maintenance',
     'apps.form_builder',
     'apps.organogram',
+    'apps.documents_display',
 ]
 
 # VAPID for Web Push Notifications
@@ -67,6 +70,9 @@ VAPID_CLAIM_EMAIL = env('VAPID_CLAIM_EMAIL', default='noreply@example.com')
 # Rate limiting settings
 RATELIMIT_VIEW = 'apps.common.views.ratelimit_handler'
 RATELIMIT_USE_CACHE = 'default'
+
+# LibreOffice binary used to convert Office documents to PDF previews in documents_display
+LIBREOFFICE_BINARY_PATH = env('LIBREOFFICE_BINARY_PATH', default='soffice.exe' if os.name == 'nt' else 'soffice')
 
 # ================================================================
 # CACHE CONFIGURATION (for rate limiting)

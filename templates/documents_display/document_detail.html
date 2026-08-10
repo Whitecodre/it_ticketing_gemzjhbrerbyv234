@@ -1,0 +1,133 @@
+{# templates/documents_display/document_detail.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ document.title }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-4xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% url 'documents_display:category_detail' document.category.slug %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back to {{ document.category.name }}
+        </a>
+    </div>
+
+    <div class="dashboard-card p-6 shadow-sm">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
+            <div>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h1 class="text-xl font-bold" style="color: var(--color-text-primary);">{{ document.title }}</h1>
+                    <span class="status-chip info text-xs">v{{ document.version }}</span>
+                    <span class="text-xs text-text-secondary">{{ document.category.name }}</span>
+                </div>
+                <div class="flex flex-wrap gap-3 mt-1 text-xs text-text-secondary">
+                    {% if document.document_date %}
+                    <span>📅 {{ document.document_date|date:"M d, Y" }}</span>
+                    {% endif %}
+                    <span>📄 {{ document.file_name }}</span>
+                    <span>📦 {{ document.file_size|filesizeformat }}</span>
+                </div>
+            </div>
+            <div class="flex gap-2 shrink-0 flex-wrap">
+                <!-- View Inline Button -->
+                <a href="{% url 'documents_display:document_serve_file' document.slug %}" target="_blank" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "eye" size=16 %} View
+                </a>
+                {% if can_download %}
+                <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "download" size=16 %} Download
+                </a>
+                {% endif %}
+                {% if can_edit %}
+                <a href="{% url 'documents_display:document_edit' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "pencil" size=16 %} Edit
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- File Info -->
+        <div class="rounded-lg border p-4 mb-4" style="border-color: var(--color-border); background-color: var(--color-background);">
+            <div class="flex items-center gap-3">
+                <span class="text-3xl">
+                    {% if document.file_extension == 'pdf' %}
+                        📕
+                    {% elif document.file_extension in 'doc,docx' %}
+                        📘
+                    {% elif document.file_extension in 'xls,xlsx' %}
+                        📊
+                    {% elif document.file_extension in 'ppt,pptx' %}
+                        📙
+                    {% elif document.file_extension in 'png,jpg,jpeg,gif,webp' %}
+                        🖼️
+                    {% else %}
+                        📄
+                    {% endif %}
+                </span>
+                <div>
+                    <p class="text-sm font-medium" style="color: var(--color-text-primary);">{{ document.file_name }}</p>
+                    <p class="text-xs text-text-secondary">{{ document.file_size|filesizeformat }} · {{ document.file_extension|upper }}</p>
+                </div>
+                <a href="{% url 'documents_display:document_viewer' document.slug %}" class="btn-primary text-sm px-4 py-1.5 rounded-lg ml-auto flex items-center gap-1.5">
+                    {% lucide "eye" size=14 %} View
+                </a>
+            </div>
+        </div>
+
+        <!-- Version History -->
+        {% if versions %}
+        <div class="mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+            <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold" style="color: var(--color-text-secondary);">Version History</h3>
+                <button class="btn-ghost text-xs flex items-center gap-1"
+                        hx-get="{% url 'documents_display:document_history' document.slug %}"
+                        hx-target="#versionModalContainer"
+                        hx-swap="innerHTML"
+                        onclick="document.getElementById('versionModalOverlay').classList.remove('hidden')">
+                    {% lucide "clock" size=14 %} View all
+                </button>
+            </div>
+            <div class="space-y-2 mt-2">
+                {% for version in versions %}
+                <div class="flex items-center justify-between text-sm p-2 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                    <div>
+                        <span class="font-medium" style="color: var(--color-text-primary);">v{{ version.version_number }}</span>
+                        <span class="text-text-secondary ml-2">{{ version.created_by.get_full_name|default:version.created_by.email }}</span>
+                        <span class="text-xs text-text-secondary ml-2">{{ version.created_at|date:"M d, Y" }}</span>
+                        {% if version.comment %}
+                        <span class="text-xs text-text-secondary ml-2">— {{ version.comment }}</span>
+                        {% endif %}
+                    </div>
+                    {% if version.file and can_download %}
+                    <a href="{{ version.file.url }}" class="text-xs text-primary hover:underline" download>Download</a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Version History Modal -->
+<div id="versionModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
+     onclick="if(event.target===this) closeVersionModal()">
+    <div id="versionModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);">
+        <!-- Loaded via HTMX -->
+    </div>
+</div>
+
+<script>
+    function closeVersionModal() {
+        document.getElementById('versionModalOverlay').classList.add('hidden');
+        document.getElementById('versionModalContainer').innerHTML = '';
+    }
+</script>
+{% endblock %}

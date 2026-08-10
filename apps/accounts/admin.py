@@ -1,19 +1,26 @@
+# apps/accounts/admin.py
+
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, UserProfile
 
-
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
     can_delete = False
-
 
 class UserAdmin(BaseUserAdmin):
     ordering = ['email']
     inlines = (UserProfileInline,)
 
     list_display = ('email', 'first_name', 'last_name', 'department', 'role', 'is_staff', 'created_by')
-    list_filter = ('role', 'is_staff', 'is_superuser', 'department')   # optional: filter by department
+    list_filter = ('role', 'is_staff', 'is_superuser', 'department')
+    
+    # ✅ Add get_queryset override to show IT department users first for support roles
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+        return qs  # Keep all for admins
 
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
@@ -36,7 +43,6 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-    # ----- RBAC protections -----
     def has_delete_permission(self, request, obj=None):
         if obj and obj.role == User.Role.SUPERADMIN:
             return request.user.role == User.Role.SUPERADMIN
@@ -51,6 +57,5 @@ class UserAdmin(BaseUserAdmin):
         if not change and not obj.created_by:
             obj.created_by = request.user if request.user.is_authenticated else None
         super().save_model(request, obj, form, change)
-
 
 admin.site.register(User, UserAdmin)

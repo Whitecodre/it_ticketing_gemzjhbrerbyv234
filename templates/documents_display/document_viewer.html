@@ -1,0 +1,86 @@
+{# templates/documents_display/document_viewer.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ document.title }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-6xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% url 'documents_display:document_detail' document.slug %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back to Document
+        </a>
+    </div>
+
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        <!-- Viewer Header -->
+        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    {% lucide "file" size=14 %}
+                </span>
+                <div class="min-w-0">
+                    <p class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ document.title }}</p>
+                    <p class="text-xs text-text-secondary truncate">{{ document.file_name }} ({{ document.file_size|filesizeformat }})</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+                {% if can_download %}
+                <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-primary text-sm px-4 py-1.5 rounded-lg flex items-center gap-1.5">
+                    {% lucide "download" size=14 %} Download
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Viewer Body -->
+        <div style="height: 70vh; background-color: var(--color-background);">
+            {% if is_viewable_inline %}
+                {% if file_extension == 'pdf' %}
+                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}" type="application/pdf" class="w-full h-full border-0">
+                {% elif file_extension in 'png,jpg,jpeg,gif,webp' %}
+                    <img src="{% url 'documents_display:document_serve_file' document.slug %}" alt="{{ document.title }}" class="max-w-full max-h-full object-contain rounded-lg shadow-sm">
+                {% elif file_extension in 'txt,csv' %}
+                    <iframe src="{% url 'documents_display:document_serve_file' document.slug %}" class="w-full h-full border-0 bg-white"></iframe>
+                {% endif %}
+            {% elif is_office_file %}
+                {% if document.preview_pdf %}
+                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}?preview=true" type="application/pdf" class="w-full h-full border-0">
+                {% else %}
+                    <div class="flex flex-col items-center justify-center h-full p-4 text-center">
+                        <span class="text-6xl mb-4 opacity-30">📄</span>
+                        <p class="text-sm font-medium" style="color: var(--color-text-primary);">Preview not available for this file type</p>
+                        {% if can_download %}
+                        <p class="text-xs text-text-secondary mt-1">Please download the file to view its contents.</p>
+                        <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg mt-4 flex items-center gap-1.5">
+                            {% lucide "download" size=14 %} Download
+                        </a>
+                        {% else %}
+                        <p class="text-xs text-text-secondary mt-1">Contact your Admin for download access.</p>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="flex flex-col items-center justify-center h-full p-4 text-center">
+                    <span class="text-6xl mb-4 opacity-30">📄</span>
+                    <p class="text-sm font-medium" style="color: var(--color-text-primary);">Preview not available for this file type</p>
+                    {% if can_download %}
+                    <p class="text-xs text-text-secondary mt-1">Please download the file to view its contents.</p>
+                    <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg mt-4 flex items-center gap-1.5">
+                        {% lucide "download" size=14 %} Download
+                    </a>
+                    {% else %}
+                    <p class="text-xs text-text-secondary mt-1">Contact your Admin for download access.</p>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

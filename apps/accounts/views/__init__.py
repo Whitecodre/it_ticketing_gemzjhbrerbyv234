@@ -414,7 +414,7 @@ def dashboard(request):
     # Team Lead specific context
     if active_role and active_role.name == 'TEAM_LEAD':
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
-        team_members = User.objects.filter(department=request.user.department, role='AGENT', is_active=True)
+        team_members = User.objects.filter(department='IT', role='AGENT', is_active=True)
         
         context['team_open_tickets'] = Ticket.objects.filter(
             status__in=open_statuses,

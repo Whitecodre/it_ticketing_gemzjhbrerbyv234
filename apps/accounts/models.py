@@ -119,6 +119,22 @@ class User(AbstractUser):
         blank=False,
     )
 
+    # apps/accounts/models.py - Add to User class
+
+    def is_it_staff(self):
+        """Check if user is in IT department and has a support role."""
+        if self.department != 'IT':
+            return False
+        return self.role in [self.Role.AGENT, self.Role.TEAM_LEAD, self.Role.ADMIN, self.Role.SUPERADMIN]
+
+    def can_work_on_tickets(self):
+        """Check if user can work on tickets (IT department + support role)."""
+        return self.is_it_staff()
+
+    def can_manage_display_documents(self):
+        """Admin role or superuser: only these may create/edit/delete display documents & categories."""
+        return self.is_superuser or self.role == self.Role.ADMIN
+
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     email_verified = models.BooleanField(default=False)
     created_by = models.ForeignKey(
@@ -306,6 +322,17 @@ class UserProfile(models.Model):
         ('kanban', _('Kanban')),
     ]
     default_ticket_view = models.CharField(max_length=20, choices=DEFAULT_VIEW_CHOICES, default='list')
+
+    DOCUMENT_VIEW_CHOICES = [
+        ('grid', 'Grid'),
+        ('list', 'List'),
+    ]
+    default_document_view = models.CharField(
+        max_length=10,
+        choices=DOCUMENT_VIEW_CHOICES,
+        default='grid',
+        help_text="Default view for document lists"
+    )
     
     email_notifications = models.BooleanField(default=True, help_text=_('Receive email notifications for ticket updates'))
     in_app_notifications = models.BooleanField(default=True, help_text=_('Receive in-app notifications (bell icon)'))

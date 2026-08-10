@@ -3,7 +3,7 @@
 {% load lucide %}
 
 {% block dashboard_title %}Unassigned Queue{% endblock %}
-{% block page_title_area %}{% endblock %}   {# <-- suppress the base h1 #}
+{% block page_title_area %}{% endblock %}
 
 {% block page_title %}Unassigned Tickets{% endblock %}
 {% block role_label %}{{ request.user.get_role_display }}{% endblock %}
@@ -27,13 +27,16 @@
         <span class="status-chip info text-xs">{{ tickets|length }} open</span>
     </div>
 
-    {# Ticket table #}
+    {# Ticket table - checkboxes visible by default #}
     <div class="dashboard-card p-0 overflow-hidden">
         <div class="overflow-x-auto" id="ticketTable">
-            {% include "partials/agent_ticket_table.html" %}
+            {% include "partials/agent_ticket_table.html" with tickets=tickets %}
         </div>
     </div>
 </div>
 {% endblock %}
 
-{% block extra_scripts %}{% endblock %}
+{# Remove the bulk_actions.js reference since we're using the new bulk assignment #}
+{% block extra_scripts %}
+{# No bulk_actions.js needed anymore #}
+{% endblock %}   

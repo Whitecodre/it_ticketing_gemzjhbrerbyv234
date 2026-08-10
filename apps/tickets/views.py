@@ -82,6 +82,8 @@ def get_sidebar_template(user):
     role_name = active_role.name if active_role else user.role
     return mapping.get(role_name, 'partials/sidebar_end_user.html')
 
+# apps/tickets/views.py - Fix apply_sla
+
 def apply_sla(ticket):
     """
     Sets the response_due_at and resolution_due_at fields on a ticket
@@ -92,9 +94,13 @@ def apply_sla(ticket):
         sla = SLA.objects.get(priority=ticket.priority)
     except SLA.DoesNotExist:
         return
-    now = timezone.now()
-    ticket.response_due_at = now + timedelta(minutes=sla.response_minutes)
-    ticket.resolution_due_at = now + timedelta(minutes=sla.resolution_minutes)
+    
+    # Use the ticket's created_at as the start time
+    # If created_at is None or in the future, use timezone.now()
+    start_time = ticket.created_at if ticket.created_at and ticket.created_at <= timezone.now() else timezone.now()
+    
+    ticket.response_due_at = start_time + timedelta(minutes=sla.response_minutes)
+    ticket.resolution_due_at = start_time + timedelta(minutes=sla.resolution_minutes)
     ticket.save(update_fields=['response_due_at', 'resolution_due_at'])
 
 # Helper function to handle "Other" field logic
@@ -263,16 +269,21 @@ def cancel_ticket(request, pk):
         return render(request, 'partials/ticket_list_partial.html', context)
     return redirect('tickets:my_list')
 
+# apps/tickets/views.py - my_ticket_list
+
 @login_required
 def my_ticket_list(request):
     """
     Displays a list of tickets created by the logged‑in end user.
     Supports filtering by status (OPEN/CLOSED or specific status).
-    Uses HTMX for pagination and filter updates.
+    Uses URL parameters for filter persistence.
     """
     tickets = Ticket.objects.filter(requester=request.user).order_by('-created_at')
+    
+    # Get filter parameters from URL
     status_filter = request.GET.get('status', '')
     base = request.GET.get('base', '')
+    
     open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR', 'APPROVED']
     closed_statuses = ['RESOLVED', 'CLOSED']
 
@@ -283,6 +294,7 @@ def my_ticket_list(request):
     elif status_filter and status_filter.upper() in dict(Ticket.Status.choices):
         tickets = tickets.filter(status=status_filter.upper())
 
+    # Pagination
     paginator = Paginator(tickets, 10)
     page_number = request.GET.get('page', 1)
     try:
@@ -290,22 +302,27 @@ def my_ticket_list(request):
     except (PageNotAnInteger, EmptyPage):
         page_obj = paginator.page(1)
 
+    # Build status choices based on base filter
     all_choices = Ticket.Status.choices
     if base == 'OPEN':
-        status_choices = [('NEW','New'), ('TRIAGED','Triaged'), ('ASSIGNED','Assigned'),
-                          ('IN_PROGRESS','In Progress'), ('PENDING_USER','Pending User'),
-                          ('PENDING_VENDOR','Pending Vendor'), ('APPROVED','Approved')]
+        status_choices = [
+            ('NEW', 'New'), ('TRIAGED', 'Triaged'), ('ASSIGNED', 'Assigned'),
+            ('IN_PROGRESS', 'In Progress'), ('PENDING_USER', 'Pending User'),
+            ('PENDING_VENDOR', 'Pending Vendor'), ('APPROVED', 'Approved')
+        ]
     elif base == 'CLOSED':
-        status_choices = [('RESOLVED','Resolved'), ('CLOSED','Closed')]
+        status_choices = [('RESOLVED', 'Resolved'), ('CLOSED', 'Closed')]
     else:
         status_choices = all_choices
 
-    base_status = base if base in ['OPEN','CLOSED'] else ''
+    base_status = base if base in ['OPEN', 'CLOSED'] else ''
     explicit = request.GET.get('explicit') == '1'
 
+    # Pass selected_status to template
     context = {
         'tickets': page_obj,
         'current_status': status_filter or '',
+        'selected_status': status_filter or '',  # For highlighting active chip
         'status_choices': status_choices,
         'sidebar_template': get_sidebar_template(request.user),
         'base_status': base_status,
@@ -421,7 +438,9 @@ def unassigned_queue(request):
     )
 
     assignable_agents = User.objects.filter(
-        role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+        role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
+        department='IT',  # ✅ Only IT department
+        is_active=True
     ).only('pk', 'first_name', 'last_name', 'email')
 
     context = {
@@ -444,7 +463,11 @@ def assigned_to_me(request):
         status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL, Ticket.Status.PENDING_MANAGER_REVIEW]
     ).order_by('-created_at')
 
-    assignable_agents = User.objects.filter(role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']).only('pk', 'first_name', 'last_name', 'email')
+    assignable_agents = User.objects.filter(
+        role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
+        department='IT',  # ✅ Only IT department
+        is_active=True
+    ).only('pk', 'first_name', 'last_name', 'email')
 
     context = {
         'tickets': tickets,
@@ -457,15 +480,14 @@ def assigned_to_me(request):
 from django.template.loader import render_to_string
 from django.http import JsonResponse
 
+# apps/tickets/views.py - Update claim_ticket
+
 @login_required
 def claim_ticket(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
     source = request.POST.get('source', 'unassigned')
     
     if ticket.assigned_to is None:
-        if ticket.status == Ticket.Status.PENDING_MANAGER_REVIEW:
-            return HttpResponse("This ticket is pending manager review and cannot be claimed.", status=400)
-        
         # Assign ticket to current user
         ticket.assigned_to = request.user
         ticket.status = Ticket.Status.ASSIGNED
@@ -477,11 +499,7 @@ def claim_ticket(request, pk):
             details={'to': request.user.get_full_name(), 'status': ticket.status}
         )
         
-        # ================================================================
-        # SEND NOTIFICATIONS
-        # ================================================================
-        
-        # 1. In-app notification to the agent (claim confirmation)
+        # Create notifications
         Notification.objects.create(
             recipient=request.user,
             message=f"✅ You have claimed ticket {ticket.number}: {ticket.title}",
@@ -489,7 +507,6 @@ def claim_ticket(request, pk):
             type=Notification.Type.TICKET
         )
         
-        # 2. Notification to the requester (someone claimed their ticket)
         Notification.objects.create(
             recipient=ticket.requester,
             message=f"🎫 Ticket {ticket.number} has been claimed by {request.user.get_full_name()} and is now in progress.",
@@ -497,70 +514,56 @@ def claim_ticket(request, pk):
             type=Notification.Type.TICKET
         )
         
-        # 3. Notification to the notification bell (HTMX will show it)
-        # The signal on Notification creation will handle broadcasting
+        # ALWAYS return JSON for API-like requests
+        # Check if the request is from HTMX or a form
+        if request.headers.get('HX-Request'):
+            # For HTMX requests, return HTML
+            assignable_agents = User.objects.filter(
+                role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+            ).only('pk', 'first_name', 'last_name', 'email')
+            
+            unassigned_tickets = Ticket.objects.filter(
+                assigned_to__isnull=True
+            ).exclude(
+                status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL,
+                            Ticket.Status.PENDING_MANAGER_REVIEW, Ticket.Status.PENDING_FULFILLMENT]
+            ).order_by('-created_at')
+            
+            if source == 'dashboard':
+                unassigned_tickets = unassigned_tickets[:5]
+                return JsonResponse({
+                    'success': True,
+                    'message': f'✅ Successfully claimed ticket {ticket.number}',
+                    'unassigned_count': unassigned_tickets.count(),
+                })
+            else:
+                return render(request, 'partials/agent_ticket_table.html', {
+                    'tickets': unassigned_tickets,
+                    'assignable_agents': assignable_agents,
+                    'status_choices': Ticket.Status.choices,
+                    'source': source,
+                })
+        else:
+            # For JSON requests, return JSON
+            return JsonResponse({
+                'success': True,
+                'message': f'✅ Successfully claimed ticket {ticket.number}',
+                'ticket_id': ticket.pk,
+                'ticket_number': ticket.number,
+            })
     
-    assignable_agents = User.objects.filter(
-        role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
-    ).only('pk', 'first_name', 'last_name', 'email')
-    
-    # Get updated unassigned tickets
-    unassigned_tickets = Ticket.objects.filter(
-        assigned_to__isnull=True
-    ).exclude(
-        status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL,
-                    Ticket.Status.PENDING_MANAGER_REVIEW, Ticket.Status.PENDING_FULFILLMENT]
-    ).order_by('-created_at')
-    
-    # If from dashboard, limit to 5
-    if source == 'dashboard':
-        unassigned_tickets = unassigned_tickets[:5]
-        
-        # Get updated assigned tickets for dashboard
-        assigned_tickets = Ticket.objects.filter(
-            assigned_to=request.user
-        ).exclude(
-            status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL,
-                        Ticket.Status.PENDING_MANAGER_REVIEW, Ticket.Status.PENDING_FULFILLMENT]
-        ).order_by('-created_at')[:5]
-        
-        # Render both tables
-        unassigned_html = render_to_string('partials/agent_ticket_table.html', {
-            'tickets': unassigned_tickets,
-            'assignable_agents': assignable_agents,
-            'status_choices': Ticket.Status.choices,
-            'source': 'dashboard',
-        })
-        
-        assigned_html = render_to_string('partials/agent_ticket_table.html', {
-            'tickets': assigned_tickets,
-            'assignable_agents': assignable_agents,
-            'status_choices': Ticket.Status.choices,
-            'source': 'dashboard',
-        })
-        
-        return JsonResponse({
-            'success': True,
-            'message': f'✅ Successfully claimed ticket {ticket.number}',
-            'unassigned_html': unassigned_html,
-            'assigned_html': assigned_html,
-            'unassigned_count': Ticket.objects.filter(assigned_to__isnull=True).count(),
-        })
-    else:
-        # For dedicated pages - show ALL tickets
-        return render(request, 'partials/agent_ticket_table.html', {
-            'tickets': unassigned_tickets,
-            'assignable_agents': assignable_agents,
-            'status_choices': Ticket.Status.choices,
-            'source': source,
-        })
+    # If ticket is already assigned
+    return JsonResponse({
+        'success': False,
+        'message': 'Ticket is already assigned to someone else.'
+    }, status=400)
 
 @login_required
 def agent_ticket_detail(request, pk):
     """
     Returns a slide‑over panel with ticket details and comments.
     Used when an agent clicks the "eye" icon on a ticket row.
-    """
+    """ 
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
@@ -977,7 +980,11 @@ def assign_popover(request, pk):
     so the agent can reassign the ticket.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    agents = User.objects.filter(role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'])[:10]
+    agents = User.objects.filter(
+        role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
+        department='IT',  # ✅ Only IT department
+        is_active=True
+    )[:10]
     return render(request, 'partials/popovers/assign_popover.html', {'ticket': ticket, 'agents': agents})
 
 @login_required
@@ -1018,7 +1025,6 @@ def remove_follower(request, ticket_pk, user_pk):
 def add_follower_popover(request, ticket_pk):
     return render(request, 'partials/popovers/add_follower_popover.html', {
         'ticket': get_object_or_404(Ticket, pk=ticket_pk),
-        'agents': User.objects.filter(role__in=['AGENT','TEAM_LEAD'])[:10],
     })
 
 # Placeholder popovers
@@ -1124,7 +1130,11 @@ def bulk_action(request):
         ).exclude(status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED]
         ).order_by('-created_at')
 
-    assignable_agents = User.objects.filter(role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']).only('pk', 'first_name', 'last_name', 'email')
+    assignable_agents = User.objects.filter(
+        role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
+        department='IT',  # ✅ Only IT department
+        is_active=True
+    ).only('pk', 'first_name', 'last_name', 'email')
     return render(request, 'partials/agent_ticket_table.html', {
         'tickets': tickets,
         'assignable_agents': assignable_agents,
@@ -1143,7 +1153,12 @@ def team_queue(request):
     """
     if request.user.role != 'TEAM_LEAD':
         return HttpResponse(status=403)
-    team_members = User.objects.filter(department=request.user.department, role='AGENT')
+    team_members = User.objects.filter(
+        department=request.user.department,
+        role='AGENT',
+        is_active=True
+    )
+    # Note: team_members already filtered by department from request.user
     tickets = Ticket.objects.filter(
         assigned_to__in=team_members
     ).exclude(status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED]
@@ -1956,6 +1971,8 @@ def asset_detail(request, pk):
 # ASSET SCRAP REQUEST
 # ==========================================================================
 
+# apps/tickets/views.py - Fix asset_scrap_request
+
 @login_required
 @require_POST
 def asset_scrap_request(request, pk):
@@ -1965,9 +1982,14 @@ def asset_scrap_request(request, pk):
     asset = get_object_or_404(Asset, pk=pk)
     comment = request.POST.get('comment', '')
 
+    # Check if asset is already scrapped or damaged
     if asset.status == Asset.Status.SCRAPPED:
         return JsonResponse({'error': 'Asset already scrapped.'}, status=400)
+    
+    if asset.status == Asset.Status.DAMAGED:
+        return JsonResponse({'error': 'Asset already marked as damaged.'}, status=400)
 
+    # Only change status if not already in appropriate state
     asset.status = Asset.Status.DAMAGED
     asset.save()
 
@@ -2338,7 +2360,11 @@ def escalated_tickets(request):
         tickets = tickets.filter(assigned_to__department=request.user.department)
 
     # Agents in the same department (for reassign)
-    agents = User.objects.filter(department=request.user.department, role=User.Role.AGENT, is_active=True)
+    agents = User.objects.filter(
+        department=request.user.department,
+        role=User.Role.AGENT,
+        is_active=True
+    )
 
     # Workload: open tickets per agent
     open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
@@ -2460,9 +2486,6 @@ def return_escalated_to_pool(request, pk):
     # Notify? optional
     return redirect('tickets:escalated_tickets')
 
-
-def kb_suggestions(request):
-    return render(request, 'partials/kb_suggestions.html', {'articles': []})
 
 # ==========================================================================
 # ATTACHMENT PREVIEW AND DOWNLOAD
@@ -2671,7 +2694,6 @@ def manager_review_queue(request):
     return render(request, 'team_lead/manager_review_queue.html', context)
 
 
-@login_required
 @login_required
 def manager_review_ticket(request, pk):
     """Team Lead review page for a single service request."""

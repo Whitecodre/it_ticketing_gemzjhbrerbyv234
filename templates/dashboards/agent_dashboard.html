@@ -86,7 +86,8 @@
                 </a>
             </div>
             <div id="assignedTicketTable" class="overflow-x-auto">
-                {% include "partials/agent_ticket_table.html" with tickets=assigned_to_me_tickets source="dashboard" %}
+                {# ✅ Add hide_checkboxes=True here #}
+                {% include "partials/agent_ticket_table.html" with tickets=assigned_to_me_tickets source="dashboard" hide_checkboxes=True %}
             </div>
         </div>
 

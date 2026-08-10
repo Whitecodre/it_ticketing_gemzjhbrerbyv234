@@ -17,6 +17,7 @@ urlpatterns = [
     # Form Builder - DEPRECATED (kept for future use, but not exposed)
     # path('form-builder/', include('apps.form_builder.urls')),
     path('organogram/', include('apps.organogram.urls')),
+    path('documents_display/', include('apps.documents_display.urls')),
     path('tinymce/', include('tinymce.urls')),
 
      # DEPRECATED: Dynamic form redirects removed

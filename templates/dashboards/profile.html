@@ -57,8 +57,10 @@
                     </div>
 
                     <div>
-                        <label for="id_department" class="block text-sm font-medium mb-1 text-text-primary">Department</label>
-                        {{ form.department }}
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Department</label>
+                        <input type="text" value="{{ user.get_department_display }}" disabled
+                               class="block w-full rounded-lg border py-2.5 px-4 text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
+                        <p class="text-xs mt-1 text-text-secondary">Department is managed by an administrator. Contact IT/Admin to request a change.</p>
                     </div>
 
                     <div>

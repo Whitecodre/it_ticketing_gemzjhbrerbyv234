@@ -8,15 +8,11 @@ from django.urls import reverse
 @login_required
 @require_POST
 def switch_role(request):
-    """
-    Switch the user's active role.
-    """
     role_name = request.POST.get('role')
-    next_url = request.POST.get('next', 'dashboard')
     
     if not role_name:
         messages.error(request, 'No role selected.')
-        return redirect(next_url)
+        return redirect('dashboard')
     
     success = request.user.set_active_role(role_name)
     
@@ -26,7 +22,8 @@ def switch_role(request):
     else:
         messages.error(request, f'You do not have the {role_name} role.')
     
-    return redirect(next_url)
+    # ✅ Always redirect to dashboard
+    return redirect('dashboard')
 
 
 @login_required

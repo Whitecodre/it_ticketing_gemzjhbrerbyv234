@@ -4,9 +4,12 @@
     <table class="w-full text-sm" id="ticketTable">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
+                {# Only show checkbox column if tickets are unassigned #}
+                {% if not hide_checkboxes %}
                 <th class="w-8 py-3 px-2">
                     <input type="checkbox" id="selectAll" class="rounded" onchange="handleSelectAll(this)">
                 </th>
+                {% endif %}
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
@@ -23,9 +26,12 @@
                 {% if ticket.status == 'ESCALATED' %}border-l-4 border-l-red-500{% endif %}" 
                 style="border-color: var(--color-border);"
                 data-ticket-id="{{ ticket.pk }}">
+                {# Only show checkbox if tickets are unassigned #}
+                {% if not hide_checkboxes %}
                 <td class="py-3 px-2">
                     <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox rounded" onchange="handleCheckboxChange(this)">
                 </td>
+                {% endif %}
                 <td class="py-3">
                     <div class="flex items-center gap-2">
                         <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
@@ -88,7 +94,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="9" class="text-center py-4">
+                <td colspan="{% if not hide_checkboxes %}9{% else %}8{% endif %}" class="text-center py-4">
                     <div class="flex flex-col items-center gap-0.5">
                         <p class="text-text-secondary text-sm">No tickets here.</p>
                         <p class="text-text-secondary text-xs">Great job! 🎉</p>
@@ -153,20 +159,19 @@
 </div>
 
 {# ================================================================ #}
-{# JAVASCRIPT - ALL FUNCTIONS                                      #}
+{# JAVASCRIPT - FULLY FIXED                                       #}
 {# ================================================================ #}
 <script>
 // ================================================================
 // BULK SELECTION - STATE
 // ================================================================
 var selectedIds = new Set();
+var isProcessing = false;
 
 // ================================================================
 // HANDLE INDIVIDUAL CHECKBOX CHANGE
 // ================================================================
 function handleCheckboxChange(checkbox) {
-    console.log('🔵 Checkbox clicked:', checkbox.checked, 'ID:', checkbox.value);
-    
     var ticketId = checkbox.value;
     var row = checkbox.closest('tr');
     
@@ -178,7 +183,6 @@ function handleCheckboxChange(checkbox) {
         if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
     }
     
-    console.log('🔵 Selected IDs:', Array.from(selectedIds));
     updateBulkUI();
 }
 
@@ -186,8 +190,6 @@ function handleCheckboxChange(checkbox) {
 // HANDLE SELECT ALL
 // ================================================================
 function handleSelectAll(checkbox) {
-    console.log('🔵 Select All clicked:', checkbox.checked);
-    
     var checkboxes = document.querySelectorAll('.ticket-checkbox');
     
     selectedIds.clear();
@@ -206,7 +208,6 @@ function handleSelectAll(checkbox) {
         }
     });
     
-    console.log('🔵 Selected after Select All:', Array.from(selectedIds));
     updateBulkUI();
 }
 
@@ -220,8 +221,6 @@ function updateBulkUI() {
     var pluralEl = document.getElementById('pluralS');
     var bulkCountEl = document.getElementById('bulkCount');
     var selectAll = document.getElementById('selectAll');
-    
-    console.log('🔵 updateBulkUI called, count:', count);
     
     if (count === 0) {
         if (bar) {
@@ -237,7 +236,6 @@ function updateBulkUI() {
         bar.style.display = 'flex';
         bar.classList.remove('hidden');
         bar.classList.add('flex');
-        console.log('🔵 Bar should now be visible');
     }
     
     if (countEl) countEl.textContent = count;
@@ -254,8 +252,6 @@ function updateBulkUI() {
 // CLEAR ALL SELECTIONS
 // ================================================================
 function clearAllSelections() {
-    console.log('🔵 Clearing all selections');
-    
     document.querySelectorAll('.ticket-checkbox').forEach(function(cb) {
         cb.checked = false;
         var row = cb.closest('tr');
@@ -266,13 +262,15 @@ function clearAllSelections() {
 }
 
 // ================================================================
-// BULK CLAIM TICKETS
+// BULK CLAIM TICKETS - FIXED
 // ================================================================
 function bulkClaimTickets() {
     var count = selectedIds.size;
     if (count === 0) return;
     
-    console.log('🔵 Bulk claiming', count, 'tickets');
+    // Prevent multiple clicks
+    if (isProcessing) return;
+    isProcessing = true;
     
     var btn = document.getElementById('bulkClaimBtn');
     var originalHtml = btn.innerHTML;
@@ -287,20 +285,49 @@ function bulkClaimTickets() {
     var claimed = 0;
     var failed = 0;
     var total = ticketIds.length;
+    var successMessage = '';
     
     function claimNext(index) {
         if (index >= ticketIds.length) {
+            // All done
             btn.innerHTML = originalHtml;
             btn.disabled = false;
             btn.classList.remove('opacity-70');
+            isProcessing = false;
             
             if (claimed > 0) {
+                var msg = '✅ Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!';
                 if (typeof showToast === 'function') {
-                    showToast('✅ Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!', 'success');
+                    showToast(msg, 'success');
                 }
-                setTimeout(function() {
-                    window.location.reload();
-                }, 1500);
+                
+                // Remove claimed rows from the table
+                document.querySelectorAll('.ticket-row').forEach(function(row) {
+                    var ticketId = row.dataset.ticketId;
+                    if (ticketId && selectedIds.has(ticketId)) {
+                        row.style.opacity = '0.3';
+                        row.style.transition = 'opacity 0.3s ease';
+                        setTimeout(function() {
+                            row.remove();
+                            selectedIds.delete(ticketId);
+                            updateBulkUI();
+                            
+                            // Check if table is empty
+                            var remaining = document.querySelectorAll('.ticket-row').length;
+                            if (remaining === 0) {
+                                // Reload the table to show "No tickets" message
+                                location.reload();
+                            }
+                        }, 300);
+                    }
+                });
+                
+                // If there were failures
+                if (failed > 0) {
+                    if (typeof showToast === 'function') {
+                        showToast('⚠️ ' + failed + ' ticket' + (failed > 1 ? 's' : '') + ' could not be claimed.', 'warning');
+                    }
+                }
             } else {
                 if (typeof showToast === 'function') {
                     showToast('Failed to claim tickets. Please try again.', 'error');
@@ -326,20 +353,13 @@ function bulkClaimTickets() {
         .then(function(data) {
             if (data.success) {
                 claimed++;
-                var row = document.querySelector('tr[data-ticket-id="' + ticketId + '"]');
-                if (row) {
-                    row.style.opacity = '0.3';
-                    row.style.transition = 'opacity 0.3s ease';
-                    setTimeout(function() {
-                        row.remove();
-                        selectedIds.delete(ticketId);
-                        updateBulkUI();
-                    }, 300);
-                }
             } else {
                 failed++;
             }
+            
+            // Update progress
             btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ' + (claimed + failed) + '/' + total + ' assigned...</span>';
+            
             claimNext(index + 1);
         })
         .catch(function() {
@@ -373,21 +393,20 @@ document.addEventListener('keydown', function(e) {
 // INITIALIZE
 // ================================================================
 function initBulkSelection() {
-    console.log('🔵 Initializing bulk selection...');
-    
     var checkboxes = document.querySelectorAll('.ticket-checkbox');
-    console.log('🔵 Found', checkboxes.length, 'ticket checkboxes');
+    if (checkboxes.length === 0) return;
     
+    // Reset selection state on page load
+    selectedIds.clear();
     var bar = document.getElementById('bulkActionBar');
     if (bar) {
         bar.style.display = 'none';
         bar.classList.add('hidden');
         bar.classList.remove('flex');
     }
-    
-    console.log('🔵 Bulk selection initialized');
 }
 
+// Run on DOM ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initBulkSelection);
 } else {
