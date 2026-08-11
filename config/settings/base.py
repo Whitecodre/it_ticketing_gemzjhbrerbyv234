@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 from pathlib import Path
 import environ
@@ -195,20 +196,10 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # ================================================================
 # NPM BINARY PATH - Cross-platform
 # ================================================================
-
-# Option 1: Use environment variable with fallback
-NPM_BIN_PATH = os.environ.get('NPM_BIN_PATH', 'npm')
-
-# Option 2: Platform-specific paths (if Option 1 doesn't work)
-# if sys.platform == 'win32':
-#     NPM_BIN_PATH = 'npm.cmd'
-# elif sys.platform == 'darwin':
-#     NPM_BIN_PATH = '/opt/homebrew/bin/npm'  # macOS with Homebrew
-# else:
-#     NPM_BIN_PATH = '/usr/bin/npm'  # Linux
-
-# Option 3: Let django-tailwind auto-detect (simplest)
-NPM_BIN_PATH = 'npm'  # Works if npm is in system PATH
+# shutil.which resolves platform-specific extensions itself (e.g. npm.cmd
+# via PATHEXT on Windows), so no manual sys.platform branching is needed.
+# NPM_BIN_PATH env var still wins if explicitly set (e.g. non-PATH installs).
+NPM_BIN_PATH = os.environ.get('NPM_BIN_PATH') or shutil.which('npm') or 'npm'
 
 # ================================================================
 # TINYMCE CONFIGURATION

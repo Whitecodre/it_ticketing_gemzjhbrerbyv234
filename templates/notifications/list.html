@@ -1,0 +1,183 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block title %}Notifications - TicketSwipe{% endblock %}
+{% block dashboard_title %}Notifications{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full max-w-3xl mx-auto">
+
+    {# Header #}
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+            <h2 class="text-xl font-semibold" style="color: var(--color-text-primary);">Notifications</h2>
+            <p class="text-sm mt-0.5" style="color: var(--color-text-secondary);">
+                {% if unread_count %}
+                    You have <strong style="color: var(--color-text-primary);">{{ unread_count }}</strong> unread notification{{ unread_count|pluralize }}.
+                {% else %}
+                    You're all caught up.
+                {% endif %}
+            </p>
+        </div>
+        <div class="flex items-center gap-2">
+            <div class="row" style="display:flex; gap:0.375rem;">
+                <a href="?filter=all" class="filter-chip {% if filter_value != 'unread' %}active{% endif %}">All</a>
+                <a href="?filter=unread" class="filter-chip {% if filter_value == 'unread' %}active{% endif %}">Unread</a>
+            </div>
+            <button id="markAllReadBtn" class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5"
+                    {% if not unread_count %}disabled style="opacity:.5;cursor:not-allowed;"{% endif %}>
+                {% lucide "check-circle" size=14 %} Mark all as read
+            </button>
+        </div>
+    </div>
+
+    {# List #}
+    <div class="dashboard-card p-0 overflow-hidden">
+        <div class="divide-y" style="border-color: var(--color-border);" id="notificationsListBody">
+            {% for notification in notifications %}
+            <div class="notif-row group flex items-start gap-3 px-5 py-4 transition cursor-pointer hover:bg-black/5
+                        {% if not notification.is_read %}bg-primary/5{% endif %}"
+                 data-id="{{ notification.pk }}"
+                 data-url="{{ notification.url }}"
+                 style="border-color: var(--color-border);">
+
+                <div class="shrink-0 mt-0.5">
+                    {% if notification.type == 'TICKET' %}
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            {% lucide "ticket" size=18 %}
+                        </div>
+                    {% elif notification.type == 'REMOTE_SESSION' %}
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent/10 text-accent">
+                            {% lucide "monitor" size=18 %}
+                        </div>
+                    {% elif notification.type == 'MANAGER_REVIEW' %}
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning">
+                            {% lucide "clipboard-check" size=18 %}
+                        </div>
+                    {% elif notification.type == 'APPROVAL' %}
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
+                            {% lucide "check-circle" size=18 %}
+                        </div>
+                    {% elif notification.type == 'RESOLUTION_CONFIRMATION' %}
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success">
+                            {% lucide "circle-check" size=18 %}
+                        </div>
+                    {% else %}
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-info/10 text-info">
+                            {% lucide "bell" size=18 %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                        <p class="text-sm leading-snug" style="color: var(--color-text-primary);">
+                            {{ notification.message }}
+                        </p>
+                        {% if not notification.is_read %}
+                        <span class="shrink-0 mt-1.5 flex h-2 w-2 rounded-full" style="background-color: var(--color-primary);"></span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-3 mt-1.5">
+                        <p class="text-xs" style="color: var(--color-text-secondary);">
+                            {{ notification.created_at|date:"M d, Y" }} · {{ notification.created_at|timesince }} ago
+                        </p>
+                        {% if notification.type %}
+                        <span class="text-[0.65rem] px-1.5 py-0.5 rounded-full border"
+                              style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                            {{ notification.get_type_display }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="empty-state" style="padding: 4rem 1rem;">
+                {% lucide "bell-off" size=28 class="text-text-secondary" %}
+                <strong style="display:block; margin-top:0.75rem;">
+                    {% if filter_value == 'unread' %}No unread notifications{% else %}No notifications yet{% endif %}
+                </strong>
+                <span style="color: var(--color-text-secondary); font-size: 0.8125rem;">
+                    {% if filter_value == 'unread' %}You're all caught up.{% else %}You'll see ticket, approval and system updates here.{% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {# Pagination #}
+    {% if notifications.has_other_pages %}
+    <div class="pagination-bar" style="margin-top: 1rem; border-top: none;">
+        <span class="pagination-summary">
+            Showing <strong>{{ notifications.start_index }}–{{ notifications.end_index }}</strong> of <strong>{{ notifications.paginator.count }}</strong> notifications
+        </span>
+        <div class="pagination-controls">
+            {% if notifications.has_previous %}
+            <a href="?page={{ notifications.previous_page_number }}&filter={{ filter_value }}" class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
+            {% else %}
+            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
+            {% endif %}
+            <div class="pagination-numbers">
+                {% for num in notifications.paginator.page_range %}
+                    {% if num == notifications.number %}
+                    <span class="pagination-number is-current">{{ num }}</span>
+                    {% elif num > notifications.number|add:'-3' and num < notifications.number|add:'3' %}
+                    <a href="?page={{ num }}&filter={{ filter_value }}" class="pagination-number">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% if notifications.has_next %}
+            <a href="?page={{ notifications.next_page_number }}&filter={{ filter_value }}" class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
+            {% else %}
+            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    function csrfToken() {
+        var el = document.querySelector('[name=csrfmiddlewaretoken]');
+        return el ? el.value : '';
+    }
+
+    document.querySelectorAll('.notif-row').forEach(function (row) {
+        row.addEventListener('click', function () {
+            var id = row.dataset.id;
+            var url = row.dataset.url;
+            fetch('{% url "notifications:mark_read" 999 %}'.replace('999', id), {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken() }
+            }).finally(function () {
+                if (url) {
+                    window.location.href = url;
+                } else {
+                    row.classList.remove('bg-primary/5');
+                    var dot = row.querySelector('.h-2.w-2.rounded-full');
+                    if (dot) dot.remove();
+                }
+            });
+        });
+    });
+
+    var markAllBtn = document.getElementById('markAllReadBtn');
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', function () {
+            if (markAllBtn.disabled) return;
+            fetch('{% url "notifications:mark_all_read" %}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken() }
+            }).then(function () {
+                window.location.reload();
+            });
+        });
+    }
+});
+</script>
+{% endblock %}

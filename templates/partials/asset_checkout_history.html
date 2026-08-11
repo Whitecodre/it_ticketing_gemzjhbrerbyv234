@@ -2,7 +2,7 @@
 
 <div class="checkout-history">
     <div class="flex items-center justify-between mb-4">
-        <h4 class="text-sm font-semibold" style="color: var(--color-text-primary);">
+        <h4 class="text-sm font-semibold text-text-primary">
             {% lucide "clock" size=16 %}
             Checkout History ({{ history|length }})
         </h4>
@@ -51,8 +51,8 @@
             {% endfor %}
         </div>
     {% else %}
-        <div class="text-center py-4 text-text-secondary text-sm">
-            <p>No checkout history for this asset.</p>
+        <div class="empty-state">
+            <p class="empty-state-title">No checkout history for this asset.</p>
         </div>
     {% endif %}
 </div>

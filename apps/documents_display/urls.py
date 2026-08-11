@@ -20,7 +20,12 @@ urlpatterns = [
     path('document/<slug:slug>/delete/', views.document_delete, name='document_delete'),
     path('document/<slug:slug>/history/', views.document_history, name='document_history'),
     path('document/<slug:slug>/serve/', views.document_serve_file, name='document_serve_file'),
-    
+
+    # Sharing
+    path('document/<slug:slug>/share/', views.document_share, name='document_share'),
+    path('document/<slug:slug>/share/<int:share_id>/revoke/', views.document_share_revoke, name='document_share_revoke'),
+    path('share/<str:token>/', views.document_share_open, name='document_share_open'),
+
     # Create
     path('create/', views.document_create, name='document_create'),
 ]

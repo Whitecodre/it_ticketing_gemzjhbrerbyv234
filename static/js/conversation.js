@@ -104,12 +104,74 @@ function setActiveTab(mode) {
 }
 
 // ================================================================
+// COMMENT EDITOR -> HIDDEN FIELD SYNC
+// ================================================================
+// #commentEditor is a contenteditable div; the form actually submits
+// #commentBodyHidden. Keep it in sync on every keystroke so HTMX always
+// serializes the current content, regardless of event ordering.
+(function() {
+    const editor = document.getElementById('commentEditor');
+    const hidden = document.getElementById('commentBodyHidden');
+    if (!editor || !hidden) return;
+
+    function syncCommentBody() {
+        hidden.value = editor.innerHTML.trim();
+    }
+
+    editor.addEventListener('input', syncCommentBody);
+
+    const form = document.getElementById('commentForm');
+    if (form) {
+        form.addEventListener('submit', syncCommentBody);
+        form.addEventListener('htmx:configRequest', syncCommentBody);
+    }
+})();
+
+// ================================================================
+// BOLD / ITALIC FORMATTING
+// ================================================================
+function formatDocument(command) {
+    const editor = document.getElementById('commentEditor');
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(command, false, null);
+}
+
+// ================================================================
+// ATTACHMENT PREVIEW
+// ================================================================
+(function() {
+    const input = document.getElementById('attachmentsInput');
+    const preview = document.getElementById('filePreviewContainer');
+    if (!input || !preview) return;
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    input.addEventListener('change', function() {
+        preview.innerHTML = '';
+        Array.from(input.files || []).forEach(function(file) {
+            const chip = document.createElement('span');
+            chip.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border';
+            chip.style.borderColor = 'var(--color-border)';
+            chip.style.backgroundColor = 'var(--color-background)';
+            chip.textContent = `${file.name} (${formatFileSize(file.size)})`;
+            preview.appendChild(chip);
+        });
+    });
+})();
+
+// ================================================================
 // MACROS
 // ================================================================
 function insertMacro(body, visibility) {
     const editor = document.getElementById('commentEditor');
     if (editor) {
         editor.innerHTML = body;
+        editor.dispatchEvent(new Event('input'));
         setActiveTab(visibility.toLowerCase());
         const radios = document.getElementsByName('visibility');
         for (let radio of radios) {
@@ -132,70 +194,6 @@ document.addEventListener('click', function(event) {
 // ================================================================
 // FULFILLMENT MODAL
 // ================================================================
-
-function openFulfillModal(ticketId) {
-    // Remove any existing modal
-    const existing = document.getElementById('fulfillModal');
-    if (existing) existing.remove();
-    
-    // Disable body scroll
-    document.body.style.overflow = 'hidden';
-    
-    // Fetch the modal content
-    fetch(`/tickets/assets/fulfill-modal/${ticketId}/`)
-        .then(response => response.text())
-        .then(html => {
-            const wrapper = document.createElement('div');
-            wrapper.innerHTML = html;
-            document.body.appendChild(wrapper.firstElementChild);
-            
-            // ================================================================
-            // KEY: Re-initialize HTMX for dynamically loaded content
-            // ================================================================
-            const modal = document.getElementById('fulfillModal');
-            if (modal && typeof htmx !== 'undefined') {
-                htmx.process(modal);
-                console.log('✅ HTMX processed for modal');
-            }
-            
-            // Click on backdrop closes modal
-            if (modal) {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === this || e.target.hasAttribute('data-modal-backdrop')) {
-                        closeFulfillModal();
-                    }
-                });
-            }
-        })
-        .catch(error => {
-            console.error('Error loading fulfill modal:', error);
-            document.body.style.overflow = '';
-            if (typeof showToast === 'function') {
-                showToast('Error loading fulfillment form.', 'error');
-            }
-        });
-}
-
-function closeFulfillModal() {
-    const modal = document.getElementById('fulfillModal');
-    if (modal) {
-        modal.remove();
-    }
-    document.body.style.overflow = '';
-}
-
-// Close on Escape key
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeFulfillModal();
-    }
-});
-
-// Handle data-close-modal buttons using event delegation
-document.addEventListener('click', function(e) {
-    const closeBtn = e.target.closest('[data-close-modal]');
-    if (closeBtn) {
-        e.preventDefault();
-        closeFulfillModal();
-    }
-});
+// openFulfillModal/closeFulfillModal moved to global.js so they're
+// available on every page (e.g. the admin dashboard's Fulfill button),
+// not just this ticket-conversation page.

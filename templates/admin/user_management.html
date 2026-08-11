@@ -461,54 +461,7 @@
     window.adminUserEditUrl = "{% url 'accounts:admin_user_edit' 0 %}";
     window.adminUserToggleUrl = "{% url 'accounts:admin_user_toggle_active' 0 %}";
     window.adminUserChangePasswordUrl = "{% url 'accounts:admin_user_change_password' 0 %}";
-    
-    // ================================================================
-    // AUTO-SYNC PRIMARY ROLE WITH CHECKBOXES
-    // ================================================================
-    document.addEventListener('DOMContentLoaded', function() {
-        // Function to update checkbox states based on primary role
-        function updateRoleCheckboxes(containerId, primaryRoleSelectId) {
-            const container = document.getElementById(containerId);
-            const primarySelect = document.getElementById(primaryRoleSelectId);
-            if (!container || !primarySelect) return;
-            
-            const primaryValue = primarySelect.value;
-            
-            container.querySelectorAll('.additional-role-checkbox').forEach(checkbox => {
-                const checkboxValue = checkbox.dataset.roleName || checkbox.value;
-                
-                // If this role matches the primary role, disable and uncheck it
-                if (checkboxValue === primaryValue) {
-                    checkbox.disabled = true;
-                    checkbox.checked = false;
-                    checkbox.closest('.role-checkbox').style.opacity = '0.4';
-                    checkbox.closest('.role-checkbox').style.cursor = 'not-allowed';
-                } else {
-                    checkbox.disabled = false;
-                    checkbox.closest('.role-checkbox').style.opacity = '1';
-                    checkbox.closest('.role-checkbox').style.cursor = 'pointer';
-                }
-            });
-        }
-        
-        // Initialize for Create modal
-        const createPrimary = document.getElementById('createPrimaryRole');
-        if (createPrimary) {
-            createPrimary.addEventListener('change', function() {
-                updateRoleCheckboxes('createRolesCheckboxes', 'createPrimaryRole');
-            });
-            // Initial sync
-            updateRoleCheckboxes('createRolesCheckboxes', 'createPrimaryRole');
-        }
-        
-        // Initialize for Edit modal
-        const editPrimary = document.getElementById('editPrimaryRole');
-        if (editPrimary) {
-            editPrimary.addEventListener('change', function() {
-                updateRoleCheckboxes('editRolesCheckboxes', 'editPrimaryRole');
-            });
-            // Initial sync will happen when edit modal opens
-        }
-    });
+    // Role checkbox sync (createRolesCheckboxes/editRolesCheckboxes) is wired
+    // up by admin_users.js's initRoleCheckboxes(), loaded above.
 </script>
 {% endblock %}

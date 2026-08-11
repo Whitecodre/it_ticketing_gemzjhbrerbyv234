@@ -21,7 +21,7 @@
         {# Left: Brand + Collapse button + Hamburger #}
         <div class="flex items-center gap-3">
             <span class="inline-flex items-center gap-2">
-                <span class="text-lg font-cursive font-semibold text-primary">TicketSwipe</span>
+                <span class="text-lg font-poppins font-semibold text-primary">TicketSwipe</span>
             </span>
             
             <button id="sidebarToggleBtn"
@@ -56,12 +56,12 @@
                 </button>
                 
                 <div id="notificationDropdown"
-                     class="absolute right-0 mt-2 w-80 rounded-md shadow-lg border hidden"
-                     style="background-color: var(--color-surface); border-color: var(--color-border); z-index: 50;">
+                     class="absolute right-0 mt-2 w-80 border hidden overflow-hidden"
+                     style="background-color: var(--color-surface); border-color: var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); z-index: 50;">
                     <div class="p-3 border-b" style="border-color: var(--color-border);">
                         <div class="flex items-center justify-between">
                             <span class="text-sm font-semibold" style="color: var(--color-text-primary);">Notifications</span>
-                            <a href="{% url 'notifications:list' %}" 
+                            <a href="{% url 'notifications:page' %}"
                                class="text-xs text-primary hover:underline">View all</a>
                         </div>
                     </div>
@@ -84,7 +84,7 @@
                         class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition hover:bg-black/5"
                         style="background-color: var(--color-surface); border-color: var(--color-border); color: var(--color-text-primary);"
                         aria-label="Switch role">
-                    <span>{{ active_role_display|default:user.get_role_display }}</span>
+                    <span class="role-switcher-label">{{ active_role_display|default:user.get_role_display }}</span>
                     <span>{% lucide "chevron-down" size=14 %}</span>
                 </button>
                 
@@ -151,7 +151,7 @@
     <aside id="sidebar"
            class="fixed inset-y-0 left-0 z-40 flex flex-col border-r transition-all duration-300 ease-in-out
                   w-64 overflow-y-auto overflow-x-hidden"
-           style="background-color: var(--color-surface); border-color: var(--color-border); top: {% if is_impersonating %}calc(48px){% else %}0px{% endif %}; height: {% if is_impersonating %}calc(100% - 4.4rem - 48px){% else %}calc(100% - 4.4rem){% endif %};">
+           style="background-color: var(--color-surface); border-color: var(--color-border); top: {% if is_impersonating %}calc(4.4rem + 48px){% else %}4.4rem{% endif %}; height: {% if is_impersonating %}calc(100% - 4.4rem - 48px){% else %}calc(100% - 4.4rem){% endif %};">
 
         <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto" id="sidebarNav">
             {% block sidebar_nav %}
@@ -305,6 +305,16 @@
 {% block scripts %}
 {{ block.super }}
 
+{# Web push: VAPID key + early service worker registration, needed on every page #}
+<script>
+    window.vapidPublicKey = "{{ VAPID_PUBLIC_KEY }}";
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function(err) {
+            console.error('Service worker registration failed:', err);
+        });
+    }
+</script>
+
 {# Shared vanilla-JS UI behavior #}
 <script src="{% static 'js/global.js' %}"></script>
 <script src="{% static 'js/keyboard_shortcuts.js' %}"></script>
@@ -397,15 +407,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ================================================================
-// CSRF Token for HTMX
-// ================================================================
-document.body.addEventListener('htmx:configRequest', function(event) {
-    const tokenElem = document.querySelector('[name=csrfmiddlewaretoken]');
-    if (tokenElem) {
-        event.detail.headers['X-CSRFToken'] = tokenElem.value;
-    }
-});
+// CSRF token for HTMX requests is wired up once in global.js.
 </script>
 
 {# Page-specific JS #}

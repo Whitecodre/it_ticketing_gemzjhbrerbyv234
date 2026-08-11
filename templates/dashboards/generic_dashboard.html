@@ -8,13 +8,11 @@
 {% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
 
 {% block sidebar_nav %}
-<a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
-   style="background-color: var(--color-primary); color: white;">
+<a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition bg-primary text-white">
     {% lucide "layout-dashboard" size=20 class="h-5 w-5 shrink-0" %}
     Dashboard
 </a>
-<a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
-   style="color: var(--color-text-secondary);">
+<a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition text-text-secondary">
     {% lucide "ticket" size=20 class="h-5 w-5 shrink-0" %}
     Tickets
 </a>
@@ -26,6 +24,6 @@
     <p class="mt-1 text-sm opacity-90">Your role-specific dashboard is coming soon.</p>
 </div>
 <div class="dashboard-card mt-6">
-    <p style="color: var(--color-text-secondary);">This is a placeholder. We'll build your full dashboard in the upcoming sprints.</p>
+    <p class="text-text-secondary">This is a placeholder. We'll build your full dashboard in the upcoming sprints.</p>
 </div>
 {% endblock %}

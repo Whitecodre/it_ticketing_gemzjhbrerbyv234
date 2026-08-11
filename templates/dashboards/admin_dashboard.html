@@ -13,11 +13,11 @@
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "ticket" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Ticket Overview</h2>
+        <h2 class="text-sm font-semibold text-text-primary">Ticket Overview</h2>
         <span class="text-xs text-text-secondary">(Last 30 days)</span>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="kpi-card border-l-4 border-primary">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Total Tickets</p>
                 {% lucide "ticket" size=14 class="text-text-secondary" %}
@@ -25,27 +25,27 @@
             <p class="kpi-value">{{ total_tickets_month }}</p>
             <p class="kpi-trend up">This month</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-success);">
+        <div class="kpi-card border-l-4 border-success">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">SLA Compliance</p>
                 {% lucide "check-circle" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: {% if sla_compliance >= 95 %}var(--color-success){% elif sla_compliance >= 80 %}var(--color-warning){% else %}var(--color-error){% endif %};">
+            <p class="kpi-value {% if sla_compliance >= 95 %}text-success{% elif sla_compliance >= 80 %}text-warning{% else %}text-error{% endif %}">
                 {{ sla_compliance }}%
             </p>
             <p class="kpi-trend up">Resolved within target</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
+        <div class="kpi-card border-l-4 border-warning">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Pending Fulfillment</p>
                 {% lucide "package" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-warning);">{{ pending_fulfillment_count|default:0 }}</p>
+            <p class="kpi-value text-warning">{{ pending_fulfillment_count|default:0 }}</p>
             <p class="kpi-trend {% if pending_fulfillment_count > 0 %}down{% else %}up{% endif %}">
                 {% if pending_fulfillment_count > 0 %}Needs attention{% else %}All fulfilled{% endif %}
             </p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-accent);">
+        <div class="kpi-card border-l-4 border-accent">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Active Policies</p>
                 {% lucide "sliders-horizontal" size=14 class="text-text-secondary" %}
@@ -60,69 +60,69 @@
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "hard-drive" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Asset Inventory</h2>
+        <h2 class="text-sm font-semibold text-text-primary">Asset Inventory</h2>
         <span class="text-xs text-text-secondary">({{ total_assets|default:0 }} total)</span>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-success);">
+        <div class="kpi-card border-l-4 border-success">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Active</p>
                 {% lucide "check-circle" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-success);">{{ active_assets|default:0 }}</p>
+            <p class="kpi-value text-success">{{ active_assets|default:0 }}</p>
             <p class="kpi-trend up">In use</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-info);">
+        <div class="kpi-card border-l-4 border-info">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">In Store</p>
                 {% lucide "package" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-info);">{{ in_store_assets|default:0 }}</p>
+            <p class="kpi-value text-info">{{ in_store_assets|default:0 }}</p>
             <p class="kpi-trend up">Available</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-error);">
+        <div class="kpi-card border-l-4 border-error">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Damaged</p>
                 {% lucide "alert-triangle" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-error);">{{ damaged_assets|default:0 }}</p>
+            <p class="kpi-value text-error">{{ damaged_assets|default:0 }}</p>
             <p class="kpi-trend down">Needs review</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
+        <div class="kpi-card border-l-4 border-warning">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Warranty Expiring</p>
                 {% lucide "calendar-clock" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-warning);">{{ expiring_warranty|default:0 }}</p>
+            <p class="kpi-value text-warning">{{ expiring_warranty|default:0 }}</p>
             <p class="kpi-trend down">Next 90 days</p>
         </div>
     </div>
 
     {# Full asset status breakdown (small, below KPI cards) #}
-    <div class="mt-3 flex flex-wrap items-center gap-3 text-xs" style="color: var(--color-text-secondary);">
-        <span class="font-medium" style="color: var(--color-text-primary);">All statuses:</span>
+    <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-secondary">
+        <span class="font-medium text-text-primary">All statuses:</span>
         <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-success);"></span>
+            <span class="inline-block w-2 h-2 rounded-full bg-success"></span>
             Active: {{ active_assets|default:0 }}
         </span>
         <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-info);"></span>
+            <span class="inline-block w-2 h-2 rounded-full bg-info"></span>
             In Store: {{ in_store_assets|default:0 }}
         </span>
         <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-warning);"></span>
+            <span class="inline-block w-2 h-2 rounded-full bg-warning"></span>
             Maintenance: {{ maintenance_assets|default:0 }}
         </span>
         <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-error);"></span>
+            <span class="inline-block w-2 h-2 rounded-full bg-error"></span>
             Damaged: {{ damaged_assets|default:0 }}
         </span>
         <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-text-secondary);"></span>
+            <span class="inline-block w-2 h-2 rounded-full bg-text-secondary"></span>
             Scrapped: {{ scrapped_assets|default:0 }}
         </span>
         <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full" style="background-color: var(--color-primary);"></span>
+            <span class="inline-block w-2 h-2 rounded-full bg-primary"></span>
             Recently Added: {{ recently_added|default:0 }}
         </span>
     </div>
@@ -133,9 +133,9 @@
     <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2">
             {% lucide "package" size=16 class="text-warning" %}
-            <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Pending Asset Fulfillment</h2>
+            <h2 class="text-sm font-semibold text-text-primary">Pending Asset Fulfillment</h2>
             {% if pending_fulfillment_count > 0 %}
-            <span class="text-xs font-normal px-2 py-0.5 rounded-full" style="background-color: var(--color-warning); color: white;">
+            <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-warning text-white">
                 {{ pending_fulfillment_count }}
             </span>
             {% endif %}
@@ -148,7 +148,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset Needed</th>
@@ -159,7 +159,7 @@
                 </thead>
                 <tbody>
                     {% for ticket in pending_fulfillment_requests %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                         </td>
@@ -186,7 +186,7 @@
         <div class="flex justify-center mb-2">
             {% lucide "check-circle" size=24 class="text-success" %}
         </div>
-        <p class="text-sm font-medium" style="color: var(--color-text-primary);">No pending asset requests</p>
+        <p class="text-sm font-medium text-text-primary">No pending asset requests</p>
         <p class="text-xs text-text-secondary">All approved requests have been fulfilled.</p>
     </div>
     {% endif %}
@@ -200,8 +200,8 @@
         
         {# SLA Policies #}
         <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-            <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-                <h3 class="text-sm font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+                <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
                     {% lucide "sliders-horizontal" size=14 %} SLA Policies
                     <span class="text-xs font-normal text-text-secondary">({{ slas|length }})</span>
                 </h3>
@@ -211,7 +211,7 @@
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
-                        <tr class="border-b" style="border-color: var(--color-border);">
+                        <tr class="border-b border-border">
                             <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                             <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Response</th>
                             <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Resolution</th>
@@ -220,7 +220,7 @@
                     </thead>
                     <tbody>
                         {% for sla in slas %}
-                        <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                        <tr class="border-b hover:bg-black/5 transition-colors border-border">
                             <td class="py-3 px-4">
                                 <span class="priority-chip 
                                     {% if sla.priority == 'P1' %}critical
@@ -245,8 +245,8 @@
 
         {# Escalation Rules #}
         <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-            <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-                <h3 class="text-sm font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+                <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
                     {% lucide "arrow-up-right" size=14 %} Escalation Rules
                     <span class="text-xs font-normal text-text-secondary">({{ escalation_rules|length }})</span>
                 </h3>
@@ -256,7 +256,7 @@
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead>
-                        <tr class="border-b" style="border-color: var(--color-border);">
+                        <tr class="border-b border-border">
                             <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                             <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Timer</th>
                             <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Threshold</th>
@@ -266,7 +266,7 @@
                     </thead>
                     <tbody>
                         {% for rule in escalation_rules %}
-                        <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                        <tr class="border-b hover:bg-black/5 transition-colors border-border">
                             <td class="py-3 px-4">
                                 <span class="priority-chip 
                                     {% if rule.priority == 'P1' %}critical
@@ -296,7 +296,7 @@
         
         {# Quick Actions #}
         <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2" style="color: var(--color-text-primary);">
+            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
                 {% lucide "zap" size=14 %} Quick Actions
             </h3>
             <div class="space-y-2">
@@ -318,15 +318,14 @@
 
         {# Remote Connectors #}
         <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2" style="color: var(--color-text-primary);">
+            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
                 {% lucide "monitor" size=14 %} Remote Connectors
             </h3>
             
             {% if connectors %}
             <div class="space-y-2">
-                <select class="priority-dropdown w-full text-xs" 
-                        onchange="window.location.href=this.value"
-                        style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary);">
+                <select class="priority-dropdown w-full text-xs bg-background border-border text-text-primary"
+                        onchange="window.location.href=this.value">
                     {% for connector in connectors %}
                     <option value="{% url 'tickets:connector_edit' connector.pk %}" 
                             {% if connector.is_active %}selected{% endif %}>
@@ -336,12 +335,11 @@
                 </select>
                 
                 {# Show status #}
-                <div class="flex items-center gap-2 p-2 rounded-lg border" 
-                    style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center gap-2 p-2 rounded-lg border border-border bg-background">
                     {% if connectors|has_active_connector %}
                         <span class="flex h-2 w-2 rounded-full bg-success"></span>
                         <span class="text-xs text-text-secondary">Connected</span>
-                        <span class="text-xs font-medium ml-auto" style="color: var(--color-text-primary);">
+                        <span class="text-xs font-medium ml-auto text-text-primary">
                             {{ connectors|active_connector_name }}
                         </span>
                     {% else %}
@@ -377,7 +375,7 @@
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "clock" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Recent Activity</h2>
+        <h2 class="text-sm font-semibold text-text-primary">Recent Activity</h2>
         <a href="{% url 'tickets:audit_log' %}" class="text-xs font-medium text-primary hover:underline">View all →</a>
     </div>
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">

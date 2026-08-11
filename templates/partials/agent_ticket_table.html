@@ -1,13 +1,14 @@
 {% load lucide %}
+{% firstof instance_id 'default' as iid %}
 
 <div class="overflow-x-auto">
-    <table class="w-full text-sm" id="ticketTable">
+    <table class="w-full text-sm" id="ticketTable-{{ iid }}">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
                 {# Only show checkbox column if tickets are unassigned #}
                 {% if not hide_checkboxes %}
                 <th class="w-8 py-3 px-2">
-                    <input type="checkbox" id="selectAll" class="rounded" onchange="handleSelectAll(this)">
+                    <input type="checkbox" id="selectAll-{{ iid }}" class="rounded" onchange="handleSelectAll_{{ iid }}(this)">
                 </th>
                 {% endif %}
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
@@ -20,16 +21,16 @@
                 <th class="text-right py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-12">Actions</th>
             </tr>
         </thead>
-        <tbody id="ticketTableBody">
+        <tbody id="ticketTableBody-{{ iid }}">
             {% for ticket in tickets %}
             <tr class="border-b hover:bg-black/5 transition-colors group ticket-row
-                {% if ticket.status == 'ESCALATED' %}border-l-4 border-l-red-500{% endif %}" 
+                {% if ticket.status == 'ESCALATED' %}border-l-4 border-l-red-500{% endif %}"
                 style="border-color: var(--color-border);"
                 data-ticket-id="{{ ticket.pk }}">
                 {# Only show checkbox if tickets are unassigned #}
                 {% if not hide_checkboxes %}
                 <td class="py-3 px-2">
-                    <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox rounded" onchange="handleCheckboxChange(this)">
+                    <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox ticket-checkbox-{{ iid }} rounded" onchange="handleCheckboxChange_{{ iid }}(this)">
                 </td>
                 {% endif %}
                 <td class="py-3">
@@ -50,14 +51,14 @@
                         {% with sla_info=ticket.sla_status %}
                         <div class="flex flex-col">
                             <div class="sla-bar w-24 mb-1">
-                                <div class="sla-bar-fill 
+                                <div class="sla-bar-fill
                                     {% if sla_info.overall == 'ok' %}safe
                                     {% elif sla_info.overall == 'warning' %}warning
-                                    {% else %}danger{% endif %}" 
+                                    {% else %}danger{% endif %}"
                                     style="width: {% if sla_info.overall == 'breached' %}100{% else %}{{ sla_info.resolution_pct|default:0 }}{% endif %}%;">
                                 </div>
                             </div>
-                            <span class="sla-timer 
+                            <span class="sla-timer
                                 {% if sla_info.overall == 'ok' %}safe
                                 {% elif sla_info.overall == 'warning' %}warning
                                 {% else %}danger{% endif %} text-xs">
@@ -70,7 +71,7 @@
                     </div>
                 </td>
                 <td class="py-3">
-                    <span class="priority-chip 
+                    <span class="priority-chip
                         {% if ticket.priority == 'P1' %}critical
                         {% elif ticket.priority == 'P2' %}high
                         {% elif ticket.priority == 'P3' %}medium
@@ -80,7 +81,7 @@
                 </td>
                 <td class="py-3 text-text-secondary text-xs">{{ ticket.updated_at|timesince }} ago</td>
                 <td class="py-3 px-3 text-right">
-                    <button class="ticket-action-btn btn-ghost p-1.5 rounded-full hover:bg-black/5 transition"
+                    <button class="ticket-action-btn-{{ iid }} btn-ghost p-1.5 rounded-full hover:bg-black/5 transition"
                             data-ticket-id="{{ ticket.pk }}"
                             data-ticket-number="{{ ticket.number }}"
                             data-is-assigned="{{ ticket.assigned_to|yesno:'true,false' }}"
@@ -109,7 +110,7 @@
 {# ================================================================ #}
 {# BULK ASSIGNMENT BAR                                              #}
 {# ================================================================ #}
-<div id="bulkActionBar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl shadow-2xl border px-6 py-4"
+<div id="bulkActionBar-{{ iid }}" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-xl shadow-2xl border px-6 py-4"
      style="background-color: var(--color-surface); border-color: var(--color-primary); box-shadow: 0 8px 40px rgba(13, 148, 136, 0.2);">
     <div class="flex items-center gap-6">
         <div class="flex items-center gap-3">
@@ -118,32 +119,32 @@
             </span>
             <div>
                 <span class="text-sm font-semibold" style="color: var(--color-text-primary);">
-                    <span id="selectedCount">0</span> ticket<span id="pluralS">s</span> selected
+                    <span id="selectedCount-{{ iid }}">0</span> ticket<span id="pluralS-{{ iid }}">s</span> selected
                 </span>
                 <span class="text-xs text-text-secondary block">Assign them to yourself</span>
             </div>
         </div>
-        
+
         <div class="flex items-center gap-2">
-            <button onclick="clearAllSelections()" 
+            <button onclick="clearAllSelections_{{ iid }}()"
                     class="btn-ghost text-sm px-3 py-1.5 rounded-lg">
                 Cancel
             </button>
-            <button onclick="bulkClaimTickets()" 
-                    id="bulkClaimBtn"
+            <button onclick="bulkClaimTickets_{{ iid }}()"
+                    id="bulkClaimBtn-{{ iid }}"
                     class="btn-primary text-sm px-5 py-2 rounded-lg flex items-center gap-2">
                 {% lucide "user-plus" size=16 %}
                 Assign to Me
-                <span id="bulkCount" class="ml-1"></span>
+                <span id="bulkCount-{{ iid }}" class="ml-1"></span>
             </button>
         </div>
     </div>
 </div>
 
 {# ================================================================ #}
-{# GLOBAL TICKET ACTIONS DROPDOWN                                  #}
+{# GLOBAL TICKET ACTIONS DROPDOWN (scoped to this table instance)  #}
 {# ================================================================ #}
-<div id="globalTicketDropdown" class="fixed rounded-lg shadow-lg border bg-surface z-[9999] py-1 min-w-44
+<div id="globalTicketDropdown-{{ iid }}" class="fixed rounded-lg shadow-lg border bg-surface z-[9999] py-1 min-w-44
             opacity-0 scale-95 pointer-events-none transition-all duration-150 ease-out"
      style="border-color: var(--color-border); background-color: var(--color-surface); transform-origin: top center;">
     <button class="dropdown-view w-full text-left px-4 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2 text-text-primary"
@@ -159,286 +160,250 @@
 </div>
 
 {# ================================================================ #}
-{# JAVASCRIPT - FULLY FIXED                                       #}
+{# JAVASCRIPT - scoped to this table instance (id suffix: {{ iid }}) #}
 {# ================================================================ #}
 <script>
-// ================================================================
-// BULK SELECTION - STATE
-// ================================================================
-var selectedIds = new Set();
-var isProcessing = false;
+(function() {
+    var instanceId = "{{ iid }}";
+    var selectedIds = new Set();
+    var isProcessing = false;
 
-// ================================================================
-// HANDLE INDIVIDUAL CHECKBOX CHANGE
-// ================================================================
-function handleCheckboxChange(checkbox) {
-    var ticketId = checkbox.value;
-    var row = checkbox.closest('tr');
-    
-    if (checkbox.checked) {
-        selectedIds.add(ticketId);
-        if (row) row.classList.add('bg-primary/5', 'border-l-4', 'border-l-primary');
-    } else {
-        selectedIds.delete(ticketId);
-        if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
+    var tableBody = document.getElementById('ticketTableBody-' + instanceId);
+    var bulkActionBar = document.getElementById('bulkActionBar-' + instanceId);
+    var selectAll = document.getElementById('selectAll-' + instanceId);
+
+    function checkboxes() {
+        return tableBody ? tableBody.querySelectorAll('.ticket-checkbox-' + instanceId) : [];
     }
-    
-    updateBulkUI();
-}
 
-// ================================================================
-// HANDLE SELECT ALL
-// ================================================================
-function handleSelectAll(checkbox) {
-    var checkboxes = document.querySelectorAll('.ticket-checkbox');
-    
-    selectedIds.clear();
-    
-    checkboxes.forEach(function(cb) {
-        cb.checked = checkbox.checked;
-        var id = cb.value;
-        var row = cb.closest('tr');
-        
+    function handleCheckboxChange(checkbox) {
+        var ticketId = checkbox.value;
+        var row = checkbox.closest('tr');
+
         if (checkbox.checked) {
-            selectedIds.add(id);
+            selectedIds.add(ticketId);
             if (row) row.classList.add('bg-primary/5', 'border-l-4', 'border-l-primary');
         } else {
-            selectedIds.delete(id);
+            selectedIds.delete(ticketId);
             if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
         }
-    });
-    
-    updateBulkUI();
-}
 
-// ================================================================
-// UPDATE BULK UI
-// ================================================================
-function updateBulkUI() {
-    var count = selectedIds.size;
-    var bar = document.getElementById('bulkActionBar');
-    var countEl = document.getElementById('selectedCount');
-    var pluralEl = document.getElementById('pluralS');
-    var bulkCountEl = document.getElementById('bulkCount');
-    var selectAll = document.getElementById('selectAll');
-    
-    if (count === 0) {
-        if (bar) {
-            bar.style.display = 'none';
-            bar.classList.add('hidden');
-            bar.classList.remove('flex');
-        }
-        if (selectAll) selectAll.checked = false;
-        return;
+        updateBulkUI();
     }
-    
-    if (bar) {
-        bar.style.display = 'flex';
-        bar.classList.remove('hidden');
-        bar.classList.add('flex');
-    }
-    
-    if (countEl) countEl.textContent = count;
-    if (pluralEl) pluralEl.textContent = count > 1 ? 's' : '';
-    if (bulkCountEl) bulkCountEl.textContent = '(' + count + ')';
-    
-    var total = document.querySelectorAll('.ticket-checkbox').length;
-    if (selectAll) {
-        selectAll.checked = (count === total && count > 0);
-    }
-}
 
-// ================================================================
-// CLEAR ALL SELECTIONS
-// ================================================================
-function clearAllSelections() {
-    document.querySelectorAll('.ticket-checkbox').forEach(function(cb) {
-        cb.checked = false;
-        var row = cb.closest('tr');
-        if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
-    });
-    selectedIds.clear();
-    updateBulkUI();
-}
+    function handleSelectAll(checkbox) {
+        selectedIds.clear();
 
-// ================================================================
-// BULK CLAIM TICKETS - FIXED
-// ================================================================
-function bulkClaimTickets() {
-    var count = selectedIds.size;
-    if (count === 0) return;
-    
-    // Prevent multiple clicks
-    if (isProcessing) return;
-    isProcessing = true;
-    
-    var btn = document.getElementById('bulkClaimBtn');
-    var originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Assigning...</span>';
-    btn.classList.add('opacity-70');
-    
-    var ticketIds = Array.from(selectedIds);
-    var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
-    var source = window.bulkSource || 'unassigned';
-    
-    var claimed = 0;
-    var failed = 0;
-    var total = ticketIds.length;
-    var successMessage = '';
-    
-    function claimNext(index) {
-        if (index >= ticketIds.length) {
-            // All done
-            btn.innerHTML = originalHtml;
-            btn.disabled = false;
-            btn.classList.remove('opacity-70');
-            isProcessing = false;
-            
-            if (claimed > 0) {
-                var msg = '✅ Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!';
-                if (typeof showToast === 'function') {
-                    showToast(msg, 'success');
-                }
-                
-                // Remove claimed rows from the table
-                document.querySelectorAll('.ticket-row').forEach(function(row) {
-                    var ticketId = row.dataset.ticketId;
-                    if (ticketId && selectedIds.has(ticketId)) {
-                        row.style.opacity = '0.3';
-                        row.style.transition = 'opacity 0.3s ease';
-                        setTimeout(function() {
-                            row.remove();
-                            selectedIds.delete(ticketId);
-                            updateBulkUI();
-                            
-                            // Check if table is empty
-                            var remaining = document.querySelectorAll('.ticket-row').length;
-                            if (remaining === 0) {
-                                // Reload the table to show "No tickets" message
-                                location.reload();
-                            }
-                        }, 300);
-                    }
-                });
-                
-                // If there were failures
-                if (failed > 0) {
-                    if (typeof showToast === 'function') {
-                        showToast('⚠️ ' + failed + ' ticket' + (failed > 1 ? 's' : '') + ' could not be claimed.', 'warning');
-                    }
-                }
+        checkboxes().forEach(function(cb) {
+            cb.checked = checkbox.checked;
+            var id = cb.value;
+            var row = cb.closest('tr');
+
+            if (checkbox.checked) {
+                selectedIds.add(id);
+                if (row) row.classList.add('bg-primary/5', 'border-l-4', 'border-l-primary');
             } else {
-                if (typeof showToast === 'function') {
-                    showToast('Failed to claim tickets. Please try again.', 'error');
-                }
+                selectedIds.delete(id);
+                if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
             }
+        });
+
+        updateBulkUI();
+    }
+
+    function updateBulkUI() {
+        var count = selectedIds.size;
+        var countEl = document.getElementById('selectedCount-' + instanceId);
+        var pluralEl = document.getElementById('pluralS-' + instanceId);
+        var bulkCountEl = document.getElementById('bulkCount-' + instanceId);
+
+        if (count === 0) {
+            if (bulkActionBar) {
+                bulkActionBar.style.display = 'none';
+                bulkActionBar.classList.add('hidden');
+                bulkActionBar.classList.remove('flex');
+            }
+            if (selectAll) selectAll.checked = false;
             return;
         }
-        
-        var ticketId = ticketIds[index];
-        var claimUrl = '/tickets/claim/' + ticketId + '/';
-        
-        fetch(claimUrl, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': csrfToken,
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({ source: source })
-        })
-        .then(function(response) {
-            return response.json();
-        })
-        .then(function(data) {
-            if (data.success) {
-                claimed++;
-            } else {
-                failed++;
-            }
-            
-            // Update progress
-            btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ' + (claimed + failed) + '/' + total + ' assigned...</span>';
-            
-            claimNext(index + 1);
-        })
-        .catch(function() {
-            failed++;
-            claimNext(index + 1);
-        });
-    }
-    
-    claimNext(0);
-}
 
-// ================================================================
-// KEYBOARD SHORTCUTS
-// ================================================================
-document.addEventListener('keydown', function(e) {
-    if (e.ctrlKey && e.key === 'a') {
-        e.preventDefault();
-        var selectAll = document.getElementById('selectAll');
+        if (bulkActionBar) {
+            bulkActionBar.style.display = 'flex';
+            bulkActionBar.classList.remove('hidden');
+            bulkActionBar.classList.add('flex');
+        }
+
+        if (countEl) countEl.textContent = count;
+        if (pluralEl) pluralEl.textContent = count > 1 ? 's' : '';
+        if (bulkCountEl) bulkCountEl.textContent = '(' + count + ')';
+
+        var total = checkboxes().length;
         if (selectAll) {
+            selectAll.checked = (count === total && count > 0);
+        }
+    }
+
+    function clearAllSelections() {
+        checkboxes().forEach(function(cb) {
+            cb.checked = false;
+            var row = cb.closest('tr');
+            if (row) row.classList.remove('bg-primary/5', 'border-l-4', 'border-l-primary');
+        });
+        selectedIds.clear();
+        updateBulkUI();
+    }
+
+    function bulkClaimTickets() {
+        var count = selectedIds.size;
+        if (count === 0) return;
+
+        if (isProcessing) return;
+        isProcessing = true;
+
+        var btn = document.getElementById('bulkClaimBtn-' + instanceId);
+        var originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Assigning...</span>';
+        btn.classList.add('opacity-70');
+
+        var ticketIds = Array.from(selectedIds);
+        var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+        var source = window.bulkSource || 'unassigned';
+
+        var claimed = 0;
+        var failed = 0;
+        var total = ticketIds.length;
+
+        function claimNext(index) {
+            if (index >= ticketIds.length) {
+                btn.innerHTML = originalHtml;
+                btn.disabled = false;
+                btn.classList.remove('opacity-70');
+                isProcessing = false;
+
+                if (claimed > 0) {
+                    var msg = '✅ Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!';
+                    if (typeof showToast === 'function') {
+                        showToast(msg, 'success');
+                    }
+
+                    if (tableBody) {
+                        tableBody.querySelectorAll('.ticket-row').forEach(function(row) {
+                            var ticketId = row.dataset.ticketId;
+                            if (ticketId && selectedIds.has(ticketId)) {
+                                row.style.opacity = '0.3';
+                                row.style.transition = 'opacity 0.3s ease';
+                                setTimeout(function() {
+                                    row.remove();
+                                    selectedIds.delete(ticketId);
+                                    updateBulkUI();
+
+                                    var remaining = tableBody.querySelectorAll('.ticket-row').length;
+                                    if (remaining === 0) {
+                                        location.reload();
+                                    }
+                                }, 300);
+                            }
+                        });
+                    }
+
+                    if (failed > 0 && typeof showToast === 'function') {
+                        showToast('⚠️ ' + failed + ' ticket' + (failed > 1 ? 's' : '') + ' could not be claimed.', 'warning');
+                    }
+                } else if (typeof showToast === 'function') {
+                    showToast('Failed to claim tickets. Please try again.', 'error');
+                }
+                return;
+            }
+
+            var ticketId = ticketIds[index];
+            var claimUrl = '/tickets/claim/' + ticketId + '/';
+
+            fetch(claimUrl, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({ source: source })
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success) claimed++; else failed++;
+                btn.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ' + (claimed + failed) + '/' + total + ' assigned...</span>';
+                claimNext(index + 1);
+            })
+            .catch(function() {
+                failed++;
+                claimNext(index + 1);
+            });
+        }
+
+        claimNext(0);
+    }
+
+    // Expose the per-instance functions under unique global names
+    // (referenced by inline onchange/onclick attributes above).
+    window['handleCheckboxChange_' + instanceId] = handleCheckboxChange;
+    window['handleSelectAll_' + instanceId] = handleSelectAll;
+    window['clearAllSelections_' + instanceId] = clearAllSelections;
+    window['bulkClaimTickets_' + instanceId] = bulkClaimTickets;
+
+    // ================================================================
+    // KEYBOARD SHORTCUTS (scoped to this instance's own elements)
+    // ================================================================
+    document.addEventListener('keydown', function(e) {
+        var active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+            if (!(e.ctrlKey && e.key === 'a')) return;
+        }
+        if (e.ctrlKey && e.key === 'a' && selectAll) {
+            e.preventDefault();
             selectAll.checked = !selectAll.checked;
             handleSelectAll(selectAll);
         }
-    }
-    
-    if (e.key === 'Escape') {
-        clearAllSelections();
-    }
-});
+        if (e.key === 'Escape') {
+            clearAllSelections();
+        }
+    });
 
-// ================================================================
-// INITIALIZE
-// ================================================================
-function initBulkSelection() {
-    var checkboxes = document.querySelectorAll('.ticket-checkbox');
-    if (checkboxes.length === 0) return;
-    
-    // Reset selection state on page load
-    selectedIds.clear();
-    var bar = document.getElementById('bulkActionBar');
-    if (bar) {
-        bar.style.display = 'none';
-        bar.classList.add('hidden');
-        bar.classList.remove('flex');
-    }
-}
-
-// Run on DOM ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initBulkSelection);
-} else {
-    setTimeout(initBulkSelection, 100);
-}
-
-document.addEventListener('htmx:afterSwap', function(event) {
-    if (event.target.id === 'ticketTableBody') {
-        console.log('🔵 Table body replaced, re-initializing');
+    // ================================================================
+    // INITIALIZE
+    // ================================================================
+    function initBulkSelection() {
+        if (checkboxes().length === 0) return;
         selectedIds.clear();
-        setTimeout(function() {
-            var bar = document.getElementById('bulkActionBar');
-            if (bar) {
-                bar.style.display = 'none';
-                bar.classList.add('hidden');
-                bar.classList.remove('flex');
-            }
-        }, 50);
+        if (bulkActionBar) {
+            bulkActionBar.style.display = 'none';
+            bulkActionBar.classList.add('hidden');
+            bulkActionBar.classList.remove('flex');
+        }
     }
-});
 
-console.log('🔵 Bulk selection script loaded');
-
-// ================================================================
-// GLOBAL TICKET ACTION DROPDOWN - Individual Actions
-// ================================================================
-(function() {
-    var dropdown = document.getElementById('globalTicketDropdown');
-    if (!dropdown) {
-        console.warn('⚠️ globalTicketDropdown not found');
-        return;
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBulkSelection);
+    } else {
+        setTimeout(initBulkSelection, 100);
     }
+
+    document.addEventListener('htmx:afterSwap', function(event) {
+        if (event.target.id === 'ticketTableBody-' + instanceId) {
+            selectedIds.clear();
+            setTimeout(function() {
+                if (bulkActionBar) {
+                    bulkActionBar.style.display = 'none';
+                    bulkActionBar.classList.add('hidden');
+                    bulkActionBar.classList.remove('flex');
+                }
+            }, 50);
+        }
+    });
+
+    // ================================================================
+    // GLOBAL TICKET ACTION DROPDOWN - Individual Actions (this instance)
+    // ================================================================
+    var dropdown = document.getElementById('globalTicketDropdown-' + instanceId);
+    if (!dropdown) return;
 
     var viewBtn = dropdown.querySelector('.dropdown-view');
     var claimBtn = dropdown.querySelector('.dropdown-claim');
@@ -452,15 +417,9 @@ console.log('🔵 Bulk selection script loaded');
         var top = rect.bottom + 6;
         var left = rect.left + rect.width / 2 - 80;
 
-        if (top + 150 > window.innerHeight) {
-            top = rect.top - 150 - 6;
-        }
-        if (left + 160 > window.innerWidth) {
-            left = window.innerWidth - 170;
-        }
-        if (left < 10) {
-            left = 10;
-        }
+        if (top + 150 > window.innerHeight) top = rect.top - 150 - 6;
+        if (left + 160 > window.innerWidth) left = window.innerWidth - 170;
+        if (left < 10) left = 10;
 
         dropdown.style.top = top + 'px';
         dropdown.style.left = left + 'px';
@@ -472,33 +431,18 @@ console.log('🔵 Bulk selection script loaded');
         activeButton = null;
     }
 
-    window.loadTicketSlideoverFromDropdown = function(url) {
-        if (!url) {
-            console.error('❌ slideoverUrl is missing');
-            return;
-        }
-
-        closeDropdown();
-        console.log('🔵 Loading slideover from:', url);
-        htmx.ajax('GET', url, {
-            target: '#slideoverContent',
-            swap: 'innerHTML',
-        });
-
+    window.loadTicketSlideoverFromDropdown = window.loadTicketSlideoverFromDropdown || function(url) {
+        if (!url) return;
+        htmx.ajax('GET', url, { target: '#slideoverContent', swap: 'innerHTML' });
         setTimeout(function() {
-            if (typeof window.openSlideover === 'function') {
-                window.openSlideover();
-            } else if (typeof openSlideover === 'function') {
-                openSlideover();
-            }
+            if (typeof window.openSlideover === 'function') window.openSlideover();
         }, 120);
     };
 
-    window.ticketActionBtnClick = function(btn) {
+    function ticketActionBtnClick(btn) {
         closeDropdown();
 
         var dataset = btn.dataset;
-        
         activeButton = btn;
         activeData = {
             slideoverUrl: dataset.slideoverUrl || null,
@@ -509,29 +453,20 @@ console.log('🔵 Bulk selection script loaded');
             ticketNumber: dataset.ticketNumber || null,
         };
 
-        if (!activeData.slideoverUrl) {
-            var attr = btn.getAttribute('data-slideover-url');
-            if (attr) activeData.slideoverUrl = attr;
-        }
-
-        if (claimBtn) {
-            claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
-        }
-        if (viewBtn) {
-            viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
-        }
+        if (claimBtn) claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
+        if (viewBtn) viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
 
         positionDropdown(btn);
         dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
         dropdown.classList.add('opacity-100', 'scale-100');
-    };
+    }
 
     document.addEventListener('click', function(e) {
-        var btn = e.target.closest('.ticket-action-btn');
+        var btn = e.target.closest('.ticket-action-btn-' + instanceId);
         if (btn) {
             e.preventDefault();
             e.stopPropagation();
-            window.ticketActionBtnClick(btn);
+            ticketActionBtnClick(btn);
         }
     });
 
@@ -539,13 +474,10 @@ console.log('🔵 Bulk selection script loaded');
         viewBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-
             if (!activeData.slideoverUrl) {
-                console.error('❌ slideoverUrl is null or undefined!');
                 closeDropdown();
                 return;
             }
-
             window.loadTicketSlideoverFromDropdown(activeData.slideoverUrl);
             closeDropdown();
         });
@@ -555,48 +487,38 @@ console.log('🔵 Bulk selection script loaded');
         claimBtn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             if (!activeData.claimUrl) {
-                console.error('❌ claimUrl is missing');
                 closeDropdown();
                 return;
             }
 
             var source = window.bulkSource || 'unassigned';
-            console.log('🔵 Claiming ticket ' + activeData.ticketNumber + ' from source: ' + source);
-            
             closeDropdown();
-            
+
             var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
-            
             claimBtn.style.opacity = '0.5';
             claimBtn.style.pointerEvents = 'none';
-            
+
             if (typeof showToast === 'function') {
                 showToast('⏳ Claiming ticket...', 'info');
             }
-            
+
             fetch(activeData.claimUrl, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': csrfToken,
                     'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: new URLSearchParams({
-                    'source': source
-                })
+                body: new URLSearchParams({ 'source': source })
             })
-            .then(function(response) {
-                return response.json();
-            })
+            .then(function(response) { return response.json(); })
             .then(function(data) {
                 if (data.success) {
                     if (typeof showToast === 'function') {
                         showToast(data.message || '✅ Ticket claimed successfully!', 'success');
                     }
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 800);
+                    setTimeout(function() { window.location.reload(); }, 800);
                 } else {
                     if (typeof showToast === 'function') {
                         showToast(data.message || 'Failed to claim ticket.', 'error');
@@ -606,7 +528,6 @@ console.log('🔵 Bulk selection script loaded');
                 }
             })
             .catch(function(error) {
-                console.error('Error claiming ticket:', error);
                 if (typeof showToast === 'function') {
                     showToast('An error occurred while claiming the ticket.', 'error');
                 }
@@ -628,7 +549,7 @@ console.log('🔵 Bulk selection script loaded');
     }
 
     document.addEventListener('click', function(e) {
-        if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn')) {
+        if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn-' + instanceId)) {
             closeDropdown();
         }
     });
@@ -640,13 +561,7 @@ console.log('🔵 Bulk selection script loaded');
     });
 
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeDropdown();
-        }
+        if (e.key === 'Escape') closeDropdown();
     });
-
-    console.log('✅ Agent ticket dropdown initialized');
 })();
-
-console.log('✅ All scripts loaded');
 </script>

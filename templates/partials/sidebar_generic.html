@@ -1,10 +1,14 @@
-<a href="{% url 'dashboard' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
+{% load lucide %}
+
+<a href="{% url 'dashboard' %}"
+   class="sidebar-link standalone flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition"
    style="{% if request.path == '/' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-    {% lucide "layout-dashboard" size=20 class="h-5 w-5 shrink-0" %}
-    Overview
+    <span class="shrink-0">{% lucide "layout-dashboard" size=18 class="h-5 w-5" %}</span>
+    <span>Overview</span>
 </a>
-<a href="{% url 'accounts:profile' %}" class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition"
+<a href="{% url 'accounts:profile' %}"
+   class="sidebar-link standalone flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition"
    style="{% if request.path == '/accounts/profile/' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-    {% lucide "circle-user" size=20 class="h-5 w-5 shrink-0" %}
-    Profile
+    <span class="shrink-0">{% lucide "circle-user" size=18 class="h-5 w-5" %}</span>
+    <span>Profile</span>
 </a>

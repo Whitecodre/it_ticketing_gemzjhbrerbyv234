@@ -236,31 +236,35 @@
 
 <!-- Pagination -->
 {% if assets.has_other_pages %}
-<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--color-border);">
-    <span class="text-sm text-text-secondary">
-        Showing {{ assets.start_index }} - {{ assets.end_index }} of {{ assets.paginator.count }}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ assets.start_index }}–{{ assets.end_index }}</strong> of <strong>{{ assets.paginator.count }}</strong> assets
     </span>
-    <div class="flex gap-1.5">
-        {% if assets.has_previous %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
-                hx-target="#assetTableContainer"
-                hx-swap="innerHTML">
-            ← Prev
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not assets.has_previous %} is-disabled{% endif %}"
+                {% if assets.has_previous %}hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                hx-target="#assetTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
         </button>
-        {% endif %}
-        
-        <span class="px-3 py-1 text-sm rounded bg-primary text-white">
-            {{ assets.number }}
-        </span>
-        
+        <div class="pagination-numbers">
+            {% for num in assets.paginator.page_range %}
+                {% if num == assets.number %}
+                <span class="pagination-number is-current">{{ num }}</span>
+                {% elif num > assets.number|add:'-3' and num < assets.number|add:'3' %}
+                <button class="pagination-number"
+                        hx-get="{% url 'tickets:assets' %}?page={{ num }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                        hx-target="#assetTableContainer" hx-swap="innerHTML">{{ num }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
         {% if assets.has_next %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
+        <button class="pagination-step"
                 hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
-                hx-target="#assetTableContainer"
-                hx-swap="innerHTML">
-            Next →
+                hx-target="#assetTableContainer" hx-swap="innerHTML">
+            Next {% lucide "chevron-right" size=14 %}
         </button>
+        {% else %}
+        <button class="pagination-step is-disabled" disabled>Next {% lucide "chevron-right" size=14 %}</button>
         {% endif %}
     </div>
 </div>

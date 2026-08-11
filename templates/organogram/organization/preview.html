@@ -111,16 +111,7 @@
         width: 100%;
     }
     
-    .org-children::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 10%;
-        right: 10%;
-        height: 2px;
-        background-color: var(--color-border);
-    }
-    
+    /* Vertical line from horizontal rail to each child */
     .org-children .org-node::before {
         content: '';
         position: absolute;
@@ -131,6 +122,26 @@
         height: 16px;
         background-color: var(--color-border);
     }
+
+    /* Horizontal rail: each child draws the rail segment directly above it,
+       overflowing into half the column gap on each side so adjoining
+       segments meet in the middle of the gap between cards. The first and
+       last child stop at their own center instead of overflowing outward,
+       so the rail spans only from the first sibling's center to the last
+       sibling's — not a fixed 10%-90% line that ignored how many children
+       or how wide the row actually was. */
+    .org-children .org-node::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -1.25rem;
+        right: -1.25rem;
+        height: 2px;
+        background-color: var(--color-border);
+    }
+    .org-children .org-node:first-child::after { left: 50%; }
+    .org-children .org-node:last-child::after { right: 50%; }
+    .org-children .org-node:only-child::after { display: none; }
 </style>
 {% endblock %}
 
@@ -177,9 +188,9 @@
                     {% endfor %}
                 </div>
             {% else %}
-                <div class="text-center py-12 text-text-secondary">
-                    <span class="text-4xl block mb-3">🏢</span>
-                    <p class="text-lg font-medium">No structure defined</p>
+                <div class="empty-state">
+                    {% lucide "building-2" size=40 %}
+                    <p class="empty-state-title">No structure defined</p>
                 </div>
             {% endif %}
         </div>

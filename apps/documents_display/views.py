@@ -7,12 +7,15 @@ from django.http import HttpResponse, JsonResponse, FileResponse
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.utils import timezone
+from django.urls import reverse
 from apps.common.decorators import xframe_options_exempt, document_admin_required
 from django.views.decorators.http import require_POST
+from django.template.loader import render_to_string
 from .utils import get_document_view, set_document_view
-from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess
-from .forms import DisplayDocumentForm, DepartmentAccessFormSet, build_department_access_initial
+from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, generate_share_token
+from .forms import DisplayDocumentForm, DepartmentAccessFormSet, build_department_access_initial, ShareDocumentForm
 from apps.accounts.models import User
+from apps.common.utils import send_email_via_brevo
 from .utils import generate_preview_for_document
 from apps.tickets.views import get_sidebar_template
 
@@ -371,5 +374,100 @@ def document_serve_file(request, slug):
     # Remove X-Frame-Options (already handled by decorator)
     if 'X-Frame-Options' in response:
         del response['X-Frame-Options']
-    
+
     return response
+
+
+def _send_document_share_email(request, share):
+    """Email the recipient a link to accept an active document share."""
+    accept_url = request.build_absolute_uri(
+        reverse('documents_display:document_share_open', args=[share.token])
+    )
+    html_message = render_to_string('emails/document_shared.html', {
+        'recipient': share.recipient,
+        'document': share.document,
+        'shared_by': share.shared_by,
+        'can_edit': share.can_edit,
+        'can_download': share.can_download,
+        'accept_url': accept_url,
+    })
+    return send_email_via_brevo(
+        to_email=share.recipient.email,
+        subject=f'{share.document.title} has been shared with you',
+        html_content=html_message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+    )
+
+
+@login_required
+@document_admin_required
+def document_share(request, slug):
+    """Manage per-user shares for a document: list existing shares, add a new one."""
+    document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=False)
+
+    if request.method == 'POST':
+        form = ShareDocumentForm(request.POST)
+        if form.is_valid():
+            recipient = form.cleaned_data['recipient']
+            share, _created = DocumentShare.objects.update_or_create(
+                document=document,
+                recipient=recipient,
+                defaults={
+                    'shared_by': request.user,
+                    'can_edit': form.cleaned_data['can_edit'],
+                    'can_download': form.cleaned_data['can_download'],
+                    'revoked_at': None,
+                    'token': generate_share_token(),
+                    'accepted_at': None,
+                },
+            )
+            success, _result = _send_document_share_email(request, share)
+            if success:
+                messages.success(request, f'"{document.title}" shared with {recipient.get_full_name() or recipient.email}.')
+            else:
+                messages.warning(request, f'Share created, but the notification email failed to send. Share the link manually: {request.build_absolute_uri(reverse("documents_display:document_share_open", args=[share.token]))}')
+            return redirect('documents_display:document_share', slug=document.slug)
+    else:
+        form = ShareDocumentForm()
+
+    context = {
+        'document': document,
+        'form': form,
+        'shares': document.shares.select_related('recipient').all(),
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'documents_display/document_share.html', context)
+
+
+@login_required
+@document_admin_required
+@require_POST
+def document_share_revoke(request, slug, share_id):
+    """Revoke a document share."""
+    document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=False)
+    share = get_object_or_404(DocumentShare, pk=share_id, document=document)
+    share.revoke()
+    messages.success(request, f'Access revoked for {share.recipient.get_full_name() or share.recipient.email}.')
+    return redirect('documents_display:document_share', slug=document.slug)
+
+
+@login_required
+def document_share_open(request, token):
+    """Landing page for an emailed share link. Must be opened while logged in as the
+    intended recipient — the token identifies the grant, not a login bypass."""
+    share = get_object_or_404(DocumentShare, token=token)
+
+    if share.recipient_id != request.user.id:
+        messages.error(request, 'This share link is for a different account. Log in as the intended recipient to access it.')
+        return redirect('documents_display:dashboard')
+
+    if not share.is_active:
+        messages.error(request, 'This share link has been revoked.')
+        return redirect('documents_display:dashboard')
+
+    if share.accepted_at is None:
+        share.accepted_at = timezone.now()
+        share.save(update_fields=['accepted_at'])
+
+    messages.success(request, f'You now have access to "{share.document.title}".')
+    return redirect('documents_display:document_detail', slug=share.document.slug)

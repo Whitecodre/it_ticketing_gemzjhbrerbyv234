@@ -95,3 +95,13 @@ def build_department_access_initial(document=None):
         }
         for code, _label in User.DEPARTMENT_CHOICES
     ]
+
+
+class ShareDocumentForm(forms.Form):
+    recipient = forms.ModelChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by('department', 'first_name', 'last_name'),
+        widget=forms.Select(attrs=SELECT_ATTRS),
+        help_text="Must be an existing, active account."
+    )
+    can_edit = forms.BooleanField(required=False, label="Can edit", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))
+    can_download = forms.BooleanField(required=False, label="Can download", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))

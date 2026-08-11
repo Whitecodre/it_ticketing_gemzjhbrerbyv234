@@ -32,7 +32,7 @@
             {% lucide "clipboard-check" size=20 %}
         </div>
         <div>
-            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Manager Review</h2>
+            <h2 class="text-base font-semibold text-text-primary">Manager Review</h2>
             <p class="text-sm text-text-secondary">Service requests pending your review before they go to the Approver.</p>
         </div>
     </div>
@@ -42,7 +42,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
@@ -53,7 +53,7 @@
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                         </td>

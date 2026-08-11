@@ -1,7 +1,7 @@
 {% load lucide %}
 
-<div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--color-border);">
-    <h3 class="text-xs font-semibold" style="color: var(--color-text-primary);">Ticket details</h3>
+<div class="flex items-center justify-between px-5 py-4 border-b border-border">
+    <h3 class="text-xs font-semibold text-text-primary">Ticket details</h3>
     <button onclick="toggleDetailsPanel()" class="btn-ghost p-1" aria-label="Close ticket details">
         {% lucide "x" size=18 %}
     </button>
@@ -11,16 +11,15 @@
 
     {# ---------- Assignee (read‑only) ---------- #}
     <div>
-        <label class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2 block" style="color: var(--color-text-secondary);">Assignee</label>
+        <label class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2 block text-text-secondary">Assignee</label>
         <div class="flex items-center gap-2">
             {% if ticket.assigned_to %}
-                <div class="flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-medium"
-                     style="background-color: var(--color-primary);">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-medium bg-primary">
                     {{ ticket.assigned_to.email.0|upper }}
                 </div>
                 <div class="flex-1 min-w-0">
-                    <p class="text-xs font-medium truncate" style="color: var(--color-text-primary);">{{ ticket.assigned_to.get_full_name_with_role }}</p>
-                    <p class="text-[0.65rem] truncate" style="color: var(--color-text-secondary);">{{ ticket.assigned_to.get_role_display }}</p>
+                    <p class="text-xs font-medium truncate text-text-primary">{{ ticket.assigned_to.get_full_name_with_role }}</p>
+                    <p class="text-[0.65rem] truncate text-text-secondary">{{ ticket.assigned_to.get_role_display }}</p>
                 </div>
             {% else %}
                 <span class="text-xs text-text-secondary">Unassigned</span>
@@ -28,41 +27,40 @@
         </div>
     </div>
 
-    <hr style="border-color: var(--color-border);">
+    <hr class="border-border">
 
     {# ---------- Metadata ---------- #}
     <div class="space-y-3">
         <div class="flex justify-between items-center">
-            <span class="text-[0.65rem] font-semibold uppercase tracking-wider" style="color: var(--color-text-secondary);">ID</span>
+            <span class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">ID</span>
             <div class="flex items-center gap-1">
-                <span class="text-xs font-mono" style="color: var(--color-text-primary);">{{ ticket.number }}</span>
+                <span class="text-xs font-mono text-text-primary">{{ ticket.number }}</span>
                 <button class="btn-ghost p-1 element-link" onclick="copyToClipboard('{{ ticket.number }}')" data-tooltip="Copy ticket ID">
                     {% lucide "copy" size=12 %}
                 </button>
             </div>
         </div>
         <div>
-            <span class="text-[0.65rem] font-semibold uppercase tracking-wider block mb-1" style="color: var(--color-text-secondary);">Subject</span>
+            <span class="text-[0.65rem] font-semibold uppercase tracking-wider block mb-1 text-text-secondary">Subject</span>
             <div class="flex items-center gap-2">
-                <span id="subjectDisplay" class="text-xs flex-1 truncate" style="color: var(--color-text-primary);">{{ ticket.title }}</span>
+                <span id="subjectDisplay" class="text-xs flex-1 truncate text-text-primary">{{ ticket.title }}</span>
             </div>
         </div>
         <div class="flex items-center justify-between">
-            <span class="text-[0.65rem] font-semibold uppercase tracking-wider" style="color: var(--color-text-secondary);">Type</span>
-            <span class="text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">{{ ticket.get_type_display }}</span>
+            <span class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Type</span>
+            <span class="text-xs px-2 py-0.5 rounded-full border border-border text-text-primary">{{ ticket.get_type_display }}</span>
         </div>
         <div class="flex items-center justify-between">
-            <span class="text-[0.65rem] font-semibold uppercase tracking-wider" style="color: var(--color-text-secondary);">Priority</span>
+            <span class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Priority</span>
             <span class="priority-chip {% if ticket.priority == 'P1' %}critical{% elif ticket.priority == 'P2' %}high{% elif ticket.priority == 'P3' %}medium{% else %}low{% endif %} text-[0.65rem]">{{ ticket.get_priority_display }}</span>
         </div>
     </div>
 
-    <hr style="border-color: var(--color-border);">
+    <hr class="border-border">
 
     {# ---------- Lead Information (collapsible) ---------- #}
     <div>
-        <button class="flex items-center gap-1 text-xs font-semibold w-full text-left cursor-pointer"
-                style="color: var(--color-text-primary);"
+        <button class="flex items-center gap-1 text-xs font-semibold w-full text-left cursor-pointer text-text-primary"
                 onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
             {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
             Lead information
@@ -70,26 +68,25 @@
         <div class="hidden mt-2 space-y-2">
             <div class="flex items-center gap-2 text-xs">
                 {% lucide "user" size=14 class="text-text-secondary" %}
-                <span class="truncate" style="color: var(--color-text-primary);">{{ ticket.requester.get_full_name_with_role }}</span>
+                <span class="truncate text-text-primary">{{ ticket.requester.get_full_name_with_role }}</span>
             </div>
             <div class="flex items-center gap-2 text-xs">
                 {% lucide "mail" size=14 class="text-text-secondary" %}
-                <span class="truncate" style="color: var(--color-primary);">{{ ticket.requester.email }}</span>
+                <span class="truncate text-primary">{{ ticket.requester.email }}</span>
             </div>
             <a href="#" class="text-xs text-primary ml-6">See all</a>
         </div>
     </div>
 
-    <hr style="border-color: var(--color-border);">
+    <hr class="border-border">
 
     {# ---------- Attachments ---------- #}
     <div>
-        <label class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1 block" style="color: var(--color-text-secondary);">Attachments</label>
+        <label class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1 block text-text-secondary">Attachments</label>
 
         {# User Attachments #}
         <div class="mb-2">
-            <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer"
-                    style="color: var(--color-text-primary);"
+            <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer text-text-primary"
                     onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
                 {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
                 Sent by {{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }} (User)
@@ -99,7 +96,7 @@
                 {% for att in user_attachments %}
                 <div class="flex items-center gap-2 text-xs pl-5">
                     {% lucide "paperclip" size=12 class="text-text-secondary" %}
-                    <span class="truncate" style="color: var(--color-text-primary);">{{ att.filename }}</span>
+                    <span class="truncate text-text-primary">{{ att.filename }}</span>
                     <button class="btn-ghost p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
                             hx-get="{% url 'tickets:attachment_preview' att.pk %}"
                             hx-target="#modalContainer"
@@ -118,8 +115,7 @@
 
         {# Agent / Support Team Attachments #}
         <div>
-            <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer"
-                    style="color: var(--color-text-primary);"
+            <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer text-text-primary"
                     onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
                 {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
                 Sent by Support Team
@@ -129,7 +125,7 @@
                 {% for att in agent_attachments %}
                 <div class="flex items-center gap-2 text-xs pl-5">
                     {% lucide "paperclip" size=12 class="text-text-secondary" %}
-                    <span class="truncate" style="color: var(--color-text-primary);">{{ att.filename }}</span>
+                    <span class="truncate text-text-primary">{{ att.filename }}</span>
                     <button class="btn-attachment p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
                             hx-get="{% url 'tickets:attachment_preview' att.pk %}"
                             hx-target="#modalContainer"

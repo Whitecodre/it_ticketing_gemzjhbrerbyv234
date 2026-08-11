@@ -34,33 +34,36 @@ class Ticket(models.Model):
         except SLA.DoesNotExist:
             return result  # no policy → always ok
 
-        # Response
-        if self.response_due_at:
-            total_secs = (self.response_due_at - self.created_at).total_seconds()
-        else:
-            total_secs = sla.response_minutes * 60   # fallback: use SLA target
-        if total_secs > 0:
-            elapsed_secs = (now - self.created_at).total_seconds()
-            pct = min(100, (elapsed_secs / total_secs) * 100)
-            result['response_pct'] = round(pct, 1)
-            if pct >= 100:
-                result['response'] = 'breached'
-            elif pct >= 75:
-                result['response'] = 'warning'
+        # Response. Breach is judged directly against the deadline (now >=
+        # due_at) rather than only from the elapsed/total percentage: when a
+        # due_at is at or before created_at (e.g. a ticket whose response
+        # SLA was already overdue when it was set), total_secs is <= 0 and
+        # the old "only act if total_secs > 0" guard silently left this at
+        # its default 'ok' — an overdue ticket reported as on-track.
+        response_due = self.response_due_at or (
+            self.created_at + datetime.timedelta(minutes=sla.response_minutes)
+        )
+        total_secs = (response_due - self.created_at).total_seconds()
+        elapsed_secs = (now - self.created_at).total_seconds()
+        pct = min(100, (elapsed_secs / total_secs) * 100) if total_secs > 0 else 100
+        result['response_pct'] = round(pct, 1)
+        if now >= response_due:
+            result['response'] = 'breached'
+        elif pct >= 75:
+            result['response'] = 'warning'
 
-        # Resolution
-        if self.resolution_due_at:
-            total_secs = (self.resolution_due_at - self.created_at).total_seconds()
-        else:
-            total_secs = sla.resolution_minutes * 60
-        if total_secs > 0:
-            elapsed_secs = (now - self.created_at).total_seconds()
-            pct = min(100, (elapsed_secs / total_secs) * 100)
-            result['resolution_pct'] = round(pct, 1)
-            if pct >= 100:
-                result['resolution'] = 'breached'
-            elif pct >= 75:
-                result['resolution'] = 'warning'
+        # Resolution — same logic.
+        resolution_due = self.resolution_due_at or (
+            self.created_at + datetime.timedelta(minutes=sla.resolution_minutes)
+        )
+        total_secs = (resolution_due - self.created_at).total_seconds()
+        elapsed_secs = (now - self.created_at).total_seconds()
+        pct = min(100, (elapsed_secs / total_secs) * 100) if total_secs > 0 else 100
+        result['resolution_pct'] = round(pct, 1)
+        if now >= resolution_due:
+            result['resolution'] = 'breached'
+        elif pct >= 75:
+            result['resolution'] = 'warning'
 
         # Overall status
         if result['response'] == 'breached' or result['resolution'] == 'breached':
@@ -817,14 +820,25 @@ class Asset(models.Model):
     # ================================================================
     
     def get_reassignment_count(self):
-        if hasattr(self, '_reassignment_count'):
-            return self._reassignment_count
-        assigned_logs = self.logs.filter(
-            action=AssetLog.Action.ASSIGNED
-        ).order_by('created_at')
-        count = max(0, assigned_logs.count() - 1)
-        self._reassignment_count = count
-        return count
+        # Deliberately not cached on the instance: this asset can be
+        # reassigned (new AssetLog rows created) via a separate query/request
+        # while this Python object is still alive — e.g. immediately after a
+        # reassign POST in the same view, or across a refresh_from_db(),
+        # which only reloads field values and would leave a cached count
+        # stale.
+        #
+        # An ASSIGNED log only counts as a *re*assignment if it recorded a
+        # real previous holder in details['from']. Assets created with
+        # assigned_to already set get no log at all (see asset_reassign()),
+        # so the first ASSIGNED log for such an asset is a genuine handover,
+        # not an "initial assignment" — counting "all ASSIGNED logs minus
+        # one" assumed a baseline log that doesn't actually exist and
+        # undercounted the very first real reassignment.
+        assigned_logs = self.logs.filter(action=AssetLog.Action.ASSIGNED)
+        return sum(
+            1 for log in assigned_logs
+            if (log.details or {}).get('from') and log.details['from'] != 'Unassigned'
+        )
 
     def has_been_reassigned(self):
         return self.get_reassignment_count() > 0

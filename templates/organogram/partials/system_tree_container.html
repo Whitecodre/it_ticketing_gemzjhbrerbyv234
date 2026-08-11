@@ -2,29 +2,7 @@
 <!-- PARTIAL: System Organogram Tree Container (for HTMX updates)    -->
 <!-- ================================================================ -->
 {% load organogram_filters %}
--
-
-<!-- IT Department Stats (shown when IT is selected or no filter) -->
-{% if not department or department == 'IT' %}
-<div class="it-stats">
-    <div class="stat-item">
-        <div class="label">Total IT Staff</div>
-        <div class="value">{{ it_dept_stats.total }}</div>
-    </div>
-    <div class="stat-item">
-        <div class="label">Managers / Leads</div>
-        <div class="value managers">{{ it_dept_stats.managers }}</div>
-    </div>
-    <div class="stat-item">
-        <div class="label">Agents</div>
-        <div class="value agents">{{ it_dept_stats.agents }}</div>
-    </div>
-    <div class="stat-item">
-        <div class="label">End Users</div>
-        <div class="value end-users">{{ it_dept_stats.end_users }}</div>
-    </div>
-</div>
-{% endif %}
+{% load lucide %}
 
 <!-- Tree Container -->
 <div class="org-scroll-container">
@@ -91,16 +69,41 @@
             </div>
         {% else %}
             <div class="empty-state">
-                <span class="icon">👥</span>
-                <h3>No users found</h3>
-                <p class="text-sm text-text-secondary">Add users and assign managers to build the system organogram.</p>
+                {% lucide "users" size=40 %}
+                <p class="empty-state-title">No users found</p>
+                <p class="empty-state-subtext">Add users and assign managers to build the system organogram.</p>
                 {% if search_query %}
-                    <p class="text-xs text-text-secondary mt-2">Try adjusting your search or filter.</p>
+                    <p class="empty-state-subtext">Try adjusting your search or filter.</p>
                 {% endif %}
             </div>
         {% endif %}
     </div>
 </div>
+
+<!-- IT Department Stats (shown when IT is selected or no filter) — placed
+     at the bottom of the chart rather than above it, and rendered only
+     here (not also in system.html) so there's a single copy that stays in
+     sync when search/filter re-swaps this container. -->
+{% if not department or department == 'IT' %}
+<div class="it-stats">
+    <div class="stat-item">
+        <div class="label">Total IT Staff</div>
+        <div class="value">{{ it_dept_stats.total }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="label">Managers / Leads</div>
+        <div class="value managers">{{ it_dept_stats.managers }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="label">Agents</div>
+        <div class="value agents">{{ it_dept_stats.agents }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="label">End Users</div>
+        <div class="value end-users">{{ it_dept_stats.end_users }}</div>
+    </div>
+</div>
+{% endif %}
 
 <!-- Legend (moved inside the partial so it updates with search results) -->
 <div class="org-legend">

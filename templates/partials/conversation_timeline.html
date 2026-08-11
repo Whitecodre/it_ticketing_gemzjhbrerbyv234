@@ -2,7 +2,7 @@
 
 {# ---------- Ticket description (initial message) ---------- #}
 <div class="flex justify-start mb-3">
-    <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm text-white bg-gray-700 bubble-left">
+    <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm bubble-theirs bubble-left">
         <div class="text-xs font-semibold mb-1 opacity-80">
             {{ ticket.requester.get_full_name_with_role }}
         </div>
@@ -10,12 +10,11 @@
         {% for att in initial_attachments %}
         <div class="mt-1 text-xs flex items-center gap-2">
             <a href="{% url 'tickets:attachment_download' att.pk %}"
-               class="flex items-center gap-1 underline hover:opacity-80 transition"
-               style="color: #94A3B8;">
+               class="flex items-center gap-1 underline hover:opacity-80 transition text-text-secondary">
                 {% lucide "paperclip" size=12 %}
                 {{ att.filename }} ({{ att.size|filesizeformat }})
             </a>
-            <button class="btn-attachment p-0.5 text-white/60 hover:text-white transition rounded-sm element-link"
+            <button class="btn-attachment p-0.5 text-text-secondary hover:text-primary transition rounded-sm element-link"
                     hx-get="{% url 'tickets:attachment_preview' att.pk %}"
                     hx-target="#modalContainer"
                     hx-swap="innerHTML"
@@ -34,14 +33,13 @@
 {% for comment in comments %}
     {% if comment.visibility == 'INTERNAL' and request.user.role in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
         <div class="flex justify-center mb-3">
-            <div class="max-w-lg rounded-lg px-4 py-2 text-xs border border-warning/20"
-                 style="background-color: rgba(245, 158, 11, 0.06); color: var(--color-text-primary);">
+            <div class="max-w-lg rounded-lg px-4 py-2 text-xs border border-warning/20 text-text-primary"
+                 style="background-color: rgba(245, 158, 11, 0.06);">
                 <span class="font-semibold text-warning">Internal Note</span> — {{ comment.body|safe }}
                 {% for attachment in comment.attachment_set.all %}
                     <div class="mt-1 text-xs flex items-center gap-2">
                         <a href="{% url 'tickets:attachment_download' attachment.pk %}"
-                           class="flex items-center gap-1 underline hover:opacity-80 transition"
-                           style="color: var(--color-text-secondary);">
+                           class="flex items-center gap-1 underline hover:opacity-80 transition text-text-secondary">
                             {% lucide "paperclip" size=12 %}
                             {{ attachment.filename }} ({{ attachment.size|filesizeformat }})
                         </a>
@@ -55,18 +53,18 @@
                         </button>
                     </div>
                 {% endfor %}
-                <div class="text-[0.6rem] mt-1" style="color: var(--color-text-secondary);">
+                <div class="text-[0.6rem] mt-1 text-text-secondary">
                     {{ comment.author.get_full_name_with_role }} · {{ comment.created_at|date:"h:i A" }}
                 </div>
             </div>
         </div>
     {% else %}
         <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
-            <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm text-white
+            <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm
                         {% if comment.author == request.user %}
-                            bg-primary bubble-right
+                            text-white bg-primary bubble-right
                         {% else %}
-                            bg-gray-700 bubble-left
+                            bubble-theirs bubble-left
                         {% endif %}">
                 <div class="text-xs font-semibold mb-1 opacity-80">
                     {{ comment.author.get_full_name_with_role }}
@@ -75,8 +73,7 @@
                 {% for attachment in comment.attachment_set.all %}
                     <div class="mt-1 text-xs flex items-center gap-2">
                         <a href="{% url 'tickets:attachment_download' attachment.pk %}"
-                           class="flex items-center gap-1 underline hover:opacity-80 transition"
-                           style="color: {% if comment.author == request.user %}#FFFFFF{% else %}#94A3B8{% endif %};">
+                           class="flex items-center gap-1 underline hover:opacity-80 transition {% if comment.author == request.user %}text-white{% else %}text-text-secondary{% endif %}">
                             {% lucide "paperclip" size=12 %}
                             {{ attachment.filename }} ({{ attachment.size|filesizeformat }})
                         </a>

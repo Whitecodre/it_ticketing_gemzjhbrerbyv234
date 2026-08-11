@@ -2,7 +2,7 @@
 
 <div class="flex flex-col h-full">
     <!-- Header with gradient accent -->
-    <div class="relative px-5 py-4 border-b" style="background: linear-gradient(to right, var(--color-primary) 0%, var(--color-primary-dark) 100%); border-color: var(--color-border);">
+    <div class="relative px-5 py-4 border-b border-border" style="background: linear-gradient(to right, var(--color-primary) 0%, var(--color-primary-dark) 100%);">
         <div class="flex items-start justify-between">
             <div class="flex-1 pr-4">
                 <h2 class="text-base font-semibold text-white leading-tight">{{ ticket.title }}</h2>
@@ -19,7 +19,7 @@
     </div>
 
     <!-- Scrollable content -->
-    <div class="flex-1 overflow-y-auto p-5 space-y-5" style="background-color: var(--color-background);">
+    <div class="flex-1 overflow-y-auto p-5 space-y-5 bg-background">
         
         <!-- Requester & Assignee (two columns) -->
         <div class="grid grid-cols-2 gap-4">
@@ -28,14 +28,14 @@
                     {% if ticket.requester.avatar %}
                         <img src="{{ ticket.requester.avatar.url }}" class="h-8 w-8 rounded-full object-cover">
                     {% else %}
-                        <div class="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold" style="background-color: var(--color-secondary);">
+                        <div class="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold bg-secondary">
                             {{ ticket.requester.email.0|upper }}
                         </div>
                     {% endif %}
                 </div>
                 <div class="min-w-0">
                     <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Requester</p>
-                    <p class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }}</p>
+                    <p class="text-sm font-medium truncate text-text-primary">{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }}</p>
                     <p class="text-xs text-text-secondary truncate">{{ ticket.requester.email }}</p>
                 </div>
             </div>
@@ -45,7 +45,7 @@
                         {% if ticket.assigned_to.avatar %}
                             <img src="{{ ticket.assigned_to.avatar.url }}" class="h-8 w-8 rounded-full object-cover">
                         {% else %}
-                            <div class="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold" style="background-color: var(--color-primary);">
+                            <div class="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold bg-primary">
                                 {{ ticket.assigned_to.email.0|upper }}
                             </div>
                         {% endif %}
@@ -58,7 +58,7 @@
                 <div class="min-w-0">
                     <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Assignee</p>
                     {% if ticket.assigned_to %}
-                        <p class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ ticket.assigned_to.get_full_name_with_role }}</p>
+                        <p class="text-sm font-medium truncate text-text-primary">{{ ticket.assigned_to.get_full_name_with_role }}</p>
                         <p class="text-xs text-text-secondary truncate">{{ ticket.assigned_to.get_role_display }}</p>
                     {% else %}
                         <p class="text-sm text-text-secondary italic">Unassigned</p>
@@ -68,37 +68,37 @@
         </div>
 
         <!-- Metadata grid (short) -->
-        <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm border-t pt-4" style="border-color: var(--color-border);">
+        <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm border-t pt-4 border-border">
             <div>
                 <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Created</p>
-                <p class="text-sm" style="color: var(--color-text-primary);">{{ ticket.created_at|date:"M d, Y" }}</p>
+                <p class="text-sm text-text-primary">{{ ticket.created_at|date:"M d, Y" }}</p>
                 <p class="text-xs text-text-secondary">{{ ticket.created_at|time:"H:i" }}</p>
             </div>
             <div>
                 <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Last Updated</p>
-                <p class="text-sm" style="color: var(--color-text-primary);">{{ ticket.updated_at|timesince }} ago</p>
+                <p class="text-sm text-text-primary">{{ ticket.updated_at|timesince }} ago</p>
             </div>
             <div>
                 <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Type</p>
-                <p class="text-sm" style="color: var(--color-text-primary);">{{ ticket.get_type_display }}</p>
+                <p class="text-sm text-text-primary">{{ ticket.get_type_display }}</p>
             </div>
             <div>
                 <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Category</p>
-                <p class="text-sm" style="color: var(--color-text-primary);">{{ ticket.category.name|default:"—" }}</p>
+                <p class="text-sm text-text-primary">{{ ticket.category.name|default:"—" }}</p>
             </div>
         </div>
 
         <!-- Description + Attachments (collapsible groups) -->
-        <div class="rounded-xl p-4 space-y-3" style="background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.75rem;">
-            <div class="text-sm" style="color: var(--color-text-primary); line-height: 1.5;">
+        <div class="rounded-xl p-4 space-y-3 bg-surface border border-border">
+            <div class="text-sm text-text-primary" style="line-height: 1.5;">
                 <p class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary mb-2">Description</p>
                 {{ ticket.description|linebreaksbr }}
             </div>
 
             <!-- Attachments grouped: User attachments -->
             {% if user_attachments %}
-            <div class="pt-2 border-t" style="border-color: var(--color-border);">
-                <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer" style="color: var(--color-text-primary);"
+            <div class="pt-2 border-t border-border">
+                <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer text-text-primary"
                         onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
                     {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
                     Sent by {{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }} (User)
@@ -118,8 +118,8 @@
 
             <!-- Attachments grouped: Agent attachments -->
             {% if agent_attachments %}
-            <div class="pt-2 border-t" style="border-color: var(--color-border);">
-                <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer" style="color: var(--color-text-primary);"
+            <div class="pt-2 border-t border-border">
+                <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer text-text-primary"
                         onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
                     {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
                     Sent by Support Team
@@ -146,7 +146,7 @@
                     {% for comment in recent_comments %}
                         {% if comment.visibility == 'INTERNAL' %}
                             <div class="flex justify-end">
-                                <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md bg-warning/10 border border-warning/30" style="color: var(--color-text-primary);">
+                                <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md bg-warning/10 border border-warning/30 text-text-primary">
                                     <span class="font-semibold text-warning">Internal Note</span>
                                     <span class="text-text-secondary text-[0.6rem] ml-2">{{ comment.author.get_full_name_with_role }} · {{ comment.created_at|timesince }} ago</span>
                                     <div class="mt-0.5">{{ comment.body|truncatechars:120 }}</div>
@@ -154,7 +154,7 @@
                             </div>
                         {% else %}
                             <div class="flex {% if comment.author == ticket.requester %}justify-start{% else %}justify-end{% endif %}">
-                                <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md {% if comment.author == ticket.requester %}bg-gray-100 dark:bg-gray-800{% else %}bg-primary{% endif %}" style="color: var(--color-text-primary);">
+                                <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md text-text-primary {% if comment.author == ticket.requester %}bg-gray-100 dark:bg-gray-800{% else %}bg-primary{% endif %}">
                                     <span class="font-medium">{{ comment.author.get_full_name_with_role|default:comment.author.email.split.0 }}</span>
                                     <span class="text-text-secondary text-[0.6rem] ml-2">{{ comment.created_at|timesince }} ago</span>
                                     <div class="mt-0.5">{{ comment.body|truncatechars:120 }}</div>
@@ -173,7 +173,7 @@
     </div>
 
     <!-- Footer actions -->
-    <div class="border-t p-4 flex items-center justify-end gap-3" style="border-color: var(--color-border); background-color: var(--color-surface);">
+    <div class="border-t p-4 flex items-center justify-end gap-3 border-border bg-surface">
         <a href="{% url 'tickets:conversation' ticket.pk %}" class="btn-outline text-xs flex items-center gap-1 px-4 py-2">
             {% lucide "message-square" size=14 %} Full Conversation
         </a>

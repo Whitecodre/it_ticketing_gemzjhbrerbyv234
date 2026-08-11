@@ -6,12 +6,12 @@
             {% lucide "check-circle" size=20 %}
         </div>
         <div>
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Confirm Resolution</h3>
+            <h3 class="text-base font-semibold text-text-primary">Confirm Resolution</h3>
             <p class="text-sm text-text-secondary">Ticket: {{ ticket.number }}</p>
         </div>
     </div>
     
-    <p class="text-sm mb-4" style="color: var(--color-text-primary);">
+    <p class="text-sm mb-4 text-text-primary">
         Are you sure this ticket is ready to be resolved? The requester will be asked to confirm.
     </p>
     
@@ -20,7 +20,7 @@
         <input type="hidden" name="action" value="confirm">
         
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Optional comment
             </label>
             <textarea name="comment" rows="3" 

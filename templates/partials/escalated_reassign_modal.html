@@ -6,7 +6,7 @@
             {% lucide "alert-triangle" size=20 %}
         </div>
         <div>
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Reassign Escalated Ticket</h3>
+            <h3 class="text-base font-semibold text-text-primary">Reassign Escalated Ticket</h3>
             <p class="text-sm text-text-secondary">{{ ticket.number }} - {{ ticket.title }}</p>
         </div>
     </div>
@@ -22,7 +22,7 @@
         {% csrf_token %}
         
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Assign to Agent <span class="text-error">*</span>
             </label>
             <select name="agent_id" required
@@ -35,7 +35,7 @@
         </div>
 
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Comment <span class="text-text-secondary text-xs font-normal">(optional, editable)</span>
             </label>
             <textarea name="comment" rows="3" 

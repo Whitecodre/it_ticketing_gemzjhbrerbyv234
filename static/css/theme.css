@@ -1,55 +1,80 @@
 /* ---------- THEME VARIABLES ---------- */
 [x-cloak] { display: none !important; }
 
-    /* Light mode (Palette 2 – Modern Tech) – default */
+    /* Light mode (Palette 2 – Modern Tech) – default
+       Semantic tones (success/warning/error/info/accent) and the radius/
+       spacing/shadow scale below are pinned to docs/gemz-design-system.html
+       — the approved reference — rather than the original ad-hoc Tailwind
+       shades. Warning/error/info in particular moved to a darker step
+       (amber-700/red-600/blue-600 instead of -500) for text-on-light-chip
+       contrast; dark mode below moves the same tones the other direction
+       (amber-400/red-400/blue-400) for text-on-dark-chip contrast. */
     :root {
         --color-primary: #0D9488;        /* teal-600 */
         --color-primary-dark: #0d645d;   /* teal-700 */
         --color-primary-light: #14B8A6;  /* teal-500 */
+        --color-primary-hover: #0F766E;  /* teal-700 — gallery's brand-hover: darker on light backgrounds */
         --color-secondary: #3B82F6;      /* blue-500 */
         --color-background: #F8FAFC;     /* slate-50 */
         --color-surface: #FFFFFF;        /* white */
         --color-text-primary: #0F172A;   /* slate-900 */
         --color-text-secondary: #475569; /* slate-600 */
-        --color-accent: #8B5CF6;         /* violet-500 */
+        --color-accent: #7C3AED;         /* violet-600 */
         --color-border: #E2E8F0;         /* slate-200 */
-        --color-success: #10B981;        /* emerald-500 */
-        --color-warning: #F59E0B;        /* amber-500 */
-        --color-error: #EF4444;          /* red-500 */
-        --color-info: #3B82F6;           /* blue-500 */
+        --color-success: #16A34A;        /* green-600 */
+        --color-warning: #B45309;        /* amber-700 */
+        --color-error: #DC2626;          /* red-600 */
+        --color-info: #2563EB;           /* blue-600 */
         --header-height: 4.4rem;
         --impersonation-height: 48px;
+
+        /* Radius / spacing / shadow scale, values as named in the gallery */
+        --radius-sm: 6px;   /* chips, inputs, buttons */
+        --radius-md: 10px;  /* tables, drawers, toasts */
+        --radius-lg: 16px;  /* cards, modals, panels */
+        --radius-pill: 999px;
+        --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+        --shadow-sm: 0 1px 2px rgba(16, 24, 31, .06), 0 1px 1px rgba(16, 24, 31, .04);
+        --shadow-md: 0 10px 24px -10px rgba(16, 24, 31, .18);
+        --shadow-lg: 0 24px 56px -16px rgba(16, 24, 31, .28);
+        --focus-ring: 0 0 0 3px color-mix(in oklch, var(--color-primary) 35%, transparent);
   }
   html{
     font-size: 90%;
   }
-    /* Dark mode (Palette 3 – Premium Enterprise) */
+    /* Dark mode (Palette 3 – Premium Enterprise)
+       Primary stays in the same teal family as light mode (previously it
+       switched to emerald here, which meant a client's brand color visibly
+       changed hue when the theme toggle was flipped — not just a shade). */
     :root.dark {
-        --color-primary: #059669;        /* emerald-600 */
-        --color-primary-dark: #022C22;   /* emerald-950 */
-        --color-primary-light: #34D399;  /* emerald-400 */
+        --color-primary: #2DD4BF;        /* teal-400 */
+        --color-primary-dark: #0F766E;   /* teal-700 — kept as the darker end of the avatar/banner gradient, not a literal gallery token */
+        --color-primary-light: #5EEAD4;  /* teal-300 */
+        --color-primary-hover: #5EEAD4;  /* teal-300 — gallery's brand-hover: lighter on dark backgrounds */
         --color-secondary: #F59E0B;      /* amber-500 */
         --color-background: #0F172A;     /* slate-900 */
         --color-surface: #1E293B;        /* slate-800 */
         --color-text-primary: #F8FAFC;   /* slate-50 */
         --color-text-secondary: #94A3B8; /* slate-400 */
-        --color-accent: #EC4899;         /* pink-500 */
+        --color-accent: #C4B5FD;         /* violet-300 */
         --color-border: #334155;         /* slate-700 */
-        --color-success: #10B981;        /* emerald-500 */
-        --color-warning: #F59E0B;        /* amber-500 */
-        --color-error: #EF4444;          /* red-500 */
-        --color-info: #3B82F6;           /* blue-500 */
+        --color-success: #4ADE80;        /* green-400 */
+        --color-warning: #FBBF24;        /* amber-400 */
+        --color-error: #F87171;          /* red-400 */
+        --color-info: #60A5FA;           /* blue-400 */
+
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
+        --shadow-md: 0 10px 24px -10px rgba(0, 0, 0, .6);
+        --shadow-lg: 0 24px 56px -16px rgba(0, 0, 0, .7);
   }
 
-    /* ---------- GLOBAL STYLES ---------- */
-    /* google-sans-regular - latin */
-    @font-face {
-      font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-      font-family: 'Google Sans';
-      font-style: normal;
-      font-weight: 400;
-      src: url('/static/fonts/google-sans-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-    }
+    /* ---------- GLOBAL STYLES ----------
+       Down to the two families the approved design system calls for
+       (display: Poppins, body: Noto Sans) — Google Sans, Karla, and the
+       cursive logo script that used to also load here are gone; the
+       wordmark now sets Poppins bold via .font-poppins instead of
+       .font-cursive (see base_registration.html / base_dashboard.html /
+       force_password_change.html / form_builder/render.html). */
     /* noto-sans-regular - latin */
     @font-face {
       font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
@@ -58,53 +83,37 @@
       font-weight: 400;
       src: url('/static/fonts/noto-sans-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
     }
-    /* poppins-regular - latin */
+    /* poppins-regular - latin (only the 400 weight is hosted locally; 700
+       usage below is browser-synthesized bold until a real bold face is
+       added to static/fonts/) */
     @font-face {
       font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
       font-family: 'Poppins';
       font-style: normal;
-      font-weight: 400;
+      font-weight: 400 700;
       src: url('../fonts/poppins-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
     }
-    /* karla-regular - latin */
-    @font-face {
-        font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-        font-family: 'Karla';
-        font-style: normal;
-        font-weight: 400;
-        src: url('../fonts/karla-latin-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-    }
-    /* edu-nsw-act-cursive-regular - latin */
-    @font-face {
-        font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
-        font-family: 'Edu NSW ACT Cursive';
-        font-style: normal;
-        font-weight: 400;
-        src: url('../fonts/edu-nsw-act-cursive-latin-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
-    }
 
-    
-    /* Fix font fallback */
-    .font-google {
-        font-family: 'Google Sans', sans-serif;   
-    }
     .font-poppins {
-        font-family: 'Poppins', sans-serif;   
-    }
-    .font-karla {
-        font-family: 'Karla', sans-serif;   
-    }
-    .font-cursive {
-        font-family: 'Edu NSW ACT Cursive', cursive;   
+        font-family: 'Poppins', 'Segoe UI', sans-serif;
     }
 
 body {
         background-color: var(--color-background);
         color: var(--color-text-primary);
         font-family: 'Noto Sans', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-size: 15px;
         line-height: 1.5;
         transition: background-color 0.3s ease, color 0.2s ease;
   }
+
+    /* Display font for anything that reads as a heading, a number someone
+       scans (KPI values, ticket numbers), or the wordmark — matches the
+       approved system's Poppins/Noto Sans split exactly. */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Poppins', 'Segoe UI', sans-serif;
+        font-weight: 700;
+    }
 
 /* Shared interaction polish: these rules deliberately use the existing
    design tokens so every current page benefits without template rewrites. */
@@ -143,28 +152,70 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
 
-    /* Example button classes using CSS variables */
+    /* Buttons — padding/radius/font-size/weight pinned to the approved
+       gallery's single .btn spec (9px 15px, radius-sm, 13.5px/600), applied
+       directly to each existing intent class rather than introducing a
+       shared .btn base class every template would need to add. */
+    .btn-primary, .btn-secondary, .btn-outline, .btn-ghost, .btn-danger,
+    .btn-success, .btn-attachment {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        font-size: 13.5px;
+        font-weight: 600;
+        line-height: 1;
+        padding: 9px 15px;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.05s ease;
+    }
+    .btn-primary:active, .btn-secondary:active, .btn-outline:active,
+    .btn-ghost:active, .btn-danger:active, .btn-success:active, .btn-attachment:active {
+        transform: translateY(1px);
+    }
     .btn-primary {
         background-color: var(--color-primary);
         color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 0.375rem;
-        border: none;
-        cursor: pointer;
-        transition: background-color 0.2s ease;
     }
     .btn-primary:hover {
-        background-color: var(--color-primary-light);
+        background-color: var(--color-primary-hover);
   }
 
     .btn-secondary {
         background-color: var(--color-secondary);
         color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 0.375rem;
-        border: none;
-        cursor: pointer;
   }
+
+    /* Small / icon-only / loading variants, matching the gallery's .btn-sm,
+       .btn-icon and .btn-loading exactly. Combine with an intent class,
+       e.g. class="btn-primary btn-sm" or class="btn-ghost btn-icon". */
+    .btn-sm {
+        padding: 6px 11px;
+        font-size: 12.5px;
+    }
+    .btn-icon {
+        padding: 8px;
+        border-radius: var(--radius-sm);
+    }
+    .btn-loading {
+        color: transparent !important;
+        pointer-events: none;
+        position: relative;
+    }
+    .btn-loading::after {
+        content: '';
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid color-mix(in oklch, currentColor 30%, transparent);
+        border-top-color: currentColor;
+        animation: btn-loading-spin 0.7s linear infinite;
+    }
+    @keyframes btn-loading-spin { to { transform: rotate(360deg); } }
 
     /* Radio switcher styling (clean & minimal) */
     .theme-radio-group {
@@ -200,6 +251,21 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     }
     /* For browsers that don't support :has() we handle active class via JS */
 
+    /* Role switcher label: the topbar has no flex-wrap, so on narrow phones
+       a long role name (e.g. "Support Team") next to the hamburger, bell
+       and theme toggle can push the row wide enough to clip. Truncate
+       instead of letting it overflow. */
+    @media (max-width: 420px) {
+        .role-switcher-label {
+            display: inline-block;
+            max-width: 4.5rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: middle;
+        }
+    }
+
     /* ---------- UTILITY CLASSES (using design tokens) ---------- */
     /* Text colors */
     .text-primary        { color: var(--color-primary); }
@@ -214,6 +280,25 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     .text-error          { color: var(--color-error); }
     .text-info           { color: var(--color-info); }
 
+    /* Tinted-opacity backgrounds: templates use `bg-primary/10`-style
+       Tailwind opacity-modifier syntax on these custom color classes, but
+       Tailwind only generates opacity variants for colors it knows about
+       via its own config — since these are plain theme.css classes (not
+       Tailwind theme colors), `/10` etc. never made it into the compiled
+       bundle and every tinted icon-circle background silently rendered as
+       nothing. Defining the exact combinations actually used in templates/
+       fixes them without changing tailwind.config.js or rebuilding the
+       Tailwind bundle. */
+    .bg-primary\/5        { background-color: color-mix(in oklch, var(--color-primary) 5%, transparent); }
+    .bg-primary\/10       { background-color: color-mix(in oklch, var(--color-primary) 10%, transparent); }
+    .bg-primary\/20       { background-color: color-mix(in oklch, var(--color-primary) 20%, transparent); }
+    .bg-success\/10       { background-color: color-mix(in oklch, var(--color-success) 10%, transparent); }
+    .bg-warning\/10       { background-color: color-mix(in oklch, var(--color-warning) 10%, transparent); }
+    .bg-error\/10         { background-color: color-mix(in oklch, var(--color-error) 10%, transparent); }
+    .bg-info\/10          { background-color: color-mix(in oklch, var(--color-info) 10%, transparent); }
+    .bg-accent\/10        { background-color: color-mix(in oklch, var(--color-accent) 10%, transparent); }
+    .bg-text-secondary\/10 { background-color: color-mix(in oklch, var(--color-text-secondary) 10%, transparent); }
+
     /* Background colors */
     .bg-primary       { background-color: var(--color-primary); }
     .bg-primary-dark  { background-color: var(--color-primary-dark); }
@@ -222,10 +307,29 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     .bg-background    { background-color: var(--color-background); }
     .bg-surface       { background-color: var(--color-surface); }
     .bg-accent        { background-color: var(--color-accent); }
+    .bg-success       { background-color: var(--color-success); }
+    .bg-warning       { background-color: var(--color-warning); }
+    .bg-error         { background-color: var(--color-error); }
+    .bg-info          { background-color: var(--color-info); }
+    .bg-text-secondary { background-color: var(--color-text-secondary); }
 
     /* Border colors */
     .border-primary { border-color: var(--color-primary); }
     .border-border  { border-color: var(--color-border); }
+    .border-success { border-color: var(--color-success); }
+    .border-warning { border-color: var(--color-warning); }
+    .border-error   { border-color: var(--color-error); }
+    .border-info    { border-color: var(--color-info); }
+    .border-accent  { border-color: var(--color-accent); }
+    .border-text-secondary { border-color: var(--color-text-secondary); }
+
+    /* Same story as bg-primary/10 above: `divide-border` (Tailwind's
+       divide-y-color pattern applied to our custom border token) never
+       compiled since "border" isn't a color Tailwind's config knows about.
+       Every `divide-y divide-border` list in the app has been rendering
+       with no divider lines at all. Matches Tailwind's own generated
+       selector shape exactly so it slots in as a drop-in replacement. */
+    .divide-border > :not([hidden]) ~ :not([hidden]) { border-color: var(--color-border); }
 
     /* Ring color (Tailwind’s focus ring) */
     .ring-primary { --tw-ring-color: var(--color-primary); }
@@ -237,7 +341,7 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
         transition: background-color 0.2s ease;
     }
     .btn-login:hover {
-        background-color: var(--color-primary-light);
+        background-color: var(--color-primary-hover);
     }
 
 
@@ -247,26 +351,29 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .kpi-card {
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem 1.5rem;
+    border-radius: var(--radius-lg);
+    padding: var(--sp-4) var(--sp-5);
+    box-shadow: var(--shadow-sm);
     transition: box-shadow 0.2s ease;
 }
 .kpi-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: var(--shadow-md);
 }
 .kpi-value {
-    font-size: 2rem;
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+    font-size: 1.875rem; /* 30px */
     font-weight: 700;
     line-height: 1.2;
     color: var(--color-text-primary);
 }
 .kpi-label {
-    font-size: 0.8125rem;
+    font-size: 0.75rem; /* 12px */
     color: var(--color-text-secondary);
     margin-top: 0.25rem;
 }
 .kpi-trend {
     font-size: 0.75rem;
+    font-weight: 600;
     margin-top: 0.5rem;
 }
 .kpi-trend.up { color: var(--color-success); }
@@ -277,132 +384,81 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .status-chip {
     display: inline-flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.25rem 0.75rem;
+    gap: 5px;
+    padding: 3px 10px 3px 8px;
     border-radius: 9999px;
-    font-size: 0.75rem;
+    font-size: 12px;
     font-weight: 600;
-    line-height: 1.4;
+    line-height: 1.5;
     white-space: nowrap;
+    border: 1px solid transparent;
+}
+.status-chip::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
 }
 
-/* ========== ADDITIONAL STATUS CHIPS ========== */
-
-/* Pending Fulfillment - New status for asset requests */
-.status-chip.pending-fulfillment {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+/* ========== ADDITIONAL STATUS CHIPS ==========
+   Consolidated to 5 semantic tones (info/active/waiting/success/danger,
+   plus neutral for "closed") instead of ~20 individually hand-picked hex
+   colors — every ticket status maps to one of these tones below. Colors
+   are derived from the theme's own --color-* variables via color-mix(),
+   so (unlike the old hardcoded hex values) these now actually adapt in
+   dark mode instead of looking identical/low-contrast in both themes.
+   Tone → statuses:
+     info    → new, open
+     active  → triaged, assigned, in-progress/in_progress
+     waiting → all pending_* / pending-* variants (the label text itself
+               already says which — "Pending Vendor" vs "Pending User" —
+               so they don't need distinct colors too)
+     success → approved, resolved
+     neutral → closed
+     danger  → escalated, breached
+*/
+.status-chip.new,
+.status-chip.open {
+    background-color: color-mix(in oklch, var(--color-info) 15%, transparent);
+    color: var(--color-info);
 }
 
-.status-chip.pending_fulfillment {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-/* Pending Manager Review */
-.status-chip.pending_manager_review {
-    background-color: rgba(139, 92, 246, 0.15);
-    color: #8B5CF6;
-    border: 1px solid rgba(139, 92, 246, 0.3);
-}
-
-.status-chip.pending-manager-review {
-    background-color: rgba(139, 92, 246, 0.15);
-    color: #8B5CF6;
-    border: 1px solid rgba(139, 92, 246, 0.3);
-}
-
-/* Approved */
-.status-chip.approved {
-    background-color: rgba(16, 185, 129, 0.15);
-    color: #10B981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-/* In Progress - already exists, but ensure it's consistent */
+.status-chip.triaged,
+.status-chip.assigned,
 .status-chip.in-progress,
 .status-chip.in_progress {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+    color: var(--color-primary);
 }
 
-/* Resolved - already exists, but ensure it's consistent */
-.status-chip.resolved {
-    background-color: rgba(16, 185, 129, 0.15);
-    color: #10B981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-/* Closed - already exists, but ensure it's consistent */
-.status-chip.closed {
-    background-color: rgba(100, 116, 139, 0.15);
-    color: #64748B;
-    border: 1px solid rgba(100, 116, 139, 0.2);
-}
-
-/* New - already exists, but ensure it's consistent */
-.status-chip.new {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: #3B82F6;
-    border: 1px solid rgba(59, 130, 246, 0.3);
-}
-
-/* Triaged */
-.status-chip.triaged {
-    background-color: rgba(139, 92, 246, 0.15);
-    color: #8B5CF6;
-    border: 1px solid rgba(139, 92, 246, 0.3);
-}
-
-/* Assigned - already exists, but ensure it's consistent */
-.status-chip.assigned {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: #3B82F6;
-    border: 1px solid rgba(59, 130, 246, 0.3);
-}
-
-/* Pending User - already exists, but ensure it's consistent */
-.status-chip.pending_user {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-/* Pending Vendor - already exists, but ensure it's consistent */
-.status-chip.pending_vendor {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-/* Pending Approval - already exists, but ensure it's consistent */
+.status-chip.pending-fulfillment,
+.status-chip.pending_fulfillment,
+.status-chip.pending_manager_review,
+.status-chip.pending-manager-review,
+.status-chip.pending_user,
+.status-chip.pending_vendor,
 .status-chip.pending_approval {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: #3B82F6;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background-color: color-mix(in oklch, var(--color-warning) 15%, transparent);
+    color: var(--color-warning);
 }
 
-/* Escalated - already exists, but ensure it's consistent */
-.status-chip.escalated {
-    background-color: rgba(239, 68, 68, 0.15);
-    color: #EF4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+.status-chip.approved,
+.status-chip.resolved {
+    background-color: color-mix(in oklch, var(--color-success) 15%, transparent);
+    color: var(--color-success);
 }
 
-/* Breached - for SLA */
+.status-chip.closed {
+    background-color: color-mix(in oklch, var(--color-text-secondary) 15%, transparent);
+    color: var(--color-text-secondary);
+}
+
+.status-chip.escalated,
 .status-chip.breached {
-    background-color: rgba(239, 68, 68, 0.15);
-    color: #EF4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
-}
-
-/* Open - for generic open state */
-.status-chip.open {
-    background-color: rgba(59, 130, 246, 0.1);
-    color: #3B82F6;
+    background-color: color-mix(in oklch, var(--color-error) 15%, transparent);
+    color: var(--color-error);
 }
 
 /* ========== STATUS CHIP VARIATIONS (color-coded) ========== */
@@ -410,76 +466,74 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 
 /* Success states (green) */
 .status-chip-success {
-    background-color: rgba(16, 185, 129, 0.15);
-    color: #10B981;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+    background-color: color-mix(in oklch, var(--color-success) 15%, transparent);
+    color: var(--color-success);
 }
 
 /* Warning states (yellow/amber) */
 .status-chip-warning {
-    background-color: rgba(245, 158, 11, 0.15);
-    color: #F59E0B;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background-color: color-mix(in oklch, var(--color-warning) 15%, transparent);
+    color: var(--color-warning);
 }
 
 /* Info states (blue) */
 .status-chip-info {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: #3B82F6;
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background-color: color-mix(in oklch, var(--color-info) 15%, transparent);
+    color: var(--color-info);
 }
 
 /* Danger states (red) */
 .status-chip-danger {
-    background-color: rgba(239, 68, 68, 0.15);
-    color: #EF4444;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    background-color: color-mix(in oklch, var(--color-error) 15%, transparent);
+    color: var(--color-error);
 }
 
-/* Purple states (accent) */
-.status-chip-accent {
-    background-color: rgba(139, 92, 246, 0.15);
-    color: #8B5CF6;
-    border: 1px solid rgba(139, 92, 246, 0.3);
+/* Purple states (category) — a deliberate 5th tone, kept distinct
+   from the brand color and from the semantic ok/warn/danger/info set, for
+   workflow states that aren't inherently good or bad news. Matches the
+   gallery's --category tone (mapped onto our existing --color-accent). */
+.status-chip-accent, .status-chip-category {
+    background-color: color-mix(in oklch, var(--color-accent) 15%, transparent);
+    color: var(--color-accent);
 }
 
 /* Gray states (neutral) */
 .status-chip-neutral {
-    background-color: rgba(100, 116, 139, 0.1);
-    color: #64748B;
-    border: 1px solid rgba(100, 116, 139, 0.15);
+    background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent);
+    color: var(--color-text-secondary);
 }
 
-/* Priority Chips */
+/* Priority Chips — a separate class from .status-chip, so it never picks
+   up the dot indicator; bold/uppercase text carries the emphasis instead,
+   matching the gallery's .pchip. */
 .priority-chip {
     display: inline-flex;
     align-items: center;
-    padding: 0.125rem 0.625rem;
+    padding: 2px 9px;
     border-radius: 9999px;
-    font-size: 0.7rem;
-    font-weight: 700;
+    font-size: 0.65625rem; /* 10.5px */
+    font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
 }
 .priority-chip.critical {
-    background-color: rgba(239, 68, 68, 0.15);
+    background-color: color-mix(in oklch, var(--color-error) 15%, transparent);
     color: var(--color-error);
-    border: 1px solid rgba(239, 68, 68, 0.3);
 }
 .priority-chip.high {
-    background-color: rgba(245, 158, 11, 0.15);
+    background-color: color-mix(in oklch, var(--color-warning) 15%, transparent);
     color: var(--color-warning);
-    border: 1px solid rgba(245, 158, 11, 0.3);
 }
+/* Medium deliberately uses the neutral tone rather than info/blue — blue
+   is already the "New" ticket status color a few components over, and
+   priority shouldn't borrow a hue that means something else elsewhere. */
 .priority-chip.medium {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: var(--color-info);
-    border: 1px solid rgba(59, 130, 246, 0.3);
+    background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent);
+    color: var(--color-text-secondary);
 }
 .priority-chip.low {
-    background-color: rgba(16, 185, 129, 0.1);
+    background-color: color-mix(in oklch, var(--color-success) 12%, transparent);
     color: var(--color-success);
-    border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 /* SLA Progress Bar */
@@ -511,24 +565,26 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .dashboard-card {
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
+    border-radius: var(--radius-lg);
+    padding: var(--sp-4);
+    box-shadow: var(--shadow-sm);
 }
 .dashboard-card-header {
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: 0.84375rem; /* 13.5px */
+    font-weight: 700;
     color: var(--color-text-primary);
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
+    margin-bottom: var(--sp-3);
+    padding-bottom: var(--sp-3);
     border-bottom: 1px solid var(--color-border);
 }
 
 /* Welcome Banner */
 .welcome-banner {
-    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
-    border-radius: 1rem;
-    padding: 1.5rem 2rem;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+    border-radius: var(--radius-lg);
+    padding: var(--sp-5) var(--sp-6);
     color: white;
+    box-shadow: var(--shadow-md);
 }
 
 /* Table Styles */
@@ -538,94 +594,210 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     border-spacing: 0;
 }
 .data-table th {
-    font-size: 0.75rem;
-    font-weight: 600;
+    font-size: 0.6875rem; /* 11px */
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     color: var(--color-text-secondary);
-    padding: 0.75rem 1rem;
+    padding: 11px 14px;
     text-align: left;
     border-bottom: 1px solid var(--color-border);
+    background-color: color-mix(in oklch, var(--color-text-secondary) 4%, var(--color-surface));
+    white-space: nowrap;
 }
 .data-table td {
-    padding: 0.75rem 1rem;
-    font-size: 0.875rem;
+    padding: 12px 14px;
+    font-size: 0.84375rem; /* 13.5px */
     color: var(--color-text-primary);
     border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+}
+.data-table tbody tr {
+    transition: background-color 0.12s ease;
 }
 .data-table tr:hover td {
-    background-color: rgba(13, 148, 136, 0.03);
+    background-color: color-mix(in oklch, var(--color-text-secondary) 4%, var(--color-surface));
+}
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.data-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+.data-table th.sortable .sort-icon {
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-left: 0.2rem;
+    vertical-align: -1px;
+    opacity: 0.6;
+}
+.data-table tr.is-selected td {
+    background-color: color-mix(in oklch, var(--color-primary) 13%, transparent);
+}
+.data-table tr.is-selected td:first-child {
+    box-shadow: inset 3px 0 0 var(--color-primary);
+}
+.data-table .tnum {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-primary);
+    font-weight: 700;
+}
+.data-table .cell-sub {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    margin-top: 0.125rem;
 }
 
-/* Action Buttons */
-.btn-outline {
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
+/* ========== PAGINATION (shared component) ==========
+   One pagination bar used across ticket/asset/user/audit/form/session/KB
+   lists, replacing each page's own hand-rolled Prev/Next buttons and bare
+   "Page X of Y" text with a clearer summary + numbered pages + a page-count
+   badge, so pagination looks the same everywhere and is obvious it's
+   interactive. Markup: templates/partials/pagination.html */
+.pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--color-border);
+}
+.pagination-summary {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+}
+.pagination-summary strong {
+    color: var(--color-text-primary);
+    font-weight: 700;
+}
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+}
+.pagination-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 2.125rem;
+    padding: 0 0.8rem;
+    border-radius: 9999px;
     border: 1px solid var(--color-border);
-    background: transparent;
+    background-color: var(--color-surface);
     color: var(--color-text-primary);
     font-size: 0.8125rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    text-decoration: none;
+    transition: border-color 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+.pagination-step:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background-color: color-mix(in oklch, var(--color-primary) 13%, transparent);
+    text-decoration: none;
+}
+.pagination-step[disabled],
+.pagination-step.is-disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+.pagination-numbers {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin: 0 0.15rem;
+}
+.pagination-number {
+    min-width: 2.125rem;
+    height: 2.125rem;
+    padding: 0 0.25rem;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.pagination-number:hover {
+    background-color: color-mix(in oklch, var(--color-text-secondary) 6%, var(--color-surface));
+    color: var(--color-text-primary);
+    text-decoration: none;
+}
+.pagination-number.is-current {
+    background-color: var(--color-primary);
+    color: white;
+    box-shadow: var(--shadow-md);
+    transform: scale(1.06);
+}
+.pagination-ellipsis {
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem;
+    padding: 0 0.25rem;
+}
+@media (max-width: 640px) {
+    .pagination-bar { justify-content: center; text-align: center; }
+    .pagination-summary { width: 100%; text-align: center; }
+}
+
+/* Action Buttons — intent colors only; shared sizing lives in the
+   consolidated .btn-primary/.btn-secondary/.btn-outline/... rule above. */
+.btn-outline {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
 }
 .btn-outline:hover {
     border-color: var(--color-primary);
     color: var(--color-primary);
 }
 .btn-ghost {
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-    border: none;
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 0.8125rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
 }
 .btn-ghost:hover {
-    background-color: var(--color-background);
+    background-color: color-mix(in oklch, var(--color-text-secondary) 10%, transparent);
     color: var(--color-text-primary);
 }
-.btn-attachemnt{
-    padding: 12px;
-    border-radius: 0.5rem;
-    border: none;
+.btn-attachment {
     background: transparent;
     color: var(--color-text-secondary);
-    font-size: 0.5rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
 }
 .btn-attachment:hover {
-    background-color: var(--color-background);
+    background-color: color-mix(in oklch, var(--color-text-secondary) 10%, transparent);
     color: var(--color-text-primary);
 }
 .btn-danger {
     background-color: var(--color-error);
     color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    border: none;
-    cursor: pointer;
-    font-size: 0.8125rem;
-    font-weight: 500;
 }
 .btn-danger:hover {
-    opacity: 0.9;
+    filter: brightness(1.08);
+}
+.btn-primary:disabled, .btn-secondary:disabled, .btn-outline:disabled,
+.btn-ghost:disabled, .btn-danger:disabled, .btn-success:disabled, .btn-attachment:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none;
 }
 .btn-success {
     background-color: var(--color-success);
     color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    border: none;
-    cursor: pointer;
-    font-size: 0.8125rem;
-    font-weight: 500;
 }
 .btn-success:hover {
-    opacity: 0.9;
+    filter: brightness(1.08);
 }
 
 /* Immutable Audit Badge */
@@ -649,38 +821,38 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.5rem;
-    padding: 1.5rem 2rem;
-    border-radius: 0.75rem;
+    gap: var(--sp-2);
+    padding: var(--sp-5) var(--sp-4);
+    border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
     background-color: var(--color-surface);
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     text-align: center;
 }
 .quick-action-btn:hover {
     border-color: var(--color-primary);
-    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.1);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
 }
 .quick-action-btn .icon-circle {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 3rem;
-    height: 3rem;
+    width: 2.875rem; /* 46px */
+    height: 2.875rem;
     border-radius: 50%;
-    background-color: rgba(13, 148, 136, 0.1);
+    background-color: color-mix(in oklch, var(--color-primary) 13%, transparent);
     color: var(--color-primary);
 }
 
 /* Remote Session Card */
 .session-card {
-    border-left: 3px solid var(--color-primary);
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-primary);
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    padding: var(--sp-3) var(--sp-4);
 }
 
 /* Approval Buttons Group */
@@ -713,8 +885,8 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .context-rail {
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
+    border-radius: var(--radius-lg);
+    padding: var(--sp-4);
 }
 
 /* Read-only overlay indicator */
@@ -736,16 +908,7 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     border-radius: inherit;
 }
 
-.filter-chip {
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    border: 1px solid var(--color-border);
-    background: var(--color-surface);
-    color: var(--color-text-secondary);
-    font-size: 0.8125rem;
-    transition: all 0.2s;
-}
-.filter-chip.active, .filter-chip:hover {
+.filter-chip.active {
     background: var(--color-primary);
     color: white;
     border-color: var(--color-primary);
@@ -757,13 +920,13 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
         z-index: 9999;
         background: var(--color-text-primary);
         color: var(--color-surface);
-        font-size: 0.7rem;
+        font-size: 0.71875rem; /* 11.5px */
         font-weight: 500;
         white-space: nowrap;
-        padding: 0.35rem 0.65rem;
-        border-radius: 0.375rem;
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
         pointer-events: none;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        box-shadow: var(--shadow-md);
         opacity: 0;
         transition: opacity 0.15s ease;
     }
@@ -784,13 +947,13 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
         z-index: 9999;
         background: var(--color-text-primary);
         color: var(--color-surface);
-        font-size: 0.7rem;
+        font-size: 0.71875rem; /* 11.5px */
         font-weight: 500;
         white-space: nowrap;
-        padding: 0.35rem 0.65rem;
-        border-radius: 0.375rem;
+        padding: 6px 10px;
+        border-radius: var(--radius-sm);
         pointer-events: none;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        box-shadow: var(--shadow-md);
         opacity: 0;
         transition: opacity 0.15s ease;
         /* We'll position with JS */
@@ -827,9 +990,9 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .toast-item {
     position: relative;
     padding: 0;
-    border-radius: 0.75rem;
+    border-radius: var(--radius-md);
     background: var(--color-surface);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 2px 8px rgba(0, 0, 0, 0.06);
+    box-shadow: var(--shadow-lg);
     /* Alpine applies its own x-transition.  Keep the default visible so
        Alpine-rendered toasts are not permanently hidden by legacy CSS. */
     transform: translateX(0);
@@ -860,8 +1023,8 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     left: 0;
     top: 0;
     bottom: 0;
-    width: 5px;
-    border-radius: 0.75rem 0 0 0.75rem;
+    width: 4px;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
 .toast-item.toast-success::before {
@@ -891,8 +1054,8 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 }
 
 .toast-icon svg {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.0625rem; /* 17px */
+    height: 1.0625rem;
 }
 
 .toast-item.toast-success .toast-icon {
@@ -914,14 +1077,14 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 }
 
 .toast-title {
-    font-size: 0.8125rem;
-    font-weight: 600;
+    font-size: 0.8125rem; /* 13px */
+    font-weight: 700;
     color: var(--color-text-primary);
     margin-bottom: 0.125rem;
 }
 
 .toast-message {
-    font-size: 0.875rem;
+    font-size: 0.78125rem; /* 12.5px */
     color: var(--color-text-secondary);
     line-height: 1.4;
     word-wrap: break-word;
@@ -988,16 +1151,17 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     width: 100%;
     text-align: left;
     font-family: inherit;
-    padding: 0.7rem 0.75rem;
-    border-radius: 0.5rem;
+    padding: 9px 0.625rem; /* 9px 10px */
+    border-radius: var(--radius-sm);
     transition: background-color 0.15s ease;
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+    font-size: 0.71875rem; /* 11.5px */
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     color: var(--color-text-secondary);
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.625rem; /* 10px */
 }
 
 .sidebar-section-toggle:hover {
@@ -1021,10 +1185,41 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 
 /* Section chevron animation */
 .section-chevron {
-    transition: transform 0.3s ease;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     display: inline-flex;
     opacity: 0.6;
     margin-left: auto;
+}
+
+/* Expanded section header reads slightly stronger than its collapsed siblings */
+.sidebar-section-toggle[aria-expanded="true"] {
+    color: var(--color-text-primary);
+}
+.sidebar-section-toggle[aria-expanded="true"] .section-chevron {
+    opacity: 0.9;
+}
+
+/* Marks the category containing the current page's active link — the same
+   "you are here" signal the child link itself gets (a solid pill), just
+   scaled down to a header: colored label/icon + a left accent bar, so it
+   stays visible even if the visitor collapses the section to browse
+   elsewhere. Set via JS in initialiseSidebarAccordion() (global.js). */
+.sidebar-section-toggle.has-active-child {
+    color: var(--color-primary);
+    position: relative;
+}
+.sidebar-section-toggle.has-active-child .section-icon {
+    opacity: 1;
+}
+.sidebar-section-toggle.has-active-child::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.35rem;
+    bottom: 0.35rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--color-primary);
 }
 
 /* Section content container for smooth animation */
@@ -1037,20 +1232,47 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 }
 
 /* Sub-items - consistent indentation */
+/* Sub-item group: a real border-left spine (not a positioned pseudo-line
+   guessing where the gutter is) plus a short tick mark per link drawn from
+   that spine to the link itself — the approved gallery's .snav-sub /
+   .snav-sub .snav-link::before pattern. Replaces an earlier single
+   full-height line that sat close enough to the link pills to show through
+   an active (solid-background) link. */
 #sidebar .pl-2 {
-    padding-left: 0.75rem;
+    padding: 2px 0 4px 0.625rem; /* 10px */
     margin-top: 0;
     margin-bottom: 0;
+    margin-left: 1.0625rem; /* 17px */
+    border-left: 1px solid var(--color-border);
 }
 
 #sidebar .pl-2 .sidebar-link {
-    padding: 0.5rem 0.75rem 0.5rem 1.25rem;
-    font-size: 0.875rem;
-    border-radius: 0.5rem;
+    position: relative;
+    padding: 7px 0.625rem 7px 0.875rem; /* 7px 10px 7px 14px */
+    font-size: 0.8125rem; /* 13px */
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     gap: 0.75rem;
     transition: background-color 0.15s ease;
+}
+
+#sidebar .pl-2 .sidebar-link::before {
+    content: '';
+    position: absolute;
+    left: -0.6875rem; /* -11px */
+    top: 50%;
+    width: 8px;
+    height: 1px;
+    background: var(--color-border);
+}
+
+/* Active sub-links never get a plain `.active` class — the current page's
+   link is marked server-side with an inline background-color style
+   instead (see templates/partials/sidebar_*.html), the same signal
+   global.js's findActiveSectionId() reads. Match it here too. */
+#sidebar .pl-2 .sidebar-link[style*="background-color"]::before {
+    background: var(--color-primary);
 }
 
 /* Standalone link (Dashboard) */
@@ -1132,26 +1354,33 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     display: none !important;
 }
 
-/* ========== RESPONSIVE SIDEBAR (mobile) ========== */
+/* ========== RESPONSIVE SIDEBAR (mobile) ==========
+   Vertical position/height (top, height) are intentionally left to the
+   inline style set in base_dashboard.html — it already computes them from
+   the real header height (4.4rem) and whether the impersonation banner is
+   showing. A fixed "64px" here used to fight that with !important: it was
+   only ever correct on desktop, where html{font-size:90%} makes 4.4rem
+   round to ~64px — the earlier mobile rule resets root font-size to 100%
+   (4.4rem ≈ 70px), and neither value has ever accounted for the 48px
+   impersonation banner, so admins impersonating a user on mobile would get
+   a sidebar sized for a header that wasn't actually there. */
 @media (max-width: 767px) {
     #sidebar {
         width: 280px !important;
         min-width: 280px !important;
         transform: translateX(-100%);
         transition: transform 0.3s ease;
-        margin-top: 64px !important;
-        height: calc(100% - 64px) !important;
     }
-    
+
     #sidebar:not(.-translate-x-full) {
         transform: translateX(0);
     }
-    
+
     /* Override any md margin classes on mobile */
     #mainContent {
         margin-left: 0 !important;
     }
-    
+
     /* Ensure sidebar backdrop works */
     #sidebarBackdrop:not(.hidden) {
         display: block !important;
@@ -1164,15 +1393,13 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
         width: 256px;
         min-width: 256px;
         transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease;
-        margin-top: 64px !important;
-        height: calc(100% - 64px) !important;
     }
-    
+
     #mainContent {
         margin-left: 256px;
         transition: margin-left 0.3s ease;
     }
-    
+
     #mainContent.md\:ml-0 {
         margin-left: 0 !important;
     }
@@ -1266,6 +1493,17 @@ table.data-table {
 /* ========== END OF UNIVERSAL TABLE RESPONSIVENESS ========== */
 
 
+/* Conversation bubbles — the "theirs" side used to hardcode bg-gray-700 +
+   text-white directly in the template regardless of theme, so it always
+   rendered as a dark filled bubble even in light mode. Matches the
+   gallery's .bubble.theirs exactly: a soft surface tint instead of a flat
+   color, so it reads as "incoming" without needing a fixed dark fill. */
+.bubble-theirs {
+    background-color: color-mix(in oklch, var(--color-text-secondary) 6%, var(--color-surface));
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+}
+
 /* Message bubble tails */
 .bubble-right,
 .bubble-left {
@@ -1299,7 +1537,7 @@ table.data-table {
     left: -5px;
     width: 0;
     height: 0;
-    border-right: 8px solid #374151;      /* bg-gray-700 */
+    border-right: 8px solid color-mix(in oklch, var(--color-text-secondary) 6%, var(--color-surface));
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
 }
@@ -1964,8 +2202,9 @@ table.data-table {
 
 .modal-content {
     background-color: var(--color-surface);
-    border-radius: 0.75rem;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     max-width: 480px;
     width: 100%;
     max-height: 90vh;
@@ -1982,12 +2221,12 @@ table.data-table {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
+    padding: var(--sp-4);
     border-bottom: 1px solid var(--color-border);
 }
 
 .modal-title {
-    font-size: 1.0625rem;
+    font-size: 0.90625rem; /* 14.5px */
     font-weight: 600;
     color: var(--color-text-primary);
     display: flex;
@@ -2012,14 +2251,16 @@ table.data-table {
 }
 
 .modal-body {
-    padding: 1.25rem;
+    padding: var(--sp-4);
+    font-size: 0.84375rem; /* 13.5px */
+    color: var(--color-text-secondary);
 }
 
 .modal-footer {
     display: flex;
     justify-content: flex-end;
-    gap: 0.75rem;
-    padding-top: 1rem;
+    gap: var(--sp-2);
+    padding-top: var(--sp-4);
     border-top: 1px solid var(--color-border);
     margin-top: 1rem;
 }
@@ -2039,8 +2280,8 @@ table.data-table {
 
 .form-label {
     display: block;
-    font-size: 0.8125rem;
-    font-weight: 500;
+    font-size: 0.78125rem; /* 12.5px */
+    font-weight: 600;
     color: var(--color-text-primary);
     margin-bottom: 0.25rem;
 }
@@ -2049,13 +2290,19 @@ table.data-table {
 .form-input,
 .form-textarea {
     width: 100%;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
+    padding: 9px 11px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-border);
-    background-color: var(--color-background);
+    background-color: var(--color-surface);
     color: var(--color-text-primary);
-    font-size: 0.875rem;
+    font-size: 0.84375rem; /* 13.5px */
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-select::placeholder,
+.form-input::placeholder,
+.form-textarea::placeholder {
+    color: var(--color-text-secondary);
 }
 
 .form-select:focus,
@@ -2063,18 +2310,172 @@ table.data-table {
 .form-textarea:focus {
     outline: none;
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+    box-shadow: var(--focus-ring);
 }
 
 .form-textarea {
     resize: vertical;
-    min-height: 60px;
+    min-height: 76px;
 }
 
 .form-help {
-    font-size: 0.7rem;
+    font-size: 0.71875rem; /* 11.5px */
     color: var(--color-text-secondary);
     margin-top: 0.25rem;
+}
+
+/* Validation state: Django renders field errors server-side already, but
+   there was no styled invalid-input affordance — the border/focus ring
+   looked identical whether or not the field had an error. */
+.form-select[aria-invalid="true"],
+.form-input[aria-invalid="true"],
+.form-textarea[aria-invalid="true"] {
+    border-color: var(--color-error);
+}
+.form-select[aria-invalid="true"]:focus,
+.form-input[aria-invalid="true"]:focus,
+.form-textarea[aria-invalid="true"]:focus {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-error) 30%, transparent);
+}
+.error-text {
+    display: block;
+    font-size: 0.71875rem; /* 11.5px */
+    font-weight: 500;
+    color: var(--color-error);
+    margin-top: 0.25rem;
+}
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 0.84375rem; /* 13.5px */
+    color: var(--color-text-primary);
+}
+.check-row input {
+    accent-color: var(--color-primary);
+    width: 16px;
+    height: 16px;
+}
+.upload-well {
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--sp-5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-text-secondary);
+    font-size: 0.8125rem; /* 13px */
+    background: color-mix(in oklch, var(--color-text-secondary) 4%, var(--color-surface));
+    text-align: center;
+}
+.upload-well b { color: var(--color-primary); font-weight: 600; }
+
+/* Empty state: icon + heading + subtext for lists that can render with
+   zero rows (ticket/asset lists, KB portal, notifications) — reuses the
+   dashboard-card surface so it drops into existing table/card wrappers. */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0.5rem;
+    padding: var(--sp-6) var(--sp-4);
+    color: var(--color-text-secondary);
+}
+.empty-state svg,
+.empty-state .empty-state-icon {
+    width: 1.875rem; /* 30px */
+    height: 1.875rem;
+    color: var(--color-text-secondary);
+    opacity: 0.6;
+}
+.empty-state-title {
+    font-size: 0.875rem; /* 14px */
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+.empty-state-subtext {
+    font-size: 0.8125rem;
+    max-width: 28rem;
+}
+
+/* Avatar chip: initials circle + name, for assignee cells in tables that
+   currently render a bare initials string with no visual anchor. */
+.avatar-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.8125rem;
+    color: var(--color-text-primary);
+}
+.avatar-chip .avatar-chip-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: color-mix(in oklch, var(--color-primary) 15%, transparent);
+    color: var(--color-primary);
+    font-size: 0.65625rem; /* 10.5px */
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* CSAT star rating button (feedback form) — JS toggles `.is-filled`,
+   no inline style mutation, so the fill color stays token-driven. */
+.star-btn {
+    color: var(--color-text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+.star-btn.is-filled {
+    color: var(--color-warning);
+}
+
+/* Tabs: underline-style tab bar (e.g. Drafts/Pending/Published on the KB
+   management page). JS toggles `.is-active` — no inline style mutation. */
+.tab-btn {
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    font: inherit;
+    font-size: 0.8125rem; /* 13px */
+    font-weight: 600;
+    padding: 9px 14px;
+    margin-bottom: -1px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+.tab-btn:hover {
+    color: var(--color-text-primary);
+}
+.tab-btn.is-active {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+/* Role badge: small pill identifying a user's role/team, used in profile
+   headers and user-facing chrome. Neutral bordered chip with a
+   brand-colored icon — not a tinted pill — matching the gallery exactly. */
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 6px 12px;
+    border-radius: 9999px;
+    border: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+.role-badge svg {
+    color: var(--color-primary);
 }
 
 
@@ -2887,11 +3288,12 @@ tr.ticket-row.selected {
 
 .filter-chip {
     display: inline-block;
-    padding: 0.25rem 0.75rem;
+    padding: 5px 13px;
     border-radius: 9999px;
-    font-size: 0.7rem;
+    font-size: 0.78125rem; /* 12.5px */
+    font-weight: 500;
     border: 1px solid var(--color-border);
-    background-color: transparent;
+    background-color: var(--color-surface);
     color: var(--color-text-secondary);
     transition: all 0.15s ease;
     text-decoration: none;

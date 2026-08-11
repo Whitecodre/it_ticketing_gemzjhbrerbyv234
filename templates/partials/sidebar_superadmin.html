@@ -11,21 +11,17 @@
 
 {# ========== SECTION: TICKETS ========== #}
 <div class="mt-1">
-    <button @click="toggleSection('tickets-section')"
-            class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
             data-section="tickets-section"
             style="color: var(--color-text-secondary);">
         <span class="section-icon">{% lucide "ticket" size=16 %}</span>
         <span>Tickets</span>
-        <span class="section-chevron ml-auto transition-transform duration-200"
-              :style="{ transform: isSectionOpen('tickets-section') ? 'rotate(0deg)' : 'rotate(-90deg)' }">
+        <span class="section-chevron ml-auto transition-transform duration-200">
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="tickets-section" 
-         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out"
-         x-show="isSectionOpen('tickets-section')"
-         x-collapse>
+    <div id="tickets-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
         <a href="{% url 'tickets:unassigned' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/tickets/unassigned/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
@@ -43,21 +39,17 @@
 
 {# ========== SECTION: ADMINISTRATION ========== #}
 <div class="mt-2">
-    <button @click="toggleSection('admin-section')"
-            class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
             data-section="admin-section"
             style="color: var(--color-text-secondary);">
         <span class="section-icon">{% lucide "settings" size=16 %}</span>
         <span>Administration</span>
-        <span class="section-chevron ml-auto transition-transform duration-200"
-              :style="{ transform: isSectionOpen('admin-section') ? 'rotate(0deg)' : 'rotate(-90deg)' }">
+        <span class="section-chevron ml-auto transition-transform duration-200">
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="admin-section" 
-         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out"
-         x-show="isSectionOpen('admin-section')"
-         x-collapse>
+    <div id="admin-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
         <a href="{% url 'accounts:admin_users' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/admin/users/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
@@ -87,22 +79,18 @@
 
 <!-- ========== SECTION: ORGANOGRAM ========== -->
 <div class="mt-2">
-    <button @click="toggleSection('organogram-section')"
-            class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
             data-section="organogram-section"
             style="color: var(--color-text-secondary);">
         <span class="section-icon">{% lucide "network" size=16 %}</span>
         <span>Organogram</span>
-        <span class="section-chevron ml-auto transition-transform duration-200"
-              :style="{ transform: isSectionOpen('organogram-section') ? 'rotate(0deg)' : 'rotate(-90deg)' }">
+        <span class="section-chevron ml-auto transition-transform duration-200">
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="organogram-section" 
-         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out"
-         x-show="isSectionOpen('organogram-section')"
-         x-collapse>
-        
+    <div id="organogram-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
+
         <a href="{% url 'organogram:system' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/organogram/system/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
@@ -116,14 +104,14 @@
             <span class="shrink-0">{% lucide "building-2" size=16 class="h-4 w-4" %}</span>
             <span>Organization Chart</span>
         </a>
-        
+
         {% comment %} <a href="{% url 'organogram:org_view' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/organogram/organization/' in request.path and not '/list/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "building" size=16 class="h-4 w-4" %}</span>
             <span>Organization Chart</span>
         </a> {% endcomment %}
-        
+
         {% comment %} {% if user.role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
         <a href="{% url 'organogram:org_list' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
@@ -132,7 +120,7 @@
             <span>Manage Org Charts</span>
         </a>
         {% endif %} {% endcomment %}
-        
+
         {% comment %} {% if user.role in 'ADMIN,SUPERADMIN' %}
         <a href="{% url 'organogram:org_approvals' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
@@ -153,21 +141,17 @@
 
 {# ========== SECTION: PRODUCTIVITY ========== #}
 <div class="mt-2">
-    <button @click="toggleSection('productivity-section')"
-            class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
             data-section="productivity-section"
             style="color: var(--color-text-secondary);">
         <span class="section-icon">{% lucide "sparkles" size=16 %}</span>
         <span>Productivity</span>
-        <span class="section-chevron ml-auto transition-transform duration-200"
-              :style="{ transform: isSectionOpen('productivity-section') ? 'rotate(0deg)' : 'rotate(-90deg)' }">
+        <span class="section-chevron ml-auto transition-transform duration-200">
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="productivity-section" 
-         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out"
-         x-show="isSectionOpen('productivity-section')"
-         x-collapse>
+    <div id="productivity-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
         <a href="{% url 'kb:management' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/kb/manage' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
@@ -192,21 +176,17 @@
 
 {# ========== SECTION: ANALYTICS ========== #}
 <div class="mt-2">
-    <button @click="toggleSection('analytics-section')"
-            class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
             data-section="analytics-section"
             style="color: var(--color-text-secondary);">
         <span class="section-icon">{% lucide "bar-chart-3" size=16 %}</span>
         <span>Analytics</span>
-        <span class="section-chevron ml-auto transition-transform duration-200"
-              :style="{ transform: isSectionOpen('analytics-section') ? 'rotate(0deg)' : 'rotate(-90deg)' }">
+        <span class="section-chevron ml-auto transition-transform duration-200">
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="analytics-section" 
-         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out"
-         x-show="isSectionOpen('analytics-section')"
-         x-collapse>
+    <div id="analytics-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
         <a href="{% url 'tickets:audit_log' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/audit/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">

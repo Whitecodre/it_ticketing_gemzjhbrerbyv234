@@ -65,7 +65,7 @@
     .org-header .actions select:focus {
         outline: none;
         border-color: var(--color-primary);
-        box-shadow: 0 0 0 3px rgba(var(--color-primary-rgb), 0.2);
+        box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-primary) 20%, transparent);
     }
     
     .org-scroll-container {
@@ -146,58 +146,58 @@
     
     .org-node .node-card {
         background-color: var(--color-surface);
-        border: 2px solid var(--color-border);
-        border-radius: 0.75rem;
-        padding: 0.75rem 1.25rem;
-        min-width: 140px;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: 10px 16px;
+        min-width: 132px;
         max-width: 190px;
         text-align: center;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        box-shadow: var(--shadow-sm);
         position: relative;
         z-index: 2;
         cursor: default;
     }
-    
+
     .org-node .node-card:hover {
         transform: translateY(-3px) scale(1.02);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        box-shadow: var(--shadow-md);
         border-color: var(--color-primary);
         z-index: 5;
     }
-    
+
     .org-node .node-card .avatar {
-        width: 48px;
-        height: 48px;
+        width: 34px;
+        height: 34px;
         border-radius: 50%;
         margin: 0 auto 0.4rem auto;
-        background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+        background: var(--color-primary);
         color: white;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 1.1rem;
-        font-weight: 600;
+        font-size: 0.8125rem; /* 13px */
+        font-weight: 700;
         overflow: hidden;
         flex-shrink: 0;
     }
-    
+
     .org-node .node-card .avatar img {
         width: 100%;
         height: 100%;
         object-fit: cover;
     }
-    
+
     .org-node .node-card .name {
-        font-size: 0.85rem;
-        font-weight: 600;
+        font-size: 0.78125rem; /* 12.5px */
+        font-weight: 700;
         color: var(--color-text-primary);
         line-height: 1.2;
         word-break: break-word;
     }
-    
+
     .org-node .node-card .title {
-        font-size: 0.65rem;
+        font-size: 0.6875rem; /* 11px */
         color: var(--color-text-secondary);
         line-height: 1.2;
     }
@@ -307,16 +307,7 @@
         width: 100%;
     }
     
-    .org-children::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 10%;
-        right: 10%;
-        height: 2px;
-        background-color: var(--color-border);
-    }
-    
+    /* Vertical stub from the rail down to each child. */
     .org-children .org-node::before {
         content: '';
         position: absolute;
@@ -327,6 +318,26 @@
         height: 16px;
         background-color: var(--color-border);
     }
+
+    /* Horizontal rail: each child draws the rail segment directly above it,
+       overflowing into half the column gap on each side so adjoining
+       segments meet in the middle of the gap between cards. The first and
+       last child stop at their own center instead of overflowing outward,
+       so the rail spans only from the first sibling's center to the last
+       sibling's — not a fixed 10%-90% line that ignored how many children
+       or how wide the row actually was. */
+    .org-children .org-node::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -1.25rem;
+        right: -1.25rem;
+        height: 2px;
+        background-color: var(--color-border);
+    }
+    .org-children .org-node:first-child::after { left: 50%; }
+    .org-children .org-node:last-child::after { right: 50%; }
+    .org-children .org-node:only-child::after { display: none; }
     
     /* Legend */
     .org-legend {
@@ -516,28 +527,13 @@
         </div>
     </div>
     
-    <!-- IT Department Stats (shown when IT is selected or no filter) -->
-    {% if not department or department == 'IT' %}
-    <div class="it-stats">
-        <div class="stat-item">
-            <div class="label">Total IT Staff</div>
-            <div class="value">{{ it_dept_stats.total }}</div>
-        </div>
-        <div class="stat-item">
-            <div class="label">Managers / Leads</div>
-            <div class="value managers">{{ it_dept_stats.managers }}</div>
-        </div>
-        <div class="stat-item">
-            <div class="label">Agents</div>
-            <div class="value agents">{{ it_dept_stats.agents }}</div>
-        </div>
-        <div class="stat-item">
-            <div class="label">End Users</div>
-            <div class="value end-users">{{ it_dept_stats.end_users }}</div>
-        </div>
-    </div>
-    {% endif %}
-    
+    <!-- IT Department Stats now render once, at the bottom of the tree
+         container (organogram/partials/system_tree_container.html) rather
+         than duplicated here — this container is also the HTMX swap target
+         for search/filter, so the stats there stay in sync with results
+         while this static copy would have gone stale after the first
+         filter. -->
+
     <!-- Scrollable Tree Container -->
     <div id="orgTreeContainer" class="org-tree-wrapper">
         {% include "organogram/partials/system_tree_container.html" %}

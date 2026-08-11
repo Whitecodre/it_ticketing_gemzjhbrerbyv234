@@ -16,29 +16,26 @@
 
     {# Header with actions #}
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Knowledge Base</h2>
+        <h2 class="text-base font-semibold text-text-primary">Knowledge Base</h2>
         <a href="{% url 'kb:create' %}" class="btn-primary text-sm px-4 py-2 rounded-lg inline-flex items-center gap-1.5">
             {% lucide "plus" size=16 %} New Article
         </a>
     </div>
 
     {# Tabs #}
-    <div class="flex border-b mb-6" style="border-color: var(--color-border);">
-        <button class="tab-btn active px-5 py-2.5 text-sm font-medium border-b-2 transition"
-                data-tab="drafts"
-                style="border-color: var(--color-primary); color: var(--color-primary); background: none; cursor: pointer;">
+    <div class="flex border-b mb-6 border-border">
+        <button class="tab-btn is-active px-5 py-2.5 text-sm font-medium transition"
+                data-tab="drafts">
             My Drafts
         </button>
         {% if user.role == 'TEAM_LEAD' or user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
-        <button class="tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition"
-                data-tab="pending"
-                style="border-color: transparent; color: var(--color-text-secondary); background: none; cursor: pointer;">
+        <button class="tab-btn px-5 py-2.5 text-sm font-medium transition"
+                data-tab="pending">
             Pending Review
         </button>
         {% endif %}
-        <button class="tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition"
-                data-tab="published"
-                style="border-color: transparent; color: var(--color-text-secondary); background: none; cursor: pointer;">
+        <button class="tab-btn px-5 py-2.5 text-sm font-medium transition"
+                data-tab="published">
             Published
         </button>
     </div>
@@ -51,7 +48,7 @@
             <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
                 <div class="flex-1">
                     <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ article.title }}</h3>
+                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
                         <span class="status-chip draft text-xs shrink-0">Draft</span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
@@ -69,7 +66,7 @@
                     
                     <p class="text-xs text-text-secondary mt-2">Updated {{ article.updated_at|timesince }} ago</p>
                 </div>
-                <div class="flex items-center gap-2 mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                     <a href="{% url 'kb:edit' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
                         {% lucide "pencil" size=14 %} Edit
                     </a>
@@ -85,10 +82,10 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-12">
-            <span class="text-4xl block mb-2">📝</span>
-            <p class="text-text-secondary text-sm">No drafts yet.</p>
-            <p class="text-text-secondary text-xs">Create your first article to get started.</p>
+        <div class="empty-state">
+            {% lucide "file-text" size=40 %}
+            <p class="empty-state-title">No drafts yet</p>
+            <p class="empty-state-subtext">Create your first article to get started.</p>
         </div>
         {% endif %}
     </div>
@@ -102,7 +99,7 @@
             <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
                 <div class="flex-1">
                     <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ article.title }}</h3>
+                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
                         <span class="status-chip pending_approval text-xs shrink-0">Pending</span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
@@ -120,7 +117,7 @@
                     
                     <p class="text-xs text-text-secondary mt-2">By {{ article.author.get_full_name }} · {{ article.updated_at|timesince }} ago</p>
                 </div>
-                <div class="flex items-center gap-2 mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                     <a href="{% url 'kb:edit' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
                         {% lucide "eye" size=14 %} Review
                     </a>
@@ -136,10 +133,10 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-12">
-            <span class="text-4xl block mb-2">✅</span>
-            <p class="text-text-secondary text-sm">No articles pending review.</p>
-            <p class="text-text-secondary text-xs">Great job! All articles have been reviewed.</p>
+        <div class="empty-state">
+            {% lucide "check-circle" size=40 %}
+            <p class="empty-state-title">No articles pending review</p>
+            <p class="empty-state-subtext">Great job! All articles have been reviewed.</p>
         </div>
         {% endif %}
     </div>
@@ -153,7 +150,7 @@
             <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
                 <div class="flex-1">
                     <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ article.title }}</h3>
+                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
                         <span class="status-chip resolved text-xs shrink-0">Published</span>
                     </div>
                     <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
@@ -171,7 +168,7 @@
                     
                     <p class="text-xs text-text-secondary mt-2">Published {{ article.updated_at|timesince }} ago</p>
                 </div>
-                <div class="flex items-center gap-2 mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mt-3 pt-3 border-t border-border">
                     <a href="{% url 'kb:article_detail' article.slug %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5" target="_blank">
                         {% lucide "eye" size=14 %} View
                     </a>
@@ -187,10 +184,10 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-12">
-            <span class="text-4xl block mb-2">📚</span>
-            <p class="text-text-secondary text-sm">No published articles.</p>
-            <p class="text-text-secondary text-xs">Articles you publish will appear here.</p>
+        <div class="empty-state">
+            {% lucide "library" size=40 %}
+            <p class="empty-state-title">No published articles</p>
+            <p class="empty-state-subtext">Articles you publish will appear here.</p>
         </div>
         {% endif %}
     </div>
@@ -206,13 +203,11 @@
     function activateTab(tabId) {
         // Update UI
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.style.borderColor = 'transparent';
-            btn.style.color = 'var(--color-text-secondary)';
+            btn.classList.remove('is-active');
         });
         const activeBtn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
         if (activeBtn) {
-            activeBtn.style.borderColor = 'var(--color-primary)';
-            activeBtn.style.color = 'var(--color-primary)';
+            activeBtn.classList.add('is-active');
         }
         document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');

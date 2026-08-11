@@ -23,11 +23,10 @@
         <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
 
             {# Header #}
-            <div class="px-3 py-2.5 sm:px-4 sm:py-3 border-b flex flex-wrap items-start sm:items-center justify-between shrink-0 gap-1.5 sm:gap-0"
-                 style="background-color: var(--color-surface); border-color: var(--color-border);">
+            <div class="px-3 py-2.5 sm:px-4 sm:py-3 border-b flex flex-wrap items-start sm:items-center justify-between shrink-0 gap-1.5 sm:gap-0 bg-surface border-border">
                 <div class="flex-1 min-w-0">
-                    <h2 class="text-sm sm:text-base font-semibold truncate" style="color: var(--color-text-primary);">{{ ticket.title }}</h2>
-                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs mt-0.5" style="color: var(--color-text-secondary);">
+                    <h2 class="text-sm sm:text-base font-semibold truncate text-text-primary">{{ ticket.title }}</h2>
+                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs mt-0.5 text-text-secondary">
                         <span>{{ ticket.number }}</span>
                         <span>•</span>
                         <span id="ticketStatusChip">
@@ -63,8 +62,8 @@
                                 onclick="toggleStatusDropdown()">
                             Status {% lucide "chevron-down" size=14 class="transition-transform duration-200" id="statusChevron" %}
                         </button>
-                        <div id="statusMenu" class="absolute right-0 top-full mt-1 w-40 rounded-md shadow-lg border hidden p-1"
-                             style="background-color: var(--color-surface); border-color: var(--color-border); z-index: 50;">
+                        <div id="statusMenu" class="absolute right-0 top-full mt-1 w-40 rounded-md shadow-lg border hidden p-1 bg-surface border-border"
+                             style="z-index: 50;">
                             {% for value, label in ticket.Status.choices %}
                             <button class="w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
                                     hx-post="{% url 'tickets:update_status' ticket.pk %}?status={{ value }}"
@@ -86,8 +85,7 @@
 
             {# Quick Actions Bar (only for agents) #}
             {% if is_agent %}
-            <div class="px-3 py-1.5 sm:px-4 sm:py-2 border-b flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0"
-                style="background-color: var(--color-surface); border-color: var(--color-border);">
+            <div class="px-3 py-1.5 sm:px-4 sm:py-2 border-b flex flex-wrap items-center gap-1.5 sm:gap-2 shrink-0 bg-surface border-border">
                 
                 {# Resolve button - only show if not already resolved/closed #}
                 {% if ticket.status not in 'RESOLVED,CLOSED' %}
@@ -129,13 +127,12 @@
             {% endif %}
 
             {# Message Timeline #}
-            <div class="flex-1 overflow-y-auto px-2 sm:px-4 pt-2 sm:pt-3 pb-2 sm:pb-3 space-y-3" id="commentTimeline"
-                 style="background-color: var(--color-background);">
+            <div class="flex-1 overflow-y-auto px-2 sm:px-4 pt-2 sm:pt-3 pb-2 sm:pb-3 space-y-3 bg-background" id="commentTimeline">
                 {% include "partials/conversation_timeline.html" %}
             </div>
 
             {# Composer #}
-            <div class="shrink-0 border-t" style="background-color: var(--color-surface); border-color: var(--color-border);">
+            <div class="shrink-0 border-t bg-surface border-border">
                 <form id="commentForm"
                     {% if is_agent %}
                     hx-post="{% url 'tickets:add_comment_conversation' ticket.pk %}"
@@ -166,8 +163,8 @@
                     <div id="commentEditor"
                          contenteditable="true"
                          data-draft-key="draft_{{ ticket.pk }}"
-                         class="w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 overflow-y-auto"
-                         style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary); height: 80px; max-height: 180px; resize: none;">
+                         class="w-full rounded-lg border p-2 text-sm focus:outline-none focus:ring-2 overflow-y-auto bg-background border-border text-text-primary ring-primary"
+                         style="height: 80px; max-height: 180px; resize: none;">
                     </div>
 
                     <div class="flex flex-wrap items-start sm:items-center justify-between gap-2 mt-2">
@@ -187,8 +184,8 @@
                                         onclick="document.getElementById('macroDropdown').classList.toggle('hidden'); htmx.trigger('#loadMacros', 'click')">
                                     {% lucide "text-cursor-input" size=14 %}
                                 </button>
-                                <div id="macroDropdown" class="absolute bottom-full left-0 mb-1 w-56 rounded-md shadow-lg border hidden"
-                                    style="background-color: var(--color-surface); border-color: var(--color-border); z-index: 60;">
+                                <div id="macroDropdown" class="absolute bottom-full left-0 mb-1 w-56 rounded-md shadow-lg border hidden bg-surface border-border"
+                                    style="z-index: 60;">
                                     <div id="macroDropdownContent"
                                         hx-get="{% url 'tickets:macro_list' %}"
                                         hx-trigger="click from:#loadMacros"
@@ -214,9 +211,8 @@
 
         {# Right details panel #}
         {% if is_agent %}
-        <div id="detailsPanel" 
-            class="shrink-0 border-l overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out w-0 sm:w-0"
-            style="background-color: var(--color-surface); border-color: var(--color-border);">
+        <div id="detailsPanel"
+            class="shrink-0 border-l overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out w-0 sm:w-0 bg-surface border-border">
             <div id="detailsPanelContent" class="w-full max-w-90 sm:max-w-sm md:max-w-md lg:max-w-lg">
                 {% include "partials/ticket_details_panel.html" %}
             </div>
@@ -227,7 +223,7 @@
 
 <!-- Resolve Confirmation Modal -->
 <div id="resolveModalOverlay" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 hidden" onclick="if(event.target===this) closeResolveModal()">
-    <div id="resolveModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);" onclick="event.stopPropagation()">
+    <div id="resolveModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
         <!-- Content loaded via HTMX -->
     </div>
 </div>
@@ -235,7 +231,7 @@
 <!-- Modal Overlay for Attachment Preview -->
 <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
      onclick="if(event.target===this) closeAttachmentModal()">
-    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
         <!-- Content loaded via HTMX -->
     </div>
 </div>

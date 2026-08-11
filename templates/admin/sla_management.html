@@ -16,15 +16,15 @@
     <div class="flex items-center gap-3">
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "timer-reset" size=19 %}</span>
         <div>
-            <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">SLA configuration</h2>
+            <h2 class="text-lg font-semibold text-text-primary">SLA configuration</h2>
             <p class="text-sm text-text-secondary">Manage SLA policies, business calendars, and escalation rules.</p>
         </div>
     </div>
 
     <!-- ======== 1. SLA Policies ======== -->
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">SLA Policies</h3>
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold text-text-primary">SLA Policies</h3>
             <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
                     onclick="document.getElementById('slaModal').classList.remove('hidden')">
                 {% lucide "plus" size=14 %} Add Policy
@@ -34,7 +34,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Response Target</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Resolution Target</th>
@@ -44,7 +44,7 @@
                 </thead>
                 <tbody>
                     {% for sla in slas %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <span class="priority-chip 
                                 {% if sla.priority == 'P1' %}critical
@@ -71,18 +71,18 @@
             </table>
         </div>
         {% else %}
-        <div class="text-center py-8">
-            <span class="text-3xl block mb-2">📋</span>
-            <p class="text-text-secondary text-sm">No SLA policies defined yet.</p>
-            <p class="text-text-secondary text-xs">Click "Add Policy" to create your first SLA.</p>
+        <div class="empty-state">
+            {% lucide "clipboard-list" size=36 %}
+            <p class="empty-state-title">No SLA policies defined yet</p>
+            <p class="empty-state-subtext">Click "Add Policy" to create your first SLA.</p>
         </div>
         {% endif %}
     </div>
 
     <!-- ======== 2. Business Calendars ======== -->
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Business Calendars</h3>
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold text-text-primary">Business Calendars</h3>
             <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
                     onclick="document.getElementById('calendarModal').classList.remove('hidden')">
                 {% lucide "plus" size=14 %} Add Calendar
@@ -109,18 +109,18 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-8">
-            <span class="text-3xl block mb-2">📅</span>
-            <p class="text-text-secondary text-sm">No business calendars defined.</p>
-            <p class="text-text-secondary text-xs">Click "Add Calendar" to create one.</p>
+        <div class="empty-state">
+            {% lucide "calendar" size=36 %}
+            <p class="empty-state-title">No business calendars defined</p>
+            <p class="empty-state-subtext">Click "Add Calendar" to create one.</p>
         </div>
         {% endif %}
     </div>
 
     <!-- ======== 3. Escalation Rules ======== -->
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Escalation Rules</h3>
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold text-text-primary">Escalation Rules</h3>
             <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
                     onclick="document.getElementById('ruleModal').classList.remove('hidden')">
                 {% lucide "plus" size=14 %} Add Rule
@@ -130,7 +130,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Timer</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Threshold</th>
@@ -141,7 +141,7 @@
                 </thead>
                 <tbody>
                     {% for rule in rules %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <span class="priority-chip 
                                 {% if rule.priority == 'P1' %}critical
@@ -169,10 +169,10 @@
             </table>
         </div>
         {% else %}
-        <div class="text-center py-8">
-            <span class="text-3xl block mb-2">⚡</span>
-            <p class="text-text-secondary text-sm">No escalation rules defined.</p>
-            <p class="text-text-secondary text-xs">Click "Add Rule" to configure escalation policies.</p>
+        <div class="empty-state">
+            {% lucide "zap" size=36 %}
+            <p class="empty-state-title">No escalation rules defined</p>
+            <p class="empty-state-subtext">Click "Add Rule" to configure escalation policies.</p>
         </div>
         {% endif %}
     </div>
@@ -180,9 +180,9 @@
 
 <!-- ========== ADD SLA MODAL ========== -->
 <div id="slaModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Add SLA Policy</h3>
+            <h3 class="text-base font-semibold text-text-primary">Add SLA Policy</h3>
             <button onclick="document.getElementById('slaModal').classList.add('hidden')" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form method="post" action="{% url 'tickets:sla_create' %}" class="space-y-4">
@@ -237,9 +237,9 @@
 
 <!-- ========== ADD CALENDAR MODAL ========== -->
 <div id="calendarModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Add Business Calendar</h3>
+            <h3 class="text-base font-semibold text-text-primary">Add Business Calendar</h3>
             <button onclick="document.getElementById('calendarModal').classList.add('hidden')" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form method="post" action="{% url 'tickets:calendar_create' %}" class="space-y-4">
@@ -302,9 +302,9 @@
 
 <!-- ========== ADD ESCALATION RULE MODAL ========== -->
 <div id="ruleModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Add Escalation Rule</h3>
+            <h3 class="text-base font-semibold text-text-primary">Add Escalation Rule</h3>
             <button onclick="document.getElementById('ruleModal').classList.add('hidden')" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form method="post" action="{% url 'tickets:rule_create' %}" class="space-y-4">

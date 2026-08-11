@@ -15,7 +15,7 @@
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+            <h2 class="text-base font-semibold text-text-primary">
                 {% lucide "building" size=20 %} Organization Charts
             </h2>
             <p class="text-sm text-text-secondary">Create and manage organizational charts for your company.</p>
@@ -27,21 +27,21 @@
 
     <!-- Stats -->
     <div class="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-        <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
-            <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Total Charts</p>
-            <p class="text-2xl font-bold mt-1" style="color: var(--color-text-primary);">{{ stats.total }}</p>
+        <div class="rounded-lg p-4 border bg-surface border-border">
+            <p class="text-xs font-medium text-text-secondary">Total Charts</p>
+            <p class="text-2xl font-bold mt-1 text-text-primary">{{ stats.total }}</p>
         </div>
-        <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
-            <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Published</p>
-            <p class="text-2xl font-bold mt-1" style="color: var(--color-success);">{{ stats.published }}</p>
+        <div class="rounded-lg p-4 border bg-surface border-border">
+            <p class="text-xs font-medium text-text-secondary">Published</p>
+            <p class="text-2xl font-bold mt-1 text-success">{{ stats.published }}</p>
         </div>
-        <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
-            <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Pending Approval</p>
-            <p class="text-2xl font-bold mt-1" style="color: var(--color-warning);">{{ stats.pending }}</p>
+        <div class="rounded-lg p-4 border bg-surface border-border">
+            <p class="text-xs font-medium text-text-secondary">Pending Approval</p>
+            <p class="text-2xl font-bold mt-1 text-warning">{{ stats.pending }}</p>
         </div>
-        <div class="rounded-lg p-4 border" style="background-color: var(--color-surface); border-color: var(--color-border);">
-            <p class="text-xs font-medium" style="color: var(--color-text-secondary);">Drafts</p>
-            <p class="text-2xl font-bold mt-1" style="color: var(--color-info);">{{ stats.drafts }}</p>
+        <div class="rounded-lg p-4 border bg-surface border-border">
+            <p class="text-xs font-medium text-text-secondary">Drafts</p>
+            <p class="text-2xl font-bold mt-1 text-info">{{ stats.drafts }}</p>
         </div>
     </div>
 
@@ -50,7 +50,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Name</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Version</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Department</th>
@@ -62,10 +62,10 @@
                 </thead>
                 <tbody>
                     {% for draft in drafts %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <div>
-                                <div class="font-medium" style="color: var(--color-text-primary);">
+                                <div class="font-medium text-text-primary">
                                     {{ draft.name }}
                                 </div>
                                 <div class="text-xs text-text-secondary">{{ draft.description|truncatechars:40 }}</div>
@@ -112,21 +112,18 @@
                         <td class="py-3 px-4 text-center">
                             <div class="flex items-center justify-center gap-1">
                                 <a href="{% url 'organogram:org_builder' draft.pk %}"
-                                   class="p-1.5 rounded transition hover:bg-black/5"
-                                   style="color: var(--color-text-secondary);"
+                                   class="p-1.5 rounded transition hover:bg-black/5 text-text-secondary"
                                    title="Edit">
                                     {% lucide "edit" size=15 %}
                                 </a>
                                 <a href="{% url 'organogram:org_preview' draft.pk %}"
-                                   class="p-1.5 rounded transition hover:bg-black/5"
-                                   style="color: var(--color-text-secondary);"
+                                   class="p-1.5 rounded transition hover:bg-black/5 text-text-secondary"
                                    title="Preview">
                                     {% lucide "eye" size=15 %}
                                 </a>
                                 {% if draft.status == 'PUBLISHED' %}
                                 <a href="{% url 'organogram:org_view' %}"
-                                   class="p-1.5 rounded transition hover:bg-black/5"
-                                   style="color: var(--color-success);"
+                                   class="p-1.5 rounded transition hover:bg-black/5 text-success"
                                    title="View Published">
                                     {% lucide "globe" size=15 %}
                                 </a>
@@ -136,11 +133,11 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="7" class="text-center py-12 text-text-secondary">
-                            <div class="flex flex-col items-center gap-2">
-                                <span class="text-4xl opacity-30">🏢</span>
-                                <p class="text-sm font-medium">No organization charts found</p>
-                                <p class="text-xs">Create your first organizational chart to get started.</p>
+                        <td colspan="7">
+                            <div class="empty-state">
+                                {% lucide "building-2" size=40 %}
+                                <p class="empty-state-title">No organization charts found</p>
+                                <p class="empty-state-subtext">Create your first organizational chart to get started.</p>
                                 <a href="{% url 'organogram:org_builder' %}" class="btn-primary text-sm mt-2">Create Chart</a>
                             </div>
                         </td>

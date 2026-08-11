@@ -6,8 +6,23 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
 from django.middleware.csrf import get_token
+from django.core.paginator import Paginator
 from .models import Notification, PushSubscription
 from .utils import send_push_notification
+
+
+def _get_sidebar_template(user):
+    """Returns the correct sidebar partial based on user's active role."""
+    mapping = {
+        'END_USER': 'partials/sidebar_end_user.html',
+        'AGENT': 'partials/sidebar_agent.html',
+        'TEAM_LEAD': 'partials/sidebar_team_lead.html',
+        'ADMIN': 'partials/sidebar_admin.html',
+        'SUPERADMIN': 'partials/sidebar_superadmin.html',
+    }
+    active_role = user.get_active_role()
+    role_name = active_role.name if active_role else user.role
+    return mapping.get(role_name, 'partials/sidebar_end_user.html')
 
 
 
@@ -74,6 +89,30 @@ def list_notifications(request):
         'notifications': notifications,
         'unread': unread,
         'csrf_token': get_token(request),
+    })
+
+
+@login_required
+def notifications_page(request):
+    """Full notifications page ('View all' destination) — not to be confused
+    with list_notifications, which renders the bell dropdown fragment and is
+    fetched via HTMX from several places; this is a real, standalone page."""
+    notifications_qs = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+
+    filter_value = request.GET.get('filter', 'all')
+    if filter_value == 'unread':
+        notifications_qs = notifications_qs.filter(is_read=False)
+
+    unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+
+    paginator = Paginator(notifications_qs, 20)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'notifications/list.html', {
+        'notifications': page_obj,
+        'unread_count': unread_count,
+        'filter_value': filter_value,
+        'sidebar_template': _get_sidebar_template(request.user),
     })
 
 # WEBSOCKET INITIALIZATON

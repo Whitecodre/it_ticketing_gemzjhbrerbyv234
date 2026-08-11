@@ -173,17 +173,32 @@
 
     <!-- Pagination -->
     {% if documents.has_other_pages %}
-    <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-3 mt-4 border-t" style="border-color: var(--color-border);">
-        <span class="text-sm text-text-secondary">Page {{ documents.number }} of {{ documents.paginator.num_pages }}</span>
-        <div class="flex gap-1.5">
+    <div class="pagination-bar" style="margin-top: 1rem;">
+        <span class="pagination-summary">
+            Showing <strong>{{ documents.start_index }}–{{ documents.end_index }}</strong> of <strong>{{ documents.paginator.count }}</strong> documents
+        </span>
+        <div class="pagination-controls">
             {% if documents.has_previous %}
-            <a href="?page={{ documents.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}" 
-               class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition">← Prev</a>
+            <a href="?page={{ documents.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}"
+               class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
+            {% else %}
+            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
             {% endif %}
-            <span class="px-3 py-1 text-sm rounded bg-primary text-white">{{ documents.number }}</span>
+            <div class="pagination-numbers">
+                {% for num in documents.paginator.page_range %}
+                    {% if num == documents.number %}
+                    <span class="pagination-number is-current">{{ num }}</span>
+                    {% elif num > documents.number|add:'-3' and num < documents.number|add:'3' %}
+                    <a href="?page={{ num }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}"
+                       class="pagination-number">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
             {% if documents.has_next %}
-            <a href="?page={{ documents.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}" 
-               class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition">Next →</a>
+            <a href="?page={{ documents.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}"
+               class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
+            {% else %}
+            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
             {% endif %}
         </div>
     </div>

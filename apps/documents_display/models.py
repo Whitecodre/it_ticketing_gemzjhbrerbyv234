@@ -1,5 +1,7 @@
 # apps/documents_display/models.py
 
+import secrets
+
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -9,6 +11,10 @@ from django.db.models import Q
 from django.utils.text import slugify
 
 User = get_user_model()
+
+
+def generate_share_token():
+    return secrets.token_urlsafe(32)
 
 
 class DisplayCategory(models.Model):
@@ -47,7 +53,8 @@ class DisplayDocumentQuerySet(models.QuerySet):
             Q(visibility=DisplayDocument.Visibility.PUBLIC) |
             Q(editors=user) |
             Q(downloaders=user) |
-            Q(department_access__department=user.department)
+            Q(department_access__department=user.department) |
+            Q(shares__recipient=user, shares__revoked_at__isnull=True)
         ).distinct()
 
 
@@ -165,6 +172,8 @@ class DisplayDocument(models.Model):
             return True
         if self.editors.filter(pk=user.pk).exists() or self.downloaders.filter(pk=user.pk).exists():
             return True
+        if self.shares.filter(recipient=user, revoked_at__isnull=True).exists():
+            return True
         return self.department_access.filter(department=user.department).exists()
 
     def is_editable_by(self, user):
@@ -175,6 +184,8 @@ class DisplayDocument(models.Model):
             return True
         if self.visibility == self.Visibility.PUBLIC and self.public_can_edit:
             return True
+        if self.shares.filter(recipient=user, revoked_at__isnull=True, can_edit=True).exists():
+            return True
         return self.department_access.filter(department=user.department, can_edit=True).exists()
 
     def is_downloadable_by(self, user):
@@ -184,6 +195,8 @@ class DisplayDocument(models.Model):
         if self.downloaders.filter(pk=user.pk).exists():
             return True
         if self.visibility == self.Visibility.PUBLIC and self.public_can_download:
+            return True
+        if self.shares.filter(recipient=user, revoked_at__isnull=True, can_download=True).exists():
             return True
         return self.department_access.filter(department=user.department, can_download=True).exists()
 
@@ -226,6 +239,49 @@ class DocumentDepartmentAccess(models.Model):
 
     def __str__(self):
         return f"{self.document.title} → {self.get_department_display()}"
+
+
+class DocumentShare(models.Model):
+    """Grants one specific user read access to a document, plus optional edit/download,
+    independent of their department. Created by an Admin and delivered via an emailed link."""
+
+    document = models.ForeignKey(
+        DisplayDocument,
+        on_delete=models.CASCADE,
+        related_name='shares'
+    )
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='document_shares'
+    )
+    shared_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='shared_documents'
+    )
+    can_edit = models.BooleanField(default=False)
+    can_download = models.BooleanField(default=False)
+    token = models.CharField(max_length=64, unique=True, default=generate_share_token)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True, help_text="First time the recipient opened the emailed link")
+
+    class Meta:
+        unique_together = ('document', 'recipient')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.document.title} → {self.recipient.get_full_name() or self.recipient.email}"
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None
+
+    def revoke(self):
+        self.revoked_at = timezone.now()
+        self.save(update_fields=['revoked_at'])
 
 
 class DisplayVersion(models.Model):

@@ -24,35 +24,26 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
 
         # ================================================================
-        # FIX: Skip X-Frame-Options for document viewer (PDF/Office previews)
+        # Skip X-Frame-Options for document viewer (PDF/Office previews)
         # ================================================================
         skip_frame_options = False
-        
-        # Debug: Print the request path to see what's being requested
-        print(f"🔍 Middleware: {request.path}")
-        
-        # Check if this is a document viewer request or PDF file
-        if '/documents-display/document/' in request.path and '/viewer/' in request.path:
+
+        # Check if this is a document viewer/serve request or PDF file
+        if '/documents_display/document/' in request.path and ('/viewer/' in request.path or '/serve/' in request.path):
             skip_frame_options = True
-            print("🔍 Skipping X-Frame-Options for viewer page")
-        
+
         if '/media/display_docs/' in request.path:
             skip_frame_options = True
-            print("🔍 Skipping X-Frame-Options for display_docs file")
-        
+
         # Also check if the request is for a PDF
         if not skip_frame_options and hasattr(response, 'get'):
             content_type = response.get('Content-Type', '')
             if 'application/pdf' in content_type:
                 skip_frame_options = True
-                print("🔍 Skipping X-Frame-Options for PDF content-type")
-        
+
         if not skip_frame_options:
             response['X-Frame-Options'] = 'DENY'
-            print("🔍 Added X-Frame-Options: DENY")
-        else:
-            print("🔍 Skipped X-Frame-Options")
-        
+
         return response
     
 

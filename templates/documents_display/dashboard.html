@@ -19,13 +19,13 @@
                 {% lucide "file-text" size=19 %}
             </span>
             <div>
-                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Document Display</h2>
+                <h2 class="text-lg font-semibold text-text-primary">Document Display</h2>
                 <p class="text-sm text-text-secondary">Browse and view company documents.</p>
             </div>
         </div>
         <div class="flex items-center gap-3">
             <!-- View Toggle for Categories -->
-            <div class="flex items-center gap-1 rounded-lg border p-0.5" style="border-color: var(--color-border); background-color: var(--color-background);">
+            <div class="flex items-center gap-1 rounded-lg border p-0.5 border-border bg-background">
                 <a href="?view=grid{% if query %}&q={{ query }}{% endif %}" 
                    class="p-1.5 rounded transition {% if view_mode == 'grid' %}bg-primary text-white{% else %}text-text-secondary hover:text-text-primary{% endif %}" 
                    title="Grid View">
@@ -52,8 +52,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-4">
             {% for category in categories %}
             <a href="{% url 'documents_display:category_detail' category.slug %}" 
-               class="group block rounded-lg border p-5 hover:shadow-md transition-all duration-200"
-               style="border-color: var(--color-border); background-color: var(--color-surface);">
+               class="group block rounded-lg border p-5 hover:shadow-md transition-all duration-200 border-border bg-surface">
                 <div class="flex items-center gap-3 mb-2">
                     <span class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary group-hover:scale-110 transition-transform">
                         {% if category.icon %}
@@ -63,17 +62,17 @@
                         {% endif %}
                     </span>
                     <div>
-                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">{{ category.name }}</h3>
+                        <h3 class="text-sm font-semibold text-text-primary">{{ category.name }}</h3>
                         <p class="text-xs text-text-secondary">{{ category.documents.count }} documents</p>
                     </div>
                 </div>
                 <p class="text-xs text-text-secondary line-clamp-2">{{ category.description|default:"" }}</p>
             </a>
             {% empty %}
-            <div class="col-span-full text-center py-12 text-text-secondary">
-                <span class="text-4xl block mb-3">📄</span>
-                <p class="text-sm font-medium">No categories available</p>
-                <p class="text-xs">Contact your administrator to set up document categories.</p>
+            <div class="col-span-full empty-state">
+                {% lucide "file-text" size=40 %}
+                <p class="empty-state-title">No categories available</p>
+                <p class="empty-state-subtext">Contact your administrator to set up document categories.</p>
             </div>
             {% endfor %}
         </div>
@@ -82,8 +81,7 @@
         <div class="space-y-2 mb-4">
             {% for category in categories %}
             <a href="{% url 'documents_display:category_detail' category.slug %}" 
-               class="block rounded-lg border p-4 hover:shadow-md transition hover:border-primary"
-               style="border-color: var(--color-border); background-color: var(--color-surface);">
+               class="block rounded-lg border p-4 hover:shadow-md transition hover:border-primary border-border bg-surface">
                 <div class="flex items-center gap-4">
                     <span class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
                         {% if category.icon %}
@@ -94,7 +92,7 @@
                     </span>
                     <div class="flex-1 min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
-                            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">{{ category.name }}</h3>
+                            <h3 class="text-sm font-semibold text-text-primary">{{ category.name }}</h3>
                             <span class="text-xs text-text-secondary">({{ category.documents.count }} documents)</span>
                         </div>
                         {% if category.description %}
@@ -105,10 +103,10 @@
                 </div>
             </a>
             {% empty %}
-            <div class="text-center py-12 text-text-secondary">
-                <span class="text-4xl block mb-3">📄</span>
-                <p class="text-sm font-medium">No categories available</p>
-                <p class="text-xs">Contact your administrator to set up document categories.</p>
+            <div class="empty-state">
+                {% lucide "file-text" size=40 %}
+                <p class="empty-state-title">No categories available</p>
+                <p class="empty-state-subtext">Contact your administrator to set up document categories.</p>
             </div>
             {% endfor %}
         </div>
@@ -118,14 +116,13 @@
     {% if recent_documents %}
     <div class="mt-8">
         <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Recently Added</h3>
+            <h3 class="text-sm font-semibold text-text-primary">Recently Added</h3>
             <span class="text-xs text-text-secondary">{{ recent_documents|length }} recent</span>
         </div>
         <div class="space-y-2">
             {% for doc in recent_documents %}
             <a href="{% url 'documents_display:document_detail' doc.slug %}" 
-               class="block rounded-lg border p-3 hover:shadow-md transition hover:border-primary"
-               style="border-color: var(--color-border); background-color: var(--color-surface);">
+               class="block rounded-lg border p-3 hover:shadow-md transition hover:border-primary border-border bg-surface">
                 <div class="flex items-center gap-3">
                     <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
                         {% if doc.file_extension == 'pdf' %}
@@ -140,7 +137,7 @@
                     </span>
                     <div class="flex-1 min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="text-sm font-medium" style="color: var(--color-text-primary);">{{ doc.title }}</span>
+                            <span class="text-sm font-medium text-text-primary">{{ doc.title }}</span>
                             <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full 
                                 {% if doc.visibility == 'PUBLIC' %}bg-success/10 text-success
                                 {% elif doc.visibility == 'DEPARTMENT' %}bg-info/10 text-info

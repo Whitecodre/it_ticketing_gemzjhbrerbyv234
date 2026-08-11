@@ -19,7 +19,7 @@
                 <a href="{% url 'form_builder:list' %}" class="btn-ghost text-sm flex items-center gap-1">
                     {% lucide "arrow-left" size=16 %} Forms
                 </a>
-                <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+                <h2 class="text-base font-semibold text-text-primary">
                     Submissions: {{ form_instance.title }}
                 </h2>
                 <span class="text-sm text-text-secondary">({{ form_instance.submission_count }})</span>
@@ -37,8 +37,7 @@
                     {% lucide "download" size=16 %} Export
                     <span class="ml-1">▾</span>
                 </button>
-                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999]"
-                    style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border"
                     <a href="{% url 'form_builder:export' form_instance.pk %}?format=csv" 
                        class="block px-4 py-2 text-xs hover:bg-black/5 transition">CSV</a>
                     <a href="{% url 'form_builder:export' form_instance.pk %}?format=excel" 

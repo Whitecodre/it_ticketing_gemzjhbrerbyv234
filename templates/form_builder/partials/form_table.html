@@ -108,32 +108,32 @@
 
 <!-- Pagination -->
 {% if forms.has_other_pages %}
-<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--color-border);">
-    <span class="text-sm text-text-secondary">
-        Showing {{ forms.start_index }} - {{ forms.end_index }} of {{ forms.paginator.count }}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ forms.start_index }}–{{ forms.end_index }}</strong> of <strong>{{ forms.paginator.count }}</strong> forms
     </span>
-    <div class="flex gap-1.5">
-        {% if forms.has_previous %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'form_builder:list' %}?page={{ forms.previous_page_number }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
-                hx-target="#formTableContainer"
-                hx-swap="innerHTML">
-            ← Prev
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not forms.has_previous %} is-disabled{% endif %}"
+                {% if forms.has_previous %}hx-get="{% url 'form_builder:list' %}?page={{ forms.previous_page_number }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
+                hx-target="#formTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
         </button>
-        {% endif %}
-        
-        <span class="px-3 py-1 text-sm rounded bg-primary text-white">
-            {{ forms.number }}
-        </span>
-        
-        {% if forms.has_next %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'form_builder:list' %}?page={{ forms.next_page_number }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
-                hx-target="#formTableContainer"
-                hx-swap="innerHTML">
-            Next →
+        <div class="pagination-numbers">
+            {% for num in forms.paginator.page_range %}
+                {% if num == forms.number %}
+                <span class="pagination-number is-current">{{ num }}</span>
+                {% elif num > forms.number|add:'-3' and num < forms.number|add:'3' %}
+                <button class="pagination-number"
+                        hx-get="{% url 'form_builder:list' %}?page={{ num }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
+                        hx-target="#formTableContainer" hx-swap="innerHTML">{{ num }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        <button class="pagination-step{% if not forms.has_next %} is-disabled{% endif %}"
+                {% if forms.has_next %}hx-get="{% url 'form_builder:list' %}?page={{ forms.next_page_number }}&status={{ selected_status }}&type={{ selected_type }}&category={{ selected_category }}&search={{ search }}"
+                hx-target="#formTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            Next {% lucide "chevron-right" size=14 %}
         </button>
-        {% endif %}
     </div>
 </div>
 {% endif %}

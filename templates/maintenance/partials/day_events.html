@@ -2,7 +2,7 @@
 
 {% if schedules %}
     {% for schedule in schedules %}
-        <div class="day-event-item" style="border-left-color: {% if schedule.status == 'SCHEDULED' %}#3B82F6{% elif schedule.status == 'IN_PROGRESS' %}#F59E0B{% elif schedule.status == 'COMPLETED' %}#10B981{% else %}#6B7280{% endif %};">
+        <div class="day-event-item" style="border-left-color: {% if schedule.status == 'SCHEDULED' %}var(--color-info){% elif schedule.status == 'IN_PROGRESS' %}var(--color-warning){% elif schedule.status == 'COMPLETED' %}var(--color-success){% else %}var(--color-text-secondary){% endif %};">
             <div class="event-info">
                 <span class="event-title-text">{{ schedule.title }}</span>
                 <span class="event-department">{{ schedule.get_department_display }}</span>

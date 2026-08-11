@@ -35,20 +35,19 @@
         {# Content #}
         <div class="flex-1 min-w-0">
             <div class="flex items-start justify-between gap-2">
-                <p class="text-sm leading-snug" style="color: var(--color-text-primary);">
+                <p class="text-sm leading-snug text-text-primary">
                     {{ notification.message }}
                 </p>
                 {% if not notification.is_read %}
-                <span class="shrink-0 mt-1 flex h-2 w-2 rounded-full" style="background-color: var(--color-primary);"></span>
+                <span class="shrink-0 mt-1 flex h-2 w-2 rounded-full bg-primary"></span>
                 {% endif %}
             </div>
             <div class="flex items-center gap-3 mt-1">
-                <p class="text-[0.6rem] font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                <p class="text-[0.6rem] font-medium uppercase tracking-wider text-text-secondary">
                     {{ notification.created_at|timesince }} ago
                 </p>
                 {% if notification.type %}
-                <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full border"
-                      style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
                     {{ notification.get_type_display }}
                 </span>
                 {% endif %}
@@ -57,11 +56,11 @@
     </div>
     {% empty %}
     <div class="flex flex-col items-center justify-center py-12 px-4">
-        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-secondary/50 mb-4">
+        <div class="flex h-16 w-16 items-center justify-center rounded-full bg-text-secondary/10 mb-4">
             {% lucide "bell-off" size=24 class="text-text-secondary" %}
         </div>
-        <p class="text-sm font-medium" style="color: var(--color-text-primary);">All caught up!</p>
-        <p class="text-xs mt-1" style="color: var(--color-text-secondary);">No new notifications</p>
+        <p class="text-sm font-medium text-text-primary">All caught up!</p>
+        <p class="text-xs mt-1 text-text-secondary">No new notifications</p>
     </div>
     {% endfor %}
 </div>

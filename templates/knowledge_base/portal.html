@@ -19,7 +19,7 @@
         <div class="flex items-center gap-3">
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "book-open" size=19 %}</span>
             <div>
-                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Knowledge base</h2>
+                <h2 class="text-lg font-semibold text-text-primary">Knowledge base</h2>
                 <p class="text-sm text-text-secondary">Find proven fixes, guides, and self-service answers.</p>
             </div>
         </div>
@@ -27,12 +27,11 @@
     </div>
 
     {# Search Bar #}
-    <form method="get" class="mb-5 rounded-xl border p-3" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <form method="get" class="mb-5 rounded-xl border p-3 bg-surface border-border">
         <div class="relative max-w-xl">
-            {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style="color: var(--color-text-secondary);" %}
+            {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
             <input type="text" name="q" value="{{ query }}" placeholder="Search articles…"
-                   class="w-full rounded-lg border py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2"
-                   style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);">
+                   class="w-full rounded-lg border py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
         </div>
     </form>
 
@@ -51,12 +50,11 @@
 
     {# Tag Filter Chips #}
     {% if all_tags %}
-    <div class="flex flex-wrap items-center gap-2 mb-4 py-2 px-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-surface);">
+    <div class="flex flex-wrap items-center gap-2 mb-4 py-2 px-3 rounded-lg border border-border bg-surface">
         <span class="text-xs text-text-secondary font-medium">🏷️ Filter by Tag:</span>
         {% for tag in all_tags %}
-            <a href="{% url 'kb:portal' %}?tag={{ tag.name }}{% if query %}&q={{ query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}" 
-               class="text-[0.6rem] px-2 py-0.5 rounded-full border transition hover:border-primary {% if selected_tag == tag.name %}active-tag{% else %}border-border text-text-secondary{% endif %}"
-               style="{% if selected_tag == tag.name %}border-color: var(--color-primary); color: var(--color-primary); background-color: rgba(var(--color-primary-rgb), 0.08);{% endif %}">
+            <a href="{% url 'kb:portal' %}?tag={{ tag.name }}{% if query %}&q={{ query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}"
+               class="text-[0.6rem] px-2 py-0.5 rounded-full border transition hover:border-primary {% if selected_tag == tag.name %}border-primary text-primary bg-primary/10{% else %}border-border text-text-secondary{% endif %}">
                 #{{ tag.name }} ({{ tag.count }})
             </a>
         {% endfor %}
@@ -70,19 +68,18 @@
     {% if articles %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {% for article in articles %}
-        <a href="{% url 'kb:article_detail' article.slug %}" class="group block rounded-lg overflow-hidden border hover:shadow-md transition-shadow duration-200"
-           style="border-color: var(--color-border); background-color: var(--color-surface);">
-            
+        <a href="{% url 'kb:article_detail' article.slug %}" class="group block rounded-lg overflow-hidden border hover:shadow-md transition-shadow duration-200 border-border bg-surface">
+
             {# Image #}
-            <div class="w-full h-48 bg-gray-100 overflow-hidden flex items-center justify-center py-3">
+            <div class="w-full h-48 bg-background overflow-hidden flex items-center justify-center py-3">
                 <img src="{% static 'img/undraw_faq_pgxi.svg' %}" alt="{{ article.title }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200">
             </div>
-            
+
             {# Content #}
             <div class="p-4 flex flex-col">
                 <div class="flex-1">
                     <div class="flex items-start justify-between gap-2 mb-1.5">
-                        <h3 class="text-sm font-semibold line-clamp-2" style="color: var(--color-text-primary);">{{ article.title }}</h3>
+                        <h3 class="text-sm font-semibold line-clamp-2 text-text-primary">{{ article.title }}</h3>
                         <span class="text-[0.55rem] px-2 py-0.5 rounded-full border border-border text-text-secondary whitespace-nowrap shrink-0">
                             {{ article.category.name|default:"Uncategorized" }}
                         </span>
@@ -106,7 +103,7 @@
                     {% endif %}
                 </div>
                 
-                <div class="flex items-center gap-2 mt-3 pt-2.5 border-t text-[0.65rem] text-text-secondary" style="border-color: var(--color-border);">
+                <div class="flex items-center gap-2 mt-3 pt-2.5 border-t text-[0.65rem] text-text-secondary border-border">
                     <span>{% lucide "book-open" size=12 %}</span>
                     <span>{{ article.updated_at|date:"M d, Y" }}</span>
                     <span>·</span>
@@ -117,45 +114,11 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="text-center py-12">
-        <div class="flex justify-center mb-3">
-            {% lucide "book-open" size=40 class="text-text-secondary" %}
-        </div>
-        <p class="text-text-secondary text-sm">No articles found.</p>
-        <p class="text-text-secondary text-xs">Try adjusting your search, category, or tag filter.</p>
+    <div class="empty-state">
+        {% lucide "book-open" size=40 %}
+        <p class="empty-state-title">No articles found</p>
+        <p class="empty-state-subtext">Try adjusting your search, category, or tag filter.</p>
     </div>
     {% endif %}
 </div>
-{% endblock %}
-
-{% block extra_head %}
-{{ block.super }}
-<style>
-    .filter-chip {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.7rem;
-        border: 1px solid var(--color-border);
-        background-color: transparent;
-        color: var(--color-text-secondary);
-        transition: all 0.15s ease;
-        text-decoration: none;
-        cursor: pointer;
-    }
-    .filter-chip:hover {
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-    }
-    .filter-chip.active {
-        background-color: var(--color-primary);
-        color: white;
-        border-color: var(--color-primary);
-    }
-    .active-tag {
-        border-color: var(--color-primary);
-        color: var(--color-primary);
-        background-color: rgba(var(--color-primary-rgb), 0.08);
-    }
-</style>
 {% endblock %}

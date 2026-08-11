@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Q, Count
 from django.http import HttpResponse, JsonResponse
+from django.urls import reverse
 from django.views.decorators.http import require_POST, require_http_methods
 from django.utils import timezone
 from django.template.loader import render_to_string
@@ -149,22 +150,28 @@ def schedule_create(request):
         if form.is_valid():
             schedule = form.save(commit=False)
             schedule.save()
-            
+
             # Set checklist items
             schedule.checklist_items = form.cleaned_data.get('checklist_items', [])
             schedule.save(update_fields=['checklist_items'])
-            
+
             # Log creation
             log_activity(schedule, MaintenanceActivityLog.Action.CREATED, request.user)
-            
+
             # Send email to assigned IT personnel
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
-            
+
             messages.success(request, f'Maintenance schedule "{schedule.title}" created successfully.')
-            return redirect('maintenance:detail', pk=schedule.pk)
+
+            detail_url = reverse('maintenance:detail', kwargs={'pk': schedule.pk})
+            if request.headers.get('HX-Request'):
+                return HttpResponse(status=204, headers={'HX-Redirect': detail_url})
+            return redirect(detail_url)
         else:
             messages.error(request, 'Please correct the errors below.')
+            if request.headers.get('HX-Request'):
+                return render(request, 'maintenance/partials/form_errors.html', {'form': form})
     else:
         form = MaintenanceScheduleForm()
     
@@ -202,22 +209,28 @@ def schedule_edit(request, pk):
         if form.is_valid():
             old_status = schedule.status
             schedule = form.save()
-            
+
             # Update checklist
             schedule.checklist_items = form.cleaned_data.get('checklist_items', [])
             schedule.save(update_fields=['checklist_items'])
-            
+
             # Log update
             log_activity(schedule, MaintenanceActivityLog.Action.UPDATED, request.user)
-            
+
             # Send email if assigned_to changed
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
-            
+
             messages.success(request, f'Maintenance schedule "{schedule.title}" updated successfully.')
-            return redirect('maintenance:detail', pk=schedule.pk)
+
+            detail_url = reverse('maintenance:detail', kwargs={'pk': schedule.pk})
+            if request.headers.get('HX-Request'):
+                return HttpResponse(status=204, headers={'HX-Redirect': detail_url})
+            return redirect(detail_url)
         else:
             messages.error(request, 'Please correct the errors below.')
+            if request.headers.get('HX-Request'):
+                return render(request, 'maintenance/partials/form_errors.html', {'form': form})
     else:
         form = MaintenanceScheduleForm(instance=schedule)
         # Pre-populate checklist_items as text

@@ -614,10 +614,9 @@
 <!-- Settings Modal -->
 <div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
      onclick="if(event.target===this) closeSettingsModal()">
-    <div id="settingsModalBody" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto p-6" 
-         style="background-color: var(--color-surface);">
+    <div id="settingsModalBody" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto p-6">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold" style="color: var(--color-text-primary);">Form Settings</h3>
+            <h3 class="text-lg font-semibold text-text-primary">Form Settings</h3>
             <button onclick="closeSettingsModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <div id="settingsModalContent">

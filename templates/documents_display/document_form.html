@@ -24,7 +24,7 @@
                 {% if document %}{% lucide "pencil" size=20 %}{% else %}{% lucide "upload" size=20 %}{% endif %}
             </div>
             <div>
-                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">
+                <h2 class="text-lg font-semibold text-text-primary">
                     {% if document %}Edit Document{% else %}Upload New Document{% endif %}
                 </h2>
                 <p class="text-sm text-text-secondary">
@@ -89,10 +89,10 @@
                     <label class="block text-sm font-medium mb-1 text-text-primary">Department Permissions</label>
                     <p class="text-xs text-text-secondary mb-2">Tick "Access" to grant a department read access to this document, plus optionally Edit and/or Download.</p>
                     {{ formset.management_form }}
-                    <div class="overflow-x-auto rounded-lg border" style="border-color: var(--color-border);">
+                    <div class="overflow-x-auto rounded-lg border border-border">
                         <table class="w-full text-sm">
                             <thead>
-                                <tr class="border-b text-left text-text-secondary" style="border-color: var(--color-border);">
+                                <tr class="border-b text-left text-text-secondary border-border">
                                     <th class="px-3 py-2 font-medium">Department</th>
                                     <th class="px-3 py-2 font-medium">Access</th>
                                     <th class="px-3 py-2 font-medium">Edit</th>
@@ -101,7 +101,7 @@
                             </thead>
                             <tbody>
                                 {% for row in department_rows %}
-                                <tr class="border-b last:border-0" style="border-color: var(--color-border);">
+                                <tr class="border-b last:border-0 border-border">
                                     <td class="px-3 py-2 text-text-primary">{{ row.label }}</td>
                                     <td class="px-3 py-2">{{ row.form.department }}{{ row.form.grant }}</td>
                                     <td class="px-3 py-2">{{ row.form.can_edit }}</td>
@@ -134,7 +134,7 @@
             </div>
 
             <!-- Actions -->
-            <div class="flex justify-end gap-3 mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
                 <a href="{% if document %}{% url 'documents_display:document_detail' document.slug %}{% else %}{% url 'documents_display:dashboard' %}{% endif %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
                 <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "save" size=16 %} {% if document %}Update Document{% else %}Upload Document{% endif %}

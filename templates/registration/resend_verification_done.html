@@ -8,11 +8,11 @@
     <div class="w-full max-w-md text-center space-y-4">
         <!-- <img src="{% static 'img/gemz-logo.png' %}" alt="Gemz Software Logo" class="mx-auto h-10 w-auto"> -->
         <div class="flex justify-center">
-            <div class="flex h-16 w-16 items-center justify-center rounded-full" style="background-color: rgba(16, 185, 129, 0.1);">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full {% if success %}bg-success/10{% else %}bg-error/10{% endif %}">
                 {% if success %}
-                    {% lucide "mail-check" size=32 class="h-8 w-8" style="color: var(--color-success);" %}
+                    {% lucide "mail-check" size=32 class="h-8 w-8 text-success" %}
                 {% else %}
-                    {% lucide "x-circle" size=32 class="h-8 w-8" style="color: var(--color-error);" %}
+                    {% lucide "x-circle" size=32 class="h-8 w-8 text-error" %}
                 {% endif %}
             </div>
         </div>

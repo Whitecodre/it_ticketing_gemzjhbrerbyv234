@@ -14,11 +14,11 @@
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "users" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Team Overview</h2>
+        <h2 class="text-sm font-semibold text-text-primary">Team Overview</h2>
         <span class="text-xs text-text-secondary">({{ team_members|length }} agents)</span>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="kpi-card border-l-4 border-primary">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Team Open Tickets</p>
                 {% lucide "users" size=14 class="text-text-secondary" %}
@@ -26,28 +26,28 @@
             <p class="kpi-value">{{ team_open_tickets }}</p>
             <p class="kpi-trend up">Across {{ team_members|length }} agents</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
+        <div class="kpi-card border-l-4 border-warning">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Unassigned Queue</p>
                 {% lucide "inbox" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-warning);">{{ unassigned_count }}</p>
+            <p class="kpi-value text-warning">{{ unassigned_count }}</p>
             <p class="kpi-trend up">Needs assignment</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-info);">
+        <div class="kpi-card border-l-4 border-info">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Pending Review</p>
                 {% lucide "clipboard-check" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-info);">{{ pending_reviews }}</p>
+            <p class="kpi-value text-info">{{ pending_reviews }}</p>
             <p class="kpi-trend up">Service requests awaiting review</p>
         </div>
-        <div class="kpi-card border-l-4" style="border-left-color: var(--color-error);">
+        <div class="kpi-card border-l-4 border-error">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">SLA Breaches</p>
                 {% lucide "alert-circle" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value" style="color: var(--color-error);">{{ sla_breaches }}</p>
+            <p class="kpi-value text-error">{{ sla_breaches }}</p>
             <p class="kpi-trend down">Requires attention</p>
         </div>
     </div>
@@ -57,25 +57,25 @@
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "bar-chart-3" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Agent Workload</h2>
+        <h2 class="text-sm font-semibold text-text-primary">Agent Workload</h2>
         <span class="text-xs text-text-secondary">(Current open tickets per agent)</span>
     </div>
     <div class="dashboard-card p-4">
         {% if agent_workload %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {% for item in agent_workload %}
-            <div class="flex items-center gap-3 p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+            <div class="flex items-center gap-3 p-3 rounded-lg border border-border bg-background">
                 <div class="shrink-0">
                     {% if item.agent.avatar %}
                         <img src="{{ item.agent.avatar.url }}" alt="{{ item.agent.get_full_name }}" class="h-10 w-10 rounded-full object-cover">
                     {% else %}
-                        <div class="flex h-10 w-10 items-center justify-center rounded-full text-white text-sm font-medium" style="background-color: var(--color-primary);">
+                        <div class="flex h-10 w-10 items-center justify-center rounded-full text-white text-sm font-medium bg-primary">
                             {{ item.agent.first_name.0|upper }}{{ item.agent.last_name.0|upper }}
                         </div>
                     {% endif %}
                 </div>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ item.agent.get_full_name }}</p>
+                    <p class="text-sm font-medium truncate text-text-primary">{{ item.agent.get_full_name }}</p>
                     <div class="flex items-center gap-3 text-xs">
                         <span class="text-text-secondary inline-flex gap-2">
                             {% lucide "inbox" size=12 %} {{ item.open_count }} open
@@ -86,8 +86,7 @@
                     </div>
                 </div>
                 <div class="shrink-0">
-                    <div class="text-xs font-bold px-2 py-1 rounded-full" 
-                         style="background-color: {% if item.open_count > 5 %}var(--color-error){% elif item.open_count > 3 %}var(--color-warning){% else %}var(--color-success){% endif %}; color: white;">
+                    <div class="text-xs font-bold px-2 py-1 rounded-full text-white {% if item.open_count > 5 %}bg-error{% elif item.open_count > 3 %}bg-warning{% else %}bg-success{% endif %}">
                         {{ item.open_count }}
                     </div>
                 </div>
@@ -96,15 +95,15 @@
         </div>
         <div class="mt-3 text-xs text-text-secondary flex items-center gap-4">
             <span class="flex items-center gap-1">
-                <span class="inline-block w-3 h-3 rounded-full" style="background-color: var(--color-success);"></span>
+                <span class="inline-block w-3 h-3 rounded-full bg-success"></span>
                 Low (≤3 tickets)
             </span>
             <span class="flex items-center gap-1">
-                <span class="inline-block w-3 h-3 rounded-full" style="background-color: var(--color-warning);"></span>
+                <span class="inline-block w-3 h-3 rounded-full bg-warning"></span>
                 Medium (4-5 tickets)
             </span>
             <span class="flex items-center gap-1">
-                <span class="inline-block w-3 h-3 rounded-full" style="background-color: var(--color-error);"></span>
+                <span class="inline-block w-3 h-3 rounded-full bg-error"></span>
                 High (6+ tickets)
             </span>
         </div>
@@ -120,7 +119,7 @@
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "trophy" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Agent Performance</h2>
+        <h2 class="text-sm font-semibold text-text-primary">Agent Performance</h2>
         <span class="text-xs text-text-secondary">(SLA compliance & resolution metrics)</span>
     </div>
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
@@ -128,7 +127,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Agent</th>
                         <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Resolved</th>
                         <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">SLA Compliance</th>
@@ -138,22 +137,22 @@
                 </thead>
                 <tbody>
                     {% for item in agent_performance %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <div class="flex items-center gap-2">
                                 {% if item.agent.avatar %}
                                     <img src="{{ item.agent.avatar.url }}" alt="{{ item.agent.get_full_name }}" class="h-6 w-6 rounded-full object-cover">
                                 {% else %}
-                                    <div class="flex h-6 w-6 items-center justify-center rounded-full text-white text-[0.55rem] font-medium" style="background-color: var(--color-primary);">
+                                    <div class="flex h-6 w-6 items-center justify-center rounded-full text-white text-[0.55rem] font-medium bg-primary">
                                         {{ item.agent.first_name.0|upper }}{{ item.agent.last_name.0|upper }}
                                     </div>
                                 {% endif %}
-                                <span class="text-xs font-medium" style="color: var(--color-text-primary);">{{ item.agent.get_full_name }}</span>
+                                <span class="text-xs font-medium text-text-primary">{{ item.agent.get_full_name }}</span>
                             </div>
                         </td>
                         <td class="py-3 px-4 text-center text-text-secondary">{{ item.total_resolved }}</td>
                         <td class="py-3 px-4 text-center">
-                            <span class="text-xs font-semibold" style="color: {% if item.compliance_rate >= 95 %}var(--color-success){% elif item.compliance_rate >= 80 %}var(--color-warning){% else %}var(--color-error){% endif %};">
+                            <span class="text-xs font-semibold {% if item.compliance_rate >= 95 %}text-success{% elif item.compliance_rate >= 80 %}text-warning{% else %}text-error{% endif %}">
                                 {{ item.compliance_rate }}%
                             </span>
                         </td>
@@ -186,8 +185,8 @@
     
     {# Unassigned Queue #}
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
                 {% lucide "inbox" size=14 %} Unassigned Queue
                 <span class="text-xs font-normal text-text-secondary">({{ unassigned_count }})</span>
             </h3>
@@ -200,8 +199,8 @@
 
     {# Team Queue #}
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
                 {% lucide "users" size=14 %} Team Queue
                 <span class="text-xs font-normal text-text-secondary">({{ team_open_tickets }})</span>
             </h3>
@@ -220,7 +219,7 @@
     <div class="lg:col-span-2">
         <div class="flex items-center gap-2 mb-3">
             {% lucide "clock" size=16 class="text-primary" %}
-            <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Recent Team Activity</h2>
+            <h2 class="text-sm font-semibold text-text-primary">Recent Team Activity</h2>
             <a href="{% url 'tickets:team_queue' %}" class="text-xs font-medium text-primary hover:underline">View all →</a>
         </div>
         <div class="dashboard-card p-0 overflow-hidden shadow-sm">
@@ -250,7 +249,7 @@
         
         {# Quick Actions #}
         <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2" style="color: var(--color-text-primary);">
+            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
                 {% lucide "zap" size=14 %} Quick Actions
             </h3>
             <div class="space-y-2">
@@ -263,7 +262,7 @@
                 <a href="{% url 'tickets:manager_review_queue' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
                     {% lucide "clipboard-check" size=14 %} Pending Review
                     {% if pending_reviews > 0 %}
-                    <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full" style="background-color: var(--color-error); color: white;">
+                    <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full bg-error text-white">
                         {{ pending_reviews }}
                     </span>
                     {% endif %}
@@ -276,7 +275,7 @@
 
         {# Knowledge Base #}
         <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2" style="color: var(--color-text-primary);">
+            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
                 {% lucide "book-open" size=14 %} Knowledge Base
             </h3>
             <p class="text-xs text-text-secondary">Search for solutions or create a new article.</p>

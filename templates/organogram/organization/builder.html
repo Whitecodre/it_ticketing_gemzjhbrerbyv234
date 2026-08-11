@@ -107,55 +107,31 @@
     }
     
     .builder-header .status-badge.draft {
-        background-color: rgba(100, 116, 139, 0.15);
-        color: #64748B;
+        background-color: color-mix(in oklch, var(--color-text-secondary) 15%, transparent);
+        color: var(--color-text-secondary);
     }
-    
+
     .builder-header .status-badge.pending {
-        background-color: rgba(245, 158, 11, 0.15);
-        color: #F59E0B;
+        background-color: color-mix(in oklch, var(--color-warning) 15%, transparent);
+        color: var(--color-warning);
     }
-    
+
     .builder-header .status-badge.approved {
-        background-color: rgba(16, 185, 129, 0.15);
-        color: #10B981;
+        background-color: color-mix(in oklch, var(--color-success) 15%, transparent);
+        color: var(--color-success);
     }
-    
+
     .builder-header .status-badge.published {
-        background-color: rgba(13, 148, 136, 0.15);
-        color: #0D9488;
+        background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+        color: var(--color-primary);
     }
-    
+
     .builder-body {
         flex: 1;
         overflow-y: auto;
         padding: 1rem 0;
     }
-    
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 300px;
-        color: var(--color-text-secondary);
-        text-align: center;
-        padding: 2rem;
-    }
-    
-    .empty-state .icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        opacity: 0.3;
-    }
-    
-    .empty-state h3 {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: var(--color-text-primary);
-        margin-bottom: 0.5rem;
-    }
-    
+
     /* Tree styles */
     .org-tree {
         display: flex;
@@ -275,16 +251,7 @@
         width: 100%;
     }
     
-    .org-children::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 10%;
-        right: 10%;
-        height: 2px;
-        background-color: var(--color-border);
-    }
-    
+    /* Vertical line from horizontal rail to each child */
     .org-children .org-node::before {
         content: '';
         position: absolute;
@@ -295,6 +262,26 @@
         height: 16px;
         background-color: var(--color-border);
     }
+
+    /* Horizontal rail: each child draws the rail segment directly above it,
+       overflowing into half the column gap on each side so adjoining
+       segments meet in the middle of the gap between cards. The first and
+       last child stop at their own center instead of overflowing outward,
+       so the rail spans only from the first sibling's center to the last
+       sibling's — not a fixed 10%-90% line that ignored how many children
+       or how wide the row actually was. */
+    .org-children .org-node::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -1.25rem;
+        right: -1.25rem;
+        height: 2px;
+        background-color: var(--color-border);
+    }
+    .org-children .org-node:first-child::after { left: 50%; }
+    .org-children .org-node:last-child::after { right: 50%; }
+    .org-children .org-node:only-child::after { display: none; }
     
     .approval-status {
         display: flex;
@@ -377,7 +364,7 @@
     <!-- Approval Status Bar -->
     {% if draft.status == 'PENDING' %}
     <div class="approval-status mb-4">
-        <span class="text-sm font-medium" style="color: var(--color-text-primary);">
+        <span class="text-sm font-medium text-text-primary">
             Approval Status:
         </span>
         <div class="flex items-center gap-1">
@@ -485,9 +472,9 @@
             
             <!-- Empty state -->
             <div x-show="structure.length === 0" class="empty-state">
-                <div class="icon">🏢</div>
-                <h3>No Structure Defined</h3>
-                <p class="text-sm text-text-secondary">Click "Add Root" to start building your org chart.</p>
+                {% lucide "building-2" size=40 %}
+                <p class="empty-state-title">No Structure Defined</p>
+                <p class="empty-state-subtext">Click "Add Root" to start building your org chart.</p>
             </div>
         </div>
     </div>

@@ -2,7 +2,7 @@
 
 {# ---------- Ticket description (initial message) ---------- #}
 <div class="flex justify-start mb-3">
-    <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm text-white bg-gray-700 bubble-left">
+    <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm bubble-theirs bubble-left">
         <div class="text-xs font-semibold mb-1 opacity-80">
             {{ ticket.requester.get_full_name }}
         </div>
@@ -10,8 +10,7 @@
         {% for att in initial_attachments %}
         <div class="mt-1 text-xs">
             <a href="{% url 'tickets:attachment_download' att.pk %}"
-               class="flex items-center gap-1"
-               style="color: var(--color-text-secondary);">
+               class="flex items-center gap-1 text-text-secondary">
                 {% lucide "paperclip" size=12 %}
                 {{ att.filename }} ({{ att.size|filesizeformat }})
             </a>
@@ -26,11 +25,11 @@
 {# ---------- Comments ---------- #}
 {% for comment in comments %}
     <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
-        <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm text-white
+        <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm
                     {% if comment.author == request.user %}
-                        bg-primary bubble-right
+                        text-white bg-primary bubble-right
                     {% else %}
-                        bg-gray-700 bubble-left
+                        bubble-theirs bubble-left
                     {% endif %}">
             <div class="text-xs font-semibold mb-1 opacity-80">
                 {{ comment.author.get_full_name }}
@@ -41,8 +40,7 @@
             {% for attachment in comment.attachment_set.all %}
                 <div class="mt-1 text-xs">
                     <a href="{% url 'tickets:attachment_download' attachment.pk %}"
-                       class="flex items-center gap-1 underline"
-                       style="color: {% if comment.author == request.user %}var(--color-primary-dark){% else %}var(--color-text-secondary){% endif %};">
+                       class="flex items-center gap-1 underline {% if comment.author == request.user %}text-white{% else %}text-text-secondary{% endif %}">
                         {% lucide "paperclip" size=12 %}
                         {{ attachment.filename }} ({{ attachment.size|filesizeformat }})
                     </a>

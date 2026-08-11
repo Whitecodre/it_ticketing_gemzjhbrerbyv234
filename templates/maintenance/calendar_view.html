@@ -115,7 +115,16 @@
     
     let currentMonth = {{ month }};
     let currentYear = {{ year }};
-    
+
+    // Local YYYY-MM-DD (not toISOString(), which converts to UTC and can
+    // land on the wrong calendar day near midnight for non-UTC timezones).
+    function formatLocalDate(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
     function changeMonth(delta) {
         currentMonth += delta;
         if (currentMonth > 12) {
@@ -173,7 +182,7 @@
         // Try to select today if in current month
         const today = new Date();
         if (today.getMonth() + 1 === currentMonth && today.getFullYear() === currentYear) {
-            const todayStr = today.toISOString().split('T')[0];
+            const todayStr = formatLocalDate(today);
             const todayEl = document.querySelector(`.calendar-day[data-date="${todayStr}"]`);
             if (todayEl && !todayEl.classList.contains('selected')) {
                 todayEl.classList.add('selected');
@@ -221,7 +230,7 @@
     document.addEventListener('DOMContentLoaded', function() {
         const today = new Date();
         if (today.getMonth() + 1 === currentMonth && today.getFullYear() === currentYear) {
-            const todayStr = today.toISOString().split('T')[0];
+            const todayStr = formatLocalDate(today);
             const todayEl = document.querySelector(`.calendar-day[data-date="${todayStr}"]`);
             if (todayEl) {
                 todayEl.classList.add('selected');

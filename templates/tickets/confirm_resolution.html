@@ -18,7 +18,7 @@
                 {% lucide "check-circle" size=24 %}
             </div>
             <div>
-                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">
+                <h2 class="text-lg font-semibold text-text-primary">
                     Confirm Resolution
                 </h2>
                 <p class="text-sm text-text-secondary">
@@ -28,7 +28,7 @@
         </div>
 
         <div class="rounded-lg bg-background p-4 mb-6 border border-border">
-            <p class="text-sm" style="color: var(--color-text-primary);">
+            <p class="text-sm text-text-primary">
                 {{ ticket.requester.get_full_name|default:ticket.requester.email }}, 
                 the support team has marked this ticket as resolved.
             </p>
@@ -42,7 +42,7 @@
             <input type="hidden" name="action" id="actionInput" value="">
             
             <div class="mb-4">
-                <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                <label class="block text-sm font-medium mb-1 text-text-primary">
                     If the issue is still not resolved, please tell us why (optional)
                 </label>
                 <textarea name="reason" rows="3" 

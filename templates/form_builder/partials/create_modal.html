@@ -43,12 +43,12 @@
     </div>
     
     <!-- Template Preview -->
-    <div id="templatePreview" class="hidden p-3 rounded-lg border" style="background-color: var(--color-background); border-color: var(--color-border);">
+    <div id="templatePreview" class="hidden p-3 rounded-lg border bg-background border-border">
         <p class="text-xs text-text-secondary" id="templateDescription">Select a template to see its description.</p>
         <div id="templateFields" class="mt-2 space-y-1"></div>
     </div>
     
-    <div class="flex justify-end gap-2 pt-4 border-t" style="border-color: var(--color-border);">
+    <div class="flex justify-end gap-2 pt-4 border-t border-border">
         <button onclick="window.closeCreateModal()" class="btn-ghost text-sm px-4 py-2">Cancel</button>
         <button onclick="window.createFormFromModal()" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2" id="proceedToBuilderBtn">
             {% lucide "arrow-right" size=16 %} Proceed to Builder

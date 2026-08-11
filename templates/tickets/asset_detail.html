@@ -23,7 +23,7 @@
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
             <div>
                 <div class="flex items-center gap-3 flex-wrap">
-                    <h1 class="text-xl font-bold" style="color: var(--color-text-primary);">{{ asset.name }}</h1>
+                    <h1 class="text-xl font-bold text-text-primary">{{ asset.name }}</h1>
                     <span class="status-chip 
                         {% if asset.status == 'IN_STORE' or asset.status == 'READY' %}success
                         {% elif asset.status == 'CHECKED_OUT' or asset.status == 'IN_USE' %}primary
@@ -104,7 +104,7 @@
 
         <!-- Tabs -->
         <div class="mt-4" id="assetTabs">
-            <div class="flex border-b gap-1 mb-4" style="border-color: var(--color-border);">
+            <div class="flex border-b gap-1 mb-4 border-border">
                 <button type="button" data-asset-tab="details" class="px-4 py-2 text-sm font-medium border-b-2 transition border-primary text-primary">
                     Details
                 </button>
@@ -123,66 +123,66 @@
             <div data-asset-panel="details" class="space-y-6">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                        <h4 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Asset Details</h4>
+                        <h4 class="text-sm font-semibold mb-3 text-text-secondary">Asset Details</h4>
                         <dl class="space-y-2 text-sm">
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Tracking ID</dt>
                                 <dd class="font-mono text-primary">{{ asset.tracking_id }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Type</dt>
                                 <dd>{{ asset.asset_type|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Serial Number</dt>
                                 <dd>{{ asset.serial_number|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Model</dt>
                                 <dd>{{ asset.model|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Manufacturer</dt>
                                 <dd>{{ asset.manufacturer|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Location</dt>
                                 <dd>{{ asset.location|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Supplier</dt>
                                 <dd>{{ asset.supplier|default:"—" }}</dd>
                             </div>
                         </dl>
                     </div>
                     <div>
-                        <h4 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Assignment & Financial</h4>
+                        <h4 class="text-sm font-semibold mb-3 text-text-secondary">Assignment & Financial</h4>
                         <dl class="space-y-2 text-sm">
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Assigned To</dt>
                                 <dd>{{ asset.assigned_to.get_full_name|default:"Unassigned" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Department</dt>
                                 <dd>{{ asset.assigned_to_department|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Purchase Date</dt>
                                 <dd>{{ asset.purchase_date|date:"M d, Y"|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Purchase Price</dt>
                                 <dd>${{ asset.purchase_price|floatformat:2|default:"—" }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Current Value</dt>
                                 <dd class="font-semibold">${{ current_value|floatformat:2 }}</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Depreciation (Years)</dt>
                                 <dd>{{ asset.depreciation_years|default:"3" }} years</dd>
                             </div>
-                            <div class="flex justify-between border-b py-1" style="border-color: var(--color-border);">
+                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Warranty Expiry</dt>
                                 <dd>{{ asset.warranty_expiry|date:"M d, Y"|default:"—" }}</dd>
                             </div>
@@ -191,13 +191,13 @@
                 </div>
 
                 {% if asset.notes or asset.condition_notes %}
-                <div class="pt-4 border-t" style="border-color: var(--color-border);">
-                    <h4 class="text-sm font-semibold mb-2" style="color: var(--color-text-secondary);">Notes</h4>
+                <div class="pt-4 border-t border-border">
+                    <h4 class="text-sm font-semibold mb-2 text-text-secondary">Notes</h4>
                     {% if asset.notes %}
-                    <p class="text-sm" style="color: var(--color-text-primary);">{{ asset.notes|linebreaks }}</p>
+                    <p class="text-sm text-text-primary">{{ asset.notes|linebreaks }}</p>
                     {% endif %}
                     {% if asset.condition_notes %}
-                    <p class="text-sm mt-2" style="color: var(--color-text-secondary);">
+                    <p class="text-sm mt-2 text-text-secondary">
                         <strong>Condition Notes:</strong> {{ asset.condition_notes }}
                     </p>
                     {% endif %}
@@ -210,9 +210,9 @@
                 {% if logs %}
                 <div class="space-y-2">
                     {% for log in logs %}
-                    <div class="flex justify-between text-sm py-2 border-b" style="border-color: var(--color-border);">
+                    <div class="flex justify-between text-sm py-2 border-b border-border">
                         <span>
-                            <span class="font-medium" style="color: var(--color-text-primary);">{{ log.get_action_display }}</span>
+                            <span class="font-medium text-text-primary">{{ log.get_action_display }}</span>
                             <span class="text-text-secondary ml-2">{{ log.details|default:"" }}</span>
                         </span>
                         <span class="text-text-secondary text-xs">{{ log.created_at|date:"M d, Y H:i" }}</span>
@@ -227,7 +227,7 @@
             <!-- Tab: Maintenance -->
             <div data-asset-panel="maintenance" class="hidden">
                 <div class="flex items-center justify-between mb-4">
-                    <h4 class="text-sm font-semibold" style="color: var(--color-text-secondary);">Maintenance Records</h4>
+                    <h4 class="text-sm font-semibold text-text-secondary">Maintenance Records</h4>
                     {% if user.role in 'ADMIN,SUPERADMIN' %}
                     <button onclick="openMaintenanceModal({{ asset.pk }})" 
                             class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
@@ -238,10 +238,10 @@
                 {% if maintenance_logs %}
                 <div class="space-y-3">
                     {% for log in maintenance_logs %}
-                    <div class="p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                    <div class="p-3 rounded-lg border border-border bg-background">
                         <div class="flex justify-between items-start">
                             <div>
-                                <span class="font-medium text-sm" style="color: var(--color-text-primary);">{{ log.title }}</span>
+                                <span class="font-medium text-sm text-text-primary">{{ log.title }}</span>
                                 <span class="status-chip info text-xs ml-2">{{ log.get_maintenance_type_display }}</span>
                             </div>
                             <span class="text-xs text-text-secondary">{{ log.performed_at|date:"M d, Y" }}</span>
@@ -261,17 +261,17 @@
                 {% endif %}
                 
                 {% if asset.last_maintenance or asset.next_maintenance %}
-                <div class="mt-4 p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="mt-4 p-3 rounded-lg border border-border bg-background">
                     <div class="grid grid-cols-2 gap-3 text-sm">
                         <div>
                             <span class="text-text-secondary">Last Maintenance:</span>
-                            <span class="font-medium" style="color: var(--color-text-primary);">
+                            <span class="font-medium text-text-primary">
                                 {{ asset.last_maintenance|date:"M d, Y"|default:"Never" }}
                             </span>
                         </div>
                         <div>
                             <span class="text-text-secondary">Next Maintenance:</span>
-                            <span class="font-medium" style="color: var(--color-text-primary);">
+                            <span class="font-medium text-text-primary">
                                 {{ asset.next_maintenance|date:"M d, Y"|default:"Not scheduled" }}
                             </span>
                         </div>
@@ -288,10 +288,10 @@
                 {% if checkout_history %}
                 <div class="space-y-3">
                     {% for record in checkout_history %}
-                    <div class="p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+                    <div class="p-3 rounded-lg border border-border bg-background">
                         <div class="flex justify-between items-start">
                             <div>
-                                <span class="font-medium text-sm" style="color: var(--color-text-primary);">
+                                <span class="font-medium text-sm text-text-primary">
                                     {{ record.checked_out_to.get_full_name|default:record.checked_out_to.email }}
                                 </span>
                                 <span class="text-xs text-text-secondary ml-2">
@@ -339,7 +339,7 @@
 <!-- Modal Overlay -->
 <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
      onclick="if(event.target===this) closeModal()">
-    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
     </div>
 </div>
 

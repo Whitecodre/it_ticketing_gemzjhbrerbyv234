@@ -20,15 +20,15 @@
             {% lucide "bar-chart-3" size=20 %}
         </div>
         <div>
-            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Reports & Analytics</h2>
+            <h2 class="text-base font-semibold text-text-primary">Reports & Analytics</h2>
             <p class="text-xs text-text-secondary mt-0.5">Monitor key performance indicators, SLA compliance, and ticket trends to drive improvements.</p>
         </div>
     </div>
 
     {% if client_settings and client_settings.logo_url %}
-    <div class="flex justify-between items-center mb-4 border-b pb-4" style="border-color: var(--color-border);">
+    <div class="flex justify-between items-center mb-4 border-b pb-4 border-border">
         <div>
-            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Reports & Analytics</h2>
+            <h2 class="text-base font-semibold text-text-primary">Reports & Analytics</h2>
             <p class="text-xs text-text-secondary">Generated {{ now|date:"F d, Y H:i" }}</p>
         </div>
         <div>
@@ -80,40 +80,40 @@
     <div>
         <div class="flex items-center gap-2 mb-3">
             {% lucide "ticket" size=16 class="text-primary" %}
-            <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Ticket Performance</h2>
+            <h2 class="text-sm font-semibold text-text-primary">Ticket Performance</h2>
             <span class="text-xs text-text-secondary">({{ date_range_label|default:"Last 30 days" }})</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div class="kpi-card border-l-4" style="border-left-color: #3B82F6;">
+            <div class="kpi-card border-l-4" style="border-left-color: var(--color-info);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Mean Time to Resolve</p>
                     {% lucide "clock" size=14 class="text-text-secondary" %}
                 </div>
-                <p class="kpi-value" style="color: #3B82F6;">{{ mttr_minutes }}<span class="text-xs font-normal text-text-secondary"> min</span></p>
+                <p class="kpi-value" style="color: var(--color-info);">{{ mttr_minutes }}<span class="text-xs font-normal text-text-secondary"> min</span></p>
                 <p class="kpi-trend up">Average resolution time</p>
             </div>
-            <div class="kpi-card border-l-4" style="border-left-color: #EF4444;">
+            <div class="kpi-card border-l-4" style="border-left-color: var(--color-error);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Backlog</p>
                     {% lucide "alert-circle" size=14 class="text-text-secondary" %}
                 </div>
-                <p class="kpi-value" style="color: #EF4444;">{{ backlog }}<span class="text-xs font-normal text-text-secondary"> tickets</span></p>
+                <p class="kpi-value" style="color: var(--color-error);">{{ backlog }}<span class="text-xs font-normal text-text-secondary"> tickets</span></p>
                 <p class="kpi-trend down">Older than 7 days</p>
             </div>
-            <div class="kpi-card border-l-4" style="border-left-color: #0D9488;">
+            <div class="kpi-card border-l-4" style="border-left-color: var(--color-primary);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Open Tickets</p>
                     {% lucide "inbox" size=14 class="text-text-secondary" %}
                 </div>
-                <p class="kpi-value" style="color: #0D9488;">{{ open_total }}</p>
+                <p class="kpi-value" style="color: var(--color-primary);">{{ open_total }}</p>
                 <p class="kpi-trend up">Currently active</p>
             </div>
-            <div class="kpi-card border-l-4" style="border-left-color: #F59E0B;">
+            <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">SLA Policies</p>
                     {% lucide "sliders-horizontal" size=14 class="text-text-secondary" %}
                 </div>
-                <p class="kpi-value" style="color: #F59E0B;">{{ sla_data|length }}</p>
+                <p class="kpi-value" style="color: var(--color-warning);">{{ sla_data|length }}</p>
                 <p class="kpi-trend up">Active policies</p>
             </div>
         </div>
@@ -123,16 +123,16 @@
     <div>
         <div class="flex items-center gap-2 mb-3">
             {% lucide "hard-drive" size=16 class="text-primary" %}
-            <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Asset Fulfillment</h2>
+            <h2 class="text-sm font-semibold text-text-primary">Asset Fulfillment</h2>
             <span class="text-xs text-text-secondary">({{ total_assets|default:0 }} total assets)</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div class="kpi-card border-l-4" style="border-left-color: #8B5CF6;">
+            <div class="kpi-card border-l-4" style="border-left-color: var(--color-accent);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Asset Requests</p>
                     {% lucide "package" size=14 class="text-text-secondary" %}
                 </div>
-                <p class="kpi-value" style="color: #8B5CF6;">{{ total_asset_requests|default:0 }}</p>
+                <p class="kpi-value" style="color: var(--color-accent);">{{ total_asset_requests|default:0 }}</p>
                 <p class="kpi-trend up">Total requests</p>
             </div>
             <div class="kpi-card border-l-4" style="border-left-color: var(--color-success);">
@@ -166,7 +166,7 @@
     <div>
         <div class="flex items-center gap-2 mb-3">
             {% lucide "chart-bar" size=16 class="text-primary" %}
-            <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Charts & Analytics</h2>
+            <h2 class="text-sm font-semibold text-text-primary">Charts & Analytics</h2>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
@@ -174,7 +174,7 @@
             <div class="dashboard-card">
                 <div class="flex items-start justify-between mb-2">
                     <div>
-                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">SLA Compliance by Priority</h3>
+                        <h3 class="text-sm font-semibold text-text-primary">SLA Compliance by Priority</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Percentage of tickets resolved within the agreed SLA target.</p>
                     </div>
                     <div class="flex items-center gap-1">
@@ -186,6 +186,7 @@
                     </div>
                 </div>
                 {% if sla_data %}
+                    {{ sla_data|json_script:"sla-data" }}
                     <div style="height: 170px; width: 100%;">
                         <canvas id="slaChart"></canvas>
                     </div>
@@ -202,7 +203,7 @@
             <div class="dashboard-card">
                 <div class="flex items-start justify-between mb-2">
                     <div>
-                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Ticket Volume</h3>
+                        <h3 class="text-sm font-semibold text-text-primary">Ticket Volume</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Daily created vs resolved tickets.</p>
                     </div>
                     <div class="flex items-center gap-1">
@@ -230,7 +231,7 @@
             <div class="dashboard-card">
                 <div class="flex items-start justify-between mb-2">
                     <div>
-                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Open Tickets by Priority</h3>
+                        <h3 class="text-sm font-semibold text-text-primary">Open Tickets by Priority</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Breakdown of currently open tickets by priority level.</p>
                     </div>
                     <div class="flex items-center gap-1">
@@ -258,7 +259,7 @@
             <div class="dashboard-card">
                 <div class="flex items-start justify-between mb-2">
                     <div>
-                        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Asset Status Distribution</h3>
+                        <h3 class="text-sm font-semibold text-text-primary">Asset Status Distribution</h3>
                         <p class="text-xs text-text-secondary mt-0.5">Breakdown of assets by their current status.</p>
                     </div>
                     <div class="flex items-center gap-1">
@@ -288,27 +289,27 @@
     <div>
         <div class="flex items-center gap-2 mb-3">
             {% lucide "activity" size=16 class="text-primary" %}
-            <h2 class="text-sm font-semibold" style="color: var(--color-text-primary);">Performance Summary</h2>
+            <h2 class="text-sm font-semibold text-text-primary">Performance Summary</h2>
         </div>
         <div class="dashboard-card">
             <div class="space-y-4">
                 <div>
                     <div class="flex items-center justify-between">
                         <span class="text-xs text-text-secondary">Mean Time to Resolve</span>
-                        <span class="text-sm font-bold" style="color: #3B82F6;">{{ mttr_minutes }} min</span>
+                        <span class="text-sm font-bold" style="color: var(--color-info);">{{ mttr_minutes }} min</span>
                     </div>
                     <div class="w-full h-2 rounded-full bg-border mt-1">
-                        <div class="h-2 rounded-full" style="background: #3B82F6; width: {% if mttr_minutes < 60 %}30{% else %}70{% endif %}%;"></div>
+                        <div class="h-2 rounded-full" style="background: var(--color-info); width: {% if mttr_minutes < 60 %}30{% else %}70{% endif %}%;"></div>
                     </div>
                     <p class="text-[0.6rem] text-text-secondary mt-0.5">Faster is better – aim to reduce this over time.</p>
                 </div>
                 <div>
                     <div class="flex items-center justify-between">
                         <span class="text-xs text-text-secondary">Backlog (>7 days)</span>
-                        <span class="text-sm font-bold" style="color: #EF4444;">{{ backlog }}</span>
+                        <span class="text-sm font-bold" style="color: var(--color-error);">{{ backlog }}</span>
                     </div>
                     <div class="w-full h-2 rounded-full bg-border mt-1">
-                        <div class="h-2 rounded-full" style="background: #EF4444; width: {% if backlog < 5 %}20{% else %}60{% endif %}%;"></div>
+                        <div class="h-2 rounded-full" style="background: var(--color-error); width: {% if backlog < 5 %}20{% else %}60{% endif %}%;"></div>
                     </div>
                     <p class="text-[0.6rem] text-text-secondary mt-0.5">High backlog may indicate resource or process bottlenecks.</p>
                 </div>
@@ -330,6 +331,7 @@
 
 {% block scripts %}
 {{ block.super }}
+<script src="{% static 'js/chart.min.js' %}"></script>
 <script>
     Chart.defaults.font.size = 10;
     Chart.defaults.plugins.legend.labels.boxWidth = 8;
@@ -417,7 +419,7 @@
     // SLA Chart
     const slaCanvas = document.getElementById('slaChart');
     if (slaCanvas) {
-        const slaData = {{ sla_data|safe }};
+        const slaData = JSON.parse(document.getElementById('sla-data').textContent);
         const labels = slaData.map(item => item.priority);
         const complianceData = slaData.map(item => item.compliance);
         const colors = slaData.map(item => {

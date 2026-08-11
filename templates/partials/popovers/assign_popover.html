@@ -1,6 +1,6 @@
 {% load lucide %}
 <div id="assignModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20" onclick="this.remove()">
-    <div class="bg-surface border rounded-lg shadow-xl p-4 w-64" onclick="event.stopPropagation()" style="background-color: var(--color-surface); border-color: var(--color-border);">
+    <div class="bg-surface border rounded-lg shadow-xl p-4 w-64 border-border" onclick="event.stopPropagation()">
         <h4 class="text-xs font-semibold mb-2">Assign</h4>
         <button class="w-full btn-outline text-xs mb-2"
                 hx-post="{% url 'tickets:assign_to_me' ticket.pk %}"

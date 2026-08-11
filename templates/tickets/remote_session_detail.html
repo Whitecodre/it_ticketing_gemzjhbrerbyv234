@@ -48,7 +48,7 @@
 
         {# ----- ACCEPTED or STARTED – show instructions ----- #}
         {% if session.status == 'ACCEPTED' or session.status == 'STARTED' %}
-            <div class="border rounded-lg p-4" style="border-color: var(--color-border);">
+            <div class="border rounded-lg p-4 border-border">
                 <h3 class="text-sm font-semibold mb-2">Instructions</h3>
                 <div class="text-sm whitespace-pre-line">{{ instructions|linebreaksbr }}</div>
             </div>
@@ -56,7 +56,7 @@
 
         {# ----- AGENT: Provide code and start session when status = ACCEPTED ----- #}
         {% if role == 'agent' and session.status == 'ACCEPTED' %}
-            <div class="border rounded-lg p-4" style="border-color: var(--color-border); background-color: var(--color-background);">
+            <div class="border rounded-lg p-4 border-border bg-background">
                 <h3 class="text-sm font-semibold mb-2">Start Remote Session</h3>
                 <p class="text-xs text-text-secondary mb-2">
                     Enter the 6‑digit code shown in your Quick Assist window after clicking "Help someone":
@@ -71,8 +71,7 @@
                                pattern="[A-Za-z0-9]{6,8}" 
                                maxlength="6" 
                                required
-                               class="w-32 rounded-lg border py-2 px-3 text-sm font-mono focus:outline-none focus:ring-2"
-                               style="background-color: var(--color-surface); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);">
+                               class="w-32 rounded-lg border py-2 px-3 text-sm font-mono focus:outline-none focus:ring-2 bg-surface border-border text-text-primary ring-primary">
                         <button type="submit" class="btn-success text-sm">Start Session & Send Code</button>
                     </div>
                     <p class="text-[0.6rem] text-text-secondary mt-1">

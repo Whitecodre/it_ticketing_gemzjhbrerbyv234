@@ -18,7 +18,7 @@
         <div class="flex items-center gap-3">
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "monitor-cog" size=19 %}</span>
             <div>
-                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Asset management</h2>
+                <h2 class="text-lg font-semibold text-text-primary">Asset management</h2>
                 <p class="text-sm text-text-secondary">Manage hardware, software, and other IT assets.</p>
             </div>
         </div>
@@ -30,8 +30,7 @@
                     {% lucide "upload" size=16 %} Export
                     <span class="ml-1">▾</span>
                 </button>
-                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999]"
-                    style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border"
                     <a href="{% url 'tickets:asset_export' %}?format=csv&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
                     class="block px-4 py-2 text-xs hover:bg-black/5 transition">CSV</a>
                     <a href="{% url 'tickets:asset_export' %}?format=excel&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
@@ -58,7 +57,7 @@
     </div>
 
     <!-- Filters -->
-    <form id="assetFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3" style="background-color: var(--color-surface); border-color: var(--color-border);"
+    <form id="assetFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3 bg-surface border-border"
         hx-get="{% url 'tickets:assets' %}"
         hx-target="#assetTableContainer"
         hx-swap="innerHTML"
@@ -102,7 +101,7 @@
 <!-- Modal Overlay for Create/Edit/Action Modals -->
 <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
      onclick="if(event.target===this) closeModal()">
-    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto" style="background-color: var(--color-surface);">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         <!-- Content loaded via HTMX -->
     </div>
 </div>
@@ -110,16 +109,16 @@
 <!-- Import Modal -->
 <div id="importModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
      onclick="if(event.target===this) closeImportModal()">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Import Assets</h3>
+            <h3 class="text-base font-semibold text-text-primary">Import Assets</h3>
             <button onclick="closeImportModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form method="post" enctype="multipart/form-data" action="{% url 'tickets:asset_import' %}">
             {% csrf_token %}
             <div class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">
                         Upload File <span class="text-error">*</span>
                     </label>
                     <input type="file" name="file" accept=".csv,.xlsx,.xls" required

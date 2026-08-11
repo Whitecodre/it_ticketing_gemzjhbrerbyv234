@@ -166,7 +166,7 @@ def admin_user_create(request):
     )
     
     if not success:
-        print(f"❌ Failed to send user creation email: {result}")
+        print(f"Failed to send user creation email: {result}")
     
     return JsonResponse({'status': 'ok', 'user_id': user.pk})
 

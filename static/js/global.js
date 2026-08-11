@@ -136,6 +136,7 @@ function closeAllSections(exceptSectionId = null) {
         
         const chevron = button.querySelector('.section-chevron');
         if (chevron) chevron.style.transform = 'rotate(-90deg)';
+        button.setAttribute('aria-expanded', 'false');
     });
 }
 
@@ -168,6 +169,7 @@ function openSection(sectionId) {
     
     const chevron = button.querySelector('.section-chevron');
     if (chevron) chevron.style.transform = 'rotate(0deg)';
+    button.setAttribute('aria-expanded', 'true');
 }
 
 function handleSectionToggle(e) {
@@ -197,17 +199,30 @@ function handleSectionToggle(e) {
     activeSectionId = sectionId;
 }
 
+// Sidebar links mark themselves active with an inline
+// "background-color: var(--color-primary)" style rendered server-side (see
+// templates/partials/sidebar_*.html). Reading that back client-side lets us
+// find which section the current page lives in without duplicating each
+// template's own active-link conditions.
+function findActiveSectionId(sectionIds) {
+    for (const sectionId of sectionIds) {
+        const content = document.getElementById(sectionId);
+        if (!content) continue;
+        if (content.querySelector('.sidebar-link[style*="background-color"]')) {
+            return sectionId;
+        }
+    }
+    return null;
+}
+
 function initialiseSidebarAccordion() {
     const toggleBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
-    
+
     if (!toggleBtns || toggleBtns.length === 0) {
-        console.log('⚠️ No accordion buttons found, will retry in 100ms');
         setTimeout(initialiseSidebarAccordion, 100);
         return;
     }
-    
-    console.log('🔵 Found ' + toggleBtns.length + ' accordion buttons');
-    
+
     // Remove existing click listeners by cloning and replacing
     toggleBtns.forEach(function(button) {
         // Store the section id before cloning
@@ -217,42 +232,62 @@ function initialiseSidebarAccordion() {
         // Replace the original with the clone
         button.parentNode.replaceChild(newButton, button);
     });
-    
+
     // Get fresh references after replacement
     const freshBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
-    
-    // Start all closed
+    const sectionIds = Array.prototype.map.call(freshBtns, function (b) { return b.dataset.section; }).filter(Boolean);
+
+    // Open whichever section contains the current page's active link, so a
+    // visitor lands with their location already visible instead of landing
+    // on an all-collapsed sidebar and having to guess which group to open.
+    const sectionToOpen = findActiveSectionId(sectionIds);
+
+    // Mark the parent category with the same "you are here" signal the
+    // child link gets, so collapsing the section (to browse elsewhere)
+    // doesn't lose the visual trail back to the current page.
+    freshBtns.forEach(function(button) {
+        button.classList.toggle('has-active-child', button.dataset.section === sectionToOpen);
+    });
+
+    // Start all closed, except the section we're about to open below.
     freshBtns.forEach(function(button) {
         const sectionId = button.dataset.section;
-        if (!sectionId) return;
-        
+        if (!sectionId || sectionId === sectionToOpen) return;
+
         const content = document.getElementById(sectionId);
         if (!content) return;
-        
+
         content.classList.add('hidden');
         content.style.maxHeight = '0px';
         content.style.opacity = '0';
         content.style.overflow = 'hidden';
-        
+
         const chevron = button.querySelector('.section-chevron');
         if (chevron) chevron.style.transform = 'rotate(-90deg)';
+        button.setAttribute('aria-expanded', 'false');
     });
-    
+
     activeSectionId = null;
-    
+
     // Add fresh event listeners
     freshBtns.forEach(function(button) {
         button.addEventListener('click', handleSectionToggle);
     });
-    
-    console.log('🔵 Accordion initialized successfully');
+
+    if (sectionToOpen) {
+        openSection(sectionToOpen);
+        activeSectionId = sectionToOpen;
+    }
 }
 
-// Also re-initialize after HTMX swaps that affect the sidebar
+// Re-initialize after HTMX swaps that replace the sidebar nav itself (e.g.
+// a role switch). Deliberately NOT matching `.closest('#sidebarNav')` here —
+// small polling widgets nested inside the nav (like the remote-session
+// count badge, which refreshes on its own "every 5s" trigger) also bubble
+// htmx:afterSwap, and a full re-init collapses whatever section the user
+// had manually opened back to just the active one every time they fire.
 document.addEventListener('htmx:afterSwap', function(event) {
-    // Only re-initialize if the sidebar content was swapped
-    if (event.target.id === 'sidebarNav' || event.target.closest('#sidebarNav') || event.target.id === 'sidebar') {
-        console.log('🔵 Sidebar content changed, re-initializing accordion');
+    if (event.target.id === 'sidebarNav' || event.target.id === 'sidebar') {
         // Reset and re-initialize after a small delay
         setTimeout(function() {
             initialiseSidebarAccordion();
@@ -371,6 +406,77 @@ window.openSlideover = openSlideover;
 window.closeSlideover = closeSlideover;
 
 // ================================================================
+// FULFILLMENT MODAL (asset fulfillment for pending-fulfillment tickets)
+// ================================================================
+
+function openFulfillModal(ticketId) {
+    // Remove any existing modal
+    const existing = document.getElementById('fulfillModal');
+    if (existing) existing.remove();
+
+    // Disable body scroll
+    document.body.style.overflow = 'hidden';
+
+    // Fetch the modal content
+    fetch(`/tickets/assets/fulfill-modal/${ticketId}/`)
+        .then(response => response.text())
+        .then(html => {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            document.body.appendChild(wrapper.firstElementChild);
+
+            // Re-initialize HTMX for dynamically loaded content
+            const modal = document.getElementById('fulfillModal');
+            if (modal && typeof htmx !== 'undefined') {
+                htmx.process(modal);
+            }
+
+            // Click on backdrop closes modal
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this || e.target.hasAttribute('data-modal-backdrop')) {
+                        closeFulfillModal();
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading fulfill modal:', error);
+            document.body.style.overflow = '';
+            if (typeof showToast === 'function') {
+                showToast('Error loading fulfillment form.', 'error');
+            }
+        });
+}
+
+function closeFulfillModal() {
+    const modal = document.getElementById('fulfillModal');
+    if (modal) {
+        modal.remove();
+    }
+    document.body.style.overflow = '';
+}
+
+window.openFulfillModal = openFulfillModal;
+window.closeFulfillModal = closeFulfillModal;
+
+// Close on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeFulfillModal();
+    }
+});
+
+// Handle data-close-modal buttons using event delegation
+document.addEventListener('click', function(e) {
+    const closeBtn = e.target.closest('[data-close-modal]');
+    if (closeBtn) {
+        e.preventDefault();
+        closeFulfillModal();
+    }
+});
+
+// ================================================================
 // CSRF TOKEN FOR HTMX
 // ================================================================
 
@@ -379,6 +485,27 @@ document.body.addEventListener('htmx:configRequest', function(event) {
     if (tokenElem) {
         event.detail.headers['X-CSRFToken'] = tokenElem.value;
     }
+});
+
+// ================================================================
+// DOUBLE-SUBMIT PROTECTION
+// ================================================================
+// Disables the submit button on a form's first submit, so a rapid
+// double-click/double-Enter can't fire the request twice.
+function preventDoubleSubmit(form) {
+    if (!form || form.dataset.doubleSubmitGuarded === 'true') return;
+    form.dataset.doubleSubmitGuarded = 'true';
+    form.addEventListener('submit', function() {
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn && !btn.disabled) {
+            btn.disabled = true;
+            btn.classList.add('opacity-70');
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('form[data-guard-submit]').forEach(preventDoubleSubmit);
 });
 
 // ================================================================

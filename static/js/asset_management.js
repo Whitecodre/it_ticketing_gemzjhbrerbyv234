@@ -20,14 +20,6 @@ function initAssetManagement(config) {
     scrapRequestModalUrl = config.scrapRequestModalUrl || '';
     editUrl = config.editUrl || '';
     assetsUrl = config.assetsUrl || '';
-    console.log('🔵 Asset management initialized');
-    console.log('🔵 URLs:', {
-        assetReassignModalUrl,
-        scrapApproveModalUrl,
-        scrapRequestModalUrl,
-        editUrl,
-        assetsUrl
-    });
 }
 
 // ================================================================
@@ -35,8 +27,6 @@ function initAssetManagement(config) {
 // ================================================================
 
 function openScrapApproveModal(assetId) {
-    console.log('🔵 openScrapApproveModal called with assetId:', assetId);
-    
     if (!scrapApproveModalUrl) {
         console.error('❌ scrapApproveModalUrl is not set');
         if (typeof showToast === 'function') {
@@ -54,8 +44,6 @@ function openScrapApproveModal(assetId) {
         return;
     }
     
-    console.log('🔵 Loading scrap approve modal from:', url);
-    
     container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
     overlay.classList.remove('hidden');
     
@@ -63,7 +51,6 @@ function openScrapApproveModal(assetId) {
         target: '#modalContainer',
         swap: 'innerHTML',
         onAfterSwap: function() {
-            console.log('🔵 Scrap approve modal loaded');
             overlay.classList.remove('hidden');
         },
         onError: function(error) {
@@ -81,8 +68,6 @@ function openScrapApproveModal(assetId) {
 // ================================================================
 
 function openScrapRequestModal(assetId) {
-    console.log('🔵 openScrapRequestModal called with assetId:', assetId);
-    
     if (!scrapRequestModalUrl) {
         console.error('❌ scrapRequestModalUrl is not set');
         if (typeof showToast === 'function') {
@@ -100,8 +85,6 @@ function openScrapRequestModal(assetId) {
         return;
     }
     
-    console.log('🔵 Loading scrap request modal from:', url);
-    
     container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
     overlay.classList.remove('hidden');
     
@@ -109,7 +92,6 @@ function openScrapRequestModal(assetId) {
         target: '#modalContainer',
         swap: 'innerHTML',
         onAfterSwap: function() {
-            console.log('🔵 Scrap request modal loaded');
             overlay.classList.remove('hidden');
         },
         onError: function(error) {
@@ -127,8 +109,6 @@ function openScrapRequestModal(assetId) {
 // ================================================================
 
 function openAssetReassignModal(assetId) {
-    console.log('🔵 openAssetReassignModal called with assetId:', assetId);
-    
     if (!assetReassignModalUrl) {
         console.error('❌ assetReassignModalUrl is not set');
         if (typeof showToast === 'function') {
@@ -146,8 +126,6 @@ function openAssetReassignModal(assetId) {
         return;
     }
     
-    console.log('🔵 Loading reassign modal from:', url);
-    
     container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
     overlay.classList.remove('hidden');
     
@@ -155,7 +133,6 @@ function openAssetReassignModal(assetId) {
         target: '#modalContainer',
         swap: 'innerHTML',
         onAfterSwap: function() {
-            console.log('🔵 Reassign modal loaded');
             overlay.classList.remove('hidden');
         },
         onError: function(error) {
@@ -172,7 +149,11 @@ function openAssetReassignModal(assetId) {
 // CLOSE MODAL
 // ================================================================
 
-function closeModal() {
+function closeModal(modalId) {
+    if (modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) modal.remove();
+    }
     const overlay = document.getElementById('modalOverlay');
     const container = document.getElementById('modalContainer');
     if (overlay) {
@@ -289,7 +270,6 @@ document.addEventListener('DOMContentLoaded', function() {
         closeModal();
     });
     
-    console.log('🔵 Asset management JS initialized');
 });
 
 // ================================================================
@@ -353,14 +333,6 @@ function openCheckoutHistory(assetId) {
     });
 }
 
-// Modal close function
-function closeModal(modalId) {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.remove();
-    }
-    const overlay = document.getElementById('modalOverlay');
-    const container = document.getElementById('modalContainer');
-    if (overlay) overlay.classList.add('hidden');
-    if (container) container.innerHTML = '';
-}
+// closeModal(modalId) is defined once, above, and handles both the
+// no-arg case (asset_list.html, scrap modals) and the modalId case
+// (checkout/checkin modals).

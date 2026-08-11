@@ -2,7 +2,7 @@
 
 <div class="p-6">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold" style="color: var(--color-text-primary);">
+        <h3 class="text-lg font-semibold text-text-primary">
             {% if action == 'create' %}Add New Asset{% else %}Edit Asset{% endif %}
         </h3>
         <button onclick="closeModal()" class="btn-ghost p-1">{% lucide "x" size=20 %}</button>
@@ -134,7 +134,7 @@
                     <input type="date" name="warranty_expiry" id="warrantyExpiry"
                         value="{{ asset.warranty_expiry|date:'Y-m-d'|default:'' }}"
                         readonly
-                        class="w-full rounded-lg border py-2 px-3 text-sm bg-gray-100 text-gray-600 cursor-not-allowed focus:outline-none">
+                        class="w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-secondary cursor-not-allowed focus:outline-none">
                 </div>
                 <p class="text-xs text-text-secondary mt-1">Auto-calculated from purchase date and duration.</p>
             </div>
@@ -182,7 +182,7 @@
         </div>
 
         <!-- Actions -->
-        <div class="flex justify-end gap-2 mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+        <div class="flex justify-end gap-2 mt-6 pt-4 border-t border-border">
             <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
             <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg" id="assetSubmitBtn">
                 {% if action == 'create' %}Add Asset{% else %}Save Changes{% endif %}

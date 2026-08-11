@@ -23,7 +23,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
                 <div class="flex items-center gap-3">
-                    <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+                    <h2 class="text-base font-semibold text-text-primary">
                         Submission #{{ submission.pk }}
                     </h2>
                     <span class="status-chip 
@@ -54,28 +54,28 @@
             </div>
         </div>
         
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t" style="border-color: var(--color-border);">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t border-border">
             <div>
                 <span class="text-xs text-text-secondary">Submitted By</span>
-                <p class="text-sm font-medium" style="color: var(--color-text-primary);">
+                <p class="text-sm font-medium text-text-primary">
                     {{ submission.submitted_by.get_full_name|default:submission.submitted_by.email|default:"Anonymous" }}
                 </p>
             </div>
             <div>
                 <span class="text-xs text-text-secondary">Submitted At</span>
-                <p class="text-sm font-medium" style="color: var(--color-text-primary);">
+                <p class="text-sm font-medium text-text-primary">
                     {{ submission.submitted_at|date:"M d, Y H:i" }}
                 </p>
             </div>
             <div>
                 <span class="text-xs text-text-secondary">IP Address</span>
-                <p class="text-sm font-medium" style="color: var(--color-text-primary);">
+                <p class="text-sm font-medium text-text-primary">
                     {{ submission.ip_address|default:"—" }}
                 </p>
             </div>
             <div>
                 <span class="text-xs text-text-secondary">Session</span>
-                <p class="text-sm font-medium" style="color: var(--color-text-primary);">
+                <p class="text-sm font-medium text-text-primary">
                     {{ submission.session_id|truncatechars:12|default:"—" }}
                 </p>
             </div>
@@ -84,22 +84,22 @@
 
     <!-- Data Display -->
     <div class="dashboard-card">
-        <h3 class="text-sm font-semibold mb-4" style="color: var(--color-text-secondary);">
+        <h3 class="text-sm font-semibold mb-4 text-text-secondary">
             Submission Data
         </h3>
         
         {% if display_data %}
         <div class="space-y-3">
             {% for label, field in display_data.items %}
-            <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 py-2 border-b" style="border-color: var(--color-border);">
+            <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4 py-2 border-b border-border">
                 <div class="sm:w-1/3">
-                    <span class="text-sm font-medium" style="color: var(--color-text-secondary);">{{ label }}</span>
+                    <span class="text-sm font-medium text-text-secondary">{{ label }}</span>
                     {% if field.type %}
                     <span class="text-[0.55rem] text-text-secondary block">{{ field.type }}</span>
                     {% endif %}
                 </div>
                 <div class="sm:w-2/3">
-                    <div class="text-sm" style="color: var(--color-text-primary);">
+                    <div class="text-sm text-text-primary">
                         {% if field.value is None %}
                             <span class="text-text-secondary">—</span>
                         {% elif field.value is False %}
@@ -113,7 +113,7 @@
                                 {% lucide "file" size=14 %} View File
                             </a>
                         {% elif field.type == 'signature' %}
-                            <img src="{{ field.value }}" alt="Signature" class="max-h-16 border rounded" style="border-color: var(--color-border);">
+                            <img src="{{ field.value }}" alt="Signature" class="max-h-16 border rounded border-border">
                         {% elif field.type == 'datetime' %}
                             <span>{{ field.value|date:"M d, Y H:i" }}</span>
                         {% elif field.type == 'date' %}
@@ -121,7 +121,7 @@
                         {% elif field.value|length > 500 %}
                             <details>
                                 <summary class="cursor-pointer text-primary text-xs">Show full content</summary>
-                                <pre class="mt-2 p-2 rounded text-xs whitespace-pre-wrap" style="background-color: var(--color-background);">{{ field.value }}</pre>
+                                <pre class="mt-2 p-2 rounded text-xs whitespace-pre-wrap bg-background">{{ field.value }}</pre>
                             </details>
                         {% elif field.value|length > 100 %}
                             <p class="whitespace-pre-wrap">{{ field.value|truncatewords:50 }}</p>
@@ -138,15 +138,15 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-8 text-text-secondary">
-            <p>No data available for this submission.</p>
+        <div class="empty-state">
+            <p class="empty-state-title">No data available for this submission.</p>
         </div>
         {% endif %}
         
         {% if submission.status_notes %}
-        <div class="mt-4 pt-4 border-t" style="border-color: var(--color-border);">
+        <div class="mt-4 pt-4 border-t border-border">
             <span class="text-xs text-text-secondary">Review Notes</span>
-            <p class="text-sm mt-1" style="color: var(--color-text-primary);">{{ submission.status_notes }}</p>
+            <p class="text-sm mt-1 text-text-primary">{{ submission.status_notes }}</p>
             {% if submission.reviewed_by %}
             <p class="text-xs text-text-secondary mt-1">
                 Reviewed by: {{ submission.reviewed_by.get_full_name }} at {{ submission.reviewed_at|date:"M d, Y H:i" }}

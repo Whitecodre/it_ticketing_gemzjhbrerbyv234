@@ -267,6 +267,8 @@ document.addEventListener('DOMContentLoaded', function() {
         createForm.addEventListener('submit', function(e) {
             e.preventDefault();
             const form = this;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
             const formData = new FormData(form);
             form.querySelectorAll('input[name="selected_roles"]').forEach(checkbox => {
                 if (checkbox.checked) formData.append('selected_roles', checkbox.value);
@@ -295,6 +297,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (typeof showToast === 'function') {
                         showToast('Network error. Please try again.', 'error');
                     }
+                })
+                .finally(() => {
+                    if (submitBtn) submitBtn.disabled = false;
                 });
         });
     }
@@ -304,6 +309,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (editForm) {
         editForm.addEventListener('submit', function(e) {
             e.preventDefault();
+            const submitBtn = editForm.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
             const userId = document.getElementById('editUserId').value;
             const formData = new FormData();
             formData.append('first_name', document.getElementById('editFirstName').value);
@@ -338,6 +345,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (typeof showToast === 'function') {
                         showToast('Network error. Please try again.', 'error');
                     }
+                })
+                .finally(() => {
+                    if (submitBtn) submitBtn.disabled = false;
                 });
         });
     }
@@ -363,6 +373,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 return;
             }
+
+            var submitBtn = changePwdForm.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
 
             var url = window.adminUserChangePasswordUrl.replace('0', userId);
             fetch(url, {
@@ -391,6 +404,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (typeof showToast === 'function') {
                     showToast('Network error. Please try again.', 'error');
                 }
+            })
+            .finally(function() {
+                if (submitBtn) submitBtn.disabled = false;
             });
         });
     }

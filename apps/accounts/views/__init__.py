@@ -97,7 +97,7 @@ class CustomPasswordResetView(PasswordResetView):
         )
         
         if not success:
-            print(f"❌ Failed to send password reset email to {to_email}: {result}")
+            print(f"Failed to send password reset email to {to_email}: {result}")
             # Log the error but don't fail silently
             import logging
             logger = logging.getLogger(__name__)
@@ -591,7 +591,7 @@ def register(request):
                     )
                     if not success:
                         email_error = True
-                        print(f"❌ Failed to send verification email to {user.email}: {result}")
+                        print(f"Failed to send verification email to {user.email}: {result}")
                 except Exception as e:
                     logger.error(f"Failed to send verification email to {user.email}: {str(e)}")
                     email_error = True

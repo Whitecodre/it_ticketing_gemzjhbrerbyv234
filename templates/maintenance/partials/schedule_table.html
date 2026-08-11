@@ -144,41 +144,32 @@
     
     {# Pagination #}
     {% if schedules.paginator.num_pages > 1 %}
-    <div class="px-4 py-3 border-t flex items-center justify-between" style="border-color: var(--color-border);">
-        <span class="text-xs" style="color: var(--color-text-secondary);">
-            Showing {{ schedules.start_index }} - {{ schedules.end_index }} of {{ schedules.paginator.count }}
+    <div class="pagination-bar">
+        <span class="pagination-summary">
+            Showing <strong>{{ schedules.start_index }}–{{ schedules.end_index }}</strong> of <strong>{{ schedules.paginator.count }}</strong> schedules
         </span>
-        <div class="flex gap-1">
-            {% if schedules.has_previous %}
-                <button hx-get="{% url 'maintenance:list' %}?page={{ schedules.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
-                        hx-target="#scheduleTableContainer"
-                        class="px-3 py-1 text-sm rounded border transition"
-                        style="border-color: var(--color-border); color: var(--color-text-primary);">
-                    Previous
-                </button>
-            {% endif %}
-            
-            {% for num in schedules.paginator.page_range %}
-                {% if num == schedules.number %}
-                    <span class="px-3 py-1 text-sm rounded bg-primary text-white">{{ num }}</span>
-                {% else %}
-                    <button hx-get="{% url 'maintenance:list' %}?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
-                            hx-target="#scheduleTableContainer"
-                            class="px-3 py-1 text-sm rounded border transition"
-                            style="border-color: var(--color-border); color: var(--color-text-primary);">
-                        {{ num }}
-                    </button>
-                {% endif %}
-            {% endfor %}
-            
-            {% if schedules.has_next %}
-                <button hx-get="{% url 'maintenance:list' %}?page={{ schedules.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
-                        hx-target="#scheduleTableContainer"
-                        class="px-3 py-1 text-sm rounded border transition"
-                        style="border-color: var(--color-border); color: var(--color-text-primary);">
-                    Next
-                </button>
-            {% endif %}
+        <div class="pagination-controls">
+            <button class="pagination-step{% if not schedules.has_previous %} is-disabled{% endif %}"
+                    {% if schedules.has_previous %}hx-get="{% url 'maintenance:list' %}?page={{ schedules.previous_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                    hx-target="#scheduleTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+                {% lucide "chevron-left" size=14 %} Prev
+            </button>
+            <div class="pagination-numbers">
+                {% for num in schedules.paginator.page_range %}
+                    {% if num == schedules.number %}
+                    <span class="pagination-number is-current">{{ num }}</span>
+                    {% elif num > schedules.number|add:'-3' and num < schedules.number|add:'3' %}
+                    <button class="pagination-number"
+                            hx-get="{% url 'maintenance:list' %}?page={{ num }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                            hx-target="#scheduleTableContainer" hx-swap="innerHTML">{{ num }}</button>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <button class="pagination-step{% if not schedules.has_next %} is-disabled{% endif %}"
+                    {% if schedules.has_next %}hx-get="{% url 'maintenance:list' %}?page={{ schedules.next_page_number }}{% for key, value in request.GET.items %}{% if key != 'page' %}&{{ key }}={{ value }}{% endif %}{% endfor %}"
+                    hx-target="#scheduleTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+                Next {% lucide "chevron-right" size=14 %}
+            </button>
         </div>
     </div>
     {% endif %}

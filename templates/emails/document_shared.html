@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .content { padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 8px 8px; }
+        .button { background: #0D9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; }
+        .footer { margin-top: 20px; font-size: 12px; color: #64748B; }
+        .detail { background: #F8FAFC; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        .perm { display: inline-block; background: #E2E8F0; color: #334155; font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-right: 6px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>📄 A document has been shared with you</h2>
+    </div>
+    <div class="content">
+        <p>Hi {{ recipient.get_full_name|default:recipient.email }},</p>
+        <p>{{ shared_by.get_full_name|default:shared_by.email }} shared a document with you.</p>
+
+        <div class="detail">
+            <h3>{{ document.title }}</h3>
+            <p><strong>Category:</strong> {{ document.category.name }}</p>
+            <p>
+                <span class="perm">Read</span>
+                {% if can_edit %}<span class="perm">Edit</span>{% endif %}
+                {% if can_download %}<span class="perm">Download</span>{% endif %}
+            </p>
+        </div>
+
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="{{ accept_url }}" class="button">View Document</a>
+        </p>
+
+        <p>You'll need to be logged in to your account to open it:</p>
+        <p style="word-break: break-all;"><a href="{{ accept_url }}" style="color: #0D9488;">{{ accept_url }}</a></p>
+
+        <div class="footer">
+            <p>This is an automated notification from TicketSwipe.</p>
+            <p>Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>

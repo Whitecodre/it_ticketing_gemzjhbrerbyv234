@@ -3,13 +3,12 @@
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" 
      onclick="if(event.target === this) this.remove();">
     <div class="bg-surface rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
-         style="background-color: var(--color-surface);"
          onclick="event.stopPropagation()">
-        
-        <h3 class="text-lg font-semibold mb-2" style="color: var(--color-text-primary);">
+
+        <h3 class="text-lg font-semibold mb-2 text-text-primary">
             Update Status
         </h3>
-        <p class="text-sm mb-4" style="color: var(--color-text-secondary);">
+        <p class="text-sm mb-4 text-text-secondary">
             {{ schedule.title }}
         </p>
         
@@ -26,47 +25,44 @@
                     <input type="radio" name="status" value="SCHEDULED" 
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'SCHEDULED' %}checked{% endif %}>
-                    <span class="text-sm" style="color: var(--color-text-primary);">Scheduled</span>
+                    <span class="text-sm text-text-primary">Scheduled</span>
                 </label>
                 <label class="block">
                     <input type="radio" name="status" value="IN_PROGRESS" 
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'IN_PROGRESS' %}checked{% endif %}>
-                    <span class="text-sm" style="color: var(--color-text-primary);">In Progress</span>
+                    <span class="text-sm text-text-primary">In Progress</span>
                 </label>
                 <label class="block">
                     <input type="radio" name="status" value="COMPLETED" 
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'COMPLETED' %}checked{% endif %}>
-                    <span class="text-sm" style="color: var(--color-text-primary);">Completed</span>
+                    <span class="text-sm text-text-primary">Completed</span>
                 </label>
                 <label class="block">
                     <input type="radio" name="status" value="CANCELLED" 
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'CANCELLED' %}checked{% endif %}>
-                    <span class="text-sm" style="color: var(--color-text-primary);">Cancelled</span>
+                    <span class="text-sm text-text-primary">Cancelled</span>
                 </label>
             </div>
             
             <div class="mt-4">
-                <label for="status_comment" class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+                <label for="status_comment" class="block text-sm font-medium mb-1 text-text-primary">
                     Comment (Optional)
                 </label>
                 <textarea name="comment" id="status_comment" rows="2"
-                          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
-                          style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); ring-color: var(--color-primary);"
+                          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
                           placeholder="Reason for status change..."></textarea>
             </div>
             
             <div class="flex items-center justify-end gap-3 mt-6">
                 <button type="button" onclick="this.closest('.fixed').remove()"
-                        class="px-4 py-2 text-sm rounded-lg border transition"
-                        style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                        class="px-4 py-2 text-sm rounded-lg border transition border-border text-text-secondary">
                     Cancel
                 </button>
-                <button type="submit" 
-                        class="px-6 py-2 text-sm font-medium text-white rounded-lg transition flex items-center gap-2"
-                        style="background-color: var(--color-primary);">
+                <button type="submit"
+                        class="px-6 py-2 text-sm font-medium text-white rounded-lg transition flex items-center gap-2 bg-primary">
                     <span class="htmx-indicator">
                         <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>

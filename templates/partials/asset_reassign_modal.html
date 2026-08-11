@@ -6,7 +6,7 @@
             {% lucide "hard-drive" size=20 %}
         </div>
         <div>
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Reassign Asset</h3>
+            <h3 class="text-base font-semibold text-text-primary">Reassign Asset</h3>
             <p class="text-sm text-text-secondary">{{ asset.name }} ({{ asset.tracking_id }})</p>
         </div>
     </div>
@@ -22,7 +22,7 @@
         {% csrf_token %}
         
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Assign to User <span class="text-error">*</span>
             </label>
             <select name="assigned_to" required
@@ -35,7 +35,7 @@
         </div>
 
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Comment <span class="text-text-secondary text-xs font-normal">(optional, editable)</span>
             </label>
             <textarea name="comment" rows="3" 

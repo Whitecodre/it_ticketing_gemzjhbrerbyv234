@@ -1,7 +1,7 @@
 # apps/documents_display/admin.py
 
 from django.contrib import admin
-from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess
+from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare
 
 
 class DisplayVersionInline(admin.TabularInline):
@@ -31,6 +31,15 @@ class DisplayDocumentAdmin(admin.ModelAdmin):
     readonly_fields = ['version', 'slug', 'created_at', 'updated_at']
     inlines = [DocumentDepartmentAccessInline, DisplayVersionInline]
     filter_horizontal = ['editors', 'downloaders']
+
+
+@admin.register(DocumentShare)
+class DocumentShareAdmin(admin.ModelAdmin):
+    list_display = ['document', 'recipient', 'shared_by', 'can_edit', 'can_download', 'created_at', 'accepted_at', 'revoked_at']
+    list_filter = ['can_edit', 'can_download']
+    search_fields = ['document__title', 'recipient__email']
+    readonly_fields = ['token', 'created_at', 'accepted_at']
+    autocomplete_fields = ['document', 'recipient', 'shared_by']
 
 
 @admin.register(DisplayVersion)

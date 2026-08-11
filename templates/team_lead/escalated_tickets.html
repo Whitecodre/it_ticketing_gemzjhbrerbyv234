@@ -15,7 +15,7 @@
 
 {% block dashboard_content %}
 <div class="w-full">
-    <h2 class="text-base font-semibold mb-2" style="color: var(--color-text-primary);">Escalated Tickets</h2>
+    <h2 class="text-base font-semibold mb-2 text-text-primary">Escalated Tickets</h2>
     <p class="text-sm text-text-secondary mb-4">These tickets have been escalated due to SLA breach. Please take action.</p>
 
     {% if tickets %}
@@ -23,7 +23,7 @@
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
-                    <tr class="border-b" style="border-color: var(--color-border);">
+                    <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
@@ -34,7 +34,7 @@
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                             <span class="ml-2 status-chip escalated text-xs">Escalated</span>
@@ -72,9 +72,9 @@
 
 <!-- ========== REASSIGN MODAL ========== -->
 <div id="reassignModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" onclick="if(event.target===this) closeReassignModal()">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Reassign Escalated Ticket</h3>
+            <h3 class="text-base font-semibold text-text-primary">Reassign Escalated Ticket</h3>
             <button onclick="closeReassignModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form method="post" id="reassignForm">
@@ -124,9 +124,9 @@
 
 <!-- ========== RETURN TO POOL MODAL ========== -->
 <div id="returnModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" onclick="if(event.target===this) closeReturnModal()">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Return Ticket to Pool</h3>
+            <h3 class="text-base font-semibold text-text-primary">Return Ticket to Pool</h3>
             <button onclick="closeReturnModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form method="post" id="returnForm">

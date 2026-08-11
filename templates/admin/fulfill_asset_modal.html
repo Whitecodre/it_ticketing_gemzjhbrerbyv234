@@ -1,11 +1,10 @@
 {% load lucide %}
 
 <div id="fulfillModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-modal-backdrop>
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto" 
-         style="background-color: var(--color-surface);">
-        
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-2xl p-6 mx-4 max-h-[90vh] overflow-y-auto">
+
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+            <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
                 {% lucide "check-circle" size=20 %} Fulfill Asset Request
             </h3>
             <button data-close-modal class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
@@ -13,7 +12,7 @@
             </button>
         </div>
         
-        <div class="mb-4 p-4 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+        <div class="mb-4 p-4 rounded-lg border border-border bg-background">
             <div class="grid grid-cols-2 gap-2 text-sm">
                 <div>
                     <span class="text-text-secondary">Ticket:</span>
@@ -74,7 +73,7 @@
             </div>
             
             {# Actions #}
-            <div class="flex justify-end gap-2 pt-2 border-t" style="border-color: var(--color-border);">
+            <div class="flex justify-end gap-2 pt-2 border-t border-border">
                 <button type="button" data-close-modal class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
                 <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2"
                         {% if not available_assets %}disabled{% endif %}>

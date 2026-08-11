@@ -48,7 +48,7 @@ class Notification(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Notification for {self.recipient}: {self.message[:50]}"
+        return f"Notification for {self.recipient.email}: {self.message[:50]}"
 
 
 class PushSubscription(models.Model):
@@ -61,3 +61,6 @@ class PushSubscription(models.Model):
 
     class Meta:
         unique_together = ('user', 'endpoint')
+
+    def __str__(self):
+        return f"PushSubscription for {self.user.email}"

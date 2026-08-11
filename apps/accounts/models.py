@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.contrib.auth import password_validation
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models
@@ -33,6 +34,10 @@ class UserManager(BaseUserManager):
         email = self.normalize_email(email)
         email = email.lower()
         user = self.model(email=email, **extra_fields)
+        # Enforce AUTH_PASSWORD_VALIDATORS here rather than only in
+        # registration forms, so it can't be bypassed by any other code path
+        # (admin, management commands, scripts) that creates a user directly.
+        password_validation.validate_password(password, user)
         user.set_password(password)
         user.save(using=self._db)
         return user

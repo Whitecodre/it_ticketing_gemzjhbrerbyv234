@@ -3,7 +3,7 @@
 <div class="overflow-x-auto">
     <table class="w-full text-sm">
         <thead>
-            <tr class="border-b" style="border-color: var(--color-border);">
+            <tr class="border-b border-border">
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assignee</th>
@@ -15,7 +15,7 @@
         </thead>
         <tbody>
             {% for ticket in tickets %}
-            <tr class="border-b hover:bg-black/5 transition-colors group" style="border-color: var(--color-border);">
+            <tr class="border-b hover:bg-black/5 transition-colors group border-border">
                 <td class="py-3 px-3">
                     <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                 </td>
@@ -45,10 +45,10 @@
             {% empty %}
             <tr>
                 <td colspan="7" class="text-center py-6">
-                    <div class="flex flex-col items-center gap-0.5">
-                        <span class="text-2xl">👥</span>
-                        <p class="text-text-secondary text-sm">No team tickets.</p>
-                        <p class="text-text-secondary text-xs">Team is doing great! 🎉</p>
+                    <div class="empty-state">
+                        {% lucide "users" size=32 %}
+                        <p class="empty-state-title">No team tickets</p>
+                        <p class="empty-state-subtext">Team is doing great!</p>
                     </div>
                 </td>
             </tr>

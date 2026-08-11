@@ -240,25 +240,5 @@
     </div>
 </div>
 
-{# Confirmation Modal (HTMX) #}
-<div id="confirmModalContainer"></div>
-
-{# Status Update Modal #}
-<div id="statusModalContainer"></div>
-
-<script>
-function openConfirmModal(scheduleId) {
-    htmx.ajax('GET', `/maintenance/${scheduleId}/confirm-modal/`, {
-        target: '#confirmModalContainer',
-        swap: 'innerHTML'
-    });
-}
-
-function openStatusModal(scheduleId) {
-    htmx.ajax('GET', `/maintenance/${scheduleId}/status-modal/`, {
-        target: '#statusModalContainer',
-        swap: 'innerHTML'
-    });
-}
-</script>
+{% include "maintenance/partials/status_modals.html" %}
 {% endblock %}

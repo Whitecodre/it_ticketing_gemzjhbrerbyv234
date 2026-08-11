@@ -3,11 +3,10 @@
 {% if assets %}
 <div class="max-h-48 overflow-y-auto space-y-1">
     {% for asset in assets %}
-    <label class="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-black/5 transition" 
-           style="border-color: var(--color-border);">
+    <label class="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-black/5 transition border-border">
         <input type="radio" name="asset_id" value="{{ asset.pk }}" class="rounded border-border text-primary focus:ring-primary" required>
         <div class="flex-1 min-w-0">
-            <p class="text-xs font-medium" style="color: var(--color-text-primary);">{{ asset.name }}</p>
+            <p class="text-xs font-medium text-text-primary">{{ asset.name }}</p>
             <p class="text-[0.6rem] text-text-secondary">
                 {{ asset.tracking_id }} · {{ asset.asset_type }}
                 {% if asset.serial_number %}· SN: {{ asset.serial_number }}{% endif %}
@@ -29,7 +28,7 @@
     <div class="flex justify-center mb-2">
         {% lucide "hard-drive" size=24 class="text-text-secondary opacity-50" %}
     </div>
-    <p class="text-sm font-medium" style="color: var(--color-text-primary);">No available assets</p>
+    <p class="text-sm font-medium text-text-primary">No available assets</p>
     <p class="text-xs text-text-secondary">Try adjusting your search or add a new asset.</p>
 </div>
 {% endif %}

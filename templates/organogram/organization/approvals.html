@@ -15,7 +15,7 @@
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">
+            <h2 class="text-base font-semibold text-text-primary">
                 {% lucide "clipboard-check" size=20 %} Approvals
             </h2>
             <p class="text-sm text-text-secondary">Review and approve pending organization charts.</p>
@@ -24,8 +24,8 @@
 
     <!-- Pending Drafts -->
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="px-4 py-3 border-b" style="border-color: var(--color-border);">
-            <span class="text-sm font-medium" style="color: var(--color-text-primary);">
+        <div class="px-4 py-3 border-b border-border">
+            <span class="text-sm font-medium text-text-primary">
                 Pending Approvals
             </span>
             <span class="text-xs text-text-secondary ml-2">({{ pending_drafts|length }})</span>
@@ -37,7 +37,7 @@
                 <div class="p-4 hover:bg-black/5 transition-colors">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                            <div class="font-medium" style="color: var(--color-text-primary);">
+                            <div class="font-medium text-text-primary">
                                 {{ draft.name }}
                             </div>
                             <div class="text-sm text-text-secondary">
@@ -86,10 +86,10 @@
                 {% endfor %}
             </div>
         {% else %}
-            <div class="text-center py-12 text-text-secondary">
-                <span class="text-4xl block mb-3">✅</span>
-                <p class="text-lg font-medium">No pending approvals</p>
-                <p class="text-sm mt-1">All organization charts have been reviewed.</p>
+            <div class="empty-state">
+                {% lucide "circle-check" size=40 %}
+                <p class="empty-state-title">No pending approvals</p>
+                <p class="empty-state-subtext">All organization charts have been reviewed.</p>
             </div>
         {% endif %}
     </div>

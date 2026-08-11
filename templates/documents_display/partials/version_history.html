@@ -2,7 +2,7 @@
 
 <div class="p-6">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
             {% lucide "clock" size=20 %} Version History: {{ document.title }}
         </h3>
         <button onclick="closeVersionModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
@@ -10,9 +10,9 @@
 
     <div class="space-y-2">
         {% for version in versions %}
-        <div class="flex items-center justify-between text-sm p-3 rounded-lg border" style="border-color: var(--color-border); background-color: var(--color-background);">
+        <div class="flex items-center justify-between text-sm p-3 rounded-lg border border-border bg-background">
             <div>
-                <span class="font-medium" style="color: var(--color-text-primary);">v{{ version.version_number }}</span>
+                <span class="font-medium text-text-primary">v{{ version.version_number }}</span>
                 <span class="text-text-secondary ml-2">{{ version.created_by.get_full_name|default:version.created_by.email }}</span>
                 <span class="text-xs text-text-secondary ml-2">{{ version.created_at|date:"M d, Y H:i" }}</span>
                 {% if version.comment %}
@@ -24,8 +24,8 @@
             {% endif %}
         </div>
         {% empty %}
-        <div class="text-center py-8 text-text-secondary">
-            <p>No version history available.</p>
+        <div class="empty-state">
+            <p class="empty-state-title">No version history available.</p>
         </div>
         {% endfor %}
     </div>

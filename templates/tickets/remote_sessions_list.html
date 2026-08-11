@@ -63,14 +63,29 @@
 
     {# Pagination #}
     {% if sessions.has_other_pages %}
-    <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-3 mt-4 border-t" style="border-color: var(--color-border);">
-        <span class="text-sm text-text-secondary">Page {{ sessions.number }} of {{ sessions.paginator.num_pages }}</span>
-        <div class="flex gap-1.5">
+    <div class="pagination-bar" style="margin-top: 1rem;">
+        <span class="pagination-summary">
+            Showing <strong>{{ sessions.start_index }}–{{ sessions.end_index }}</strong> of <strong>{{ sessions.paginator.count }}</strong> sessions
+        </span>
+        <div class="pagination-controls">
             {% if sessions.has_previous %}
-            <a href="?page={{ sessions.previous_page_number }}" class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition">← Prev</a>
+            <a href="?page={{ sessions.previous_page_number }}" class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
+            {% else %}
+            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
             {% endif %}
+            <div class="pagination-numbers">
+                {% for num in sessions.paginator.page_range %}
+                    {% if num == sessions.number %}
+                    <span class="pagination-number is-current">{{ num }}</span>
+                    {% elif num > sessions.number|add:'-3' and num < sessions.number|add:'3' %}
+                    <a href="?page={{ num }}" class="pagination-number">{{ num }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
             {% if sessions.has_next %}
-            <a href="?page={{ sessions.next_page_number }}" class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition">Next →</a>
+            <a href="?page={{ sessions.next_page_number }}" class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
+            {% else %}
+            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
             {% endif %}
         </div>
     </div>

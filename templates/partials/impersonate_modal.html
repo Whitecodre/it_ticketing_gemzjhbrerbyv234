@@ -6,7 +6,7 @@
             {% lucide "eye" size=20 %}
         </div>
         <div>
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Login as User</h3>
+            <h3 class="text-base font-semibold text-text-primary">Login as User</h3>
             <p class="text-sm text-text-secondary">You are about to impersonate <strong>{{ user_name|default:"User" }}</strong></p>
         </div>
     </div>
@@ -23,7 +23,7 @@
         <input type="hidden" name="user_id" id="impersonateUserId" value="{{ user_id }}">
         
         <div class="mb-4">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Reason for impersonation <span class="text-error">*</span>
             </label>
             <select name="reason" id="impersonateReason" required
@@ -39,7 +39,7 @@
         </div>
         
         <div class="mb-4" id="otherReasonContainer" style="display: none;">
-            <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
+            <label class="block text-sm font-medium mb-1 text-text-primary">
                 Please specify
             </label>
             <input type="text" name="other_reason" id="otherReason" 

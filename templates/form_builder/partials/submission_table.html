@@ -82,32 +82,32 @@
 
 <!-- Pagination -->
 {% if submissions.has_other_pages %}
-<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t" style="border-color: var(--color-border);">
-    <span class="text-sm text-text-secondary">
-        Showing {{ submissions.start_index }} - {{ submissions.end_index }} of {{ submissions.paginator.count }}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ submissions.start_index }}–{{ submissions.end_index }}</strong> of <strong>{{ submissions.paginator.count }}</strong> submissions
     </span>
-    <div class="flex gap-1.5">
-        {% if submissions.has_previous %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'form_builder:submissions' form_instance.pk %}?page={{ submissions.previous_page_number }}&status={{ selected_status }}&search={{ search }}"
-                hx-target="#submissionTableContainer"
-                hx-swap="innerHTML">
-            ← Prev
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not submissions.has_previous %} is-disabled{% endif %}"
+                {% if submissions.has_previous %}hx-get="{% url 'form_builder:submissions' form_instance.pk %}?page={{ submissions.previous_page_number }}&status={{ selected_status }}&search={{ search }}"
+                hx-target="#submissionTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
         </button>
-        {% endif %}
-        
-        <span class="px-3 py-1 text-sm rounded bg-primary text-white">
-            {{ submissions.number }}
-        </span>
-        
-        {% if submissions.has_next %}
-        <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                hx-get="{% url 'form_builder:submissions' form_instance.pk %}?page={{ submissions.next_page_number }}&status={{ selected_status }}&search={{ search }}"
-                hx-target="#submissionTableContainer"
-                hx-swap="innerHTML">
-            Next →
+        <div class="pagination-numbers">
+            {% for num in submissions.paginator.page_range %}
+                {% if num == submissions.number %}
+                <span class="pagination-number is-current">{{ num }}</span>
+                {% elif num > submissions.number|add:'-3' and num < submissions.number|add:'3' %}
+                <button class="pagination-number"
+                        hx-get="{% url 'form_builder:submissions' form_instance.pk %}?page={{ num }}&status={{ selected_status }}&search={{ search }}"
+                        hx-target="#submissionTableContainer" hx-swap="innerHTML">{{ num }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        <button class="pagination-step{% if not submissions.has_next %} is-disabled{% endif %}"
+                {% if submissions.has_next %}hx-get="{% url 'form_builder:submissions' form_instance.pk %}?page={{ submissions.next_page_number }}&status={{ selected_status }}&search={{ search }}"
+                hx-target="#submissionTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            Next {% lucide "chevron-right" size=14 %}
         </button>
-        {% endif %}
     </div>
 </div>
 {% endif %}

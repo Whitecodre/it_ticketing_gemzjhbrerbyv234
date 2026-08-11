@@ -29,40 +29,40 @@
 
     {# Stats Bar – mini KPI cards #}
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-        <a href="{% url 'tickets:my_list' %}" class="kpi-card border-l-4 cursor-pointer hover:shadow-md transition" style="border-left-color: var(--color-primary);">
+        <a href="{% url 'tickets:my_list' %}" class="kpi-card border-l-4 border-primary cursor-pointer hover:shadow-md transition">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">All</p>
                 {% lucide "inbox" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value text-lg" style="color: var(--color-primary);">{{ all_count|default:0 }}</p>
+            <p class="kpi-value text-lg text-primary">{{ all_count|default:0 }}</p>
         </a>
-        <a href="{% url 'tickets:my_list' %}?status=OPEN" class="kpi-card border-l-4 cursor-pointer hover:shadow-md transition" style="border-left-color: var(--color-info);">
+        <a href="{% url 'tickets:my_list' %}?status=OPEN" class="kpi-card border-l-4 border-info cursor-pointer hover:shadow-md transition">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Open</p>
                 {% lucide "circle-alert" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value text-lg" style="color: var(--color-info);">{{ open_count|default:0 }}</p>
+            <p class="kpi-value text-lg text-info">{{ open_count|default:0 }}</p>
         </a>
-        <a href="{% url 'tickets:my_list' %}?status=IN_PROGRESS" class="kpi-card border-l-4 cursor-pointer hover:shadow-md transition" style="border-left-color: var(--color-warning);">
+        <a href="{% url 'tickets:my_list' %}?status=IN_PROGRESS" class="kpi-card border-l-4 border-warning cursor-pointer hover:shadow-md transition">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">In Progress</p>
                 {% lucide "refresh-cw" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value text-lg" style="color: var(--color-warning);">{{ in_progress_count|default:0 }}</p>
+            <p class="kpi-value text-lg text-warning">{{ in_progress_count|default:0 }}</p>
         </a>
-        <a href="{% url 'tickets:my_list' %}?status=RESOLVED" class="kpi-card border-l-4 cursor-pointer hover:shadow-md transition" style="border-left-color: var(--color-success);">
+        <a href="{% url 'tickets:my_list' %}?status=RESOLVED" class="kpi-card border-l-4 border-success cursor-pointer hover:shadow-md transition">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Resolved</p>
                 {% lucide "circle-check" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value text-lg" style="color: var(--color-success);">{{ resolved_count|default:0 }}</p>
+            <p class="kpi-value text-lg text-success">{{ resolved_count|default:0 }}</p>
         </a>
-        <a href="{% url 'tickets:my_list' %}?status=CLOSED" class="kpi-card border-l-4 cursor-pointer hover:shadow-md transition" style="border-left-color: var(--color-text-secondary);">
+        <a href="{% url 'tickets:my_list' %}?status=CLOSED" class="kpi-card border-l-4 border-text-secondary cursor-pointer hover:shadow-md transition">
             <div class="flex items-center justify-between">
                 <p class="kpi-label">Closed</p>
                 {% lucide "archive" size=14 class="text-text-secondary" %}
             </div>
-            <p class="kpi-value text-lg" style="color: var(--color-text-secondary);">{{ closed_count|default:0 }}</p>
+            <p class="kpi-value text-lg text-text-secondary">{{ closed_count|default:0 }}</p>
         </a>
     </div>
 
@@ -93,8 +93,8 @@
 
     {# Recent Tickets – using modern ticket_table partial #}
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Recent Tickets</h3>
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold text-text-primary">Recent Tickets</h3>
             <a href="{% url 'tickets:my_list' %}" class="text-xs font-medium text-primary hover:underline">View all →</a>
         </div>
         <div id="recentTicketTable" class="overflow-x-auto">

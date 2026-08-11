@@ -173,7 +173,16 @@ def create_ticket(request):
     - POST: validates form, generates a unique ticket number, saves ticket,
             attaches files, applies SLA, and redirects to ticket detail page.
     """
-    ticket_type = request.GET.get('type', 'INCIDENT').upper()
+    # The form templates submit type as a hidden POST field (see
+    # requester/service_request_form.html) — on a real form submission this
+    # coincidentally also matched request.GET because the browser posts back
+    # to the same "?type=..." URL it loaded, but that isn't guaranteed (a
+    # bare test-client POST, a stripped query string, a JS-driven submit),
+    # so read POST first and only fall back to GET for the initial page load.
+    if request.method == 'POST':
+        ticket_type = request.POST.get('type', request.GET.get('type', 'INCIDENT')).upper()
+    else:
+        ticket_type = request.GET.get('type', 'INCIDENT').upper()
     if ticket_type not in ['INCIDENT', 'SERVICE_REQUEST']:
         ticket_type = 'INCIDENT'
 
@@ -210,7 +219,6 @@ def create_ticket(request):
                 asset_categories = ['Hardware', 'Item acquisition', 'Software', 'Purchase/Protocol']
                 if ticket.category and ticket.category.name in asset_categories:
                     ticket.is_asset_request = True
-                    print(f"🔵 is_asset_request set to True for category: {ticket.category.name}")
 
                 # FIX: Save BOTH status and is_asset_request
                 ticket.save(update_fields=['status', 'is_asset_request'])
@@ -413,6 +421,9 @@ def unassigned_queue(request):
     """
     Displays all unassigned tickets that are ready for agents to claim.
     """
+    if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
     # Get all unassigned tickets
     tickets = Ticket.objects.filter(
         assigned_to__isnull=True
@@ -761,7 +772,7 @@ def resolve_ticket(request, pk):
             )
             
             if not success:
-                print(f"❌ Failed to send resolution confirmation email: {result}")
+                print(f"Failed to send resolution confirmation email: {result}")
             
             messages.success(request, f'Resolution confirmation sent to {ticket.requester.get_full_name()}.')
             return redirect('tickets:conversation', pk=ticket.pk)
@@ -789,13 +800,9 @@ def confirm_resolution(request, pk):
         return redirect('tickets:detail', pk=ticket.pk)
     
     if request.method == 'POST':
-        print(f"🔍 POST data: {request.POST}")  # Debug
-        
         action = request.POST.get('action')
         reason = request.POST.get('reason', '').strip()
-        
-        print(f"🔍 Action: '{action}', Reason: '{reason}'")  # Debug
-        
+
         if action == 'confirm':
             # User confirms resolution
             ticket.resolution_confirmed_at = timezone.now()
@@ -856,7 +863,7 @@ def confirm_resolution(request, pk):
             messages.info(request, f'Ticket {ticket.number} reopened for further investigation.')
             return redirect('tickets:detail', pk=ticket.pk)
         else:
-            print(f"❌ Unknown action: '{action}'")
+            print(f"Unknown action: '{action}'")
             messages.error(request, f'Invalid action: {action}')
             return redirect('tickets:confirm_resolution', pk=ticket.pk)
     
@@ -2172,7 +2179,7 @@ def request_remote_session(request, pk):
     )
 
     if not success:
-        print(f"❌ Failed to send remote session email: {result}")
+        print(f"Failed to send remote session email: {result}")
     
     TicketActivityLog.objects.create(
         ticket=ticket,
@@ -2272,7 +2279,7 @@ def remote_session_detail(request, session_pk):
                     )
 
                     if not success:
-                        print(f"❌ Failed to send remote session code email: {result}")
+                        print(f"Failed to send remote session code email: {result}")
                         
                     TicketActivityLog.objects.create(
                         ticket=session.ticket,
@@ -3192,9 +3199,6 @@ def available_assets_for_fulfillment(request):
     search = request.GET.get('search', '').strip()
     category = request.GET.get('category', '').strip()
     
-    # Debug logging
-    print(f"🔍 Search: '{search}', Category: '{category}'")
-    
     # Filter available assets (unassigned and active/in-store)
     assets = Asset.objects.filter(
         assigned_to__isnull=True,
@@ -3210,8 +3214,7 @@ def available_assets_for_fulfillment(request):
             Q(model__icontains=search) |
             Q(manufacturer__icontains=search)
         )
-        print(f"🔍 Found {assets.count()} assets matching search")
-    
+
     # Optional: Filter by type based on request category
     type_mapping = {
         'Hardware': ['COMPUTER', 'LAPTOP', 'PRINTER', 'SERVER', 'NETWORK'],
@@ -3223,8 +3226,7 @@ def available_assets_for_fulfillment(request):
     
     if category in type_mapping:
         assets = assets.filter(asset_type__in=type_mapping[category])
-        print(f"🔍 Filtered by category '{category}': {assets.count()} assets")
-    
+
     # Limit results
     assets = assets[:20]
     

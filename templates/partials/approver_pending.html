@@ -23,7 +23,7 @@
                         <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                         <span class="status-chip pending_approval text-xs">{{ ticket.get_status_display }}</span>
                     </div>
-                    <h3 class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ ticket.title }}</h3>
+                    <h3 class="text-sm font-semibold truncate text-text-primary">{{ ticket.title }}</h3>
                     <p class="text-xs mt-1 text-text-secondary">
                         {{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }} · {{ ticket.created_at|date:"M d, Y" }}
                     </p>
@@ -42,19 +42,19 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="text-center py-12">
-        <span class="text-4xl block mb-2">✅</span>
-        <p class="text-text-secondary text-sm">No pending approvals.</p>
-        <p class="text-text-secondary text-xs">Great job! All requests have been reviewed.</p>
+    <div class="empty-state">
+        {% lucide "circle-check" size=40 %}
+        <p class="empty-state-title">No pending approvals</p>
+        <p class="empty-state-subtext">Great job! All requests have been reviewed.</p>
     </div>
     {% endif %}
 </div>
 
 {# Reject Modal #}
 <div id="rejectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
-    <div class="bg-surface rounded-xl shadow-xl w-full max-w-sm p-6 mx-4" style="background-color: var(--color-surface);">
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-sm p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Reject Request</h3>
+            <h3 class="text-base font-semibold text-text-primary">Reject Request</h3>
             <button onclick="closeRejectModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
         <form id="rejectForm" method="post">

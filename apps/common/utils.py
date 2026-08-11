@@ -74,7 +74,7 @@ def send_email_via_brevo(to_email, subject, html_content, from_email=None, templ
     api_key = settings.BREVO_API_KEY
     
     if not api_key:
-        print("❌ BREVO_API_KEY not configured in .env")
+        print("BREVO_API_KEY not configured in .env")
         return False, "BREVO_API_KEY not configured"
     
     url = "https://api.brevo.com/v3/smtp/email"
@@ -104,10 +104,10 @@ def send_email_via_brevo(to_email, subject, html_content, from_email=None, templ
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
         result = response.json()
-        print(f"✅ Email sent to {to_email} via Brevo API")
+        print(f"Email sent to {to_email} via Brevo API")
         return True, result
     except requests.exceptions.RequestException as e:
-        print(f"❌ Email failed: {str(e)}")
+        print(f"Email failed: {str(e)}")
         if hasattr(e, 'response') and e.response:
             print(f"Response: {e.response.text}")
         return False, str(e)

@@ -20,13 +20,13 @@
 
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
         <!-- Viewer Header -->
-        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border); background-color: var(--color-background);">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border bg-background">
             <div class="flex items-center gap-3 min-w-0">
                 <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
                     {% lucide "file" size=14 %}
                 </span>
                 <div class="min-w-0">
-                    <p class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ document.title }}</p>
+                    <p class="text-sm font-semibold truncate text-text-primary">{{ document.title }}</p>
                     <p class="text-xs text-text-secondary truncate">{{ document.file_name }} ({{ document.file_size|filesizeformat }})</p>
                 </div>
             </div>
@@ -40,7 +40,7 @@
         </div>
 
         <!-- Viewer Body -->
-        <div style="height: 70vh; background-color: var(--color-background);">
+        <div class="bg-background" style="height: 70vh;">
             {% if is_viewable_inline %}
                 {% if file_extension == 'pdf' %}
                     <embed src="{% url 'documents_display:document_serve_file' document.slug %}" type="application/pdf" class="w-full h-full border-0">
@@ -55,7 +55,7 @@
                 {% else %}
                     <div class="flex flex-col items-center justify-center h-full p-4 text-center">
                         <span class="text-6xl mb-4 opacity-30">📄</span>
-                        <p class="text-sm font-medium" style="color: var(--color-text-primary);">Preview not available for this file type</p>
+                        <p class="text-sm font-medium text-text-primary">Preview not available for this file type</p>
                         {% if can_download %}
                         <p class="text-xs text-text-secondary mt-1">Please download the file to view its contents.</p>
                         <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg mt-4 flex items-center gap-1.5">
@@ -69,7 +69,7 @@
             {% else %}
                 <div class="flex flex-col items-center justify-center h-full p-4 text-center">
                     <span class="text-6xl mb-4 opacity-30">📄</span>
-                    <p class="text-sm font-medium" style="color: var(--color-text-primary);">Preview not available for this file type</p>
+                    <p class="text-sm font-medium text-text-primary">Preview not available for this file type</p>
                     {% if can_download %}
                     <p class="text-xs text-text-secondary mt-1">Please download the file to view its contents.</p>
                     <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg mt-4 flex items-center gap-1.5">

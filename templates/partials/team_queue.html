@@ -15,9 +15,8 @@
 {% block dashboard_content %}
 <div class="w-full">
     <div class="flex flex-wrap gap-4 mb-4 items-center">
-        <h2 class="text-xl font-semibold" style="color: var(--color-text-primary);">Team Tickets</h2>
-        <select name="agent" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2"
-                style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary); --tw-ring-color: var(--color-primary);"
+        <h2 class="text-xl font-semibold text-text-primary">Team Tickets</h2>
+        <select name="agent" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                 onchange="window.location.href='?agent=' + this.value">
             <option value="">All Agents</option>
             {% for member in team_members %}
@@ -45,14 +44,13 @@
                 <tbody>
                     {% for ticket in tickets %}
                     <tr class="hover:bg-black/2">
-                        <td><span class="font-mono text-[0.7rem]" style="color: var(--color-primary);">{{ ticket.number }}</span></td>
+                        <td><span class="font-mono text-[0.7rem] text-primary">{{ ticket.number }}</span></td>
                         <td class="max-w-xs truncate">{{ ticket.title }}</td>
                         <td>{{ ticket.assigned_to.get_full_name|default:"Unassigned" }}</td>
                         <td><span class="status-chip {{ ticket.status|lower }} text-[0.65rem]">{{ ticket.get_status_display }}</span></td>
                         <td class="text-text-secondary">{{ ticket.updated_at|timesince }} ago</td>
                         <td>
-                            <select class="text-xs rounded border py-1 px-2 focus:outline-none"
-                                    style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary);"
+                            <select class="text-xs rounded border py-1 px-2 focus:outline-none bg-background border-border text-text-primary"
                                     onchange="reassignTicket({{ ticket.pk }}, this.value)">
                                 <option value="">Reassign</option>
                                 {% for agent in team_members %}
@@ -68,7 +66,9 @@
             </table>
         </div>
         {% else %}
-        <div class="text-center py-10 text-xs text-text-secondary">No tickets in the team queue.</div>
+        <div class="empty-state">
+            <p class="empty-state-title text-xs">No tickets in the team queue.</p>
+        </div>
         {% endif %}
     </div>
 </div>

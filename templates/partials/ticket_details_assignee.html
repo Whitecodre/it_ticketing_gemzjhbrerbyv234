@@ -1,11 +1,10 @@
 {% if ticket.assigned_to %}
-    <div class="flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-medium"
-         style="background-color: var(--color-primary);">
+    <div class="flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-medium bg-primary">
         {{ ticket.assigned_to.email.0|upper }}
     </div>
     <div class="flex-1 min-w-0">
-        <p class="text-xs font-medium truncate" style="color: var(--color-text-primary);">{{ ticket.assigned_to.get_full_name }}</p>
-        <p class="text-[0.65rem] truncate" style="color: var(--color-text-secondary);">{{ ticket.assigned_to.get_role_display }}</p>
+        <p class="text-xs font-medium truncate text-text-primary">{{ ticket.assigned_to.get_full_name }}</p>
+        <p class="text-[0.65rem] truncate text-text-secondary">{{ ticket.assigned_to.get_role_display }}</p>
     </div>
 {% else %}
     <span class="text-xs text-text-secondary">Unassigned</span>

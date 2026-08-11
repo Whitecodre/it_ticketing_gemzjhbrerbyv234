@@ -161,7 +161,34 @@ class AssetForm(forms.ModelForm):
             'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
         })
     )
-    
+
+    # These three carry sensible model defaults (3 years / 0 years / 6
+    # months) but the underlying model fields aren't blank=True, so the
+    # default ModelForm behavior marked them required — a plain POST that
+    # omits any of them (e.g. a select that didn't get a value selected)
+    # failed validation instead of falling back to the default. required=False
+    # here, with the fallback applied in clean() below.
+    depreciation_years = forms.IntegerField(
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        })
+    )
+
+    warranty_duration_years = forms.IntegerField(
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        })
+    )
+
+    maintenance_interval_months = forms.IntegerField(
+        required=False,
+        widget=forms.NumberInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        })
+    )
+
     # "Other" fields
     location_other = forms.CharField(
         max_length=200,
@@ -272,7 +299,15 @@ class AssetForm(forms.ModelForm):
                 self.add_error('status_other', 'Please enter a custom status.')
         elif not status:
             cleaned_data['status'] = Asset.Status.IN_STORE
-        
+
+        # Fall back to the model defaults when these were left blank.
+        if cleaned_data.get('depreciation_years') in (None, ''):
+            cleaned_data['depreciation_years'] = 3
+        if cleaned_data.get('warranty_duration_years') in (None, ''):
+            cleaned_data['warranty_duration_years'] = 0
+        if cleaned_data.get('maintenance_interval_months') in (None, ''):
+            cleaned_data['maintenance_interval_months'] = 6
+
         return cleaned_data
 
     class Meta:

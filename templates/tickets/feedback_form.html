@@ -19,7 +19,7 @@
             </div>
         </div>
         
-        <h2 class="text-xl font-semibold mb-2" style="color: var(--color-text-primary);">
+        <h2 class="text-xl font-semibold mb-2 text-text-primary">
             How was your experience?
         </h2>
         <p class="text-sm text-text-secondary mb-6">
@@ -37,10 +37,9 @@
             
             <div class="flex justify-center gap-2 mb-6" id="starContainer">
                 {% for i in "12345"|make_list %}
-                <button type="button" 
+                <button type="button"
                         class="star-btn text-4xl transition-colors duration-200"
                         data-value="{{ forloop.counter }}"
-                        style="color: var(--color-text-secondary); background: none; border: none; cursor: pointer;"
                         onmouseenter="highlightStars({{ forloop.counter }})"
                         onmouseleave="resetStars()"
                         onclick="selectStar({{ forloop.counter }})">
@@ -52,7 +51,7 @@
             <input type="hidden" name="rating" id="selectedRating" value="">
             
             <div class="mb-4 text-center">
-                <p id="ratingLabel" class="text-sm font-medium" style="color: var(--color-text-secondary);">
+                <p id="ratingLabel" class="text-sm font-medium text-text-secondary">
                     Tap a star to rate
                 </p>
             </div>
@@ -89,22 +88,22 @@
         currentHover = count;
         document.querySelectorAll('.star-btn').forEach(function(btn, index) {
             if (index < count) {
-                btn.style.color = '#F59E0B';
+                btn.classList.add('is-filled');
                 btn.textContent = '★';
             } else {
-                btn.style.color = 'var(--color-text-secondary)';
+                btn.classList.remove('is-filled');
                 btn.textContent = '☆';
             }
         });
         updateLabel(count);
     }
-    
+
     function resetStars() {
         if (selectedStar > 0) {
             highlightStars(selectedStar);
         } else {
             document.querySelectorAll('.star-btn').forEach(function(btn) {
-                btn.style.color = 'var(--color-text-secondary)';
+                btn.classList.remove('is-filled');
                 btn.textContent = '☆';
             });
             document.getElementById('ratingLabel').textContent = 'Tap a star to rate';

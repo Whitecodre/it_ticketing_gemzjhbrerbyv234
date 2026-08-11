@@ -94,17 +94,28 @@
 
     {# Pagination #}
     {% if logs.has_other_pages %}
-    <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-3 mt-4 border-t" style="border-color: var(--color-border);">
-        <span class="text-sm text-text-secondary">Page {{ logs.number }} of {{ logs.paginator.num_pages }}</span>
-        <div class="flex gap-1.5">
-            {% if logs.has_previous %}
-            <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                    onclick="goToPage({{ logs.previous_page_number }})">← Prev</button>
-            {% endif %}
-            {% if logs.has_next %}
-            <button class="btn-ghost text-sm px-3 py-1 rounded border border-border hover:bg-black/5 transition"
-                    onclick="goToPage({{ logs.next_page_number }})">Next →</button>
-            {% endif %}
+    <div class="pagination-bar" style="margin-top: 1rem;">
+        <span class="pagination-summary">
+            Showing <strong>{{ logs.start_index }}–{{ logs.end_index }}</strong> of <strong>{{ logs.paginator.count }}</strong> entries
+        </span>
+        <div class="pagination-controls">
+            <button class="pagination-step{% if not logs.has_previous %} is-disabled{% endif %}"
+                    {% if logs.has_previous %}onclick="goToPage({{ logs.previous_page_number }})"{% else %}disabled{% endif %}>
+                {% lucide "chevron-left" size=14 %} Prev
+            </button>
+            <div class="pagination-numbers">
+                {% for num in logs.paginator.page_range %}
+                    {% if num == logs.number %}
+                    <span class="pagination-number is-current">{{ num }}</span>
+                    {% elif num > logs.number|add:'-3' and num < logs.number|add:'3' %}
+                    <button class="pagination-number" onclick="goToPage({{ num }})">{{ num }}</button>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            <button class="pagination-step{% if not logs.has_next %} is-disabled{% endif %}"
+                    {% if logs.has_next %}onclick="goToPage({{ logs.next_page_number }})"{% else %}disabled{% endif %}>
+                Next {% lucide "chevron-right" size=14 %}
+            </button>
         </div>
     </div>
     {% endif %}

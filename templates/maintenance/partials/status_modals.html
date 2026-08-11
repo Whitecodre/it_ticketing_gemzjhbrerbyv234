@@ -1,0 +1,22 @@
+{# Shared confirm-completion / update-status modals + openers.
+   Included on both schedule_list.html and schedule_detail.html so the
+   "Confirm Completion" / "Update Status" buttons in schedule_table.html
+   work from either page. #}
+<div id="confirmModalContainer"></div>
+<div id="statusModalContainer"></div>
+
+<script>
+function openConfirmModal(scheduleId) {
+    htmx.ajax('GET', `/maintenance/${scheduleId}/confirm-modal/`, {
+        target: '#confirmModalContainer',
+        swap: 'innerHTML'
+    });
+}
+
+function openStatusModal(scheduleId) {
+    htmx.ajax('GET', `/maintenance/${scheduleId}/status-modal/`, {
+        target: '#statusModalContainer',
+        swap: 'innerHTML'
+    });
+}
+</script>

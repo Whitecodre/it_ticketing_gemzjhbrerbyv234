@@ -10,12 +10,13 @@
             style="width: {% if sla_info.overall == 'breached' %}100{% else %}{{ sla_info.resolution_pct|default:0 }}{% endif %}%;">
         </div>
     </div>
-    <span class="sla-timer 
+    <span class="sla-timer
         {% if sla_info.overall == 'ok' %}safe
         {% elif sla_info.overall == 'warning' %}warning
         {% else %}danger{% endif %} text-xs">
         {% if sla_info.overall == 'breached' %}Breached
-        {% else %}{{ sla_info.resolution_pct|default:0 }}%
+        {% elif sla_info.overall == 'warning' %}At Risk ({{ sla_info.resolution_pct|default:0 }}%)
+        {% else %}On Track
         {% endif %}
     </span>
 </div>

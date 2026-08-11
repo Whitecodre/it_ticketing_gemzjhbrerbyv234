@@ -18,13 +18,12 @@
     {# HTMX #}
     <script src="{% static 'js/htmx.min.js' %}" defer></script>
 
-    {# CHARTJS #}
-    <script src="{% static 'js/chart.min.js' %}"></script>
+    {# Chart.js is only needed on pages that render a chart (see reports.html) — loaded there, not globally. #}
 
     <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=3">
 
 </head>
-<body class="font-karla">
+<body>
 
     {# -------- NAVIGATION (radio theme switcher) -------- #}
     {% block navigation %}

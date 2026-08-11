@@ -3,7 +3,7 @@
 
 <div class="p-6 max-h-[90vh] overflow-y-auto">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold flex items-center gap-2" style="color: var(--color-text-primary);">
+        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
             {% lucide "eye" size=20 %} 
             {{ attachment.filename }}
         </h3>
@@ -12,7 +12,7 @@
         </button>
     </div>
 
-    <div class="border-t pt-4" style="border-color: var(--color-border);">
+    <div class="border-t pt-4 border-border">
         {% if preview_type == 'image' %}
             <div class="flex items-center justify-center bg-background rounded-lg p-4">
                 <img src="{{ file_url }}" alt="{{ attachment.filename }}" 
@@ -34,7 +34,7 @@
 
         {% elif preview_type == 'text' %}
             <div class="bg-background rounded-lg p-4 overflow-auto" style="max-height: 65vh;">
-                <pre class="text-sm font-mono whitespace-pre-wrap" style="color: var(--color-text-primary);">{{ text_content }}</pre>
+                <pre class="text-sm font-mono whitespace-pre-wrap text-text-primary">{{ text_content }}</pre>
             </div>
 
         {% else %}
@@ -49,7 +49,7 @@
         {% endif %}
     </div>
 
-    <div class="flex items-center justify-between mt-4 pt-3 border-t" style="border-color: var(--color-border);">
+    <div class="flex items-center justify-between mt-4 pt-3 border-t border-border">
         <div class="text-xs text-text-secondary flex items-center gap-3">
             <span>{{ attachment.filename }}</span>
             <span>•</span>
