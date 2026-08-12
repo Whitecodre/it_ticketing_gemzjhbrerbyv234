@@ -2,6 +2,7 @@ import datetime
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from apps.common.storage import raw_file_storage
 
 # ================================================================
 # IMPORT USER AFTER MODELS ARE DEFINED (Avoid circular import)
@@ -254,7 +255,7 @@ class TicketComment(models.Model):
 class Attachment(models.Model):
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='attachments')
     comment = models.ForeignKey(TicketComment, on_delete=models.SET_NULL, null=True, blank=True)
-    file = models.FileField(upload_to='attachments/%Y/%m/%d/')
+    file = models.FileField(upload_to='attachments/%Y/%m/%d/', storage=raw_file_storage())
     filename = models.CharField(max_length=255)
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     uploaded_at = models.DateTimeField(auto_now_add=True)

@@ -9,6 +9,7 @@ from django.core.validators import FileExtensionValidator
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.text import slugify
+from apps.common.storage import raw_file_storage
 
 User = get_user_model()
 
@@ -77,6 +78,7 @@ class DisplayDocument(models.Model):
     # File (required)
     file = models.FileField(
         upload_to='display_docs/%Y/%m/%d/',
+        storage=raw_file_storage(),
         validators=[FileExtensionValidator(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'zip', 'png', 'jpg', 'jpeg', 'gif', 'webp'])]
     )
     file_name = models.CharField(max_length=255, blank=True)
@@ -110,6 +112,7 @@ class DisplayDocument(models.Model):
     # The converted preview document
     preview_pdf = models.FileField(
         upload_to='display_docs/previews/%Y/%m/%d/',
+        storage=raw_file_storage(),
         blank=True,
         null=True,
         help_text="Automatically generated PDF preview for Office documents"
@@ -347,7 +350,7 @@ class DisplayVersion(models.Model):
         related_name='versions'
     )
     version_number = models.PositiveIntegerField()
-    file = models.FileField(upload_to='display_docs/versions/%Y/%m/%d/', blank=True, null=True)
+    file = models.FileField(upload_to='display_docs/versions/%Y/%m/%d/', storage=raw_file_storage(), blank=True, null=True)
     created_by = models.ForeignKey(User, on_delete=models.PROTECT)
     comment = models.CharField(max_length=255, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
