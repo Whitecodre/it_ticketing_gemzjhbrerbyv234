@@ -1,0 +1,155 @@
+{# templates/documents_display/document_permissions.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Document Permissions{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-5xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% url 'documents_display:dashboard' %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back to Documents
+        </a>
+    </div>
+
+    <div class="dashboard-card p-6 shadow-sm mb-4">
+        <div class="flex items-center gap-3 mb-2">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "shield-check" size=20 %}
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-text-primary">Bulk Document Permissions</h2>
+                <p class="text-sm text-text-secondary">Select documents below, then grant department access to all of them in one action.</p>
+            </div>
+        </div>
+        <p class="text-xs text-text-secondary">This only creates or updates the grants you check here - it never removes access for departments/users left unchecked, on any of the selected documents.</p>
+    </div>
+
+    <form method="post" id="bulkPermissionsForm">
+        {% csrf_token %}
+
+        <!-- Document selection -->
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm mb-4">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+                <h3 class="text-sm font-semibold text-text-primary">Select Documents</h3>
+                <span id="selectedCount" class="text-xs text-text-secondary">0 selected</span>
+            </div>
+            <div class="overflow-x-auto" style="max-height: 360px; overflow-y: auto;">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b text-left text-text-secondary border-border">
+                            <th class="px-3 py-2 font-medium w-10">
+                                <input type="checkbox" id="selectAllDocs" class="rounded border-border text-primary focus:ring-primary">
+                            </th>
+                            <th class="px-3 py-2 font-medium">Title</th>
+                            <th class="px-3 py-2 font-medium">Category</th>
+                            <th class="px-3 py-2 font-medium">Visibility</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for document in documents %}
+                        <tr class="border-b last:border-0 border-border hover:bg-black/5">
+                            <td class="px-3 py-2">
+                                <input type="checkbox" name="document_ids" value="{{ document.pk }}" class="doc-checkbox rounded border-border text-primary focus:ring-primary">
+                            </td>
+                            <td class="px-3 py-2 text-text-primary">{{ document.title }}</td>
+                            <td class="px-3 py-2 text-text-secondary">{{ document.category.name }}</td>
+                            <td class="px-3 py-2 text-text-secondary">{{ document.get_visibility_display }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="px-3 py-6 text-center text-text-secondary">No documents found.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Department grants -->
+        <div class="dashboard-card p-6 shadow-sm mb-4">
+            <h3 class="text-sm font-semibold text-text-primary mb-1">Grant Department Access</h3>
+            <p class="text-xs text-text-secondary mb-2">Tick "Access" to grant a department read access to every selected document, plus optionally Edit and/or Download.</p>
+            {{ dept_formset.management_form }}
+            <div class="overflow-x-auto rounded-lg border border-border">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b text-left text-text-secondary border-border">
+                            <th class="px-3 py-2 font-medium">Department</th>
+                            <th class="px-3 py-2 font-medium">Access</th>
+                            <th class="px-3 py-2 font-medium">Edit</th>
+                            <th class="px-3 py-2 font-medium">Download</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in department_rows %}
+                        <tr class="border-b last:border-0 border-border">
+                            <td class="px-3 py-2 text-text-primary">{{ row.label }}</td>
+                            <td class="px-3 py-2">{{ row.form.department }}{{ row.form.grant }}</td>
+                            <td class="px-3 py-2">{{ row.form.can_edit }}</td>
+                            <td class="px-3 py-2">{{ row.form.can_download }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex justify-end gap-3 pt-2">
+            <a href="{% url 'documents_display:dashboard' %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
+            <button type="submit" id="applyBtn" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2" disabled>
+                {% lucide "check" size=16 %} Apply to <span id="applyCount">0</span> selected
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const selectAll = document.getElementById('selectAllDocs');
+        const checkboxes = Array.from(document.querySelectorAll('.doc-checkbox'));
+        const countLabel = document.getElementById('selectedCount');
+        const applyCount = document.getElementById('applyCount');
+        const applyBtn = document.getElementById('applyBtn');
+
+        function updateCount() {
+            const n = checkboxes.filter(function(cb) { return cb.checked; }).length;
+            countLabel.textContent = n + ' selected';
+            applyCount.textContent = n;
+            applyBtn.disabled = n === 0;
+        }
+
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(function(cb) { cb.checked = selectAll.checked; });
+            updateCount();
+        });
+        checkboxes.forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                if (!cb.checked) selectAll.checked = false;
+                updateCount();
+            });
+        });
+        updateCount();
+
+        // Same cosmetic nicety as the single-document form: checking
+        // Edit/Download for a department row auto-checks Access for that row.
+        document.querySelectorAll('table tbody tr').forEach(function(row) {
+            const boxes = row.querySelectorAll('input[type="checkbox"]');
+            if (boxes.length !== 3) return;
+            const [accessBox, editBox, downloadBox] = boxes;
+            [editBox, downloadBox].forEach(function(box) {
+                box.addEventListener('change', function() {
+                    if (box.checked) accessBox.checked = true;
+                });
+            });
+        });
+    });
+</script>
+{% endblock %}

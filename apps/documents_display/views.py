@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse, FileResponse
 from django.core.paginator import Paginator
+from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
 from django.urls import reverse
@@ -21,6 +22,7 @@ from apps.tickets.views import get_sidebar_template
 
 import mimetypes
 from django.conf import settings
+from datetime import datetime, time
 import os
 
 def get_viewable_documents(user):
@@ -135,7 +137,21 @@ def document_viewer(request, slug):
     if not document.is_viewable_by(request.user):
         messages.error(request, 'You do not have permission to view this document.')
         return redirect('documents_display:dashboard')
-    
+
+    # Office files are pre-converted to PDF for inline preview at
+    # upload/edit time; if that conversion previously failed (e.g. a
+    # transient LibreOffice issue), retry it here so the document can
+    # self-heal instead of staying permanently un-previewable. Guard
+    # against two concurrent first-viewers both shelling out to
+    # LibreOffice at once with a short-lived cache lock.
+    if document.is_office_file and not document.preview_pdf:
+        lock_key = f"doc-preview-gen-{document.pk}"
+        if cache.add(lock_key, 1, timeout=130):
+            try:
+                generate_preview_for_document(document)
+            finally:
+                cache.delete(lock_key)
+
     # Get file URL
     file_url = request.build_absolute_uri(document.file.url)
     file_extension = document.file_extension
@@ -290,6 +306,27 @@ def document_delete(request, slug):
     return redirect('documents_display:dashboard')
 
 
+def _permission_denied_response(message='Permission denied'):
+    """Small self-contained HTML response for permission failures that can
+    render inside a document viewer's <embed>/<iframe> or an HTMX-swapped
+    modal — a bare text HttpResponse looks broken in either context."""
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;
+             font-family:Arial,sans-serif;background:#F8FAFC;color:#64748B;">
+    <p style="text-align:center;">🔒 {message}</p>
+</body></html>"""
+    return HttpResponse(html, status=403)
+
+
+def _file_download_response(file_field, filename):
+    """Shared FileResponse + attachment-disposition construction for
+    downloading a document's current file or one of its past versions."""
+    response = FileResponse(file_field.open('rb'), content_type='application/octet-stream')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 @login_required
 def document_download(request, slug):
     """Download document file"""
@@ -303,10 +340,29 @@ def document_download(request, slug):
     if not document.file:
         messages.error(request, 'This document has no file attachment.')
         return redirect('documents_display:document_detail', slug=document.slug)
-    
-    response = FileResponse(document.file.open('rb'), content_type='application/octet-stream')
-    response['Content-Disposition'] = f'attachment; filename="{document.file_name}"'
-    return response
+
+    return _file_download_response(document.file, document.file_name)
+
+
+@login_required
+def document_version_download(request, slug, version_id):
+    """Download a specific past version of a document's file — routed
+    through the same is_downloadable_by() check as the current file,
+    instead of linking straight at the raw media URL."""
+    version = get_object_or_404(DisplayVersion, pk=version_id, document__slug=slug)
+    document = version.document
+
+    if not document.is_downloadable_by(request.user):
+        messages.error(request, 'You do not have permission to download this document.')
+        return redirect('documents_display:document_detail', slug=slug)
+
+    if not version.file:
+        messages.error(request, 'This version has no file attachment.')
+        return redirect('documents_display:document_detail', slug=slug)
+
+    # DisplayVersion has no cached file_name field like DisplayDocument does.
+    filename = os.path.basename(version.file.name)
+    return _file_download_response(version.file, filename)
 
 
 @login_required
@@ -315,7 +371,7 @@ def document_history(request, slug):
     document = get_object_or_404(DisplayDocument, slug=slug)
 
     if not document.is_viewable_by(request.user):
-        return HttpResponse('Permission denied', status=403)
+        return _permission_denied_response()
 
     versions = document.versions.all()
     can_download = document.is_downloadable_by(request.user)
@@ -327,12 +383,11 @@ def document_history(request, slug):
             'can_download': can_download,
         })
 
-    return render(request, 'documents_display/history.html', {
-        'document': document,
-        'versions': versions,
-        'can_download': can_download,
-        'sidebar_template': get_sidebar_template(request.user),
-    })
+    # No page in this app links here directly outside the HTMX modal
+    # opener on document_detail.html - documents_display/history.html
+    # doesn't exist as a standalone page, so fall back to document_detail
+    # rather than 500ing on a missing template.
+    return redirect('documents_display:document_detail', slug=slug)
 
 
 @login_required
@@ -342,23 +397,24 @@ def document_serve_file(request, slug):
 
     # ✅ Check if user can view this document
     if not document.is_viewable_by(request.user):
-        return HttpResponse('Permission denied', status=403)
-    
+        return _permission_denied_response()
+
     # If preview requested and exists, serve that
     if request.GET.get('preview') == 'true' and document.preview_pdf:
         file_to_serve = document.preview_pdf
     else:
         file_to_serve = document.file
-    
+
     if not file_to_serve:
         return HttpResponse('File not found', status=404)
-    
-    # Open the file
+
+    # Open the file via the storage API (not a raw path.open()) so this
+    # keeps working under any storage backend, not just local disk.
     try:
-        file_handle = open(file_to_serve.path, 'rb')
+        file_handle = file_to_serve.open('rb')
     except FileNotFoundError:
         return HttpResponse('File not found', status=404)
-    
+
     response = FileResponse(file_handle, content_type='application/octet-stream')
     
     # Set content type
@@ -378,21 +434,33 @@ def document_serve_file(request, slug):
     return response
 
 
+def _share_recipient_label(share):
+    """Display label for a share's target, whichever kind it is."""
+    return share.display_target
+
+
 def _send_document_share_email(request, share):
-    """Email the recipient a link to accept an active document share."""
-    accept_url = request.build_absolute_uri(
-        reverse('documents_display:document_share_open', args=[share.token])
-    )
+    """Email the recipient (internal user or external address) a link to
+    accept an active document share. Internal shares open the login-gated
+    document_share_open flow; external ones open the no-login
+    document_share_external flow, since the recipient has no account."""
+    is_external = share.recipient_id is None
+    url_name = 'documents_display:document_share_external' if is_external else 'documents_display:document_share_open'
+    accept_url = request.build_absolute_uri(reverse(url_name, args=[share.token]))
+    to_email = share.external_email if is_external else share.recipient.email
+
     html_message = render_to_string('emails/document_shared.html', {
-        'recipient': share.recipient,
+        'recipient_label': _share_recipient_label(share),
+        'is_external': is_external,
         'document': share.document,
         'shared_by': share.shared_by,
         'can_edit': share.can_edit,
         'can_download': share.can_download,
+        'expires_at': share.expires_at,
         'accept_url': accept_url,
     })
     return send_email_via_brevo(
-        to_email=share.recipient.email,
+        to_email=to_email,
         subject=f'{share.document.title} has been shared with you',
         html_content=html_message,
         from_email=settings.DEFAULT_FROM_EMAIL,
@@ -402,30 +470,43 @@ def _send_document_share_email(request, share):
 @login_required
 @document_admin_required
 def document_share(request, slug):
-    """Manage per-user shares for a document: list existing shares, add a new one."""
+    """Manage shares for a document: list existing shares, add a new one -
+    either an in-system user or an external email address."""
     document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=False)
 
     if request.method == 'POST':
         form = ShareDocumentForm(request.POST)
         if form.is_valid():
             recipient = form.cleaned_data['recipient']
+            external_email = form.cleaned_data['external_email']
+            expires_at = form.cleaned_data['expires_at']
+            # A date-only picker; treat the expiry as valid through the end
+            # of that day rather than midnight at its start.
+            expires_at_dt = None
+            if expires_at:
+                expires_at_dt = timezone.make_aware(datetime.combine(expires_at, time.max))
+
+            lookup = {'document': document, 'recipient': recipient} if recipient else {'document': document, 'external_email': external_email}
             share, _created = DocumentShare.objects.update_or_create(
-                document=document,
-                recipient=recipient,
+                **lookup,
                 defaults={
                     'shared_by': request.user,
                     'can_edit': form.cleaned_data['can_edit'],
                     'can_download': form.cleaned_data['can_download'],
+                    'expires_at': expires_at_dt,
                     'revoked_at': None,
                     'token': generate_share_token(),
                     'accepted_at': None,
                 },
             )
             success, _result = _send_document_share_email(request, share)
+            label = _share_recipient_label(share)
             if success:
-                messages.success(request, f'"{document.title}" shared with {recipient.get_full_name() or recipient.email}.')
+                messages.success(request, f'"{document.title}" shared with {label}.')
             else:
-                messages.warning(request, f'Share created, but the notification email failed to send. Share the link manually: {request.build_absolute_uri(reverse("documents_display:document_share_open", args=[share.token]))}')
+                url_name = 'documents_display:document_share_external' if external_email else 'documents_display:document_share_open'
+                manual_link = request.build_absolute_uri(reverse(url_name, args=[share.token]))
+                messages.warning(request, f'Share created, but the notification email failed to send. Share the link manually: {manual_link}')
             return redirect('documents_display:document_share', slug=document.slug)
     else:
         form = ShareDocumentForm()
@@ -447,22 +528,27 @@ def document_share_revoke(request, slug, share_id):
     document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=False)
     share = get_object_or_404(DocumentShare, pk=share_id, document=document)
     share.revoke()
-    messages.success(request, f'Access revoked for {share.recipient.get_full_name() or share.recipient.email}.')
+    messages.success(request, f'Access revoked for {_share_recipient_label(share)}.')
     return redirect('documents_display:document_share', slug=document.slug)
 
 
 @login_required
 def document_share_open(request, token):
-    """Landing page for an emailed share link. Must be opened while logged in as the
-    intended recipient — the token identifies the grant, not a login bypass."""
-    share = get_object_or_404(DocumentShare, token=token)
+    """Landing page for an emailed internal share link. Must be opened while
+    logged in as the intended recipient — the token identifies the grant,
+    not a login bypass."""
+    share = get_object_or_404(DocumentShare, token=token, recipient__isnull=False)
 
     if share.recipient_id != request.user.id:
         messages.error(request, 'This share link is for a different account. Log in as the intended recipient to access it.')
         return redirect('documents_display:dashboard')
 
-    if not share.is_active:
+    if share.revoked_at is not None:
         messages.error(request, 'This share link has been revoked.')
+        return redirect('documents_display:dashboard')
+
+    if share.is_expired:
+        messages.error(request, 'This share link has expired.')
         return redirect('documents_display:dashboard')
 
     if share.accepted_at is None:
@@ -471,3 +557,145 @@ def document_share_open(request, token):
 
     messages.success(request, f'You now have access to "{share.document.title}".')
     return redirect('documents_display:document_detail', slug=share.document.slug)
+
+
+def _external_share_denied_response(share):
+    if share.revoked_at is not None:
+        message = 'This link has been revoked and no longer grants access.'
+    elif share.is_expired:
+        message = 'This link has expired.'
+    else:
+        message = 'This link is no longer valid.'
+    return _permission_denied_response(message)
+
+
+def document_share_external(request, token):
+    """Standalone, no-login landing page for an externally-shared document -
+    the token itself is the access, since the recipient has no account.
+    Scoped to external_email shares only: an internal share's token must
+    not work here, or it would bypass document_share_open's "log in as the
+    intended recipient" check."""
+    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False, document__is_deleted=False)
+
+    if not share.is_active:
+        return _external_share_denied_response(share)
+
+    if share.accepted_at is None:
+        share.accepted_at = timezone.now()
+        share.save(update_fields=['accepted_at'])
+
+    document = share.document
+    context = {
+        'document': document,
+        'share': share,
+        'file_extension': document.file_extension,
+        'is_viewable_inline': document.is_viewable_inline,
+        'is_office_file': document.is_office_file,
+    }
+    return render(request, 'documents_display/document_share_external.html', context)
+
+
+@xframe_options_exempt
+def document_share_external_serve(request, token):
+    """Inline file serving for the external share viewer - mirrors
+    document_serve_file, but keyed on the share token instead of a
+    slug + logged-in user's is_viewable_by()."""
+    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False, document__is_deleted=False)
+    if not share.is_active:
+        return _permission_denied_response()
+
+    document = share.document
+    if request.GET.get('preview') == 'true' and document.preview_pdf:
+        file_to_serve = document.preview_pdf
+    else:
+        file_to_serve = document.file
+
+    if not file_to_serve:
+        return HttpResponse('File not found', status=404)
+
+    try:
+        file_handle = file_to_serve.open('rb')
+    except FileNotFoundError:
+        return HttpResponse('File not found', status=404)
+
+    response = FileResponse(file_handle, content_type='application/octet-stream')
+    if file_to_serve.name.endswith('.pdf'):
+        response['Content-Type'] = 'application/pdf'
+    else:
+        mime_type, _ = mimetypes.guess_type(file_to_serve.name)
+        if mime_type:
+            response['Content-Type'] = mime_type
+    response['Content-Disposition'] = f'inline; filename="{os.path.basename(file_to_serve.name)}"'
+    if 'X-Frame-Options' in response:
+        del response['X-Frame-Options']
+    return response
+
+
+def document_share_external_download(request, token):
+    """Download for an externally-shared document, gated on the share's
+    can_download flag rather than an authenticated user's permissions."""
+    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False, document__is_deleted=False)
+    if not share.is_active:
+        return _permission_denied_response()
+    if not share.can_download:
+        return _permission_denied_response('This link does not allow downloading.')
+
+    document = share.document
+    if not document.file:
+        return _permission_denied_response('This document has no file attachment.')
+
+    return _file_download_response(document.file, document.file_name)
+
+
+@login_required
+@document_admin_required
+def document_permissions(request):
+    """Bulk permissions: apply department access grants across many selected
+    documents in one action. Purely additive - only creates/updates grants
+    for what's explicitly checked in this submission; existing grants on the
+    selected documents for departments left unchecked here are left
+    untouched (unlike the single-document edit form, which replaces that one
+    document's whole grant set). Per-user sharing (internal or external) is
+    single-document only, via the Share button on each document."""
+    documents = DisplayDocument.objects.filter(is_deleted=False).select_related('category').order_by('category__display_order', 'title')
+
+    if request.method == 'POST':
+        document_ids = request.POST.getlist('document_ids')
+        selected_documents = list(documents.filter(pk__in=document_ids))
+        dept_formset = DepartmentAccessFormSet(request.POST, initial=build_department_access_initial())
+
+        if not selected_documents:
+            messages.error(request, 'Select at least one document.')
+        elif dept_formset.is_valid():
+            documents_touched = set()
+            dept_grants_set = 0
+            for row in dept_formset:
+                if not row.cleaned_data.get('grant'):
+                    continue
+                department = row.cleaned_data['department']
+                can_edit = row.cleaned_data['can_edit']
+                can_download = row.cleaned_data['can_download']
+                for document in selected_documents:
+                    DocumentDepartmentAccess.objects.update_or_create(
+                        document=document,
+                        department=department,
+                        defaults={'can_edit': can_edit, 'can_download': can_download},
+                    )
+                    documents_touched.add(document.pk)
+                    dept_grants_set += 1
+
+            messages.success(request, f'Updated permissions on {len(documents_touched)} document(s): {dept_grants_set} department grant(s) set.')
+            return redirect('documents_display:document_permissions')
+    else:
+        dept_formset = DepartmentAccessFormSet(initial=build_department_access_initial())
+
+    context = {
+        'documents': documents,
+        'department_rows': [
+            {'label': label, 'form': row}
+            for (code, label), row in zip(User.DEPARTMENT_CHOICES, dept_formset)
+        ],
+        'dept_formset': dept_formset,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'documents_display/document_permissions.html', context)

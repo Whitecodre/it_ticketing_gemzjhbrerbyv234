@@ -720,6 +720,13 @@ def profile(request):
                 messages.error(request, f'You do not have the {role_name} role.')
         return redirect('accounts:profile')
 
+    # Always build unbound forms first so a failed validation on one of
+    # them below (which re-renders this same view) never leaves the other
+    # two - or itself, for save_settings/change_password - undefined.
+    form = ProfileForm(instance=request.user)
+    settings_form = UserSettingsForm(instance=request.user.profile)
+    password_form = ChangePasswordForm(request.user)
+
     if request.method == 'POST':
         if 'save_profile' in request.POST:
             form = ProfileForm(request.POST, request.FILES, instance=request.user)
@@ -740,10 +747,6 @@ def profile(request):
                 update_session_auth_hash(request, user)
                 messages.success(request, 'Password changed successfully.')
                 return redirect('accounts:profile')
-    else:
-        form = ProfileForm(instance=request.user)
-        settings_form = UserSettingsForm(instance=request.user.profile)
-        password_form = ChangePasswordForm(request.user)
 
     if not Role.objects.exists():
         default_roles = [

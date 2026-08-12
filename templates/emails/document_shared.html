@@ -17,7 +17,7 @@
         <h2>📄 A document has been shared with you</h2>
     </div>
     <div class="content">
-        <p>Hi {{ recipient.get_full_name|default:recipient.email }},</p>
+        <p>Hi {{ recipient_label }},</p>
         <p>{{ shared_by.get_full_name|default:shared_by.email }} shared a document with you.</p>
 
         <div class="detail">
@@ -28,13 +28,20 @@
                 {% if can_edit %}<span class="perm">Edit</span>{% endif %}
                 {% if can_download %}<span class="perm">Download</span>{% endif %}
             </p>
+            {% if expires_at %}
+            <p><strong>Link expires:</strong> {{ expires_at|date:"F d, Y" }}</p>
+            {% endif %}
         </div>
 
         <p style="text-align: center; margin: 24px 0;">
             <a href="{{ accept_url }}" class="button">View Document</a>
         </p>
 
+        {% if is_external %}
+        <p>No account needed — just click the link below to view it{% if expires_at %}, before it expires{% endif %}:</p>
+        {% else %}
         <p>You'll need to be logged in to your account to open it:</p>
+        {% endif %}
         <p style="word-break: break-all;"><a href="{{ accept_url }}" style="color: #0D9488;">{{ accept_url }}</a></p>
 
         <div class="footer">

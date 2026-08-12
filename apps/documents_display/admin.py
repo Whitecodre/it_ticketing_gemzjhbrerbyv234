@@ -35,9 +35,9 @@ class DisplayDocumentAdmin(admin.ModelAdmin):
 
 @admin.register(DocumentShare)
 class DocumentShareAdmin(admin.ModelAdmin):
-    list_display = ['document', 'recipient', 'shared_by', 'can_edit', 'can_download', 'created_at', 'accepted_at', 'revoked_at']
+    list_display = ['document', 'recipient', 'external_email', 'shared_by', 'can_edit', 'can_download', 'expires_at', 'created_at', 'accepted_at', 'revoked_at']
     list_filter = ['can_edit', 'can_download']
-    search_fields = ['document__title', 'recipient__email']
+    search_fields = ['document__title', 'recipient__email', 'external_email']
     readonly_fields = ['token', 'created_at', 'accepted_at']
     autocomplete_fields = ['document', 'recipient', 'shared_by']
 

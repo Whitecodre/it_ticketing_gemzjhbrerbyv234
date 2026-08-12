@@ -46,62 +46,85 @@ def can_edit_org(user):
 
 # apps/organogram/views.py
 
-def build_system_tree(user, depth=0, max_depth=10, department=None, search_query=None):
-    """Build hierarchical tree from user's subordinates with improved metadata."""
-    if depth >= max_depth:
-        return None
-    
-    # If search query, check if this user matches
-    if search_query:
-        search_lower = search_query.lower()
-        name_match = search_lower in user.get_full_name().lower() or search_lower in user.email.lower()
-        # If this user doesn't match and has no subordinates that match, skip
-        if not name_match:
-            # Check subordinates recursively before returning None
-            subordinates = user.subordinates.filter(is_active=True)
-            if department:
-                subordinates = subordinates.filter(department=department)
-            
-            for sub in subordinates.order_by('first_name', 'last_name'):
-                child_tree = build_system_tree(sub, depth + 1, max_depth, department, search_query)
-                if child_tree:
-                    # Found a match in subordinates - include this node
-                    break
-            else:
-                return None
-    
-    subordinates = user.subordinates.filter(is_active=True)
+# Role tiers shown on the System Organogram, top to bottom. SUPERADMIN is
+# intentionally excluded — it's a technical/system-level account, not a
+# real org-chart position.
+TIER_ROLES = [
+    ('ADMIN', 'Admin'),
+    ('TEAM_LEAD', 'Team Lead'),
+    ('AGENT', 'Support Team'),
+    ('END_USER', 'User'),
+]
+
+
+TIER_DISPLAY_LIMIT = 24
+
+
+def _user_role_names(user):
+    """All role names a user currently holds. Users with dual roles (the
+    `roles` M2M) hold every one of those roles concurrently — the legacy
+    `role` CharField only reflects whichever role is currently *active*
+    (set_active_role() overwrites it), so it under-represents a dual-role
+    user's other role(s) and can't be used alone for tier membership."""
+    names = {r.name for r in user.roles.all()}
+    if names:
+        return names
+    return {user.role}
+
+
+def build_role_tiers(queryset):
+    """Group a User queryset into the fixed role tiers for the org chart.
+
+    A user appears in every tier matching a role they hold — a dual-role
+    user (e.g. Team Lead + Support Team) shows up in both, regardless of
+    which role they're currently logged in as.
+
+    There's no data linking a specific Team Lead to specific Agents (or
+    Agent to specific End Users) — `User.manager` exists but is never
+    populated anywhere in the app — so each tier is rendered as one shared
+    row rather than individually paired parent/child nodes.
+    """
+    users = list(queryset)
+    tiers = []
+    for role_key, role_label in TIER_ROLES:
+        tier_users = sorted(
+            (u for u in users if role_key in _user_role_names(u)),
+            key=lambda u: (u.first_name, u.last_name),
+        )
+        tiers.append({
+            'key': role_key,
+            'label': role_label,
+            'users': tier_users,
+            'count': len(tier_users),
+            'display_users': tier_users[:TIER_DISPLAY_LIMIT],
+            'more_count': max(0, len(tier_users) - TIER_DISPLAY_LIMIT),
+        })
+    return tiers
+
+
+def get_system_org_queryset(request):
+    """Shared department/search filtering used by both the live chart and
+    its print/export view, so exporting always matches what's on screen."""
+    department = request.GET.get('department', '')
+    search_query = request.GET.get('search', '').strip()
+
+    # Only default to the user's own department on the initial page load
+    # (no 'department' param at all). Once the filter dropdown has fired at
+    # least once, an empty value means "All Departments" was picked
+    # explicitly and must not be overridden.
+    if 'department' not in request.GET and request.user.department:
+        department = request.user.department
+
+    qs = User.objects.filter(is_active=True).prefetch_related('roles')
     if department:
-        subordinates = subordinates.filter(department=department)
-    
-    children = []
-    for sub in subordinates.order_by('first_name', 'last_name'):
-        child_tree = build_system_tree(sub, depth + 1, max_depth, department, search_query)
-        if child_tree:
-            children.append(child_tree)
-    
-    # Get department color
-    color = '#64748B'
-    try:
-        config = SystemOrgConfig.objects.filter(department=user.department).first()
-        if config:
-            color = config.color
-    except:
-        pass
-    
-    return {
-        'user': user,
-        'children': children,
-        'depth': depth,
-        'has_children': len(children) > 0,
-        'direct_report_count': user.subordinates.filter(is_active=True).count(),
-        'department_color': color,
-        'full_name': user.get_full_name() or user.email,
-        'position': user.position or user.get_role_display(),
-        'department_display': user.get_department_display(),
-        'email': user.email,
-        'avatar': user.avatar.url if user.avatar else None,
-    }
+        qs = qs.filter(department=department)
+    if search_query:
+        qs = qs.filter(
+            Q(first_name__icontains=search_query) |
+            Q(last_name__icontains=search_query) |
+            Q(email__icontains=search_query)
+        )
+    return qs.order_by('first_name', 'last_name'), department, search_query
 
 
 def get_department_colors():
@@ -120,44 +143,14 @@ def get_department_colors():
 
 @login_required
 def system_org(request):
-    """System organogram view - auto-generated from users with search."""
-    
+    """System organogram view - role tiers auto-generated from users, with department/search filters."""
+
     user = request.user
-    department = request.GET.get('department', '')
-    search_query = request.GET.get('search', '').strip()
-    
-    # If no department selected, use user's department
-    if not department and user.department:
-        department = user.department
-    
-    roots = []
-    
-    if department:
-        # Find top-level person for this department
-        dept_users = User.objects.filter(
-            department=department,
-            is_active=True
-        ).order_by('first_name')
-        
-        for dept_user in dept_users:
-            if not dept_user.manager or dept_user.manager.department != department:
-                tree = build_system_tree(dept_user, department=department, search_query=search_query)
-                if tree:
-                    roots.append(tree)
-        
-        if not roots and dept_users.exists():
-            tree = build_system_tree(dept_users.first(), department=department, search_query=search_query)
-            if tree:
-                roots.append(tree)
-    else:
-        # Show all roots
-        root_users = User.objects.filter(is_active=True, manager__isnull=True).order_by('first_name', 'last_name')
-        for root in root_users:
-            tree = build_system_tree(root, search_query=search_query)
-            if tree:
-                roots.append(tree)
-    
-     # Get IT stats
+    qs, department, search_query = get_system_org_queryset(request)
+    tiers = build_role_tiers(qs)
+    has_results = any(tier['count'] for tier in tiers)
+
+    # Get IT stats
     it_dept_users = User.objects.filter(department='IT', is_active=True)
     it_dept_stats = {
         'total': it_dept_users.count(),
@@ -165,9 +158,10 @@ def system_org(request):
         'agents': it_dept_users.filter(role='AGENT').count(),
         'end_users': it_dept_users.filter(role='END_USER').count(),
     }
-    
+
     context = {
-        'roots': roots,
+        'tiers': tiers,
+        'has_results': has_results,
         'department': department,
         'department_name': dict(User.DEPARTMENT_CHOICES).get(department, 'All') if department else 'All Departments',
         'department_choices': User.DEPARTMENT_CHOICES,
@@ -179,13 +173,37 @@ def system_org(request):
         'is_system': True,
     }
 
-     # ================================================================
+    # ================================================================
     # HTMX REQUEST: Return only the tree container
     # ================================================================
     if request.headers.get('HX-Request'):
         return render(request, 'organogram/partials/system_tree_container.html', context)
-    
+
     return render(request, 'organogram/system.html', context)
+
+
+@login_required
+def system_org_print(request):
+    """Standalone, print-friendly export of the System Organogram — mirrors
+    whatever department/search filters are currently applied on screen."""
+
+    qs, department, search_query = get_system_org_queryset(request)
+    tiers = build_role_tiers(qs)
+    has_results = any(tier['count'] for tier in tiers)
+
+    context = {
+        'tiers': tiers,
+        'has_results': has_results,
+        'department': department,
+        'department_name': dict(User.DEPARTMENT_CHOICES).get(department, 'All') if department else 'All Departments',
+        'department_colors': get_department_colors(),
+        'search_query': search_query,
+        'generated_at': timezone.now(),
+        # When loaded inside the export preview modal's iframe, the modal
+        # supplies its own Print/Close chrome — suppress this page's own.
+        'embed': request.GET.get('embed') == '1',
+    }
+    return render(request, 'organogram/system_print.html', context)
 
 
 # ================================================================

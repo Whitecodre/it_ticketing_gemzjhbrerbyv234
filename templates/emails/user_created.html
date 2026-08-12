@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .content { padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 8px 8px; }
+        .detail { background: #F8FAFC; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        .button { background: #0D9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; }
+        .footer { margin-top: 20px; font-size: 12px; color: #64748B; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Your Account Has Been Created</h2>
+    </div>
+    <div class="content">
+        <p>Dear {{ first_name }} {{ last_name }},</p>
+        <p>An account has been created for you on TicketSwipe by {{ admin_name }}. Here are your login credentials:</p>
+
+        <div class="detail">
+            <p><strong>Email:</strong> {{ email }}</p>
+            <p><strong>Temporary Password:</strong> {{ password }}</p>
+        </div>
+
+        <a href="{{ login_url }}" class="button">Log In</a>
+
+        <p style="margin-top: 15px;">For security, you'll be asked to change this password the first time you log in.</p>
+
+        <div class="footer">
+            <p>This is an automated notification from TicketSwipe.</p>
+            <p>Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>

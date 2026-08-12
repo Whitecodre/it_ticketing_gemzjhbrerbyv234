@@ -17,6 +17,7 @@ urlpatterns = [
     path('document/<slug:slug>/viewer/', views.document_viewer, name='document_viewer'),
     path('document/<slug:slug>/edit/', views.document_edit, name='document_edit'),
     path('document/<slug:slug>/download/', views.document_download, name='document_download'),
+    path('document/<slug:slug>/versions/<int:version_id>/download/', views.document_version_download, name='document_version_download'),
     path('document/<slug:slug>/delete/', views.document_delete, name='document_delete'),
     path('document/<slug:slug>/history/', views.document_history, name='document_history'),
     path('document/<slug:slug>/serve/', views.document_serve_file, name='document_serve_file'),
@@ -25,7 +26,13 @@ urlpatterns = [
     path('document/<slug:slug>/share/', views.document_share, name='document_share'),
     path('document/<slug:slug>/share/<int:share_id>/revoke/', views.document_share_revoke, name='document_share_revoke'),
     path('share/<str:token>/', views.document_share_open, name='document_share_open'),
+    path('share/<str:token>/external/', views.document_share_external, name='document_share_external'),
+    path('share/<str:token>/external/serve/', views.document_share_external_serve, name='document_share_external_serve'),
+    path('share/<str:token>/external/download/', views.document_share_external_download, name='document_share_external_download'),
 
     # Create
     path('create/', views.document_create, name='document_create'),
+
+    # Bulk permissions (admin)
+    path('permissions/', views.document_permissions, name='document_permissions'),
 ]

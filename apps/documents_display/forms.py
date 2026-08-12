@@ -98,10 +98,43 @@ def build_department_access_initial(document=None):
 
 
 class ShareDocumentForm(forms.Form):
+    """Share with either an existing in-system user (`recipient`) or a raw
+    external email address with no account (`external_email`) - exactly one
+    of the two, enforced in clean(). Expiration is optional for internal
+    shares (preserves prior behavior) but required for external ones, since
+    a no-login link with no expiry is a materially bigger risk than one
+    tied to a real account."""
     recipient = forms.ModelChoiceField(
         queryset=User.objects.filter(is_active=True).order_by('department', 'first_name', 'last_name'),
+        required=False,
         widget=forms.Select(attrs=SELECT_ATTRS),
         help_text="Must be an existing, active account."
     )
+    external_email = forms.EmailField(
+        required=False,
+        widget=forms.EmailInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'placeholder': 'someone@example.com'
+        }),
+        help_text="No account needed - the link itself grants access."
+    )
     can_edit = forms.BooleanField(required=False, label="Can edit", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))
     can_download = forms.BooleanField(required=False, label="Can download", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))
+    expires_at = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={
+            'type': 'date',
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        }),
+        help_text="Optional for internal shares. Required for external email shares."
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        recipient = cleaned.get('recipient')
+        external_email = cleaned.get('external_email')
+        if bool(recipient) == bool(external_email):
+            raise forms.ValidationError('Choose an existing user OR enter an email address - not both, not neither.')
+        if external_email and not cleaned.get('expires_at'):
+            raise forms.ValidationError('External email shares must have an expiration date.')
+        return cleaned

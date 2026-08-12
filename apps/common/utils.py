@@ -65,27 +65,42 @@ def send_push_notification(notification):
 
 def send_email_via_brevo(to_email, subject, html_content, from_email=None, template_data=None):
     """
-    Send email using Brevo's Transactional API.
-    No IP restrictions like SMTP.
+    Send email via Brevo's SMTP relay (Django's SMTP EmailBackend, using the
+    EMAIL_HOST_USER/EMAIL_HOST_PASSWORD relay credentials in .env). Falls
+    back to Brevo's HTTP Transactional API if the SMTP send raises, so a
+    relay outage doesn't take email down entirely.
     """
     if not from_email:
         from_email = settings.DEFAULT_FROM_EMAIL
-    
-    api_key = settings.BREVO_API_KEY
-    
-    if not api_key:
-        print("BREVO_API_KEY not configured in .env")
-        return False, "BREVO_API_KEY not configured"
-    
-    url = "https://api.brevo.com/v3/smtp/email"
-    
+
     # If template_data is provided, use it for variable substitution
     if template_data:
         html_content = render_to_string(html_content, template_data)
         plain_text = strip_tags(html_content)
     else:
         plain_text = strip_tags(html_content)
-    
+
+    try:
+        msg = EmailMultiAlternatives(subject, plain_text, from_email, [to_email])
+        msg.attach_alternative(html_content, "text/html")
+        msg.send(fail_silently=False)
+        print(f"Email sent to {to_email} via SMTP")
+        return True, "sent via SMTP"
+    except Exception as smtp_error:
+        print(f"SMTP send failed for {to_email}: {smtp_error}")
+        return _send_via_brevo_api(to_email, subject, html_content, plain_text, from_email)
+
+
+def _send_via_brevo_api(to_email, subject, html_content, plain_text, from_email):
+    """Fallback path for send_email_via_brevo: Brevo's HTTP Transactional API."""
+    api_key = settings.BREVO_API_KEY
+
+    if not api_key:
+        print("BREVO_API_KEY not configured in .env")
+        return False, "SMTP failed and BREVO_API_KEY not configured for fallback"
+
+    url = "https://api.brevo.com/v3/smtp/email"
+
     payload = {
         "sender": {"email": from_email, "name": "TicketSwipe"},
         "to": [{"email": to_email}],
@@ -93,21 +108,21 @@ def send_email_via_brevo(to_email, subject, html_content, from_email=None, templ
         "htmlContent": html_content,
         "textContent": plain_text,
     }
-    
+
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
         "api-key": api_key,
     }
-    
+
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
         result = response.json()
-        print(f"Email sent to {to_email} via Brevo API")
+        print(f"Email sent to {to_email} via Brevo API (SMTP fallback)")
         return True, result
     except requests.exceptions.RequestException as e:
-        print(f"Email failed: {str(e)}")
+        print(f"Brevo API fallback also failed for {to_email}: {str(e)}")
         if hasattr(e, 'response') and e.response:
             print(f"Response: {e.response.text}")
         return False, str(e)

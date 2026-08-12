@@ -98,8 +98,11 @@
             <span>System Organogram</span>
         </a>
 
-        <a href="{% url 'organogram:org_view' %}" class="sidebar-link {% if request.resolver_match.url_name == 'org_view' %}active{% endif %}">
-            {% lucide "building-2" size=18 %} Organization Chart
+        <a href="{% url 'organogram:org_view' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/organogram/organization/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "building-2" size=16 class="h-4 w-4" %}</span>
+            <span>Organization Chart</span>
         </a>
 
         {% comment %} <a href="{% url 'organogram:org_view' %}"
@@ -260,13 +263,19 @@
             <span class="shrink-0">{% lucide "layout-dashboard" size=16 class="h-4 w-4" %}</span>
             <span>Dashboard</span>
         </a>
-        {# Upload link only if user has permission #}
+        {# Upload/Permissions links only if user has permission #}
         {% if user.can_manage_display_documents %}
         <a href="{% url 'documents_display:document_create' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/documents-display/create/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "upload" size=16 class="h-4 w-4" %}</span>
             <span>Upload</span>
+        </a>
+        <a href="{% url 'documents_display:document_permissions' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/documents-display/permissions/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "shield-check" size=16 class="h-4 w-4" %}</span>
+            <span>Permissions</span>
         </a>
         {% endif %}
     </div>

@@ -37,7 +37,7 @@
             </div>
             <div class="flex gap-2 shrink-0 flex-wrap">
                 <!-- View Inline Button -->
-                <a href="{% url 'documents_display:document_serve_file' document.slug %}" target="_blank" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                <a href="{% url 'documents_display:document_viewer' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "eye" size=16 %} View
                 </a>
                 {% if can_download %}
@@ -45,7 +45,7 @@
                     {% lucide "download" size=16 %} Download
                 </a>
                 {% endif %}
-                {% if can_edit %}
+                {% if user.can_manage_display_documents %}
                 <a href="{% url 'documents_display:document_edit' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "pencil" size=16 %} Edit
                 </a>
@@ -80,9 +80,6 @@
                     <p class="text-sm font-medium" style="color: var(--color-text-primary);">{{ document.file_name }}</p>
                     <p class="text-xs text-text-secondary">{{ document.file_size|filesizeformat }} · {{ document.file_extension|upper }}</p>
                 </div>
-                <a href="{% url 'documents_display:document_viewer' document.slug %}" class="btn-primary text-sm px-4 py-1.5 rounded-lg ml-auto flex items-center gap-1.5">
-                    {% lucide "eye" size=14 %} View
-                </a>
             </div>
         </div>
 
@@ -111,7 +108,7 @@
                         {% endif %}
                     </div>
                     {% if version.file and can_download %}
-                    <a href="{{ version.file.url }}" class="text-xs text-primary hover:underline" download>Download</a>
+                    <a href="{% url 'documents_display:document_version_download' document.slug version.pk %}" class="text-xs text-primary hover:underline">Download</a>
                     {% endif %}
                 </div>
                 {% endfor %}

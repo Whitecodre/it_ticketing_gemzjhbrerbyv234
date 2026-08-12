@@ -187,7 +187,9 @@
                 {% lucide "users" size=16 %}
             </div>
             <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Switch Role</h2>
+            {% if available_roles|length > 1 %}
             <span class="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">Dual Roles</span>
+            {% endif %}
         </div>
 
         <p class="text-sm text-text-secondary mb-4">

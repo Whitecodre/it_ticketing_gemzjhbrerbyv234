@@ -2,24 +2,29 @@
 {% load static %}
 {% load lucide %}
 
-{% block page_title %}{% if schedule %}Edit{% else %}New{% endif %} Maintenance Schedule{% endblock %}
+{% block dashboard_title %}{% if schedule %}Edit{% else %}New{% endif %} Maintenance{% endblock %}
+{% block page_title_area %}{% endblock %}
 
 {% block dashboard_content %}
 
 <div class="max-w-3xl mx-auto">
     <div class="rounded-lg border p-6 bg-surface border-border">
-        
-        <form method="post" 
+
+        <div class="mb-4">
+            <h1 class="text-lg font-semibold" style="color: var(--color-text-primary);">{% if schedule %}Edit{% else %}New{% endif %} Maintenance Schedule</h1>
+        </div>
+
+        <form method="post"
               hx-post="{% if schedule %}{% url 'maintenance:edit' schedule.pk %}{% else %}{% url 'maintenance:create' %}{% endif %}"
               hx-target="#formErrors"
               hx-swap="innerHTML"
               hx-indicator="#submitSpinner">
-            
+
             {% csrf_token %}
-            
+
             {# Errors container #}
             <div id="formErrors" class="mb-4"></div>
-            
+
             {# Title #}
             <div class="mb-4">
                 <label for="id_title" class="block text-sm font-medium mb-1 text-text-primary">

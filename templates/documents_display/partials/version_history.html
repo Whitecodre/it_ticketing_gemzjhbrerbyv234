@@ -20,7 +20,7 @@
                 {% endif %}
             </div>
             {% if version.file and can_download %}
-            <a href="{{ version.file.url }}" class="text-xs text-primary hover:underline" download>Download</a>
+            <a href="{% url 'documents_display:document_version_download' document.slug version.pk %}" class="text-xs text-primary hover:underline">Download</a>
             {% endif %}
         </div>
         {% empty %}

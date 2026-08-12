@@ -35,6 +35,18 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         if '/media/display_docs/' in request.path:
             skip_frame_options = True
 
+        # External (no-login) document share viewer's inline file-serving
+        # endpoint — embedded via <embed>/<iframe> on document_share_external.html.
+        if '/documents_display/share/' in request.path and '/serve/' in request.path:
+            skip_frame_options = True
+
+        # System Organogram export preview — framed in-app inside the export
+        # modal's iframe. Only needs same-origin framing, unlike the document
+        # viewer cases above, so allow that instead of skipping the header.
+        if '/organogram/system/print/' in request.path:
+            response['X-Frame-Options'] = 'SAMEORIGIN'
+            skip_frame_options = True
+
         # Also check if the request is for a PDF
         if not skip_frame_options and hasattr(response, 'get'):
             content_type = response.get('Content-Type', '')

@@ -106,6 +106,31 @@ window.addEventListener('resize', function() {
 });
 
 // ================================================================
+// SIDEBAR - Apply correct initial state on page load
+// ================================================================
+// The `resize` listener above only runs on an actual resize of an
+// already-loaded page - it never fires for a fresh page load that starts
+// at a small (mobile) viewport, or one where the desktop "sidebar hidden"
+// preference was saved to localStorage. Without this, every fresh mobile
+// page load renders the full desktop sidebar on top of the content, and
+// the desktop collapsed-sidebar preference is never honoured on load.
+(function initSidebarState() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (!sidebar) return;
+
+    if (window.innerWidth < 768) {
+        sidebar.classList.add('-translate-x-full');
+        if (backdrop) backdrop.classList.add('hidden');
+        sidebar.classList.remove('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
+        sidebar.classList.add('w-64');
+    } else {
+        sidebar.classList.remove('-translate-x-full');
+        updateDesktopSidebar();
+    }
+})();
+
+// ================================================================
 // SIDEBAR ACCORDION - Single Open, Default Closed (FIXED)
 // ================================================================
 

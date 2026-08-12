@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>System Organogram - Export</title>
+    {% load organogram_filters %}
+    <style>
+        :root {
+            --color-primary: #0D9488;
+            --color-primary-hover: #0F766E;
+            --color-background: #F8FAFC;
+            --color-surface: #FFFFFF;
+            --color-text-primary: #0F172A;
+            --color-text-secondary: #475569;
+            --color-border: #E2E8F0;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+            --shadow-md: 0 4px 14px rgba(15, 23, 42, 0.08);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans', 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 2rem 2.5rem 3rem;
+            background: var(--color-background);
+            color: var(--color-text-primary);
+        }
+
+        h1, h2, .brand-name {
+            font-family: 'Poppins', 'Segoe UI', 'Noto Sans', sans-serif;
+        }
+
+        /* Toolbar */
+        .print-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .print-actions button {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-family: inherit;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            padding: 0.55rem 1.1rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--color-primary);
+            background: var(--color-primary);
+            color: white;
+            cursor: pointer;
+            box-shadow: var(--shadow-sm);
+            transition: background-color 0.15s ease;
+        }
+
+        .print-actions button:hover {
+            background: var(--color-primary-hover);
+            border-color: var(--color-primary-hover);
+        }
+
+        /* Document sheet */
+        .doc-sheet {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: var(--color-surface);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            padding: 2.25rem 2.5rem 2.5rem;
+        }
+
+        /* Letterhead */
+        .letterhead {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding-bottom: 1.1rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid var(--color-border);
+        }
+
+        .letterhead .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+        }
+
+        .letterhead .brand img {
+            height: 34px;
+            width: auto;
+            border-radius: 6px;
+        }
+
+        .letterhead .brand-name {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--color-text-primary);
+        }
+
+        .letterhead .doc-title {
+            text-align: right;
+        }
+
+        .letterhead .doc-title h1 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--color-text-primary);
+        }
+
+        .letterhead .doc-title .meta {
+            font-size: 0.75rem;
+            color: var(--color-text-secondary);
+            margin-top: 0.15rem;
+        }
+
+        /* Tiers */
+        .org-tiers {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .org-tier {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+
+        .org-tier-connector {
+            width: 2px;
+            height: 20px;
+            background: var(--color-border);
+        }
+
+        .org-tier-label {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--color-text-secondary);
+            margin-bottom: 0.6rem;
+        }
+
+        .org-tier-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.6rem 0.75rem;
+            width: 100%;
+        }
+
+        .org-tier-empty {
+            font-size: 0.75rem;
+            font-style: italic;
+            color: var(--color-text-secondary);
+            border: 1px dashed var(--color-border);
+            border-radius: var(--radius-sm);
+            padding: 0.4rem 0.9rem;
+        }
+
+        .org-tier-more {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            align-self: center;
+        }
+
+        /* Node card */
+        .node-card {
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            padding: 0.45rem 0.85rem;
+            min-width: 108px;
+            max-width: 140px;
+            text-align: center;
+            background: var(--color-surface);
+            box-shadow: var(--shadow-sm);
+            break-inside: avoid;
+        }
+
+        .node-card .avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            margin: 0 auto 0.3rem auto;
+            background: var(--color-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            overflow: hidden;
+        }
+
+        .node-card .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .node-card .name {
+            font-size: 0.71875rem;
+            font-weight: 700;
+            line-height: 1.2;
+            color: var(--color-text-primary);
+        }
+
+        .node-card .title {
+            font-size: 0.625rem;
+            color: var(--color-text-secondary);
+            line-height: 1.2;
+        }
+
+        .node-card .department-badge {
+            display: inline-block;
+            font-size: 0.5rem;
+            font-weight: 600;
+            padding: 0.08rem 0.45rem;
+            border-radius: 9999px;
+            color: white;
+            margin-top: 0.2rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        /* Footer */
+        .doc-footer {
+            text-align: center;
+            font-size: 0.6875rem;
+            color: var(--color-text-secondary);
+            margin-top: 1.5rem;
+        }
+
+        .empty-note {
+            text-align: center;
+            color: var(--color-text-secondary);
+            padding: 2.5rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white; padding: 0.4rem; }
+            .doc-sheet { box-shadow: none; border: none; padding: 0; max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+{% if not embed %}
+<div class="print-actions no-print">
+    <button type="button" onclick="window.print()">🖨 Print / Save as PDF</button>
+</div>
+{% endif %}
+
+<div class="doc-sheet">
+
+    <div class="letterhead">
+        <div class="brand">
+            {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}">
+            {% endif %}
+            <span class="brand-name">{{ client_settings.company_name }}</span>
+        </div>
+        <div class="doc-title">
+            <h1>System Organogram</h1>
+            <p class="meta">
+                {% if department %}{{ department_name }}{% else %}All Departments{% endif %}
+                {% if search_query %} • Search: "{{ search_query }}"{% endif %}
+            </p>
+            <p class="meta">Generated {{ generated_at|date:"F d, Y H:i" }}</p>
+        </div>
+    </div>
+
+    {% if has_results %}
+        <div class="org-tiers">
+            {% for tier in tiers %}
+                {% if not forloop.first %}
+                    <div class="org-tier-connector"></div>
+                {% endif %}
+                <div class="org-tier">
+                    <div class="org-tier-label">{{ tier.label }}{% if tier.count %} · {{ tier.count }}{% endif %}</div>
+                    {% if tier.count > 0 %}
+                        <div class="org-tier-row">
+                            {% for tier_user in tier.display_users %}
+                                <div class="node-card">
+                                    <div class="avatar">
+                                        {% if tier_user.avatar %}
+                                            <img src="{{ tier_user.avatar.url }}" alt="{{ tier_user.get_full_name }}">
+                                        {% else %}
+                                            {{ tier_user.first_name|slice:":1"|upper }}{{ tier_user.last_name|slice:":1"|upper }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="name">{{ tier_user.get_full_name|default:tier_user.email }}</div>
+                                    <div class="title">{{ tier_user.position|default:tier_user.get_role_display }}</div>
+                                    <span class="department-badge"
+                                          style="background-color: {{ department_colors|get_item:tier_user.department|default:'#64748B' }};">
+                                        {{ tier_user.get_department_display }}
+                                    </span>
+                                </div>
+                            {% endfor %}
+                            {% if tier.more_count > 0 %}
+                                <div class="org-tier-more">+{{ tier.more_count }} more</div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="org-tier-empty">No {{ tier.label }} found{% if department %} in {{ department_name }}{% endif %}</div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <p class="empty-note">No users found for this view.</p>
+    {% endif %}
+
+    <p class="doc-footer">Generated by {{ client_settings.company_name }} IT Service Management System</p>
+
+</div>
+
+</body>
+</html>

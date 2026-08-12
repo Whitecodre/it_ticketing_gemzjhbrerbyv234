@@ -7,7 +7,8 @@ app_name = 'organogram'
 urlpatterns = [
     # System organogram (auto-generated from users)
     path('system/', views.system_org, name='system'),
-    
+    path('system/print/', views.system_org_print, name='system_print'),
+
     # Organization organogram (customizable with approval)
     path('organization/', views.org_view, name='org_view'),
 

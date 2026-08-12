@@ -16,8 +16,7 @@
     .org-page {
         display: flex;
         flex-direction: column;
-        height: calc(100vh - 100px);
-        overflow: hidden;
+        width: 100%;
     }
     
     .org-header {
@@ -69,20 +68,8 @@
     }
     
     .org-scroll-container {
-        flex: 1;
-        overflow-y: auto;
+        width: 100%;
         padding: 0.5rem 0 1rem 0;
-    }
-    
-    .org-scroll-container::-webkit-scrollbar {
-        width: 6px;
-    }
-    .org-scroll-container::-webkit-scrollbar-track {
-        background: transparent;
-    }
-    .org-scroll-container::-webkit-scrollbar-thumb {
-        background: var(--color-border);
-        border-radius: 3px;
     }
     
     /* IT Stats */
@@ -128,29 +115,21 @@
         padding: 0.5rem 0;
     }
     
-    .org-tree-root {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 100%;
-    }
-    
     .org-node {
         display: flex;
         flex-direction: column;
         align-items: center;
         position: relative;
-        width: 100%;
-        max-width: 100%;
+        width: auto;
     }
-    
+
     .org-node .node-card {
         background-color: var(--color-surface);
         border: 1px solid var(--color-border);
         border-radius: var(--radius-md);
-        padding: 10px 16px;
-        min-width: 132px;
-        max-width: 190px;
+        padding: 6px 10px;
+        min-width: 96px;
+        max-width: 140px;
         text-align: center;
         transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: var(--shadow-sm);
@@ -167,16 +146,16 @@
     }
 
     .org-node .node-card .avatar {
-        width: 34px;
-        height: 34px;
+        width: 26px;
+        height: 26px;
         border-radius: 50%;
-        margin: 0 auto 0.4rem auto;
+        margin: 0 auto 0.3rem auto;
         background: var(--color-primary);
         color: white;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.8125rem; /* 13px */
+        font-size: 0.6875rem; /* 11px */
         font-weight: 700;
         overflow: hidden;
         flex-shrink: 0;
@@ -189,64 +168,31 @@
     }
 
     .org-node .node-card .name {
-        font-size: 0.78125rem; /* 12.5px */
+        font-size: 0.6875rem; /* 11px */
         font-weight: 700;
         color: var(--color-text-primary);
-        line-height: 1.2;
+        line-height: 1.15;
         word-break: break-word;
     }
 
     .org-node .node-card .title {
-        font-size: 0.6875rem; /* 11px */
+        font-size: 0.59375rem; /* 9.5px */
         color: var(--color-text-secondary);
-        line-height: 1.2;
+        line-height: 1.15;
     }
-    
+
     .org-node .node-card .department-badge {
         display: inline-block;
-        font-size: 0.5rem;
+        font-size: 0.4375rem;
         font-weight: 600;
-        padding: 0.1rem 0.5rem;
+        padding: 0.05rem 0.4rem;
         border-radius: 9999px;
-        margin-top: 0.2rem;
+        margin-top: 0.15rem;
         color: white;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.03em;
     }
-    
-    .org-node .node-card .report-count {
-        font-size: 0.55rem;
-        color: var(--color-text-secondary);
-        margin-top: 0.15rem;
-    }
-    
-    .org-node .node-card .expand-toggle {
-        position: absolute;
-        bottom: -0.7rem;
-        left: 50%;
-        transform: translateX(-50%);
-        background: var(--color-surface);
-        border: 1px solid var(--color-border);
-        border-radius: 50%;
-        width: 22px;
-        height: 22px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        z-index: 3;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.06);
-        transition: all 0.2s;
-        font-size: 0.6rem;
-        color: var(--color-text-secondary);
-    }
-    
-    .org-node .node-card .expand-toggle:hover {
-        background: var(--color-primary);
-        color: white;
-        border-color: var(--color-primary);
-    }
-    
+
     /* Hover details tooltip */
     .org-node .node-card .hover-details {
         position: absolute;
@@ -287,128 +233,68 @@
         font-weight: 600;
     }
     
-    .org-node .node-connector {
+    /* Role tiers — each tier (Admin / Team Lead / Support Team / User) is
+       rendered as one shared row, not individually paired parent/child
+       nodes (there's no data linking a specific Team Lead to specific
+       Agents), connected by a single vertical rail between tiers. */
+    .org-tiers {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .org-tier {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+    }
+
+    .org-tier-connector {
         width: 2px;
-        height: 16px;
+        height: 22px;
         background-color: var(--color-border);
-        position: relative;
-        margin-top: 2px;
         flex-shrink: 0;
     }
-    
-    .org-children {
+
+    .org-tier-label {
+        font-size: 0.6875rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-secondary);
+        margin-bottom: 0.6rem;
+    }
+
+    .org-tier-row {
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
-        gap: 1.5rem 2.5rem;
-        margin-top: 0.3rem;
-        position: relative;
-        padding: 0 1rem;
+        align-items: flex-start;
+        gap: 0.6rem 0.75rem;
         width: 100%;
-    }
-    
-    /* Vertical stub from the rail down to each child. */
-    .org-children .org-node::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 2px;
-        height: 16px;
-        background-color: var(--color-border);
+        padding: 0 1rem;
     }
 
-    /* Horizontal rail: each child draws the rail segment directly above it,
-       overflowing into half the column gap on each side so adjoining
-       segments meet in the middle of the gap between cards. The first and
-       last child stop at their own center instead of overflowing outward,
-       so the rail spans only from the first sibling's center to the last
-       sibling's — not a fixed 10%-90% line that ignored how many children
-       or how wide the row actually was. */
-    .org-children .org-node::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -1.25rem;
-        right: -1.25rem;
-        height: 2px;
-        background-color: var(--color-border);
+    .org-tier-empty {
+        font-size: 0.75rem;
+        font-style: italic;
+        color: var(--color-text-secondary);
+        border: 1px dashed var(--color-border);
+        border-radius: var(--radius-sm);
+        padding: 0.5rem 1rem;
     }
-    .org-children .org-node:first-child::after { left: 50%; }
-    .org-children .org-node:last-child::after { right: 50%; }
-    .org-children .org-node:only-child::after { display: none; }
-    
-    /* Legend */
-    .org-legend {
+
+    .org-tier-more {
         display: flex;
-        flex-wrap: wrap;
         align-items: center;
-        gap: 0.75rem 1.25rem;
-        padding: 0.6rem 1.25rem;
-        background-color: var(--color-surface);
-        border-top: 1px solid var(--color-border);
-        flex-shrink: 0;
-        margin-top: auto;
-        min-height: 3rem;
-    }
-    
-    .org-legend .legend-label {
-        font-size: 0.6rem;
+        font-size: 0.75rem;
         font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
         color: var(--color-text-secondary);
+        padding: 0 0.5rem;
     }
-    
-    .org-legend .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        font-size: 0.7rem;
-        color: var(--color-text-secondary);
-    }
-    
-    .org-legend .legend-dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        flex-shrink: 0;
-    }
-    
-    .org-legend .legend-divider {
-        width: 1px;
-        height: 1.5rem;
-        background-color: var(--color-border);
-        flex-shrink: 0;
-    }
-    
-    .org-legend .legend-line {
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-        font-size: 0.65rem;
-        color: var(--color-text-secondary);
-    }
-    
-    .org-legend .legend-line .v-line {
-        width: 2px;
-        height: 12px;
-        background-color: var(--color-border);
-    }
-    
-    .org-legend .legend-line .h-line {
-        width: 16px;
-        height: 2px;
-        background-color: var(--color-border);
-    }
-    
-    .org-legend .legend-info {
-        font-size: 0.65rem;
-        color: var(--color-text-secondary);
-        margin-left: auto;
-    }
-    
+
     /* Empty state */
     .empty-state {
         text-align: center;
@@ -445,35 +331,23 @@
             min-width: unset;
         }
         .org-node .node-card {
-            min-width: 100px;
-            max-width: 140px;
-            padding: 0.5rem 0.75rem;
+            min-width: 84px;
+            max-width: 120px;
+            padding: 0.4rem 0.6rem;
         }
         .org-node .node-card .avatar {
-            width: 36px;
-            height: 36px;
-            font-size: 0.8rem;
+            width: 24px;
+            height: 24px;
+            font-size: 0.625rem;
         }
         .org-node .node-card .name {
-            font-size: 0.7rem;
+            font-size: 0.625rem;
         }
         .org-node .node-card .title {
-            font-size: 0.55rem;
+            font-size: 0.5rem;
         }
-        .org-children {
-            gap: 0.5rem 1.5rem;
-        }
-        .org-legend {
-            padding: 0.4rem 0.75rem;
-            gap: 0.3rem 0.6rem;
-        }
-        .org-legend .legend-divider {
-            display: none;
-        }
-        .org-legend .legend-info {
-            margin-left: 0;
-            width: 100%;
-            text-align: center;
+        .org-tier-row {
+            gap: 0.5rem 0.75rem;
         }
         .it-stats {
             grid-template-columns: repeat(2, 1fr);
@@ -490,7 +364,7 @@
 
 {% block dashboard_content %}
 
-<div class="org-page" x-data="{ expandedNodes: {} }">
+<div class="org-page">
     
     <!-- Header -->
     <div class="org-header">
@@ -500,22 +374,24 @@
         </div>
         <div class="actions">
             <!-- Search -->
-            <input type="text" id="orgSearch" name="search" 
-                    placeholder="Search employees..." 
+            <input type="text" id="orgSearch" name="search"
+                    placeholder="Search employees..."
                     value="{{ search_query|default:'' }}"
                     class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
                     hx-get="{% url 'organogram:system' %}"
                     hx-trigger="keyup changed delay:500ms"
                     hx-target="#orgTreeContainer"
-                    hx-swap="outerHTML"
+                    hx-swap="innerHTML"
+                    hx-include="closest .actions"
                     hx-push-url="true">
-            
+
             <!-- Department Filter -->
-            <select id="departmentFilter" class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
+            <select id="departmentFilter" name="department" class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
                     hx-get="{% url 'organogram:system' %}"
                     hx-trigger="change"
                     hx-target="#orgTreeContainer"
-                    hx-swap="outerHTML"
+                    hx-swap="innerHTML"
+                    hx-include="closest .actions"
                     hx-push-url="true">
                 <option value="">All Departments</option>
                 {% for code, label in department_choices %}
@@ -524,9 +400,14 @@
                     </option>
                 {% endfor %}
             </select>
+
+            <!-- Export current view as a printable/PDF-savable page -->
+            <button type="button" id="exportOrgChartBtn" class="btn-outline btn-sm">
+                {% lucide "download" size=14 %} Export
+            </button>
         </div>
     </div>
-    
+
     <!-- IT Department Stats now render once, at the bottom of the tree
          container (organogram/partials/system_tree_container.html) rather
          than duplicated here — this container is also the HTMX swap target
@@ -538,29 +419,199 @@
     <div id="orgTreeContainer" class="org-tree-wrapper">
         {% include "organogram/partials/system_tree_container.html" %}
     </div>
-    
 
-<!-- Temporary page-local compatibility while tree controls are migrated. -->
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
-<script defer src="{% static 'js/alpine.min.js' %}"></script>
+</div>
 
-<!-- Alpine.js initialization for expand/collapse -->
+{# ========== EXPORT PREVIEW MODAL ========== #}
+<div id="exportModalOverlay" class="export-modal-overlay hidden"
+     onclick="if(event.target===this) closeExportModal()">
+    <div class="export-modal">
+        <div class="export-modal-header">
+            <div class="export-modal-title">
+                <span class="export-modal-icon">{% lucide "network" size=16 %}</span>
+                <div>
+                    <h3>Export System Organogram</h3>
+                    <span class="export-modal-subtitle">Preview, print, or save as PDF</span>
+                </div>
+            </div>
+            <button type="button" onclick="closeExportModal()" class="export-modal-close" aria-label="Close">
+                {% lucide "x" size=16 %}
+            </button>
+        </div>
+        <div class="export-modal-body">
+            <iframe id="exportPreviewFrame" src="about:blank"></iframe>
+        </div>
+        <div class="export-modal-footer">
+            <button type="button" onclick="closeExportModal()" class="btn-ghost btn-sm">Close</button>
+            <button type="button" onclick="printExportPreview()" class="btn-primary btn-sm">
+                {% lucide "printer" size=14 %} Print / Save as PDF
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .export-modal-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(3px);
+        -webkit-backdrop-filter: blur(3px);
+        animation: exportOverlayIn 0.15s ease-out;
+    }
+
+    .export-modal-overlay.hidden {
+        display: none !important;
+    }
+
+    .export-modal {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 56rem;
+        max-height: 90vh;
+        background-color: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: 1rem;
+        box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+        overflow: hidden;
+        animation: exportModalIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .export-modal-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.9rem 1.25rem;
+        background: linear-gradient(to bottom, color-mix(in oklch, var(--color-primary) 6%, var(--color-surface)), var(--color-surface));
+        border-bottom: 1px solid var(--color-border);
+        flex-shrink: 0;
+    }
+
+    .export-modal-title {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+    }
+
+    .export-modal-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        border-radius: 0.6rem;
+        background: color-mix(in oklch, var(--color-primary) 14%, transparent);
+        color: var(--color-primary);
+        flex-shrink: 0;
+    }
+
+    .export-modal-title h3 {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        line-height: 1.2;
+    }
+
+    .export-modal-subtitle {
+        font-size: 0.71875rem;
+        color: var(--color-text-secondary);
+    }
+
+    .export-modal-close {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 0.5rem;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        transition: all 0.15s ease;
+        flex-shrink: 0;
+    }
+
+    .export-modal-close:hover {
+        background: var(--color-background);
+        border-color: var(--color-border);
+        color: var(--color-text-primary);
+    }
+
+    .export-modal-body {
+        flex: 1;
+        min-height: 60vh;
+        padding: 1rem;
+        background: var(--color-background);
+    }
+
+    .export-modal-body iframe {
+        width: 100%;
+        height: 100%;
+        min-height: 58vh;
+        border: none;
+        border-radius: 0.6rem;
+        background: white;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+    }
+
+    .export-modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        padding: 0.75rem 1.25rem;
+        border-top: 1px solid var(--color-border);
+        background: var(--color-surface);
+        flex-shrink: 0;
+    }
+
+    @keyframes exportOverlayIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes exportModalIn {
+        from { opacity: 0; transform: translateY(8px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+</style>
+
 <script>
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('orgNode', () => ({
-            expanded: true
-        }));
+    document.getElementById('exportOrgChartBtn').addEventListener('click', function () {
+        var department = document.getElementById('departmentFilter').value;
+        var search = document.getElementById('orgSearch').value;
+        var params = new URLSearchParams();
+        if (department) params.set('department', department);
+        if (search) params.set('search', search);
+        params.set('embed', '1');
+        var url = "{% url 'organogram:system_print' %}?" + params.toString();
+
+        document.getElementById('exportPreviewFrame').src = url;
+        document.getElementById('exportModalOverlay').classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
     });
-</script>
 
-<!-- HTMX will update the container; ensure any Alpine state is re-initialized -->
-<script>
-    document.addEventListener('htmx:afterSwap', function(event) {
-        // Re-initialize Alpine.js on the swapped content
-        if (event.target.id === 'orgTreeContainer') {
-            Alpine.initTree(event.target);
+    function closeExportModal() {
+        document.getElementById('exportModalOverlay').classList.add('hidden');
+        document.getElementById('exportPreviewFrame').src = 'about:blank';
+        document.body.style.overflow = '';
+    }
+
+    function printExportPreview() {
+        var frame = document.getElementById('exportPreviewFrame');
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.focus();
+            frame.contentWindow.print();
         }
-    });
+    }
 </script>
 
 {% endblock %}
