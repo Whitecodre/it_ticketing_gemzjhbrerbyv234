@@ -226,7 +226,7 @@
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/audit/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "file-search" size=16 class="h-4 w-4" %}</span>
-            <span>Audit Log</span>
+            <span>Logs</span>
         </a>
         <a href="{% url 'tickets:reports' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
@@ -271,11 +271,11 @@
             <span class="shrink-0">{% lucide "upload" size=16 class="h-4 w-4" %}</span>
             <span>Upload</span>
         </a>
-        <a href="{% url 'documents_display:document_permissions' %}"
+        <a href="{% url 'documents_display:document_bulk_create' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/documents-display/permissions/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "shield-check" size=16 class="h-4 w-4" %}</span>
-            <span>Permissions</span>
+           style="{% if '/documents-display/bulk-upload/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "upload-cloud" size=16 class="h-4 w-4" %}</span>
+            <span>Bulk Upload</span>
         </a>
         {% endif %}
     </div>

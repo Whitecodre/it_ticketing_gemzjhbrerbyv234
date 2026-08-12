@@ -103,13 +103,19 @@
     </button>
     <div id="maintenance-section" 
          class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
-        <a href="{% url 'maintenance:list' %}" 
+        <a href="{% url 'maintenance:list' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+           style="{% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' and request.GET.mine != '1' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "calendar" size=16 class="h-4 w-4" %}</span>
             <span>Schedule</span>
         </a>
-        <a href="{% url 'maintenance:create' %}" 
+        <a href="{% url 'maintenance:list' %}?mine=1"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' and request.GET.mine == '1' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "user-check" size=16 class="h-4 w-4" %}</span>
+            <span>My Tasks</span>
+        </a>
+        <a href="{% url 'maintenance:create' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if request.resolver_match.url_name == 'create' and request.resolver_match.app_name == 'maintenance' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "plus-circle" size=16 class="h-4 w-4" %}</span>

@@ -16,6 +16,9 @@ python manage.py seed_macros
 echo "=== Seeding Assets ==="
 python manage.py seed_assets
 
+echo "=== Seeding Document Categories ==="
+python manage.py seed_document_categories
+
 # start.sh
 echo "=== Checking npm version ==="
 npm --version || echo "npm not found"

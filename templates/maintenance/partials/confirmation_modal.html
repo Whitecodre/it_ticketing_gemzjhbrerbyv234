@@ -19,7 +19,7 @@
                 <strong>{{ schedule.title }}</strong><br>
                 {{ schedule.get_department_display }} — {{ schedule.scheduled_date|date:"M d, Y" }}
                 {% if schedule.assigned_to %}
-                    <br>Assigned to: {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
+                    <br>Assigned to: {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}{% if schedule.additional_assignees.all %}, {% for person in schedule.additional_assignees.all %}{{ person.get_full_name|default:person.email }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
                 {% endif %}
             </p>
         </div>

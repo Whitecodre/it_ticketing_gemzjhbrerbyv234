@@ -4,6 +4,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden, JsonResponse
+from django.urls import reverse
 from django.utils.text import slugify
 from .models import Article, ArticleVersion, Category, ArticleFeedback
 from .forms import ArticleForm, KBFromTicketForm
@@ -162,6 +163,38 @@ def article_archive(request, pk):
         return HttpResponseForbidden()
     article.status = Article.Status.ARCHIVED
     article.save()
+    return redirect('kb:management')
+
+
+@login_required
+@require_POST
+def article_reject_review(request, pk):
+    """Send a PENDING_REVIEW article back to DRAFT for the author to revise
+    — distinct from Archive, which retires an article rather than returning
+    it for more work."""
+    article = get_object_or_404(Article, pk=pk)
+    if request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponseForbidden()
+    if article.status != Article.Status.PENDING_REVIEW:
+        messages.error(request, 'Only articles pending review can be sent back.')
+        return redirect('kb:management')
+
+    reason = request.POST.get('reason', '').strip()
+    article.status = Article.Status.DRAFT
+    article.save()
+
+    from apps.common.models import Notification
+    note = f'📝 "{article.title}" was sent back to draft by {request.user.get_full_name()}.'
+    if reason:
+        note += f' Reason: {reason}'
+    Notification.objects.create(
+        recipient=article.author,
+        message=note,
+        url=reverse('kb:edit', args=[article.pk]),
+        type=Notification.Type.GENERAL,
+    )
+
+    messages.success(request, f'"{article.title}" was sent back to the author for revisions.')
     return redirect('kb:management')
 
 @login_required

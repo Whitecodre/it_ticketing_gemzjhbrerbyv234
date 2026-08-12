@@ -1,7 +1,7 @@
 # apps/documents_display/forms.py
 
 from django import forms
-from .models import DisplayDocument
+from .models import DisplayDocument, DisplayCategory
 from apps.accounts.models import User
 
 
@@ -36,6 +36,24 @@ class DisplayDocumentForm(forms.ModelForm):
         })
     )
 
+    # Overridden to a plain CharField so it can hold either an existing
+    # category's pk or the sentinel 'OTHER' — mirrors the ticket form's
+    # category/category_other pattern (apps/tickets/forms.py).
+    category = forms.CharField(
+        required=True,
+        widget=forms.Select(attrs=SELECT_ATTRS),
+    )
+    category_other = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'placeholder': 'Enter custom category...',
+            'id': 'category_other',
+        }),
+        label='Custom Category',
+    )
+
     class Meta:
         model = DisplayDocument
         fields = [
@@ -47,7 +65,6 @@ class DisplayDocumentForm(forms.ModelForm):
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
                 'placeholder': 'Document title...'
             }),
-            'category': forms.Select(attrs=SELECT_ATTRS),
             'file': forms.FileInput(attrs={
                 'class': 'block w-full text-sm text-text-secondary file:mr-4 file:py-2.5 file:px-5 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition cursor-pointer'
             }),
@@ -59,7 +76,40 @@ class DisplayDocumentForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['category'].empty_label = "-- Select Category --"
+        categories = DisplayCategory.objects.filter(is_active=True).order_by('display_order', 'name').values_list('id', 'name')
+        self.fields['category'].widget.choices = (
+            [('', '-- Select Category --')] + list(categories) + [('OTHER', '+ Add Custom Category')]
+        )
+
+        # If editing and the category isn't in the active list (e.g. was
+        # deactivated), show it as a custom entry instead of silently
+        # dropping the selection.
+        instance = kwargs.get('instance')
+        if instance and instance.category_id:
+            category_ids = [c[0] for c in categories]
+            if instance.category_id not in category_ids:
+                self.fields['category'].initial = 'OTHER'
+                self.initial['category_other'] = instance.category.name
+            else:
+                self.fields['category'].initial = instance.category_id
+
+    def clean(self):
+        cleaned_data = super().clean()
+        category = cleaned_data.get('category')
+        category_other = cleaned_data.get('category_other', '').strip()
+
+        if category == 'OTHER':
+            if category_other:
+                category_obj, _created = DisplayCategory.objects.get_or_create(name=category_other)
+                cleaned_data['category'] = category_obj
+            else:
+                self.add_error('category_other', 'Please enter a custom category.')
+        elif category:
+            try:
+                cleaned_data['category'] = DisplayCategory.objects.get(pk=category)
+            except (DisplayCategory.DoesNotExist, ValueError):
+                self.add_error('category', 'Please select a valid category.')
+        return cleaned_data
 
 
 class DepartmentAccessForm(forms.Form):

@@ -17,6 +17,38 @@ function toggleDetailsPanel() {
 }
 
 // ================================================================
+// SUBJECT INLINE EDIT
+// ================================================================
+function toggleSubjectEdit() {
+    const wrapper = document.getElementById('ticketTitleWrapper');
+    if (!wrapper) return;
+    const display = wrapper.querySelector('#subjectDisplay');
+    const editBtn = wrapper.querySelector('button[onclick^="toggleSubjectEdit"]');
+    const form = wrapper.querySelector('#subjectEditForm');
+    if (!display || !form) return;
+    const editing = !form.classList.contains('hidden');
+    display.classList.toggle('hidden', !editing);
+    if (editBtn) editBtn.classList.toggle('hidden', !editing);
+    form.classList.toggle('hidden', editing);
+    form.classList.toggle('flex', !editing);
+    if (!editing) {
+        const input = form.querySelector('input[name="title"]');
+        if (input) { input.focus(); input.select(); }
+    }
+}
+
+// ================================================================
+// ATTACHMENT PREVIEW MODAL (open via inline onclick elsewhere; close here)
+// ================================================================
+function closeAttachmentModal() {
+    const overlay = document.getElementById('modalOverlay');
+    if (overlay) overlay.classList.add('hidden');
+    const container = document.getElementById('modalContainer');
+    if (container) container.innerHTML = '';
+    document.body.style.overflow = '';
+}
+
+// ================================================================
 // STATUS DROPDOWN
 // ================================================================
 function toggleStatusDropdown() {
@@ -56,6 +88,13 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
             const newStatus = inner.getAttribute('data-status');
             if (newStatus) updateStatusChip(newStatus);
         }
+        // The comment composer sits outside #commentTimeline, so nothing
+        // else clears it after a successful send — reset it here.
+        const editor = document.getElementById('commentEditor');
+        const hidden = document.getElementById('commentBodyHidden');
+        if (editor) editor.innerHTML = '';
+        if (hidden) hidden.value = '';
+        if (window.resetAttachmentComposer) window.resetAttachmentComposer();
     }
 });
 
@@ -145,23 +184,65 @@ function formatDocument(command) {
     const preview = document.getElementById('filePreviewContainer');
     if (!input || !preview) return;
 
+    // Staged files persist across multiple picker openings (native
+    // multi-file inputs replace the whole FileList on every dialog use),
+    // and each chip gets its own remove button so a single mis-added file
+    // doesn't force starting the whole selection over.
+    let stagedFiles = [];
+
     function formatFileSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    input.addEventListener('change', function() {
+    function syncInputFiles() {
+        const dt = new DataTransfer();
+        stagedFiles.forEach(function(f) { dt.items.add(f); });
+        input.files = dt.files;
+    }
+
+    function renderChips() {
         preview.innerHTML = '';
-        Array.from(input.files || []).forEach(function(file) {
+        stagedFiles.forEach(function(file, index) {
             const chip = document.createElement('span');
             chip.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border';
             chip.style.borderColor = 'var(--color-border)';
             chip.style.backgroundColor = 'var(--color-background)';
-            chip.textContent = `${file.name} (${formatFileSize(file.size)})`;
+
+            const label = document.createElement('span');
+            label.textContent = `${file.name} (${formatFileSize(file.size)})`;
+            chip.appendChild(label);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.textContent = '×';
+            removeBtn.setAttribute('aria-label', `Remove ${file.name}`);
+            removeBtn.className = 'text-text-secondary hover:text-error font-bold leading-none';
+            removeBtn.addEventListener('click', function() {
+                stagedFiles.splice(index, 1);
+                syncInputFiles();
+                renderChips();
+            });
+            chip.appendChild(removeBtn);
+
             preview.appendChild(chip);
         });
+    }
+
+    input.addEventListener('change', function() {
+        stagedFiles = stagedFiles.concat(Array.from(input.files || []));
+        syncInputFiles();
+        renderChips();
     });
+
+    // Exposed so the comment-send success handler can clear staged
+    // attachments along with the rest of the composer.
+    window.resetAttachmentComposer = function() {
+        stagedFiles = [];
+        preview.innerHTML = '';
+        input.value = '';
+    };
 })();
 
 // ================================================================

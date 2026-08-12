@@ -25,7 +25,7 @@
             {# Header #}
             <div class="px-3 py-2.5 sm:px-4 sm:py-3 border-b flex flex-wrap items-start sm:items-center justify-between shrink-0 gap-1.5 sm:gap-0 bg-surface border-border">
                 <div class="flex-1 min-w-0">
-                    <h2 class="text-sm sm:text-base font-semibold truncate text-text-primary">{{ ticket.title }}</h2>
+                    {% include "partials/subject_display.html" %}
                     <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-xs mt-0.5 text-text-secondary">
                         <span>{{ ticket.number }}</span>
                         <span>•</span>
@@ -57,6 +57,7 @@
                 </div>
                 <div class="flex items-center gap-1 sm:gap-2 ml-0 sm:ml-3 self-end sm:self-center">
                     {% if is_agent %}
+                    {% if status_is_manually_editable %}
                     <div class="relative" id="statusDropdown">
                         <button id="statusDropdownBtn" class="btn-ghost text-xs px-1.5 sm:px-2 py-1 flex items-center gap-0.5 sm:gap-1 min-h-[36px] sm:min-h-[40px]"
                                 onclick="toggleStatusDropdown()">
@@ -64,7 +65,7 @@
                         </button>
                         <div id="statusMenu" class="absolute right-0 top-full mt-1 w-40 rounded-md shadow-lg border hidden p-1 bg-surface border-border"
                              style="z-index: 50;">
-                            {% for value, label in ticket.Status.choices %}
+                            {% for value, label in manual_status_choices %}
                             <button class="w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
                                     hx-post="{% url 'tickets:update_status' ticket.pk %}?status={{ value }}"
                                     hx-swap="none"
@@ -72,6 +73,11 @@
                             {% endfor %}
                         </div>
                     </div>
+                    {% else %}
+                    <span class="text-xs px-1.5 sm:px-2 py-1 text-text-secondary inline-flex items-center gap-1" data-tooltip="Managed by the ticket workflow (resolve, manager review, or fulfillment) — can't be changed manually.">
+                        {% lucide "lock" size=12 %} Status locked
+                    </span>
+                    {% endif %}
                     <button class="btn-ghost p-1.5 element-link min-h-[36px] sm:min-h-[40px]" onclick="toggleDetailsPanel()" data-tooltip="Toggle Details">
                         {% lucide "panel-right" size=18 %}
                     </button>
@@ -212,7 +218,7 @@
         {# Right details panel #}
         {% if is_agent %}
         <div id="detailsPanel"
-            class="shrink-0 border-l overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out w-0 sm:w-0 bg-surface border-border">
+            class="shrink-0 border-l overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out w-0 bg-surface border-border">
             <div id="detailsPanelContent" class="w-full max-w-90 sm:max-w-sm md:max-w-md lg:max-w-lg">
                 {% include "partials/ticket_details_panel.html" %}
             </div>

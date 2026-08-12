@@ -32,7 +32,7 @@
             {% lucide "clipboard-check" size=20 %}
         </div>
         <div>
-            <h2 class="text-base font-semibold text-text-primary">Manager Review</h2>
+            <h2 class="text-base font-semibold text-text-primary">Manager Review <span class="text-text-secondary font-normal">({{ tickets|length }})</span></h2>
             <p class="text-sm text-text-secondary">Service requests pending your review before they go to the Approver.</p>
         </div>
     </div>
@@ -45,9 +45,10 @@
                     <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Department</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Created</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Waiting</th>
                         <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
                     </tr>
                 </thead>
@@ -58,6 +59,15 @@
                             <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                         </td>
                         <td class="py-3 px-4 max-w-xs truncate text-text-primary">{{ ticket.title }}</td>
+                        <td class="py-3 px-4">
+                            <span class="priority-chip
+                                {% if ticket.priority == 'P1' %}critical
+                                {% elif ticket.priority == 'P2' %}high
+                                {% elif ticket.priority == 'P3' %}medium
+                                {% else %}low{% endif %} text-xs">
+                                {{ ticket.get_priority_display }}
+                            </span>
+                        </td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_full_name_with_role }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_department_display }}</td>
                         <td class="py-3 px-4 text-text-secondary text-xs">{{ ticket.created_at|timesince }} ago</td>

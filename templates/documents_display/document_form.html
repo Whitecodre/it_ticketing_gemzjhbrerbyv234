@@ -58,7 +58,20 @@
                 <!-- Category -->
                 <div>
                     <label class="block text-sm font-medium mb-1 text-text-primary">Category <span class="text-error">*</span></label>
-                    {{ form.category }}
+                    <select name="category" id="id_category"
+                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                            onchange="toggleCategoryOther()">
+                        {% for value, label in form.fields.category.widget.choices %}
+                            <option value="{{ value }}" {% if form.category.value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div id="category_other_container" class="mt-2 hidden">
+                        <input type="text" name="category_other" id="category_other"
+                               value="{{ form.category_other.value|default:'' }}"
+                               class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                               placeholder="Enter custom category...">
+                        <p class="text-xs text-text-secondary mt-1">Custom category will be created and saved.</p>
+                    </div>
                 </div>
 
                 <!-- Document Date -->
@@ -147,7 +160,27 @@
 
 {% block extra_scripts %}
 <script>
+    function toggleCategoryOther() {
+        const select = document.getElementById('id_category');
+        const container = document.getElementById('category_other_container');
+        const input = document.getElementById('category_other');
+        if (!select || !container || !input) return;
+        if (select.value === 'OTHER') {
+            container.classList.remove('hidden');
+            input.required = true;
+            input.focus();
+        } else {
+            container.classList.add('hidden');
+            input.required = false;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        const categorySelect = document.getElementById('id_category');
+        if (categorySelect && categorySelect.value === 'OTHER') {
+            toggleCategoryOther();
+        }
+
         const visibility = document.getElementById('id_visibility');
         const publicGroup = document.getElementById('publicPermissionsGroup');
         const departmentGroup = document.getElementById('departmentAccessGroup');

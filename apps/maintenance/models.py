@@ -3,6 +3,7 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinLengthValidator
+from datetime import datetime, time as dt_time
 import uuid
 
 
@@ -49,6 +50,14 @@ class MaintenanceSchedule(models.Model):
         blank=True,
         related_name='assigned_maintenance'
     )
+    # Optional extra personnel beyond the primary assignee — lets a schedule
+    # be worked by a small team while keeping assigned_to as the single
+    # "owner" that existing email/permission logic is built around.
+    additional_assignees = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='additional_maintenance'
+    )
     
     # Status
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.SCHEDULED)
@@ -71,6 +80,13 @@ class MaintenanceSchedule(models.Model):
     # Email tracking
     email_sent = models.BooleanField(default=False)
     email_sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Due-date reminder tracking — set by the send_maintenance_reminders
+    # management command as each threshold is crossed, so a reminder is
+    # never sent twice for the same schedule.
+    reminder_24h_sent = models.BooleanField(default=False)
+    reminder_1h_sent = models.BooleanField(default=False)
+    reminder_10m_sent = models.BooleanField(default=False)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
@@ -90,12 +106,27 @@ class MaintenanceSchedule(models.Model):
     def __str__(self):
         return f"{self.title} - {self.get_department_display()} ({self.scheduled_date})"
     
+    def due_datetime(self):
+        """The scheduled date/time this maintenance is due to start, used for
+        reminder scheduling. Falls back to the start of the scheduled date
+        when no start_time is set."""
+        naive = datetime.combine(self.scheduled_date, self.start_time or dt_time.min)
+        return timezone.make_aware(naive) if timezone.is_naive(naive) else naive
+
     def is_overdue(self):
         """Check if schedule is overdue (past date and not completed)."""
         if self.status in [self.Status.COMPLETED, self.Status.CANCELLED]:
             return False
         return self.scheduled_date < timezone.now().date()
     
+    def is_assigned_to(self, user):
+        """True if user is the primary assignee or one of the additional ones."""
+        if not user or not user.is_authenticated:
+            return False
+        if self.assigned_to_id == user.id:
+            return True
+        return self.additional_assignees.filter(pk=user.pk).exists()
+
     def can_confirm(self):
         """Check if schedule can be confirmed (completed but not confirmed)."""
         return self.status == self.Status.COMPLETED and not self.confirmed_by

@@ -19,11 +19,19 @@ class MaintenanceScheduleForm(forms.ModelForm):
         help_text='One item per line'
     )
     
+    additional_assignees = forms.ModelMultipleChoiceField(
+        queryset=User.objects.none(),
+        required=False,
+        widget=forms.CheckboxSelectMultiple,
+        label='Additional Personnel',
+        help_text='Anyone else on this schedule besides the primary assignee above.',
+    )
+
     class Meta:
         model = MaintenanceSchedule
         fields = [
             'title', 'description', 'department', 'scheduled_date',
-            'start_time', 'end_time', 'assigned_to'
+            'start_time', 'end_time', 'assigned_to', 'additional_assignees'
         ]
         widgets = {
             'title': forms.TextInput(attrs={
@@ -68,7 +76,15 @@ class MaintenanceScheduleForm(forms.ModelForm):
         self.fields['assigned_to'].label_from_instance = lambda obj: (
             obj.get_full_name() or obj.email
         )
-        
+
+        self.fields['additional_assignees'].queryset = User.objects.filter(
+            role__in=it_roles,
+            is_active=True
+        ).order_by('first_name', 'last_name')
+        self.fields['additional_assignees'].label_from_instance = lambda obj: (
+            obj.get_full_name() or obj.email
+        )
+
         # If editing, pre-populate checklist_items as text
         if self.instance and self.instance.pk and self.instance.checklist_items:
             self.initial['checklist_items'] = '\n'.join(self.instance.checklist_items)

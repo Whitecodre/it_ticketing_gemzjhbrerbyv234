@@ -32,7 +32,5 @@ urlpatterns = [
 
     # Create
     path('create/', views.document_create, name='document_create'),
-
-    # Bulk permissions (admin)
-    path('permissions/', views.document_permissions, name='document_permissions'),
+    path('bulk-upload/', views.document_bulk_create, name='document_bulk_create'),
 ]

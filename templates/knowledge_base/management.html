@@ -124,7 +124,12 @@
                     <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
                         {% lucide "clock" size=14 %} History
                     </a>
-                    <form method="post" action="{% url 'kb:publish' article.pk %}" class="inline ml-auto">
+                    <form method="post" action="{% url 'kb:reject_review' article.pk %}" class="inline ml-auto" onsubmit="return promptSendBackReason(this);">
+                        {% csrf_token %}
+                        <input type="hidden" name="reason">
+                        <button type="submit" class="btn-ghost text-xs px-3 py-1.5 rounded text-error">Send Back</button>
+                    </form>
+                    <form method="post" action="{% url 'kb:publish' article.pk %}" class="inline">
                         {% csrf_token %}
                         <button class="btn-success text-xs px-3 py-1.5 rounded">Publish</button>
                     </form>
@@ -197,6 +202,13 @@
 {% block scripts %}
 {{ block.super }}
 <script>
+    function promptSendBackReason(form) {
+        const reason = prompt('Optional: what should the author revise?', '');
+        if (reason === null) return false; // user cancelled
+        form.querySelector('input[name="reason"]').value = reason;
+        return true;
+    }
+
     // Tab switching with persistence
     const activeTab = sessionStorage.getItem('kbActiveTab') || 'drafts';
 

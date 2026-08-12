@@ -606,6 +606,10 @@ def agent_ticket_conversation(request, pk):
     agent_attachments = ticket.attachments.filter(
         uploaded_by__role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
     )
+    manual_status_choices = [
+        (value, label) for value, label in Ticket.Status.choices
+        if value in MANUALLY_SETTABLE_STATUSES
+    ]
     return render(request, 'agent/ticket_conversation.html', {
         'ticket': ticket,
         'comments': comments,
@@ -615,6 +619,8 @@ def agent_ticket_conversation(request, pk):
         'agent_attachments': agent_attachments,
         'sidebar_template': get_sidebar_template(request.user),
         'is_agent': True,
+        'manual_status_choices': manual_status_choices,
+        'status_is_manually_editable': ticket.status in MANUALLY_SETTABLE_STATUSES,
     })
 
 @login_required
@@ -672,6 +678,20 @@ def add_comment_conversation(request, pk):
         'initial_attachments': initial_attachments, 
     })
 
+# The manual status dropdown on the ticket conversation page is only for
+# the day-to-day "working" states an agent moves a ticket through by hand.
+# Everything else (Resolved, Closed, Approved, Pending Manager Review,
+# Pending Fulfillment, Pending Approval) is owned by a dedicated, guarded
+# flow (Resolve button, manager review, asset fulfillment, approval) and
+# must not be reachable by picking it off this dropdown — that would let an
+# agent skip the automated lifecycle those flows enforce.
+MANUALLY_SETTABLE_STATUSES = {
+    Ticket.Status.NEW, Ticket.Status.TRIAGED, Ticket.Status.ASSIGNED,
+    Ticket.Status.IN_PROGRESS, Ticket.Status.PENDING_USER,
+    Ticket.Status.PENDING_VENDOR, Ticket.Status.ESCALATED,
+}
+
+
 @login_required
 @require_POST
 def update_status(request, pk):
@@ -683,16 +703,24 @@ def update_status(request, pk):
     ticket = get_object_or_404(Ticket, pk=pk)
     if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
-    
+
     previous_status = ticket.status
     new_status = request.GET.get('status')
-    if new_status and new_status in dict(Ticket.Status.choices):
-        ticket.status = new_status
-        ticket.save()
-        TicketActivityLog.objects.create(
-            ticket=ticket, action='status_changed', actor=request.user,
-            details={'from': previous_status, 'to': new_status}
-        )
+
+    if not new_status or new_status not in dict(Ticket.Status.choices):
+        return JsonResponse({'error': 'Unknown status.'}, status=400)
+
+    if previous_status not in MANUALLY_SETTABLE_STATUSES or new_status not in MANUALLY_SETTABLE_STATUSES:
+        return JsonResponse({
+            'error': 'This transition is managed by the ticket workflow (resolve, manager review, or fulfillment) and cannot be set manually.'
+        }, status=400)
+
+    ticket.status = new_status
+    ticket.save()
+    TicketActivityLog.objects.create(
+        ticket=ticket, action='status_changed', actor=request.user,
+        details={'from': previous_status, 'to': new_status}
+    )
     return HttpResponse(status=204)
 
 @login_required
@@ -966,15 +994,17 @@ def ticket_details_panel(request, pk):
 @require_POST
 def edit_subject(request, pk):
     """
-    Edits the ticket title inline (subject).
+    Edits the ticket title inline (subject). Agent-tier roles only.
     Returns the updated subject display partial.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
+    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+        return HttpResponse(status=403)
     new_title = request.POST.get('title', '').strip()
     if new_title:
         ticket.title = new_title
         ticket.save()
-    return render(request, 'partials/subject_display.html', {'ticket': ticket})
+    return render(request, 'partials/subject_display.html', {'ticket': ticket, 'is_agent': True})
 
 # ==========================================================================
 # ASSIGNMENT POPOVERS AND ACTIONS
@@ -1018,28 +1048,6 @@ def assign_specific(request, pk, user_pk):
     ticket.assigned_to = agent
     ticket.save()
     return render(request, 'partials/ticket_details_assignee.html', {'ticket': ticket})
-
-# ==========================================================================
-# FOLLOWER STUBS (not fully implemented)
-# ==========================================================================
-
-@login_required
-@require_POST
-def remove_follower(request, ticket_pk, user_pk):
-    return HttpResponse(status=204)
-
-@login_required
-def add_follower_popover(request, ticket_pk):
-    return render(request, 'partials/popovers/add_follower_popover.html', {
-        'ticket': get_object_or_404(Ticket, pk=ticket_pk),
-    })
-
-# Placeholder popovers
-def edit_group_popover(request, pk): return render(request, 'partials/popovers/empty.html')
-def edit_type_popover(request, pk): return render(request, 'partials/popovers/empty.html')
-def edit_priority_popover(request, pk): return render(request, 'partials/popovers/empty.html')
-def add_tag_popover(request, pk): return render(request, 'partials/popovers/empty.html')
-def remove_tag(request, pk, tag_pk): return HttpResponse(status=204)
 
 # ==========================================================================
 # MACROS
@@ -1233,22 +1241,102 @@ def team_reassign(request, pk):
 # AUDIT LOG
 # ==========================================================================
 
+# Category grouping for the Logs page — bucket each recorded action into a
+# human-facing category so the page reads as "what area was this in" rather
+# than a flat, undifferentiated table. Keep in sync with every
+# TicketActivityLog.objects.create(action=...) call site.
+LOG_CATEGORY_MAP = {
+    'status_changed': 'Ticket Lifecycle',
+    'assigned': 'Ticket Lifecycle',
+    'commented': 'Ticket Lifecycle',
+    'resolution_requested': 'Ticket Lifecycle',
+    'resolution_confirmed': 'Ticket Lifecycle',
+    'resolution_rejected': 'Ticket Lifecycle',
+    'feedback_submitted': 'Ticket Lifecycle',
+    'manager_approved': 'Manager Review',
+    'manager_rejected': 'Manager Review',
+    'manager_requested_changes': 'Manager Review',
+    'escalated': 'Escalation',
+    'reassigned_escalated': 'Escalation',
+    'returned_to_pool': 'Escalation',
+    'remote_session_requested': 'Remote Sessions',
+    'remote_session_status_change': 'Remote Sessions',
+    'asset_fulfilled': 'Assets',
+}
+LOG_CATEGORY_ORDER = ['Ticket Lifecycle', 'Manager Review', 'Escalation', 'Remote Sessions', 'Assets', 'Other']
+
+# Friendly labels for the JSONField keys stored in TicketActivityLog.details,
+# so the Logs page can show "From: Open / To: Resolved" instead of a raw
+# dict dump. Unknown keys fall back to a title-cased version of themselves.
+LOG_DETAIL_LABELS = {
+    'from': 'From', 'to': 'To', 'reason': 'Reason', 'method': 'Method',
+    'body': 'Comment', 'visibility': 'Visibility', 'status': 'Status',
+    'rating': 'Rating', 'comment': 'Feedback',
+}
+
+
+def _log_category(action):
+    return LOG_CATEGORY_MAP.get(action, 'Other')
+
+
+def _log_detail_items(details):
+    """Turn a TicketActivityLog.details dict into readable (label, value) pairs."""
+    if not details:
+        return []
+    items = []
+    for key, value in details.items():
+        label = LOG_DETAIL_LABELS.get(key, key.replace('_', ' ').title())
+        if isinstance(value, str) and len(value) > 160:
+            value = value[:160] + '…'
+        items.append((label, value))
+    return items
+
+
 @login_required
 def audit_log(request):
     if request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
-    
+
+    tab = request.GET.get('tab', 'tickets')
+    is_admin_tier = request.user.role in ['ADMIN', 'SUPERADMIN']
+
+    # ------------------------------------------------------------------
+    # SYSTEM TAB — impersonation events. Admin/Superadmin only; previously
+    # this data existed in ImpersonationLog with no UI surfacing it at all.
+    # ------------------------------------------------------------------
+    if tab == 'system':
+        if not is_admin_tier:
+            return HttpResponse(status=403)
+        from apps.accounts.models import ImpersonationLog
+        system_logs = ImpersonationLog.objects.select_related('admin', 'target_user').order_by('-started_at')
+        paginator = Paginator(system_logs, 50)
+        page_obj = paginator.get_page(request.GET.get('page', 1))
+        context = {
+            'tab': 'system',
+            'system_logs': page_obj,
+            'is_admin_tier': is_admin_tier,
+            'sidebar_template': get_sidebar_template(request.user),
+        }
+        return render(request, 'partials/audit_log.html', context)
+
+    # ------------------------------------------------------------------
+    # TICKETS TAB — ticket activity, grouped by category.
+    # ------------------------------------------------------------------
     logs = TicketActivityLog.objects.select_related('ticket', 'actor').all()
     if request.user.role == 'TEAM_LEAD':
         team_members = User.objects.filter(department=request.user.department, role='AGENT')
         logs = logs.filter(
             Q(ticket__assigned_to__in=team_members) | Q(ticket__requester__in=team_members)
         )
-    
+
     action = request.GET.get('action')
+    category = request.GET.get('category')
     ticket_id = request.GET.get('ticket')
     if action:
         logs = logs.filter(action=action)
+    if category and category in LOG_CATEGORY_MAP.values():
+        matching_actions = [a for a, c in LOG_CATEGORY_MAP.items() if c == category]
+        logs = logs.filter(action__in=matching_actions)
     if ticket_id:
         logs = logs.filter(ticket__number__icontains=ticket_id)
     logs = logs.order_by('-created_at')
@@ -1256,26 +1344,27 @@ def audit_log(request):
     # --- Export logic (CSV, JSON, Excel) ---
     export_format = request.GET.get('export')
     if export_format:
-        filename = f"audit_log_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
-        
+        filename = f"logs_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+
         # Convert each log to a flat dict for export
         export_data = []
         for log in logs:
             export_data.append({
                 'time': log.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'category': _log_category(log.action),
                 'ticket': log.ticket.number if log.ticket else '—',
                 'action': log.action,
                 'actor': log.actor.get_full_name() if log.actor else 'System',
                 'details': str(log.details) if log.details else ''  # Convert dict to string
             })
-        
+
         if export_format == 'csv':
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
             writer = csv.writer(response)
-            writer.writerow(['Time', 'Ticket', 'Action', 'Actor', 'Details'])
+            writer.writerow(['Time', 'Category', 'Ticket', 'Action', 'Actor', 'Details'])
             for row in export_data:
-                writer.writerow([row['time'], row['ticket'], row['action'], row['actor'], row['details']])
+                writer.writerow([row['time'], row['category'], row['ticket'], row['action'], row['actor'], row['details']])
             return response
 
         elif export_format == 'json':
@@ -1286,23 +1375,34 @@ def audit_log(request):
         elif export_format == 'excel':
             wb = Workbook()
             ws = wb.active
-            ws.title = "Audit Log"
-            ws.append(['Time', 'Ticket', 'Action', 'Actor', 'Details'])
+            ws.title = "Logs"
+            ws.append(['Time', 'Category', 'Ticket', 'Action', 'Actor', 'Details'])
             for row in export_data:
-                ws.append([row['time'], row['ticket'], row['action'], row['actor'], row['details']])
+                ws.append([row['time'], row['category'], row['ticket'], row['action'], row['actor'], row['details']])
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
             wb.save(response)
             return response
 
-    # --- Pagination (100 per page) ---
-    paginator = Paginator(logs, 50)  # 50 per page (adjust as needed)
+    # --- Pagination, then bucket this page's entries into category groups ---
+    paginator = Paginator(logs, 50)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
+    grouped = {cat: [] for cat in LOG_CATEGORY_ORDER}
+    for log in page_obj:
+        log.category = _log_category(log.action)
+        log.detail_items = _log_detail_items(log.details)
+        grouped[log.category].append(log)
+    grouped_logs = [(cat, entries) for cat, entries in grouped.items() if entries]
+
     context = {
+        'tab': 'tickets',
         'logs': page_obj,
-        'action_choices': ['created', 'status_changed', 'assigned', 'unassigned', 'commented', 'remote_session_requested', 'remote_session_status_change'],
+        'grouped_logs': grouped_logs,
+        'action_choices': sorted(LOG_CATEGORY_MAP.keys()),
+        'category_choices': LOG_CATEGORY_ORDER[:-1],  # exclude 'Other' from the filter
+        'is_admin_tier': is_admin_tier,
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'partials/audit_log.html', context)
@@ -1511,6 +1611,47 @@ def reports_dashboard(request):
         'date_range_label': date_range_label,
     }
     return render(request, 'dashboards/reports.html', context)
+
+
+@login_required
+def reports_ticket_list(request):
+    """Deep-link target for the Reports dashboard's org-wide KPI cards
+    (Open Tickets / Backlog) — there's no other view that lists tickets
+    across the whole org (existing list views are queue/requester-scoped),
+    so this reuses the same department-scoping rule as reports_dashboard."""
+    user = request.user
+    if user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return HttpResponse(status=403)
+
+    if user.role == 'TEAM_LEAD':
+        team_members = User.objects.filter(department=user.department, role='AGENT')
+        ticket_filter = Q(assigned_to__in=team_members) | Q(requester__in=team_members)
+    else:
+        ticket_filter = Q()
+
+    kpi = request.GET.get('kpi', 'open')
+    open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
+
+    if kpi == 'backlog':
+        tickets = Ticket.objects.filter(
+            ticket_filter, status__in=open_statuses,
+            created_at__lt=timezone.now() - timedelta(days=7)
+        )
+        heading = 'Backlog (open more than 7 days)'
+    else:
+        tickets = Ticket.objects.filter(ticket_filter, status__in=open_statuses)
+        heading = 'Open Tickets'
+    tickets = tickets.order_by('-created_at')
+
+    paginator = Paginator(tickets, 20)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    context = {
+        'tickets': page_obj,
+        'heading': heading,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'dashboards/reports_ticket_list.html', context)
 
 # ==========================================================================
 # EXTERNAL CRON TRIGGERS (SLA & CLEANUP)

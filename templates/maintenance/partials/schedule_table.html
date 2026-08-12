@@ -65,6 +65,11 @@
                             <span class="text-sm" style="color: var(--color-text-primary);">
                                 {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
                             </span>
+                            {% if schedule.additional_assignees.all %}
+                            <span class="text-xs block" style="color: var(--color-text-secondary);">
+                                +{{ schedule.additional_assignees.count }} more
+                            </span>
+                            {% endif %}
                         {% else %}
                             <span class="text-xs" style="color: var(--color-text-secondary);">Unassigned</span>
                         {% endif %}
@@ -125,7 +130,7 @@
                             
                             {# Update Status - Only assigned IT or Admin/Team Lead #}
                             {% if schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
-                                {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' or schedule.assigned_to == user %}
+                                {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' or schedule.assigned_to == user or user in schedule.additional_assignees.all %}
                                     <button onclick="openStatusModal({{ schedule.pk }})"
                                             class="p-1.5 rounded transition hover:bg-black/5"
                                             style="color: var(--color-primary);"

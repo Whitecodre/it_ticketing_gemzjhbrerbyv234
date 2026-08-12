@@ -15,8 +15,15 @@
 
 {% block dashboard_content %}
 <div class="w-full">
-    <h2 class="text-base font-semibold mb-2 text-text-primary">Escalated Tickets</h2>
-    <p class="text-sm text-text-secondary mb-4">These tickets have been escalated due to SLA breach. Please take action.</p>
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background-color: color-mix(in oklch, var(--color-error) 15%, transparent); color: var(--color-error);">
+            {% lucide "alert-triangle" size=18 %}
+        </div>
+        <div>
+            <h2 class="text-base font-semibold text-text-primary">Escalated Tickets <span class="text-text-secondary font-normal">({{ tickets|length }})</span></h2>
+            <p class="text-sm text-text-secondary">These tickets have breached SLA and need immediate attention — reassign to available capacity or return to the pool.</p>
+        </div>
+    </div>
 
     {% if tickets %}
     <div class="dashboard-card p-0 overflow-hidden">
@@ -26,9 +33,10 @@
                     <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assigned To</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">SLA</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Escalated</th>
                         <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
                     </tr>
                 </thead>
@@ -37,14 +45,20 @@
                     <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4">
                             <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
-                            <span class="ml-2 status-chip escalated text-xs">Escalated</span>
                         </td>
                         <td class="py-3 px-4 max-w-xs truncate text-text-primary">{{ ticket.title }}</td>
+                        <td class="py-3 px-4">
+                            <span class="priority-chip
+                                {% if ticket.priority == 'P1' %}critical
+                                {% elif ticket.priority == 'P2' %}high
+                                {% elif ticket.priority == 'P3' %}medium
+                                {% else %}low{% endif %} text-xs">
+                                {{ ticket.get_priority_display }}
+                            </span>
+                        </td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_full_name }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.assigned_to.get_full_name|default:"Unassigned" }}</td>
-                        <td class="py-3 px-4">
-                            <span class="sla-timer danger">Breached</span>
-                        </td>
+                        <td class="py-3 px-4 text-text-secondary text-xs">{{ ticket.updated_at|timesince }} ago</td>
                         <td class="py-3 px-4 text-center">
                             <div class="flex items-center justify-center gap-2">
                                 <!-- Reassign button -->

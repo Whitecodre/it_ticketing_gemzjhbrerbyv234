@@ -610,6 +610,11 @@
         if (frame && frame.contentWindow) {
             frame.contentWindow.focus();
             frame.contentWindow.print();
+            if (typeof showToast === 'function') {
+                showToast('Print dialog opened — choose "Save as PDF" to export.', 'success');
+            }
+        } else if (typeof showToast === 'function') {
+            showToast('Nothing to print yet — open Export first.', 'error');
         }
     }
 </script>

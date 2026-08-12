@@ -359,6 +359,16 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .kpi-card:hover {
     box-shadow: var(--shadow-md);
 }
+.kpi-card.kpi-link {
+    display: block;
+    text-decoration: none;
+    cursor: pointer;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.kpi-card.kpi-link:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-primary);
+}
 .kpi-value {
     font-family: 'Poppins', 'Segoe UI', sans-serif;
     font-size: 1.875rem; /* 30px */

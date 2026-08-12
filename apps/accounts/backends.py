@@ -2,21 +2,27 @@
 
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 
 User = get_user_model()
 
 class EmailBackend(ModelBackend):
     def authenticate(self, request, username=None, password=None, **kwargs):
-        email = kwargs.get('email') or username
-        if email is None:
+        identifier = kwargs.get('email') or username
+        if identifier is None:
             return None
 
-        email = email.strip()
+        identifier = identifier.strip()
         if password:
             password = password.strip()
         try:
-            user = User.objects.get(email__iexact=email)
-        except User.DoesNotExist:
+            # Accepts either the account's email or its optional username —
+            # both are unique, so an OR lookup can't return more than one
+            # user unless someone's username collides with another's email
+            # (blocked by validation), in which case we bail out rather than
+            # guess which account was meant.
+            user = User.objects.get(Q(email__iexact=identifier) | Q(username__iexact=identifier))
+        except (User.DoesNotExist, User.MultipleObjectsReturned):
             return None
         if user.check_password(password):
             return user

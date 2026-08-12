@@ -1,3 +1,4 @@
+import re
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm, UserChangeForm, PasswordChangeForm
 from django.core.exceptions import ValidationError
@@ -7,12 +8,12 @@ from django.urls import reverse
 from .models import User, UserProfile
 
 class EmailAuthenticationForm(AuthenticationForm):
-    username = forms.EmailField(
-        label='Email',
-        widget=forms.EmailInput(attrs={'autofocus': True, 'placeholder': 'Email address'})
+    username = forms.CharField(
+        label='Email or Username',
+        widget=forms.TextInput(attrs={'autofocus': True, 'placeholder': 'Email or username'})
     )
     error_messages = {
-        'invalid_login': 'Please enter a correct email and password. Note that both fields may be case‑sensitive.',
+        'invalid_login': 'Please enter a correct email/username and password. Note that both fields may be case‑sensitive.',
         'inactive_unverified': mark_safe(
             'Your email address has not been verified. Please check your inbox for the verification link, or <a href="{resend_link}" class="text-primary underline">request a new verification email</a>.'
         ),
@@ -85,14 +86,35 @@ class RegistrationForm(UserCreationForm):
         return user
 
 class ProfileForm(forms.ModelForm):
+    username = forms.CharField(
+        required=False,
+        min_length=3,
+        max_length=30,
+        help_text='Optional. Lets you log in with a username instead of your email.',
+        widget=forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2', 'placeholder': 'e.g. jdoe'}),
+    )
+
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'avatar']
+        fields = ['first_name', 'last_name', 'username', 'avatar']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
             'last_name': forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
             'avatar': forms.FileInput(attrs={'class': 'hidden'}),
         }
+
+    def clean_username(self):
+        username = self.cleaned_data.get('username', '').strip()
+        if not username:
+            return None
+        if not re.fullmatch(r'[A-Za-z0-9_.]+', username):
+            raise ValidationError('Username can only contain letters, numbers, underscores, and periods.')
+        qs = User.objects.filter(username__iexact=username)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise ValidationError('This username is already taken.')
+        return username
 
 class UserSettingsForm(forms.ModelForm):
     class Meta:

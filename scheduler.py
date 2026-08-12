@@ -29,6 +29,11 @@ def process_sla():
         import traceback
         traceback.print_exc()
 
+    try:
+        call_command('send_maintenance_reminders', verbosity=0)
+    except Exception as e:
+        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Maintenance reminders failed: {str(e)}')
+
 if __name__ == '__main__':
     print(f'🔄 SLA Scheduler started. Processing every 5 minutes...')
     print(f'📅 Started at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')

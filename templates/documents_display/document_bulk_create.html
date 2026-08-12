@@ -1,0 +1,196 @@
+{# templates/documents_display/document_bulk_create.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Bulk Upload{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% url 'documents_display:dashboard' %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back
+        </a>
+    </div>
+
+    <div class="dashboard-card p-6 shadow-sm">
+        <div class="flex items-center gap-3 mb-6">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "upload-cloud" size=20 %}
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold text-text-primary">Bulk Upload</h2>
+                <p class="text-sm text-text-secondary">Upload several files at once into one category, with the same visibility/access settings applied to all of them.</p>
+            </div>
+        </div>
+
+        {% if messages %}
+        <div class="mb-4 space-y-2">
+            {% for message in messages %}
+            <div class="rounded-lg p-3 text-sm border {% if message.tags == 'error' %}bg-error/10 border-error/30 text-error{% else %}bg-primary/10 border-primary/30 text-primary{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="space-y-5">
+                <!-- Files -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Files <span class="text-error">*</span></label>
+                    <input type="file" name="files" id="bulkFilesInput" multiple required
+                           class="block w-full text-sm text-text-secondary file:mr-4 file:py-2.5 file:px-5 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition cursor-pointer">
+                    <p class="text-xs text-text-secondary mt-1">Each file becomes its own document, titled from its filename (rename individually afterward if needed).</p>
+                    <ul id="bulkFilesList" class="mt-2 space-y-1 text-xs text-text-secondary"></ul>
+                </div>
+
+                <!-- Category -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Category <span class="text-error">*</span></label>
+                    <select name="category" id="bulk_id_category" required
+                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                            onchange="toggleBulkCategoryOther()">
+                        <option value="">-- Select Category --</option>
+                        {% for category in categories %}
+                            <option value="{{ category.pk }}">{{ category.name }}</option>
+                        {% endfor %}
+                        <option value="OTHER">+ Add Custom Category</option>
+                    </select>
+                    <div id="bulk_category_other_container" class="mt-2 hidden">
+                        <input type="text" name="category_other" id="bulk_category_other"
+                               class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                               placeholder="Enter custom category...">
+                        <p class="text-xs text-text-secondary mt-1">Custom category will be created and applied to this whole batch.</p>
+                    </div>
+                </div>
+
+                <!-- Document Date -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Document Date</label>
+                    <input type="date" name="document_date" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                </div>
+
+                <!-- Visibility -->
+                <div>
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Visibility</label>
+                    <select name="visibility" id="bulkVisibility" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        {% for value, label in visibility_choices %}
+                            <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-xs text-text-secondary mt-1">Applies to every file in this batch.</p>
+                </div>
+
+                <!-- Public permissions (only for PUBLIC) -->
+                <div id="bulkPublicPermissionsGroup" class="flex items-center gap-6">
+                    <label class="flex items-center gap-2 text-sm text-text-primary">
+                        <input type="checkbox" name="public_can_edit" class="rounded border-border text-primary focus:ring-primary"> Everyone can edit
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-text-primary">
+                        <input type="checkbox" name="public_can_download" class="rounded border-border text-primary focus:ring-primary"> Everyone can download
+                    </label>
+                </div>
+
+                <!-- Department permission matrix (only for RESTRICTED) -->
+                <div id="bulkDepartmentAccessGroup" class="hidden">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Department Permissions</label>
+                    <p class="text-xs text-text-secondary mb-2">Tick "Access" to grant a department read access to every document in this batch, plus optionally Edit and/or Download.</p>
+                    {{ dept_formset.management_form }}
+                    <div class="overflow-x-auto rounded-lg border border-border">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b text-left text-text-secondary border-border">
+                                    <th class="px-3 py-2 font-medium">Department</th>
+                                    <th class="px-3 py-2 font-medium">Access</th>
+                                    <th class="px-3 py-2 font-medium">Edit</th>
+                                    <th class="px-3 py-2 font-medium">Download</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in department_rows %}
+                                <tr class="border-b last:border-0 border-border">
+                                    <td class="px-3 py-2 text-text-primary">{{ row.label }}</td>
+                                    <td class="px-3 py-2">{{ row.form.department }}{{ row.form.grant }}</td>
+                                    <td class="px-3 py-2">{{ row.form.can_edit }}</td>
+                                    <td class="px-3 py-2">{{ row.form.can_download }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-border">
+                <a href="{% url 'documents_display:dashboard' %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
+                <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "upload-cloud" size=16 %} Upload All
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function toggleBulkCategoryOther() {
+        const select = document.getElementById('bulk_id_category');
+        const container = document.getElementById('bulk_category_other_container');
+        const input = document.getElementById('bulk_category_other');
+        if (!select || !container || !input) return;
+        if (select.value === 'OTHER') {
+            container.classList.remove('hidden');
+            input.required = true;
+            input.focus();
+        } else {
+            container.classList.add('hidden');
+            input.required = false;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const visibility = document.getElementById('bulkVisibility');
+        const publicGroup = document.getElementById('bulkPublicPermissionsGroup');
+        const departmentGroup = document.getElementById('bulkDepartmentAccessGroup');
+        function toggleGroups() {
+            publicGroup.classList.toggle('hidden', visibility.value !== 'PUBLIC');
+            departmentGroup.classList.toggle('hidden', visibility.value !== 'RESTRICTED');
+        }
+        visibility.addEventListener('change', toggleGroups);
+        toggleGroups();
+
+        document.querySelectorAll('#bulkDepartmentAccessGroup tbody tr').forEach(function(row) {
+            const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+            const accessBox = checkboxes[0];
+            const editBox = checkboxes[1];
+            const downloadBox = checkboxes[2];
+            [editBox, downloadBox].forEach(function(box) {
+                box.addEventListener('change', function() {
+                    if (box.checked) accessBox.checked = true;
+                });
+            });
+        });
+
+        const filesInput = document.getElementById('bulkFilesInput');
+        const filesList = document.getElementById('bulkFilesList');
+        filesInput.addEventListener('change', function() {
+            filesList.innerHTML = '';
+            Array.from(filesInput.files).forEach(function(f) {
+                const li = document.createElement('li');
+                li.textContent = f.name;
+                filesList.appendChild(li);
+            });
+        });
+    });
+</script>
+{% endblock %}

@@ -19,8 +19,27 @@ from .models import MaintenanceSchedule, MaintenanceActivityLog
 from .forms import MaintenanceScheduleForm, MaintenanceStatusForm, MaintenanceConfirmForm
 from apps.accounts.models import User
 from apps.common.utils import send_email_via_brevo
+from apps.common.models import Notification
 
 logger = logging.getLogger(__name__)
+
+
+def notify_maintenance_assignees(schedule, message):
+    """In-app notification for the primary assignee and any additional
+    personnel on a schedule — the existing email helpers only ever reach
+    schedule.assigned_to, so this is the only place additional_assignees
+    hear about anything."""
+    recipients = list(schedule.additional_assignees.all())
+    if schedule.assigned_to:
+        recipients.append(schedule.assigned_to)
+    url = reverse('maintenance:detail', kwargs={'pk': schedule.pk})
+    for recipient in {r.pk: r for r in recipients}.values():
+        Notification.objects.create(
+            recipient=recipient,
+            message=message,
+            url=url,
+            type=Notification.Type.GENERAL,
+        )
 
 def get_user_role(request):
     """Helper to get user's active role name."""
@@ -82,7 +101,12 @@ def schedule_list(request):
     department = request.GET.get('department', '')
     status = request.GET.get('status', '')
     month = request.GET.get('month', '')
-    
+    mine = request.GET.get('mine') == '1'
+
+    if mine:
+        schedules = schedules.filter(
+            Q(assigned_to=request.user) | Q(additional_assignees=request.user)
+        ).distinct()
     if department:
         schedules = schedules.filter(department=department)
     if status:
@@ -130,6 +154,7 @@ def schedule_list(request):
         'selected_department': department,
         'selected_status': status,
         'selected_month': month,
+        'mine': mine,
         'sidebar_template': get_sidebar_template(request.user),
         'user_role': get_user_role(request)
     }
@@ -150,6 +175,7 @@ def schedule_create(request):
         if form.is_valid():
             schedule = form.save(commit=False)
             schedule.save()
+            form.save_m2m()
 
             # Set checklist items
             schedule.checklist_items = form.cleaned_data.get('checklist_items', [])
@@ -161,6 +187,7 @@ def schedule_create(request):
             # Send email to assigned IT personnel
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
+            notify_maintenance_assignees(schedule, f'🔧 You were assigned to maintenance: "{schedule.title}" ({schedule.scheduled_date}).')
 
             messages.success(request, f'Maintenance schedule "{schedule.title}" created successfully.')
 
@@ -220,6 +247,7 @@ def schedule_edit(request, pk):
             # Send email if assigned_to changed
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
+            notify_maintenance_assignees(schedule, f'🔧 Maintenance schedule updated: "{schedule.title}" ({schedule.scheduled_date}).')
 
             messages.success(request, f'Maintenance schedule "{schedule.title}" updated successfully.')
 
@@ -288,7 +316,7 @@ def schedule_update_status(request, pk):
     
     # Security: Only assigned IT or admin can update status
     role = request.user.get_active_role()
-    if not (role and role.name in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']) and schedule.assigned_to != request.user:
+    if not (role and role.name in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']) and not schedule.is_assigned_to(request.user):
         return HttpResponse(status=403)
     
     form = MaintenanceStatusForm(request.POST)
@@ -398,7 +426,8 @@ def schedule_confirm(request, pk):
         # Send confirmation email to IT personnel
         if schedule.assigned_to:
             send_confirmation_email(schedule, request)
-        
+        notify_maintenance_assignees(schedule, f'✅ "{schedule.title}" was confirmed complete by {request.user.get_full_name()}.')
+
         messages.success(request, f'Maintenance "{schedule.title}" confirmed successfully.')
         
         if request.headers.get('HX-Request'):

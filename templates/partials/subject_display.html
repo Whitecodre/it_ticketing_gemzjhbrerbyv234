@@ -1,1 +1,19 @@
-<span id="subjectDisplay" class="text-xs flex-1 truncate text-text-primary">{{ ticket.title }}</span>
+{% load lucide %}
+<div id="ticketTitleWrapper" class="flex items-center gap-1.5 min-w-0 flex-1">
+    <h2 class="text-sm sm:text-base font-semibold truncate text-text-primary" id="subjectDisplay">{{ ticket.title }}</h2>
+    {% if is_agent %}
+    <button type="button" class="btn-ghost p-1 shrink-0" onclick="toggleSubjectEdit(this)" data-tooltip="Edit subject" aria-label="Edit subject">
+        {% lucide "pencil" size=12 %}
+    </button>
+    <form class="hidden items-center gap-1 flex-1 min-w-0" id="subjectEditForm"
+          hx-post="{% url 'tickets:edit_subject' ticket.pk %}"
+          hx-target="#ticketTitleWrapper"
+          hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="text" name="title" value="{{ ticket.title }}" required
+               class="flex-1 min-w-0 text-sm rounded-lg border py-1 px-2 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <button type="submit" class="btn-primary text-xs px-2 py-1 rounded shrink-0">Save</button>
+        <button type="button" class="btn-ghost text-xs px-2 py-1 rounded shrink-0" onclick="toggleSubjectEdit(this)">Cancel</button>
+    </form>
+    {% endif %}
+</div>

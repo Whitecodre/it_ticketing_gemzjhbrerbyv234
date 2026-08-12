@@ -110,7 +110,25 @@
                     Only IT staff members are shown.
                 </p>
             </div>
-            
+
+            {# Additional Personnel #}
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2 text-text-primary">Additional Personnel</label>
+                <div class="rounded-lg border border-border bg-background p-3">
+                    <p class="text-xs text-text-secondary mb-2">Anyone else working on this schedule besides the primary assignee above.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {% for person in it_users %}
+                        <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition">
+                            <input type="checkbox" name="additional_assignees" value="{{ person.pk }}"
+                                   class="rounded border-border text-primary focus:ring-primary flex-shrink-0"
+                                   {% if form.additional_assignees.value and person.pk in form.additional_assignees.value %}checked{% endif %}>
+                            <span class="truncate">{{ person.get_full_name|default:person.email }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
             {# Checklist (optional) #}
             <div class="mb-4">
                 <label class="block text-sm font-medium mb-2 text-text-primary">

@@ -2,7 +2,7 @@
 {% load static %}
 {% load lucide %}
 
-{% block dashboard_title %}Audit Log{% endblock %}
+{% block dashboard_title %}Logs{% endblock %}
 {% block page_title_area %}{% endblock %}
 {% block role_label %}{{ request.user.get_role_display }}{% endblock %}
 {% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
@@ -16,7 +16,11 @@
 
     {# Header #}
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-        <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Audit Log</h2>
+        <div>
+            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Logs</h2>
+            <p class="text-xs text-text-secondary mt-0.5">Everything the system has recorded, grouped by area.</p>
+        </div>
+        {% if tab == 'tickets' %}
         <div class="flex flex-wrap gap-2">
             <button onclick="exportAudit('csv')" class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
                 {% lucide "file-text" size=14 %} CSV
@@ -28,62 +32,59 @@
                 {% lucide "file-spreadsheet" size=14 %} Excel
             </button>
         </div>
+        {% endif %}
     </div>
 
-    {# Filters #}
-    <div class="flex flex-wrap items-center gap-2 mb-4">
-        <select id="actionFilter" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                onchange="filterAudit()">
-            <option value="">All Actions</option>
-            {% for action in action_choices %}
-                <option value="{{ action }}">{{ action|title }}</option>
-            {% endfor %}
-        </select>
-        <input type="text" id="ticketFilter" placeholder="Search ticket number…"
-               class="w-40 text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-               onkeyup="filterAudit()">
-        <button onclick="filterAudit()" class="btn-primary text-xs px-3 py-1.5 rounded-lg">Apply</button>
-        <button onclick="resetFilters()" class="btn-ghost text-xs px-3 py-1.5 rounded-lg">Reset</button>
+    {# Tabs #}
+    {% if is_admin_tier %}
+    <div class="flex gap-1 mb-4 border-b" style="border-color: var(--color-border);">
+        <a href="{% url 'tickets:audit_log' %}?tab=tickets"
+           class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition"
+           style="{% if tab == 'tickets' %}border-color: var(--color-primary); color: var(--color-primary);{% else %}border-color: transparent; color: var(--color-text-secondary);{% endif %}">
+            {% lucide "ticket" size=14 class="inline h-3.5 w-3.5 mr-1" %} Ticket Activity
+        </a>
+        <a href="{% url 'tickets:audit_log' %}?tab=system"
+           class="px-4 py-2 text-sm font-medium border-b-2 -mb-px transition"
+           style="{% if tab == 'system' %}border-color: var(--color-primary); color: var(--color-primary);{% else %}border-color: transparent; color: var(--color-text-secondary);{% endif %}">
+            {% lucide "shield" size=14 class="inline h-3.5 w-3.5 mr-1" %} System (Impersonation)
+        </a>
     </div>
+    {% endif %}
 
-    {# Table #}
+    {% if tab == 'system' %}
+    {# ==================== SYSTEM / IMPERSONATION LOG ==================== #}
     <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b" style="border-color: var(--color-border);">
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Time</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actor</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Details</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Started</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Admin</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Impersonated</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Reason</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ended</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for log in logs %}
+                    {% for entry in system_logs %}
                     <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
-                        <td class="py-3 px-4 text-text-secondary whitespace-nowrap text-xs">{{ log.created_at|date:"M d, H:i" }}</td>
-                        <td class="py-3 px-4">
-                            {% if log.ticket %}
-                            <a href="{% url 'tickets:detail' log.ticket.pk %}" class="font-mono text-xs text-primary hover:underline">
-                                {{ log.ticket.number }}
-                            </a>
+                        <td class="py-3 px-4 text-text-secondary whitespace-nowrap text-xs">{{ entry.started_at|date:"M d, Y H:i" }}</td>
+                        <td class="py-3 px-4 text-text-primary text-xs">{{ entry.admin.get_full_name|default:entry.admin.email }}</td>
+                        <td class="py-3 px-4 text-text-primary text-xs">{{ entry.target_user.get_full_name|default:entry.target_user.email }}</td>
+                        <td class="py-3 px-4 text-text-secondary text-xs">{{ entry.reason }}</td>
+                        <td class="py-3 px-4 text-xs">
+                            {% if entry.ended_at %}
+                                <span class="text-text-secondary">{{ entry.ended_at|date:"M d, Y H:i" }}</span>
                             {% else %}
-                            <span class="text-xs text-text-secondary">—</span>
+                                <span class="text-xs px-2 py-0.5 rounded-full" style="background-color: color-mix(in oklch, var(--color-warning) 15%, transparent); color: var(--color-warning);">Active / not ended</span>
                             {% endif %}
                         </td>
-                        <td class="py-3 px-4">
-                            <span class="text-xs px-3 py-1 rounded-full border border-border text-text-secondary">{{ log.action|title }}</span>
-                        </td>
-                        <td class="py-3 px-4 text-text-secondary text-xs">{{ log.actor.get_full_name|default:"System" }}</td>
-                        <td class="py-3 px-4 max-w-xs truncate text-text-secondary text-xs">{{ log.details|truncatechars:100 }}</td>
                     </tr>
                     {% empty %}
                     <tr>
                         <td colspan="5" class="text-center py-8">
-                            <span class="text-3xl block mb-2">📋</span>
-                            <p class="text-text-secondary text-sm">No audit entries found.</p>
-                            <p class="text-text-secondary text-xs">Try adjusting your filters.</p>
+                            <span class="text-3xl block mb-2">🛡️</span>
+                            <p class="text-text-secondary text-sm">No impersonation events recorded.</p>
                         </td>
                     </tr>
                     {% endfor %}
@@ -91,6 +92,122 @@
             </table>
         </div>
     </div>
+
+    {% if system_logs.has_other_pages %}
+    <div class="pagination-bar" style="margin-top: 1rem;">
+        <span class="pagination-summary">
+            Showing <strong>{{ system_logs.start_index }}–{{ system_logs.end_index }}</strong> of <strong>{{ system_logs.paginator.count }}</strong> entries
+        </span>
+        <div class="pagination-controls">
+            <button class="pagination-step{% if not system_logs.has_previous %} is-disabled{% endif %}"
+                    {% if system_logs.has_previous %}onclick="goToPage({{ system_logs.previous_page_number }})"{% else %}disabled{% endif %}>
+                {% lucide "chevron-left" size=14 %} Prev
+            </button>
+            <button class="pagination-step{% if not system_logs.has_next %} is-disabled{% endif %}"
+                    {% if system_logs.has_next %}onclick="goToPage({{ system_logs.next_page_number }})"{% else %}disabled{% endif %}>
+                Next {% lucide "chevron-right" size=14 %}
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    {# ==================== TICKET ACTIVITY LOG (grouped) ==================== #}
+
+    {# Filters #}
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+        <select id="categoryFilter" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                onchange="filterAudit()">
+            <option value="">All Categories</option>
+            {% for cat in category_choices %}
+                <option value="{{ cat }}" {% if request.GET.category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <select id="actionFilter" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                onchange="filterAudit()">
+            <option value="">All Actions</option>
+            {% for action in action_choices %}
+                <option value="{{ action }}" {% if request.GET.action == action %}selected{% endif %}>{{ action|title }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" id="ticketFilter" placeholder="Search ticket number…" value="{{ request.GET.ticket|default:'' }}"
+               class="w-40 text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+               onkeyup="filterAudit()">
+        <button onclick="filterAudit()" class="btn-primary text-xs px-3 py-1.5 rounded-lg">Apply</button>
+        <button onclick="resetFilters()" class="btn-ghost text-xs px-3 py-1.5 rounded-lg">Reset</button>
+    </div>
+
+    {# Grouped sections #}
+    {% if grouped_logs %}
+    <div class="space-y-4">
+        {% for category, entries in grouped_logs %}
+        <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+            <button type="button" class="log-group-toggle w-full flex items-center justify-between px-4 py-3"
+                    onclick="toggleLogGroup(this)">
+                <span class="flex items-center gap-2 text-sm font-semibold" style="color: var(--color-text-primary);">
+                    {% lucide "folder" size=14 class="text-primary" %} {{ category }}
+                    <span class="text-xs font-normal px-2 py-0.5 rounded-full border border-border text-text-secondary">{{ entries|length }}</span>
+                </span>
+                <span class="log-group-chevron">{% lucide "chevron-down" size=16 %}</span>
+            </button>
+            <div class="log-group-body">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-t border-b" style="border-color: var(--color-border);">
+                                <th class="text-left py-2 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Time</th>
+                                <th class="text-left py-2 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
+                                <th class="text-left py-2 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
+                                <th class="text-left py-2 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actor</th>
+                                <th class="text-left py-2 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in entries %}
+                            <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                                <td class="py-3 px-4 text-text-secondary whitespace-nowrap text-xs">{{ log.created_at|date:"M d, H:i" }}</td>
+                                <td class="py-3 px-4">
+                                    {% if log.ticket %}
+                                    <a href="{% url 'tickets:detail' log.ticket.pk %}" class="font-mono text-xs text-primary hover:underline">
+                                        {{ log.ticket.number }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-xs text-text-secondary">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="py-3 px-4">
+                                    <span class="text-xs px-3 py-1 rounded-full border border-border text-text-secondary">{{ log.action|title }}</span>
+                                </td>
+                                <td class="py-3 px-4 text-text-secondary text-xs">{{ log.actor.get_full_name|default:"System" }}</td>
+                                <td class="py-3 px-4 text-xs">
+                                    {% if log.detail_items %}
+                                    <div class="flex flex-col gap-0.5">
+                                        {% for label, value in log.detail_items %}
+                                        <span class="text-text-secondary"><strong class="text-text-primary font-medium">{{ label }}:</strong> {{ value }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <span class="text-text-secondary">—</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px] flex items-center justify-center">
+        <div class="text-center py-8">
+            <span class="text-3xl block mb-2">📋</span>
+            <p class="text-text-secondary text-sm">No log entries found.</p>
+            <p class="text-text-secondary text-xs">Try adjusting your filters.</p>
+        </div>
+    </div>
+    {% endif %}
 
     {# Pagination #}
     {% if logs.has_other_pages %}
@@ -119,25 +236,35 @@
         </div>
     </div>
     {% endif %}
+    {% endif %}
 </div>
+
+<style>
+    .log-group-toggle { cursor: pointer; background: none; border: none; }
+    .log-group-chevron { transition: transform 0.2s ease; color: var(--color-text-secondary); }
+    .log-group-toggle.is-collapsed .log-group-chevron { transform: rotate(-90deg); }
+    .log-group-body { overflow: hidden; }
+    .log-group-toggle.is-collapsed + .log-group-body { display: none; }
+</style>
 {% endblock %}
 
 {% block scripts %}
 {{ block.super }}
 <script>
     function filterAudit() {
+        const category = document.getElementById('categoryFilter').value;
         const action = document.getElementById('actionFilter').value;
         const ticket = document.getElementById('ticketFilter').value;
         const params = new URLSearchParams();
+        params.set('tab', 'tickets');
+        if (category) params.set('category', category);
         if (action) params.set('action', action);
         if (ticket) params.set('ticket', ticket);
         window.location.href = "{% url 'tickets:audit_log' %}?" + params.toString();
     }
 
     function resetFilters() {
-        document.getElementById('actionFilter').value = '';
-        document.getElementById('ticketFilter').value = '';
-        window.location.href = "{% url 'tickets:audit_log' %}";
+        window.location.href = "{% url 'tickets:audit_log' %}?tab=tickets";
     }
 
     function exportAudit(format) {
@@ -150,6 +277,10 @@
         const params = new URLSearchParams(window.location.search);
         params.set('page', page);
         window.location.href = "{% url 'tickets:audit_log' %}?" + params.toString();
+    }
+
+    function toggleLogGroup(btn) {
+        btn.classList.toggle('is-collapsed');
     }
 </script>
 {% endblock %}

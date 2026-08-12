@@ -348,8 +348,10 @@ class DocumentViewerPreviewRegenerationTests(TestCase):
         mock_gen.assert_not_called()
 
 
-class DocumentBulkPermissionsTests(TestCase):
-    """Tests for the bulk permissions admin page."""
+class DocumentBulkCreateTests(TestCase):
+    """Tests for the bulk-upload admin page (replaces the old standalone
+    bulk-permissions screen — department grants for a batch are applied at
+    upload time instead)."""
 
     def setUp(self):
         self.admin = User.objects.create_user(
@@ -360,52 +362,37 @@ class DocumentBulkPermissionsTests(TestCase):
             email='legal@example.com', password='TestPass123!',
             first_name='Legal', last_name='Person', department='LEGAL', role=User.Role.END_USER,
         )
-        self.recipient = User.objects.create_user(
-            email='newhire@example.com', password='TestPass123!',
-            first_name='New', last_name='Hire', department='HR', role=User.Role.END_USER,
-        )
         self.category = DisplayCategory.objects.create(name='Policies')
-        self.doc_a = DisplayDocument.objects.create(
-            title='Doc A', category=self.category, file=make_pdf(name='a.pdf'),
-            created_by=self.admin, visibility=DisplayDocument.Visibility.RESTRICTED,
-        )
-        self.doc_b = DisplayDocument.objects.create(
-            title='Doc B', category=self.category, file=make_pdf(name='b.pdf'),
-            created_by=self.admin, visibility=DisplayDocument.Visibility.RESTRICTED,
-        )
-        self.doc_untouched = DisplayDocument.objects.create(
-            title='Doc Untouched', category=self.category, file=make_pdf(name='c.pdf'),
-            created_by=self.admin, visibility=DisplayDocument.Visibility.RESTRICTED,
-        )
-        # Pre-existing grant on an unrelated department, to prove the bulk
-        # action doesn't touch grants it wasn't told about.
-        DocumentDepartmentAccess.objects.create(document=self.doc_a, department='IT', can_download=True)
         self.client = Client()
 
     def test_non_admin_denied(self):
         self.client.login(email='legal@example.com', password='TestPass123!')
-        response = self.client.get(reverse('documents_display:document_permissions'))
+        response = self.client.get(reverse('documents_display:document_bulk_create'))
         self.assertNotEqual(response.status_code, 200)
 
-    def test_bulk_department_grant_applies_to_selected_documents_only(self):
+    def test_bulk_upload_creates_one_document_per_file_with_shared_grants(self):
         self.client.login(email='admin@example.com', password='TestPass123!')
         data = {
-            'document_ids': [self.doc_a.pk, self.doc_b.pk],
+            'files': [make_pdf(name='a.pdf'), make_pdf(name='b.pdf')],
+            'category': self.category.pk,
+            'visibility': DisplayDocument.Visibility.RESTRICTED,
         }
         data.update(dept_formset_post_data({'LEGAL': {'grant': True, 'can_download': True}}))
-        response = self.client.post(reverse('documents_display:document_permissions'), data)
+        response = self.client.post(reverse('documents_display:document_bulk_create'), data)
         self.assertEqual(response.status_code, 302)
 
-        for doc in (self.doc_a, self.doc_b):
+        docs = DisplayDocument.objects.filter(category=self.category, is_deleted=False)
+        self.assertEqual(docs.count(), 2)
+        self.assertEqual(set(docs.values_list('title', flat=True)), {'a', 'b'})
+        for doc in docs:
             access = DocumentDepartmentAccess.objects.get(document=doc, department='LEGAL')
             self.assertTrue(access.can_download)
             self.assertFalse(access.can_edit)
 
-        # Untouched document got nothing.
-        self.assertFalse(DocumentDepartmentAccess.objects.filter(document=self.doc_untouched, department='LEGAL').exists())
-        # Pre-existing IT grant on doc_a survives unchanged.
-        it_access = DocumentDepartmentAccess.objects.get(document=self.doc_a, department='IT')
-        self.assertTrue(it_access.can_download)
+    def test_permissions_url_no_longer_exists(self):
+        self.client.login(email='admin@example.com', password='TestPass123!')
+        with self.assertRaises(Exception):
+            reverse('documents_display:document_permissions')
 
 
 class ShareDocumentFormTests(TestCase):

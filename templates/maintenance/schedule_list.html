@@ -9,8 +9,8 @@
     <div class="flex items-center gap-3">
         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "wrench" size=19 %}</span>
         <div>
-            <h1 class="text-lg font-semibold" style="color: var(--color-text-primary);">Maintenance schedule</h1>
-            <p class="text-sm text-text-secondary">Plan, assign, and track planned maintenance work.</p>
+            <h1 class="text-lg font-semibold" style="color: var(--color-text-primary);">{% if mine %}My Maintenance Tasks{% else %}Maintenance schedule{% endif %}</h1>
+            <p class="text-sm text-text-secondary">{% if mine %}Schedules you're assigned to — update their status as work progresses.{% else %}Plan, assign, and track planned maintenance work.{% endif %}</p>
         </div>
     </div>
     <div class="flex flex-wrap items-center gap-2">

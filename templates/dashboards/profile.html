@@ -69,6 +69,12 @@
                                class="block w-full rounded-lg border py-2.5 px-4 text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
                         <p class="text-xs mt-1 text-text-secondary">Email cannot be changed here. Contact support if needed.</p>
                     </div>
+
+                    <div>
+                        <label for="id_username" class="block text-sm font-medium mb-1 text-text-primary">Username <span class="text-text-secondary font-normal">(optional)</span></label>
+                        {{ form.username }}
+                        <p class="text-xs mt-1 text-text-secondary">Set a unique username to log in with it instead of your email — your email still works too.</p>
+                    </div>
                 </div>
 
                 {# Right: Avatar #}
@@ -231,7 +237,7 @@
     {% endif %}
 
     {# ==================== PREFERENCES SECTION ==================== #}
-    <div class="dashboard-card shadow-sm p-6">
+    {% comment %} <div class="dashboard-card shadow-sm p-6">
         <h2 class="text-lg font-semibold mb-4" style="color: var(--color-text-primary);">Preferences</h2>
 
         <form method="post" id="settingsForm">
@@ -283,7 +289,7 @@
                 </button>
             </div>
         </form>
-    </div>
+    </div> {% endcomment %}
 
     {# ==================== PUSH NOTIFICATIONS SECTION ==================== #}
     <div class="dashboard-card shadow-sm p-6">

@@ -71,6 +71,28 @@
     </div>
 </div>
 
+{# ========== SECTION: KNOWLEDGE BASE ========== #}
+<div class="mt-2">
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+            data-section="kb-section"
+            style="color: var(--color-text-secondary);">
+        <span class="section-icon">{% lucide "book-open" size=16 %}</span>
+        <span>Knowledge Base</span>
+        <span class="section-chevron ml-auto transition-transform duration-200">
+            {% lucide "chevron-down" size=14 %}
+        </span>
+    </button>
+    <div id="kb-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
+        <a href="{% url 'kb:portal' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/kb/' in request.path and not '/kb/manage' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "book-open" size=16 class="h-4 w-4" %}</span>
+            <span>Browse Articles</span>
+        </a>
+    </div>
+</div>
+
 {# ========== SECTION: DOCUMENT DISPLAY ========== #}
 <div class="mt-2">
     <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"

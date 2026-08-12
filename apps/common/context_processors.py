@@ -20,13 +20,25 @@ def impersonation_context(request):
         'impersonation_expired': False,
     }
 
+    def _parse_expiry(value):
+        """The banner's `date:"H:i"` filter needs a real datetime, but this
+        value comes off the session/middleware as a plain ISO string — so
+        without parsing it here, the filter silently rendered nothing and
+        the banner never showed an expiry time at all."""
+        if not value:
+            return None
+        try:
+            return timezone.datetime.fromisoformat(value)
+        except (TypeError, ValueError):
+            return None
+
     # Prefer the data added by the middleware for the current request.
     if getattr(request, 'is_impersonating', False):
         data = getattr(request, 'impersonation_data', {})
         context['is_impersonating'] = True
         context['impersonation_target'] = data.get('target_user')
         context['impersonation_reason'] = data.get('reason')
-        context['impersonation_expires'] = data.get('expires_at')
+        context['impersonation_expires'] = _parse_expiry(data.get('expires_at'))
         context['impersonation_original'] = data.get('original_user')
         return context
 
@@ -46,7 +58,7 @@ def impersonation_context(request):
         context['is_impersonating'] = True
         context['impersonation_target'] = impersonate_data.get('target_user_email')
         context['impersonation_reason'] = impersonate_data.get('reason')
-        context['impersonation_expires'] = expires_at
+        context['impersonation_expires'] = _parse_expiry(expires_at)
         context['impersonation_original'] = impersonate_data.get('original_user_email')
 
     return context

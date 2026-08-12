@@ -69,6 +69,17 @@ class User(AbstractUser):
 
     email = models.EmailField(_('email address'), unique=True)
 
+    # Optional alternate login identifier — set by the user themselves from
+    # their profile. When present, it can be used interchangeably with email
+    # to log in (see apps.accounts.backends.EmailBackend).
+    username = models.CharField(
+        max_length=30,
+        unique=True,
+        null=True,
+        blank=True,
+        help_text=_('Optional. Lets you log in with a username instead of your email.'),
+    )
+
     # ================================================================
     # KEEP EXISTING ROLE SYSTEM (Backward Compatible)
     # ================================================================

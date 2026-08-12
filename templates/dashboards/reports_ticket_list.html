@@ -1,0 +1,54 @@
+{% extends "base_dashboard.html" %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ heading }}{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex items-center gap-3 mb-4">
+        <a href="{% url 'tickets:reports' %}" class="btn-ghost btn-icon" aria-label="Back to Reports">
+            {% lucide "arrow-left" size=18 %}
+        </a>
+        <div>
+            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">{{ heading }}</h2>
+            <p class="text-xs text-text-secondary">{{ tickets.paginator.count }} ticket{{ tickets.paginator.count|pluralize }}</p>
+        </div>
+    </div>
+
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
+        {% if tickets %}
+            {% include "partials/ticket_table.html" %}
+        {% else %}
+            <div class="text-center py-8">
+                <span class="text-3xl block mb-2">✅</span>
+                <p class="text-text-secondary text-sm">Nothing here right now.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if tickets.has_other_pages %}
+    <div class="pagination-bar" style="margin-top: 1rem;">
+        <span class="pagination-summary">
+            Showing <strong>{{ tickets.start_index }}–{{ tickets.end_index }}</strong> of <strong>{{ tickets.paginator.count }}</strong> tickets
+        </span>
+        <div class="pagination-controls">
+            <a class="pagination-step{% if not tickets.has_previous %} is-disabled{% endif %}"
+               href="?{% if request.GET.kpi %}kpi={{ request.GET.kpi }}&{% endif %}page={{ tickets.previous_page_number }}">
+                {% lucide "chevron-left" size=14 %} Prev
+            </a>
+            <a class="pagination-step{% if not tickets.has_next %} is-disabled{% endif %}"
+               href="?{% if request.GET.kpi %}kpi={{ request.GET.kpi }}&{% endif %}page={{ tickets.next_page_number }}">
+                Next {% lucide "chevron-right" size=14 %}
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

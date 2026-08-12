@@ -1,6 +1,7 @@
 # apps/common/utils.py
 import json, requests
 import base64
+import html as html_lib
 from django.conf import settings
 from pywebpush import webpush, WebPushException
 from django.core.mail import EmailMultiAlternatives
@@ -76,9 +77,14 @@ def send_email_via_brevo(to_email, subject, html_content, from_email=None, templ
     # If template_data is provided, use it for variable substitution
     if template_data:
         html_content = render_to_string(html_content, template_data)
-        plain_text = strip_tags(html_content)
-    else:
-        plain_text = strip_tags(html_content)
+
+    # Django auto-escapes template variables (e.g. a password or name
+    # containing '&', "'", etc. renders as '&amp;'/'&#x27;' in the HTML).
+    # strip_tags() only removes tags, so without unescaping first, the
+    # plain-text alternative would show those literal HTML entities instead
+    # of the real characters — corrupting anything a recipient copies from
+    # a text-preferring email client (most visibly, login passwords).
+    plain_text = html_lib.unescape(strip_tags(html_content))
 
     try:
         msg = EmailMultiAlternatives(subject, plain_text, from_email, [to_email])

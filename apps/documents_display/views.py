@@ -17,6 +17,7 @@ from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDe
 from .forms import DisplayDocumentForm, DepartmentAccessFormSet, build_department_access_initial, ShareDocumentForm
 from apps.accounts.models import User
 from apps.common.utils import send_email_via_brevo
+from apps.common.models import Notification
 from .utils import generate_preview_for_document
 from apps.tickets.views import get_sidebar_template
 
@@ -301,7 +302,11 @@ def document_delete(request, slug):
     document.deleted_by = request.user
     document.deleted_at = timezone.now()
     document.save()
-    
+
+    # Revoke any still-active shares so their links immediately show a clear
+    # "no longer available" message instead of quietly dangling and 404ing.
+    document.shares.filter(revoked_at__isnull=True).update(revoked_at=timezone.now())
+
     messages.success(request, f'Document "{document.title}" has been deleted.')
     return redirect('documents_display:dashboard')
 
@@ -501,6 +506,14 @@ def document_share(request, slug):
             )
             success, _result = _send_document_share_email(request, share)
             label = _share_recipient_label(share)
+            if recipient:
+                Notification.objects.create(
+                    sender=request.user,
+                    recipient=recipient,
+                    message=f'📄 {request.user.get_full_name()} shared "{document.title}" with you.',
+                    url=reverse('documents_display:document_share_open', args=[share.token]),
+                    type=Notification.Type.GENERAL,
+                )
             if success:
                 messages.success(request, f'"{document.title}" shared with {label}.')
             else:
@@ -575,14 +588,21 @@ def document_share_external(request, token):
     Scoped to external_email shares only: an internal share's token must
     not work here, or it would bypass document_share_open's "log in as the
     intended recipient" check."""
-    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False, document__is_deleted=False)
+    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False)
 
-    if not share.is_active:
+    if share.document.is_deleted or not share.is_active:
         return _external_share_denied_response(share)
 
     if share.accepted_at is None:
         share.accepted_at = timezone.now()
         share.save(update_fields=['accepted_at'])
+        if share.shared_by_id:
+            Notification.objects.create(
+                recipient=share.shared_by,
+                message=f'👀 {share.external_email} opened the external link you shared for "{share.document.title}".',
+                url=reverse('documents_display:document_share', args=[share.document.slug]),
+                type=Notification.Type.GENERAL,
+            )
 
     document = share.document
     context = {
@@ -600,8 +620,8 @@ def document_share_external_serve(request, token):
     """Inline file serving for the external share viewer - mirrors
     document_serve_file, but keyed on the share token instead of a
     slug + logged-in user's is_viewable_by()."""
-    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False, document__is_deleted=False)
-    if not share.is_active:
+    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False)
+    if share.document.is_deleted or not share.is_active:
         return _permission_denied_response()
 
     document = share.document
@@ -634,8 +654,8 @@ def document_share_external_serve(request, token):
 def document_share_external_download(request, token):
     """Download for an externally-shared document, gated on the share's
     can_download flag rather than an authenticated user's permissions."""
-    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False, document__is_deleted=False)
-    if not share.is_active:
+    share = get_object_or_404(DocumentShare, token=token, external_email__isnull=False)
+    if share.document.is_deleted or not share.is_active:
         return _permission_denied_response()
     if not share.can_download:
         return _permission_denied_response('This link does not allow downloading.')
@@ -649,53 +669,79 @@ def document_share_external_download(request, token):
 
 @login_required
 @document_admin_required
-def document_permissions(request):
-    """Bulk permissions: apply department access grants across many selected
-    documents in one action. Purely additive - only creates/updates grants
-    for what's explicitly checked in this submission; existing grants on the
-    selected documents for departments left unchecked here are left
-    untouched (unlike the single-document edit form, which replaces that one
-    document's whole grant set). Per-user sharing (internal or external) is
-    single-document only, via the Share button on each document."""
-    documents = DisplayDocument.objects.filter(is_deleted=False).select_related('category').order_by('category__display_order', 'title')
-
+def document_bulk_create(request):
+    """Bulk upload: select multiple files at once, apply one shared
+    category/visibility/department-access set to all of them, and create
+    one DisplayDocument per file (title taken from each filename, editable
+    afterward via the normal single-document edit form). Replaces the old
+    standalone bulk-permissions screen — per-document department grants are
+    already available on the regular create/edit form for the single-file
+    case; this is only for applying the same grants across a whole batch at
+    upload time."""
     if request.method == 'POST':
-        document_ids = request.POST.getlist('document_ids')
-        selected_documents = list(documents.filter(pk__in=document_ids))
+        files = request.FILES.getlist('files')
+        category_id = request.POST.get('category')
+        category_other = request.POST.get('category_other', '').strip()
+        document_date = request.POST.get('document_date') or None
+        visibility = request.POST.get('visibility', DisplayDocument.Visibility.PUBLIC)
+        public_can_edit = request.POST.get('public_can_edit') == 'on'
+        public_can_download = request.POST.get('public_can_download') == 'on'
         dept_formset = DepartmentAccessFormSet(request.POST, initial=build_department_access_initial())
 
-        if not selected_documents:
-            messages.error(request, 'Select at least one document.')
-        elif dept_formset.is_valid():
-            documents_touched = set()
-            dept_grants_set = 0
-            for row in dept_formset:
-                if not row.cleaned_data.get('grant'):
-                    continue
-                department = row.cleaned_data['department']
-                can_edit = row.cleaned_data['can_edit']
-                can_download = row.cleaned_data['can_download']
-                for document in selected_documents:
-                    DocumentDepartmentAccess.objects.update_or_create(
-                        document=document,
-                        department=department,
-                        defaults={'can_edit': can_edit, 'can_download': can_download},
-                    )
-                    documents_touched.add(document.pk)
-                    dept_grants_set += 1
+        if category_id == 'OTHER' and category_other:
+            category, _created = DisplayCategory.objects.get_or_create(name=category_other)
+        else:
+            category = DisplayCategory.objects.filter(pk=category_id).first() if category_id else None
 
-            messages.success(request, f'Updated permissions on {len(documents_touched)} document(s): {dept_grants_set} department grant(s) set.')
-            return redirect('documents_display:document_permissions')
+        if not files:
+            messages.error(request, 'Select at least one file to upload.')
+        elif category_id == 'OTHER' and not category_other:
+            messages.error(request, 'Enter a name for the custom category.')
+        elif not category:
+            messages.error(request, 'Choose a category for this batch.')
+        elif not dept_formset.is_valid():
+            messages.error(request, 'Please fix the department access grants below.')
+        else:
+            grants = [
+                {
+                    'department': row.cleaned_data['department'],
+                    'can_edit': row.cleaned_data['can_edit'],
+                    'can_download': row.cleaned_data['can_download'],
+                }
+                for row in dept_formset if row.cleaned_data.get('grant')
+            ]
+            created = []
+            for f in files:
+                title = os.path.splitext(f.name)[0]
+                document = DisplayDocument.objects.create(
+                    title=title,
+                    category=category,
+                    file=f,
+                    document_date=document_date,
+                    visibility=visibility,
+                    public_can_edit=public_can_edit,
+                    public_can_download=public_can_download,
+                    created_by=request.user,
+                )
+                DocumentDepartmentAccess.objects.bulk_create([
+                    DocumentDepartmentAccess(document=document, **grant) for grant in grants
+                ])
+                generate_preview_for_document(document)
+                created.append(document)
+
+            messages.success(request, f'Uploaded {len(created)} document(s) to "{category.name}".')
+            return redirect('documents_display:category_detail', slug=category.slug)
     else:
         dept_formset = DepartmentAccessFormSet(initial=build_department_access_initial())
 
     context = {
-        'documents': documents,
+        'categories': DisplayCategory.objects.filter(is_active=True).order_by('display_order', 'name'),
         'department_rows': [
             {'label': label, 'form': row}
             for (code, label), row in zip(User.DEPARTMENT_CHOICES, dept_formset)
         ],
         'dept_formset': dept_formset,
+        'visibility_choices': DisplayDocument.Visibility.choices,
         'sidebar_template': get_sidebar_template(request.user),
     }
-    return render(request, 'documents_display/document_permissions.html', context)
+    return render(request, 'documents_display/document_bulk_create.html', context)

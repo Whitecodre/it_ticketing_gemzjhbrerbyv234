@@ -32,6 +32,7 @@
                        hx-trigger="keyup changed delay:300ms"
                        hx-target="#userTableContainer"
                        hx-swap="innerHTML"
+                       hx-include="#roleFilter,#departmentFilter"
                        name="q">
             </div>
         </div>
@@ -48,7 +49,8 @@
                 class="text-sm rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                 hx-get="{% url 'accounts:admin_users' %}"
                 hx-target="#userTableContainer"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML"
+                hx-include="#searchInput,#departmentFilter">
             <option value="">All Roles</option>
             {% for value, label in role_choices %}
                 <option value="{{ value }}" {% if role_filter == value %}selected{% endif %}>{{ label }}</option>
@@ -58,7 +60,8 @@
                 class="text-sm rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                 hx-get="{% url 'accounts:admin_users' %}"
                 hx-target="#userTableContainer"
-                hx-swap="innerHTML">
+                hx-swap="innerHTML"
+                hx-include="#searchInput,#roleFilter">
             <option value="">All Departments</option>
             {% for value, label in department_choices %}
                 <option value="{{ value }}" {% if department_filter == value %}selected{% endif %}>{{ label }}</option>
@@ -174,14 +177,14 @@
                     <label class="block text-xs font-medium mb-2 text-text-secondary">Additional Roles</label>
                     <div class="rounded-lg border border-border bg-background p-3">
                         <p class="text-xs text-text-secondary mb-2">Select additional roles for this user. The primary role is automatically included.</p>
-                        <div class="grid grid-cols-2 gap-2" id="createRolesCheckboxes">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="createRolesCheckboxes">
                             {% for role in all_roles %}
                             <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition role-checkbox">
-                                <input type="checkbox" name="selected_roles" value="{{ role.name }}" 
-                                       class="rounded border-border text-primary focus:ring-primary additional-role-checkbox"
+                                <input type="checkbox" name="selected_roles" value="{{ role.name }}"
+                                       class="rounded border-border text-primary focus:ring-primary additional-role-checkbox flex-shrink-0"
                                        data-role-name="{{ role.name }}">
-                                <span>{{ role.display_name }}</span>
-                                <span class="text-[0.45rem] text-text-secondary ml-auto">P{{ role.priority }}</span>
+                                <span class="truncate">{{ role.display_name }}</span>
+                                <span class="text-[0.45rem] text-text-secondary ml-auto flex-shrink-0">P{{ role.priority }}</span>
                             </label>
                             {% endfor %}
                         </div>
@@ -197,17 +200,16 @@
                     <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Temporary Password</span>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium mb-1 text-text-secondary">Password <span class="text-error">*</span></label>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Password</label>
                     <div class="relative">
-                        <input type="password" name="password" id="CreatePassword" placeholder="Min 8 characters" required minlength="8"
-                               class="w-full rounded-lg border py-2 px-3 pr-10 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <input type="text" id="CreatePassword" readonly disabled
+                               class="w-full rounded-lg border py-2 px-3 pr-10 text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
                         <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
-                                onclick="togglePasswordVisibility('CreatePassword', 'createEyeIcon', 'createEyeOffIcon')">
-                            <span id="createEyeIcon">{% lucide "eye" size=16 class="h-4 w-4" %}</span>
-                            <span id="createEyeOffIcon" class="hidden">{% lucide "eye-off" size=16 class="h-4 w-4" %}</span>
+                                onclick="regenerateCreatePasswordPreview()" title="Generate a new preview">
+                            {% lucide "refresh-cw" size=16 class="h-4 w-4" %}
                         </button>
                     </div>
-                    <p class="text-[0.5rem] text-text-secondary mt-1">User will be prompted to change this on first login.</p>
+                    <p class="text-[0.5rem] text-text-secondary mt-1">A secure random password is generated automatically when the account is created — it can’t be edited here. It, along with a login link, will be emailed directly to the user.</p>
                 </div>
             </div>
 
@@ -325,14 +327,14 @@
                     <label class="block text-xs font-medium mb-2 text-text-secondary">Additional Roles</label>
                     <div class="rounded-lg border border-border bg-background p-3">
                         <p class="text-xs text-text-secondary mb-2">Select additional roles for this user. The primary role is automatically included.</p>
-                        <div class="grid grid-cols-2 gap-2" id="editRolesCheckboxes">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="editRolesCheckboxes">
                             {% for role in all_roles %}
                             <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition role-checkbox">
-                                <input type="checkbox" name="selected_roles" value="{{ role.name }}" 
-                                       class="rounded border-border text-primary focus:ring-primary additional-role-checkbox"
+                                <input type="checkbox" name="selected_roles" value="{{ role.name }}"
+                                       class="rounded border-border text-primary focus:ring-primary additional-role-checkbox flex-shrink-0"
                                        data-role-name="{{ role.name }}">
-                                <span>{{ role.display_name }}</span>
-                                <span class="text-[0.45rem] text-text-secondary ml-auto">P{{ role.priority }}</span>
+                                <span class="truncate">{{ role.display_name }}</span>
+                                <span class="text-[0.45rem] text-text-secondary ml-auto flex-shrink-0">P{{ role.priority }}</span>
                             </label>
                             {% endfor %}
                         </div>

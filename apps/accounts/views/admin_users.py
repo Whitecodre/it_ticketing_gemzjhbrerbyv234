@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from django.views.decorators.http import require_POST
 from django.contrib.auth import get_user_model
+from django.core.paginator import Paginator
 from django.db.models import Q
 from apps.accounts.models import Role
 
@@ -36,11 +37,15 @@ def admin_user_list(request):
     if department_filter:
         users = users.filter(department=department_filter)
 
+    users = users.order_by('first_name', 'last_name')
+    paginator = Paginator(users, 15)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
     # Dynamic sidebar for admin vs superadmin
     sidebar_template = 'partials/sidebar_admin.html' if request.user.role == 'ADMIN' else 'partials/sidebar_superadmin.html'
 
     context = {
-        'users': users,
+        'users': page_obj,
         'query': query,
         'role_filter': role_filter,
         'department_filter': department_filter,

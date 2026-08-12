@@ -41,6 +41,11 @@
 
     {# ========== DATE RANGE FILTER ========== #}
     <div class="dashboard-card p-4">
+        <div class="flex flex-wrap items-center gap-1.5 mb-3">
+            <button type="button" class="btn-outline text-xs px-3 py-1 rounded-full" onclick="applyPresetRange(7)">Last 7 days</button>
+            <button type="button" class="btn-outline text-xs px-3 py-1 rounded-full" onclick="applyPresetRange(30)">Last 30 days</button>
+            <button type="button" class="btn-outline text-xs px-3 py-1 rounded-full" onclick="applyPresetRange(90)">Last 90 days</button>
+        </div>
         <div class="flex flex-wrap items-end gap-3">
             <div>
                 <label class="block text-xs font-medium text-text-secondary mb-1">Start Date</label>
@@ -92,30 +97,30 @@
                 <p class="kpi-value" style="color: var(--color-info);">{{ mttr_minutes }}<span class="text-xs font-normal text-text-secondary"> min</span></p>
                 <p class="kpi-trend up">Average resolution time</p>
             </div>
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-error);">
+            <a href="{% url 'tickets:reports_ticket_list' %}?kpi=backlog" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-error);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Backlog</p>
                     {% lucide "alert-circle" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-error);">{{ backlog }}<span class="text-xs font-normal text-text-secondary"> tickets</span></p>
                 <p class="kpi-trend down">Older than 7 days</p>
-            </div>
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-primary);">
+            </a>
+            <a href="{% url 'tickets:reports_ticket_list' %}?kpi=open" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-primary);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Open Tickets</p>
                     {% lucide "inbox" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-primary);">{{ open_total }}</p>
                 <p class="kpi-trend up">Currently active</p>
-            </div>
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
+            </a>
+            <a href="{% url 'tickets:sla_management' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-warning);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">SLA Policies</p>
                     {% lucide "sliders-horizontal" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-warning);">{{ sla_data|length }}</p>
                 <p class="kpi-trend up">Active policies</p>
-            </div>
+            </a>
         </div>
     </div>
 
@@ -127,38 +132,38 @@
             <span class="text-xs text-text-secondary">({{ total_assets|default:0 }} total assets)</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-accent);">
+            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-accent);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Asset Requests</p>
                     {% lucide "package" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-accent);">{{ total_asset_requests|default:0 }}</p>
                 <p class="kpi-trend up">Total requests</p>
-            </div>
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-success);">
+            </a>
+            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-success);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Fulfilled</p>
                     {% lucide "check-circle" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-success);">{{ fulfilled_asset_requests|default:0 }}</p>
                 <p class="kpi-trend up">Completed</p>
-            </div>
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-primary);">
+            </a>
+            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-primary);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Fulfillment Rate</p>
                     {% lucide "percent" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-primary);">{{ fulfillment_rate|default:0 }}%</p>
                 <p class="kpi-trend up">Success rate</p>
-            </div>
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-warning);">
+            </a>
+            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-warning);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Avg. Fulfillment Time</p>
                     {% lucide "clock" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-warning);">{{ avg_fulfillment_hours|default:0 }}<span class="text-xs font-normal text-text-secondary"> hrs</span></p>
                 <p class="kpi-trend up">From request to fulfillment</p>
-            </div>
+            </a>
         </div>
     </div>
 
@@ -409,6 +414,17 @@
         const url = new URL(window.location.href);
         url.searchParams.delete('start_date');
         url.searchParams.delete('end_date');
+        window.location.href = url.toString();
+    }
+
+    function applyPresetRange(days) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - (days - 1));
+        const toISO = (d) => d.toISOString().slice(0, 10);
+        const url = new URL(window.location.href);
+        url.searchParams.set('start_date', toISO(start));
+        url.searchParams.set('end_date', toISO(end));
         window.location.href = url.toString();
     }
 

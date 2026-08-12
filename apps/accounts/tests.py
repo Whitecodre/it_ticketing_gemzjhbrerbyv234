@@ -248,7 +248,7 @@ class LoginTests(TestCase):
             'password': 'WrongPass123!'
         })
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Please enter a correct email and password')
+        self.assertContains(response, 'Please enter a correct email/username and password')
 
     def test_login_failure_nonexistent_user(self):
         """Test login with nonexistent user."""
@@ -257,7 +257,7 @@ class LoginTests(TestCase):
             'password': 'TestPass123!'
         })
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Please enter a correct email and password')
+        self.assertContains(response, 'Please enter a correct email/username and password')
 
     def test_login_inactive_user(self):
         """Test login with inactive user."""
