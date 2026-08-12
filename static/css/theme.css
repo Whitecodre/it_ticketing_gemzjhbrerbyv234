@@ -1375,6 +1375,14 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
    impersonation banner, so admins impersonating a user on mobile would get
    a sidebar sized for a header that wasn't actually there. */
 @media (max-width: 767px) {
+    /* Closed (off-screen) is the base rule so a fresh page load — before
+       global.js has run at all — renders the sidebar closed by default,
+       instead of open-with-no-backdrop for a beat on every navigation.
+       `.sidebar-mobile-open` is the single class JS adds/removes to open
+       it; previously this used `#sidebar:not(.-translate-x-full)`, which
+       *always* matched (and always won on specificity) whenever that class
+       was absent — i.e. on every fresh page load, before JS had a chance
+       to add it — making "open" the actual default. */
     #sidebar {
         width: 280px !important;
         min-width: 280px !important;
@@ -1382,7 +1390,7 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
         transition: transform 0.3s ease;
     }
 
-    #sidebar:not(.-translate-x-full) {
+    #sidebar.sidebar-mobile-open {
         transform: translateX(0);
     }
 

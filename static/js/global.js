@@ -29,14 +29,14 @@ function updateMobileSidebar() {
     const toggleIcon = document.getElementById('toggleIcon');
     
     if (mobileSidebarOpen) {
-        sidebar.classList.remove('-translate-x-full');
+        sidebar.classList.add('sidebar-mobile-open');
         backdrop.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
         if (toggleIcon) {
             toggleIcon.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-5 w-5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
         }
     } else {
-        sidebar.classList.add('-translate-x-full');
+        sidebar.classList.remove('sidebar-mobile-open');
         backdrop.classList.add('hidden');
         document.body.style.overflow = '';
         if (toggleIcon) {
@@ -87,7 +87,7 @@ window.addEventListener('resize', function() {
         if (window.innerWidth >= 768) {
             const sidebar = document.getElementById('sidebar');
             const backdrop = document.getElementById('sidebarBackdrop');
-            sidebar.classList.remove('-translate-x-full');
+            sidebar.classList.remove('sidebar-mobile-open');
             backdrop.classList.add('hidden');
             document.body.style.overflow = '';
             mobileSidebarOpen = false;
@@ -95,7 +95,7 @@ window.addEventListener('resize', function() {
         } else {
             const sidebar = document.getElementById('sidebar');
             const backdrop = document.getElementById('sidebarBackdrop');
-            sidebar.classList.add('-translate-x-full');
+            sidebar.classList.remove('sidebar-mobile-open');
             backdrop.classList.add('hidden');
             document.body.style.overflow = '';
             mobileSidebarOpen = false;
@@ -120,12 +120,12 @@ window.addEventListener('resize', function() {
     if (!sidebar) return;
 
     if (window.innerWidth < 768) {
-        sidebar.classList.add('-translate-x-full');
+        sidebar.classList.remove('sidebar-mobile-open');
         if (backdrop) backdrop.classList.add('hidden');
         sidebar.classList.remove('w-0', 'overflow-hidden', 'border-r-0', 'px-0');
         sidebar.classList.add('w-64');
     } else {
-        sidebar.classList.remove('-translate-x-full');
+        sidebar.classList.remove('sidebar-mobile-open');
         updateDesktopSidebar();
     }
 })();

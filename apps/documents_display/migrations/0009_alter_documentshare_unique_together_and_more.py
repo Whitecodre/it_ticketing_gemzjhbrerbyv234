@@ -42,6 +42,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='documentshare',
-            constraint=models.CheckConstraint(condition=models.Q(models.Q(('external_email__isnull', True), ('recipient__isnull', False)), models.Q(('external_email__isnull', False), ('recipient__isnull', True)), _connector='OR'), name='document_share_exactly_one_target'),
+            constraint=models.CheckConstraint(check=models.Q(models.Q(('external_email__isnull', True), ('recipient__isnull', False)), models.Q(('external_email__isnull', False), ('recipient__isnull', True)), _connector='OR'), name='document_share_exactly_one_target'),
         ),
     ]

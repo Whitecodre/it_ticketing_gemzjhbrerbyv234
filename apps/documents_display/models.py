@@ -301,7 +301,7 @@ class DocumentShare(models.Model):
                 name='uniq_document_external_email_share',
             ),
             models.CheckConstraint(
-                condition=(
+                check=(
                     models.Q(recipient__isnull=False, external_email__isnull=True) |
                     models.Q(recipient__isnull=True, external_email__isnull=False)
                 ),
