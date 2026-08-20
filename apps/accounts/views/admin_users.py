@@ -1,5 +1,7 @@
 # apps/accounts/admin_users.py
 
+import logging
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
@@ -9,14 +11,11 @@ from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
 from django.db.models import Q
 from apps.accounts.models import Role
+from apps.common.permissions import is_admin, is_superadmin
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
-
-def is_admin(user):
-    return user.role in ['ADMIN', 'SUPERADMIN']
-
-def is_superadmin(user):
-    return user.role == 'SUPERADMIN'
 
 @login_required
 @user_passes_test(is_admin)
@@ -26,6 +25,13 @@ def admin_user_list(request):
     department_filter = request.GET.get('department', '')
 
     users = User.objects.all()
+
+    # SUPERADMIN is a vendor/support-only role — hide it entirely from
+    # everyone except a Superadmin viewer (accounts, filters, checkboxes).
+    viewer_is_superadmin = is_superadmin(request.user)
+    if not viewer_is_superadmin:
+        users = users.exclude(role='SUPERADMIN')
+
     if query:
         users = users.filter(
             Q(email__icontains=query) |
@@ -44,14 +50,20 @@ def admin_user_list(request):
     # Dynamic sidebar for admin vs superadmin
     sidebar_template = 'partials/sidebar_admin.html' if request.user.role == 'ADMIN' else 'partials/sidebar_superadmin.html'
 
+    role_choices = User.Role.choices
+    all_roles = Role.objects.all().order_by('priority')
+    if not viewer_is_superadmin:
+        role_choices = [choice for choice in role_choices if choice[0] != 'SUPERADMIN']
+        all_roles = all_roles.exclude(name='SUPERADMIN')
+
     context = {
         'users': page_obj,
         'query': query,
         'role_filter': role_filter,
         'department_filter': department_filter,
-        'role_choices': User.Role.choices,
+        'role_choices': role_choices,
         'department_choices': User.DEPARTMENT_CHOICES,
-        'all_roles': Role.objects.all().order_by('priority'),
+        'all_roles': all_roles,
         'sidebar_template': sidebar_template,
     }
 
@@ -74,18 +86,23 @@ def admin_user_create(request):
     # ✅ Only Superadmin can create Superadmin
     if role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can create another Superadmin.'}, status=403)
-    
+
+    # ✅ Only Superadmin can grant Superadmin as an additional role
+    if selected_role_names and 'SUPERADMIN' in selected_role_names and request.user.role != 'SUPERADMIN':
+        return JsonResponse({'error': 'Only a Superadmin can grant the Superadmin role.'}, status=403)
+
     department = request.POST.get('department', '')
-    
-    # ✅ Validate: Support roles only allowed for IT department
-    support_roles = ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
-    if role in support_roles and department != 'IT':
+
+    # ✅ Validate: AGENT/ADMIN/SUPERADMIN only allowed for IT department.
+    # TEAM_LEAD is allowed in any department (departmental approval gate).
+    it_only_roles = ['AGENT', 'ADMIN', 'SUPERADMIN']
+    if role in it_only_roles and department != 'IT':
         return JsonResponse({'error': f'"{role}" role can only be assigned to IT department users.'}, status=400)
-    
-    # ✅ Validate selected roles - only IT department can have support roles
+
+    # ✅ Validate selected roles - only IT department can have IT-only roles
     if selected_role_names:
         for selected_role in selected_role_names:
-            if selected_role in support_roles and department != 'IT':
+            if selected_role in it_only_roles and department != 'IT':
                 return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
     
     # Generate random password
@@ -144,10 +161,17 @@ def admin_user_create(request):
                 user.role = highest_role.name
                 user.save(update_fields=['active_role', 'active_role_id', 'role'])
     else:
+        # No Role rows matched what was selected (e.g. seed_roles hasn't
+        # been run) — clear active_role too, but keep `role` in sync with
+        # it rather than leaving the legacy field pointing at a role the
+        # user no longer actually has, which previously let get_active_role()
+        # (None, since roles is also empty) and the legacy `role` field
+        # disagree for this account until their next explicit switch.
         user.roles.clear()
         user.active_role = None
         user.active_role_id = None
-        user.save(update_fields=['active_role', 'active_role_id'])
+        user.role = role
+        user.save(update_fields=['active_role', 'active_role_id', 'role'])
 
     # Send email with credentials
     from apps.common.utils import send_email_via_brevo
@@ -171,7 +195,7 @@ def admin_user_create(request):
     )
     
     if not success:
-        print(f"Failed to send user creation email: {result}")
+        logger.error(f"Failed to send user creation email: {result}")
     
     return JsonResponse({'status': 'ok', 'user_id': user.pk})
 
@@ -192,16 +216,21 @@ def admin_user_edit(request, pk):
     if new_role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can assign the Superadmin role.'}, status=403)
 
-    # ✅ Validate: Support roles only allowed for IT department
-    support_roles = ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+    # ✅ Only Superadmin can grant Superadmin as an additional role
+    if selected_role_names and 'SUPERADMIN' in selected_role_names and request.user.role != 'SUPERADMIN':
+        return JsonResponse({'error': 'Only a Superadmin can grant the Superadmin role.'}, status=403)
+
+    # ✅ Validate: AGENT/ADMIN/SUPERADMIN only allowed for IT department.
+    # TEAM_LEAD is allowed in any department (departmental approval gate).
+    it_only_roles = ['AGENT', 'ADMIN', 'SUPERADMIN']
     new_department = request.POST.get('department', user.department)
-    
-    if new_role in support_roles and new_department != 'IT':
+
+    if new_role in it_only_roles and new_department != 'IT':
         return JsonResponse({'error': f'"{new_role}" role can only be assigned to IT department users.'}, status=400)
-    
+
     if selected_role_names:
         for selected_role in selected_role_names:
-            if selected_role in support_roles and new_department != 'IT':
+            if selected_role in it_only_roles and new_department != 'IT':
                 return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
 
     new_is_active = request.POST.get('is_active', 'true') == 'true'

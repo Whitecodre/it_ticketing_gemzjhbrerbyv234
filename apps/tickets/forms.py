@@ -1,10 +1,49 @@
 from django import forms
-from .models import Ticket, TicketComment, Asset, AssetCategory
+from .models import Ticket, TicketComment, Asset, AssetCategory, ServiceCategory, Vessel, DiveSystem, JobNumber, Mobilization, AssetProcurementRequest
 from apps.common.models import Category
+from apps.maintenance.models import Vendor
 from django.utils.text import slugify
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+FIELD_CLASS = 'block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+
+
+class VendorSelect(forms.Select):
+    """Plain vendor <select> whose options carry a data-categories
+    attribute (comma-separated AssetCategory pks) so the shared
+    filterVendorSelectByCategory() JS (static/js/global.js) can narrow the
+    list to whichever category a sibling field has selected. A vendor with
+    no categories assigned stays visible under every category. Builds one
+    pk->categories-csv map per render (from the field's queryset, expected
+    to already have .prefetch_related('categories') applied) instead of
+    querying per option."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._categories_by_vendor = None
+
+    def _category_csv(self, vendor_pk):
+        if self._categories_by_vendor is None:
+            self._categories_by_vendor = {}
+            queryset = getattr(self.choices, 'queryset', None)
+            if queryset is not None:
+                for vendor in queryset:
+                    self._categories_by_vendor[str(vendor.pk)] = ','.join(
+                        str(pk) for pk in vendor.categories.values_list('pk', flat=True)
+                    )
+        return self._categories_by_vendor.get(str(vendor_pk), '')
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex=subindex, attrs=attrs)
+        if value not in (None, ''):
+            raw_value = value.value if hasattr(value, 'value') else value
+            csv = self._category_csv(raw_value)
+            if csv:
+                option['attrs']['data-categories'] = csv
+        return option
+
 
 class TicketForm(forms.ModelForm):
     # Override category field to handle "OTHER"
@@ -98,6 +137,212 @@ class TicketForm(forms.ModelForm):
         return cleaned_data
 
 
+class IncidentReportForm(forms.ModelForm):
+    """Reporter-facing incident report form (HDG-IT-FRM-086 Sections 1 & 3).
+
+    Kept separate from TicketForm (used for Service Request) since the two
+    ticket types now collect materially different fields — Incident no
+    longer touches the shared `category`/`impact` fields Service Request
+    still relies on.
+    """
+    incident_category_other = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': FIELD_CLASS,
+            'placeholder': 'Describe the category...',
+            'id': 'incident_category_other',
+        }),
+        label='Custom Incident Category',
+    )
+    how_discovered_other = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': FIELD_CLASS,
+            'placeholder': 'Describe how it was discovered...',
+            'id': 'how_discovered_other',
+        }),
+        label='Custom Discovery Method',
+    )
+
+    class Meta:
+        model = Ticket
+        fields = [
+            'title', 'description', 'urgency', 'incident_datetime',
+            'incident_category', 'business_impact', 'how_discovered',
+            'location_hostname', 'immediate_actions',
+        ]
+        widgets = {
+            'title': forms.TextInput(attrs={
+                'class': FIELD_CLASS,
+                'placeholder': 'Short summary — e.g. VSAT connectivity dropping intermittently',
+            }),
+            'description': forms.Textarea(attrs={
+                'class': FIELD_CLASS,
+                'rows': 5,
+                'placeholder': 'What you observed — error messages, timing, anything unusual.',
+            }),
+            'urgency': forms.Select(attrs={'class': FIELD_CLASS}),
+            'incident_datetime': forms.DateTimeInput(attrs={
+                'class': FIELD_CLASS,
+                'type': 'datetime-local',
+            }),
+            'incident_category': forms.Select(attrs={
+                'class': FIELD_CLASS,
+                'onchange': "toggleOtherField('incident_category')",
+            }),
+            'business_impact': forms.Select(attrs={'class': FIELD_CLASS}),
+            'how_discovered': forms.Select(attrs={
+                'class': FIELD_CLASS,
+                'onchange': "toggleOtherField('how_discovered')",
+            }),
+            'location_hostname': forms.TextInput(attrs={
+                'class': FIELD_CLASS,
+                'placeholder': 'e.g. Bridge, MV Adura or 10.4.2.11',
+            }),
+            'immediate_actions': forms.Textarea(attrs={
+                'class': FIELD_CLASS,
+                'rows': 3,
+                'placeholder': 'Anything already tried before reporting this (optional)',
+            }),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        if cleaned_data.get('incident_category') == Ticket.IncidentCategory.OTHER and not cleaned_data.get('incident_category_other', '').strip():
+            self.add_error('incident_category_other', 'Please describe the incident category.')
+
+        if cleaned_data.get('how_discovered') == Ticket.DiscoveryMethod.OTHER and not cleaned_data.get('how_discovered_other', '').strip():
+            self.add_error('how_discovered_other', 'Please describe how it was discovered.')
+
+        return cleaned_data
+
+
+class ServiceRequestForm(forms.ModelForm):
+    """Reporter-facing Service Request form. Category-specific extra fields
+    (service_request_details) aren't declared here — they're dynamic per
+    ServiceCategory.field_group (see service_request_fields.py) and are
+    validated/extracted separately in the view, since Django forms can't
+    declare a field set that varies per-submission."""
+
+    class Meta:
+        model = Ticket
+        fields = ['title', 'description', 'urgency', 'service_category', 'purpose', 'vessels', 'dive_systems']
+        widgets = {
+            'title': forms.TextInput(attrs={
+                'class': FIELD_CLASS,
+                'placeholder': 'Short summary of the request',
+            }),
+            'description': forms.Textarea(attrs={
+                'class': FIELD_CLASS,
+                'rows': 5,
+                'placeholder': 'Describe the request in detail',
+            }),
+            'urgency': forms.Select(attrs={'class': FIELD_CLASS}),
+            'service_category': forms.Select(attrs={
+                'class': FIELD_CLASS,
+                'onchange': 'onServiceCategoryChange(this)',
+            }),
+            'purpose': forms.TextInput(attrs={
+                'class': FIELD_CLASS,
+                'placeholder': 'Why is this needed?',
+            }),
+            # Rendered by hand in the template as a checkbox list (matches the
+            # "Additional Roles" checkbox pattern used in admin user
+            # management) — nicer UX than a native multi-select box.
+            'vessels': forms.CheckboxSelectMultiple(),
+            'dive_systems': forms.CheckboxSelectMultiple(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['service_category'].queryset = ServiceCategory.objects.filter(is_active=True)
+        self.fields['service_category'].empty_label = '-- Select Service Category --'
+        self.fields['vessels'].queryset = Vessel.objects.filter(is_active=True)
+        self.fields['vessels'].required = False
+        self.fields['dive_systems'].queryset = DiveSystem.objects.filter(is_active=True)
+        self.fields['dive_systems'].required = False
+        self.fields['purpose'].required = True
+
+
+class MobilizationForm(forms.ModelForm):
+    """Admin-facing form for sending a batch of assets out to a job/vessel/
+    dive system. Asset selection itself is handled as raw POST data in the
+    view (a dynamic, HTMX-searched multi-select), not as a form field."""
+
+    # Not a model field — free-text vessel names proposed inline (a vessel
+    # not yet in the admin-curated Vessel list). The view resolves each into
+    # a real Vessel row (is_active=False, proposed_by=user, reused
+    # case-insensitively if already proposed) and adds it to `vessels`,
+    # mirroring JobNumber's existing propose-and-approve pattern. Several
+    # rows can share this field name (same mechanism as the maintenance
+    # app's custom checklist items), so read via getlist in clean().
+    third_party_vessels = forms.CharField(required=False, widget=forms.HiddenInput())
+
+    class Meta:
+        model = Mobilization
+        fields = ['job_number', 'vessels', 'dive_systems', 'expected_return_date', 'notes']
+        widgets = {
+            'job_number': forms.Select(attrs={'class': FIELD_CLASS}),
+            'vessels': forms.CheckboxSelectMultiple(),
+            'dive_systems': forms.CheckboxSelectMultiple(),
+            'expected_return_date': forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}),
+            'notes': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 3, 'placeholder': 'Optional notes...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['job_number'].queryset = JobNumber.objects.filter(is_active=True)
+        self.fields['job_number'].required = False
+        self.fields['job_number'].empty_label = '-- Select Job Number --'
+        self.fields['vessels'].queryset = Vessel.objects.filter(is_active=True)
+        self.fields['vessels'].required = False
+        self.fields['dive_systems'].queryset = DiveSystem.objects.filter(is_active=True)
+        self.fields['dive_systems'].required = False
+
+    def clean_third_party_vessels(self):
+        """Collect every posted third_party_vessels value (one per proposed
+        vessel row) — same multi-value-under-one-name pattern used for the
+        maintenance app's custom checklist items."""
+        names = []
+        if self.data:
+            names = [v.strip() for v in self.data.getlist('third_party_vessels') if v.strip()]
+        seen = set()
+        deduped = []
+        for name in names:
+            key = name.lower()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(name)
+        return deduped
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if (
+            not cleaned_data.get('job_number')
+            and not cleaned_data.get('vessels')
+            and not cleaned_data.get('dive_systems')
+            and not cleaned_data.get('third_party_vessels')
+        ):
+            raise forms.ValidationError('Select at least a job number, vessel, dive system, or third-party vessel.')
+        return cleaned_data
+
+
+class MobilizationItemReturnForm(forms.Form):
+    """Demobilize-one-asset form: condition + notes, POSTed against a MobilizationItem."""
+    return_condition = forms.ChoiceField(
+        choices=Asset.Condition.choices,
+        required=True,
+        widget=forms.Select(attrs={'class': FIELD_CLASS})
+    )
+    return_notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 3, 'placeholder': 'Optional notes...'})
+    )
+
+
 class CommentForm(forms.ModelForm):
     class Meta:
         model = TicketComment
@@ -111,70 +356,66 @@ class CommentForm(forms.ModelForm):
         }
 
 
-# apps/tickets/forms.py - Replace the AssetForm with this updated version
-
 class AssetForm(forms.ModelForm):
-    """Enhanced Asset Form with all new fields."""
-    
-    # ================================================================
-    # EXPLICIT FIELD DECLARATIONS (to control widgets and choices)
-    # ================================================================
-    
-    # Category - explicit ModelChoiceField
-    category = forms.ModelChoiceField(
-        queryset=AssetCategory.objects.all().order_by('name'),
-        required=False,
-        widget=forms.Select(attrs={
-            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-        }),
-        empty_label="-- Select Category --"
-    )
-    
-    asset_type = forms.CharField(
-        max_length=20,
+    """Streamlined Asset Form: identify the asset, where it is, who has it,
+    and whether it's under warranty. Category is the single classification
+    field (replaces the old, disconnected asset_type) and supports adding a
+    new category inline, mirroring TicketForm's category "Other" pattern."""
+
+    # Category - plain Select w/ "+ Add Custom Category" sentinel, resolved
+    # (and created if new) in clean() below.
+    category = forms.CharField(
         required=False,
         widget=forms.Select(attrs={
             'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
         })
     )
-    
+    category_other = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'placeholder': 'Enter new category name...',
+            'id': 'category_other'
+        }),
+        label='New Category'
+    )
+
+    # Location - free text with a datalist of previously-used locations
+    # (populated in the template from the `locations` context var), so
+    # picking an existing one or typing a brand new one both just work.
     location = forms.CharField(
         max_length=200,
         required=False,
-        widget=forms.Select(attrs={
-            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        widget=forms.TextInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'list': 'locationOptions',
+            'placeholder': 'e.g. Warehouse, Rig 4, IT Store Room...'
         })
     )
-    
-    status = forms.CharField(
-        max_length=20,
-        required=False,
-        widget=forms.Select(attrs={
-            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-        })
-    )
-    
-    condition = forms.CharField(
-        max_length=20,
+
+    # Status is a strict workflow enum - no "Other" escape hatch, since
+    # checkout/mobilization/scrap logic all branch on exact status values.
+    status = forms.ChoiceField(
+        choices=Asset.Status.choices,
         required=False,
         widget=forms.Select(attrs={
             'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
         })
     )
 
-    # These three carry sensible model defaults (3 years / 0 years / 6
-    # months) but the underlying model fields aren't blank=True, so the
-    # default ModelForm behavior marked them required — a plain POST that
-    # omits any of them (e.g. a select that didn't get a value selected)
-    # failed validation instead of falling back to the default. required=False
-    # here, with the fallback applied in clean() below.
-    depreciation_years = forms.IntegerField(
+    condition = forms.ChoiceField(
+        choices=Asset.Condition.choices,
         required=False,
         widget=forms.Select(attrs={
             'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
         })
     )
 
+    # The underlying model field isn't blank=True, so the default ModelForm
+    # behavior marks this required - a plain POST that omits it (e.g. a
+    # select that didn't get a value selected) failed validation instead of
+    # falling back to the default. required=False here, fallback in clean().
     warranty_duration_years = forms.IntegerField(
         required=False,
         widget=forms.Select(attrs={
@@ -182,131 +423,92 @@ class AssetForm(forms.ModelForm):
         })
     )
 
-    maintenance_interval_months = forms.IntegerField(
+    # Same required=False + clean() fallback shape as warranty_duration_years
+    # above — only relevant for consumable categories, hidden/unused for
+    # individually-tracked assets, so the field must never block a save.
+    quantity_in_stock = forms.IntegerField(
         required=False,
+        min_value=0,
         widget=forms.NumberInput(attrs={
-            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'min': 0,
         })
     )
 
-    # "Other" fields
-    location_other = forms.CharField(
-        max_length=200,
+    # Optional reorder point for consumables — left blank disables low-stock
+    # alerting for this asset (model field is nullable, not just "0 means
+    # off", so an admin can leave it genuinely unset).
+    low_stock_threshold = forms.IntegerField(
         required=False,
-        widget=forms.TextInput(attrs={
+        min_value=0,
+        widget=forms.NumberInput(attrs={
             'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-            'placeholder': 'Enter custom location...',
-            'id': 'location_other'
-        }),
-        label='Custom Location'
-    )
-    
-    asset_type_other = forms.CharField(
-        max_length=100,
-        required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-            'placeholder': 'Enter custom asset type...',
-            'id': 'asset_type_other'
-        }),
-        label='Custom Asset Type'
-    )
-    
-    status_other = forms.CharField(
-        max_length=100,
-        required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-            'placeholder': 'Enter custom status...',
-            'id': 'status_other'
-        }),
-        label='Custom Status'
+            'min': 0,
+        })
     )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        # Populate select choices
-        self.fields['asset_type'].widget.choices = [('', '-- Select Type --')] + list(Asset.AssetType.choices)
-        self.fields['location'].widget.choices = [('', '-- Select Location --')] + list(Asset.Location.choices)
-        self.fields['status'].widget.choices = [('', '-- Select Status --')] + list(Asset.Status.choices)
-        self.fields['condition'].widget.choices = [('', '-- Select Condition --')] + list(Asset.Condition.choices)
-        
-        # Category queryset is already set above, but we can add additional filtering if needed
-        # The category field is already defined as a ModelChoiceField with the queryset set
-        
-        # Filter assigned_to to active users only
+
+        categories = AssetCategory.objects.all().order_by('name').values_list('id', 'name')
+        self.fields['category'].widget.choices = [('', '-- Select Category --')] + list(categories) + [('OTHER', '+ Add Custom Category')]
+
+        # If editing an asset whose category isn't in the active list for
+        # some reason, pre-select OTHER and pre-fill the name (mirrors
+        # TicketForm's same edit-mode round-trip for categories).
+        instance = kwargs.get('instance')
+        if instance and instance.category_id:
+            category_ids = [c[0] for c in categories]
+            if instance.category_id not in category_ids:
+                self.fields['category'].initial = 'OTHER'
+                self.initial['category_other'] = instance.category.name
+
         if 'assigned_to' in self.fields:
             self.fields['assigned_to'].queryset = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
-        
-        # Set depreciation years choices
-        if 'depreciation_years' in self.fields:
-            self.fields['depreciation_years'].widget.choices = [
-                ('', '-- Select --'),
-                (1, '1 Year'),
-                (2, '2 Years'),
-                (3, '3 Years'),
-                (4, '4 Years'),
-                (5, '5 Years'),
-            ]
-        
-        # Set warranty duration choices
-        if 'warranty_duration_years' in self.fields:
-            self.fields['warranty_duration_years'].widget.choices = [
-                (0, 'None'),
-                (1, '1 Year'),
-                (2, '2 Years'),
-                (3, '3 Years'),
-                (4, '4 Years'),
-                (5, '5 Years'),
-            ]
+
+        if 'renewal_vendor' in self.fields:
+            self.fields['renewal_vendor'].queryset = Vendor.objects.filter(is_active=True).prefetch_related('categories')
+            self.fields['renewal_vendor'].required = False
+            self.fields['renewal_vendor'].empty_label = '-- Select Vendor --'
+
+        self.fields['warranty_duration_years'].widget.choices = [
+            (0, 'None'),
+            (1, '1 Year'),
+            (2, '2 Years'),
+            (3, '3 Years'),
+            (4, '4 Years'),
+            (5, '5 Years'),
+        ]
 
     def clean(self):
         cleaned_data = super().clean()
-        
-        # --- Handle "OTHER" for asset_type ---
-        asset_type = cleaned_data.get('asset_type')
-        asset_type_other = cleaned_data.get('asset_type_other', '').strip()
-        
-        if asset_type == 'OTHER':
-            if asset_type_other:
-                cleaned_data['asset_type'] = asset_type_other
+
+        # --- Handle "OTHER" for category: create/reuse a real AssetCategory ---
+        category = cleaned_data.get('category')
+        category_other = cleaned_data.get('category_other', '').strip()
+
+        if category == 'OTHER':
+            if category_other:
+                category_obj, _ = AssetCategory.objects.get_or_create(name=category_other)
+                cleaned_data['category'] = category_obj
             else:
-                self.add_error('asset_type_other', 'Please enter a custom asset type.')
-        elif not asset_type:
-            cleaned_data['asset_type'] = ''
-        
-        # --- Handle "OTHER" for location ---
-        location = cleaned_data.get('location')
-        location_other = cleaned_data.get('location_other', '').strip()
-        
-        if location == 'OTHER':
-            if location_other:
-                cleaned_data['location'] = location_other
-            else:
-                self.add_error('location_other', 'Please enter a custom location.')
-        elif not location:
-            cleaned_data['location'] = ''
-        
-        # --- Handle "OTHER" for status ---
-        status = cleaned_data.get('status')
-        status_other = cleaned_data.get('status_other', '').strip()
-        
-        if status == 'OTHER':
-            if status_other:
-                cleaned_data['status'] = status_other
-            else:
-                self.add_error('status_other', 'Please enter a custom status.')
-        elif not status:
+                self.add_error('category_other', 'Please enter a new category name.')
+        elif category:
+            try:
+                cleaned_data['category'] = AssetCategory.objects.get(pk=category)
+            except (AssetCategory.DoesNotExist, ValueError):
+                self.add_error('category', 'Please select a valid category.')
+        else:
+            cleaned_data['category'] = None
+
+        if not cleaned_data.get('status'):
             cleaned_data['status'] = Asset.Status.IN_STORE
 
-        # Fall back to the model defaults when these were left blank.
-        if cleaned_data.get('depreciation_years') in (None, ''):
-            cleaned_data['depreciation_years'] = 3
         if cleaned_data.get('warranty_duration_years') in (None, ''):
             cleaned_data['warranty_duration_years'] = 0
-        if cleaned_data.get('maintenance_interval_months') in (None, ''):
-            cleaned_data['maintenance_interval_months'] = 6
+
+        if cleaned_data.get('quantity_in_stock') in (None, ''):
+            cleaned_data['quantity_in_stock'] = 1
 
         return cleaned_data
 
@@ -314,35 +516,29 @@ class AssetForm(forms.ModelForm):
         model = Asset
         fields = [
             # Basic
-            'name', 'category', 'asset_type', 'serial_number', 'model', 
-            'manufacturer', 'location',
-            
-            # Financial
-            'purchase_date', 'purchase_price', 'depreciation_years', 'salvage_value',
-            
-            # Warranty
+            'name', 'category', 'serial_number', 'model',
+            'manufacturer', 'location', 'department', 'quantity_in_stock', 'low_stock_threshold',
+
+            # Purchase & Warranty
+            'purchase_date',
             'warranty_expiry', 'warranty_duration_years', 'warranty_provider', 'warranty_notes',
-            
+
+            # Renewal (software licenses, subscriptions) — only meaningful
+            # when category.is_renewable, hidden/unused otherwise
+            'next_renewal_date', 'renewal_interval_months', 'renewal_cost',
+            'renewal_vendor', 'renewal_reference', 'auto_renews',
+
             # Assignment
             'assigned_to', 'assigned_to_department',
-            
+
             # Status & Condition
             'status', 'condition', 'condition_notes',
-            
-            # Maintenance
-            'last_maintenance', 'next_maintenance', 'maintenance_interval_months', 'maintenance_notes',
-            
-            # Supplier
-            'supplier', 'invoice_number', 'po_number', 'purchase_order',
-            
+
             # Notes
             'notes',
         ]
         widgets = {
             'name': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-            }),
-            'category': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
             'serial_number': forms.TextInput(attrs={
@@ -358,26 +554,29 @@ class AssetForm(forms.ModelForm):
                 'type': 'date',
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
-            'purchase_price': forms.NumberInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'step': '0.01',
-                'placeholder': '0.00'
-            }),
-            'depreciation_years': forms.Select(attrs={
+            'next_renewal_date': forms.DateInput(attrs={
+                'type': 'date',
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
-            'salvage_value': forms.NumberInput(attrs={
+            'renewal_interval_months': forms.NumberInput(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'step': '0.01',
-                'placeholder': '0.00'
+                'min': 1, 'placeholder': 'e.g. 12 for annual'
+            }),
+            'renewal_cost': forms.NumberInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'min': 0, 'step': '0.01'
+            }),
+            'renewal_vendor': VendorSelect(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+            }),
+            'renewal_reference': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'License/subscription/contract number'
             }),
             'warranty_expiry': forms.DateInput(attrs={
                 'type': 'date',
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm bg-gray-100 text-gray-600 cursor-not-allowed focus:outline-none',
                 'readonly': True
-            }),
-            'warranty_duration_years': forms.Select(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
             'warranty_provider': forms.TextInput(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
@@ -395,10 +594,7 @@ class AssetForm(forms.ModelForm):
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
                 'placeholder': 'Department name'
             }),
-            'status': forms.Select(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-            }),
-            'condition': forms.Select(attrs={
+            'department': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
             'condition_notes': forms.Textarea(attrs={
@@ -406,43 +602,54 @@ class AssetForm(forms.ModelForm):
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
                 'placeholder': 'Notes about asset condition...'
             }),
-            'last_maintenance': forms.DateInput(attrs={
-                'type': 'date',
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-            }),
-            'next_maintenance': forms.DateInput(attrs={
-                'type': 'date',
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-            }),
-            'maintenance_interval_months': forms.NumberInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'min': 1,
-                'max': 60
-            }),
-            'maintenance_notes': forms.Textarea(attrs={
-                'rows': 2,
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'placeholder': 'Maintenance notes...'
-            }),
-            'supplier': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'placeholder': 'Supplier/Vendor name'
-            }),
-            'invoice_number': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'placeholder': 'Invoice number'
-            }),
-            'po_number': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'placeholder': 'PO number'
-            }),
-            'purchase_order': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'placeholder': 'Purchase Order number'
-            }),
             'notes': forms.Textarea(attrs={
                 'rows': 3,
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
                 'placeholder': 'General notes about this asset...'
             }),
         }
+
+
+class ProcurementRequestForm(forms.ModelForm):
+    """Record that an item isn't in inventory and is being sourced from a
+    vendor, against either a Service Request ticket or a Mobilization (the
+    view sets whichever one applies). Vendor supports the same free-text
+    propose-and-approve pattern as MobilizationForm.third_party_vessels —
+    an unrecognized name becomes an inactive Vendor pending admin review."""
+
+    new_vendor_name = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': "Vendor not listed? Type a new name..."})
+    )
+
+    class Meta:
+        model = AssetProcurementRequest
+        fields = ['item_name', 'category', 'quantity', 'vendor', 'external_reference', 'expected_arrival_date', 'notes']
+        widgets = {
+            'item_name': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'e.g. Dell Latitude 5440 Laptop'}),
+            'category': forms.Select(attrs={'class': FIELD_CLASS, 'onchange': "filterVendorSelectByCategory(this, document.getElementById('id_vendor'))"}),
+            'quantity': forms.NumberInput(attrs={'class': FIELD_CLASS, 'min': 1}),
+            'vendor': VendorSelect(attrs={'class': FIELD_CLASS}),
+            'external_reference': forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'PMS reference number (optional)'}),
+            'expected_arrival_date': forms.DateInput(attrs={'class': FIELD_CLASS, 'type': 'date'}),
+            'notes': forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 2, 'placeholder': 'Optional notes...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['vendor'].queryset = Vendor.objects.filter(is_active=True).prefetch_related('categories')
+        self.fields['vendor'].required = False
+        self.fields['vendor'].empty_label = '-- Select Vendor --'
+        self.fields['category'].queryset = AssetCategory.objects.all().order_by('name')
+
+    def clean(self):
+        cleaned_data = super().clean()
+        new_vendor_name = cleaned_data.get('new_vendor_name', '').strip()
+        if new_vendor_name and not cleaned_data.get('vendor'):
+            vendor, created = Vendor.objects.get_or_create(
+                name__iexact=new_vendor_name,
+                defaults={'name': new_vendor_name, 'is_active': False}
+            )
+            cleaned_data['vendor'] = vendor
+            cleaned_data['_new_vendor_proposed'] = created
+        return cleaned_data

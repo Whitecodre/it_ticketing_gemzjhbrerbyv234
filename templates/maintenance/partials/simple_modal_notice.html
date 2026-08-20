@@ -1,0 +1,16 @@
+{% load lucide %}
+
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+     onclick="if(event.target === this) this.remove();">
+    <div class="bg-surface rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center"
+         onclick="event.stopPropagation()">
+        <div class="flex h-14 w-14 items-center justify-center rounded-full mx-auto mb-4 bg-warning/10">
+            {% lucide "info" size=28 class="text-warning" %}
+        </div>
+        <p class="text-sm text-text-primary">{{ message }}</p>
+        <button type="button" onclick="this.closest('.fixed').remove()"
+                class="mt-5 px-4 py-2 text-sm rounded-lg border transition border-border text-text-secondary">
+            Close
+        </button>
+    </div>
+</div>

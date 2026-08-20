@@ -58,9 +58,10 @@
                         <td class="py-3 px-4 text-text-secondary">{{ sla.get_resolution_display }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ sla.calendar.name|default:"Default" }}</td>
                         <td class="py-3 px-4 text-right">
-                            <form method="post" action="{% url 'tickets:sla_delete' sla.pk %}" onsubmit="return confirm('Delete this SLA policy?')">
+                            <form method="post" action="{% url 'tickets:sla_delete' sla.pk %}" id="deleteSlaForm{{ sla.pk }}">
                                 {% csrf_token %}
-                                <button class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition" aria-label="Delete SLA">
+                                <button type="button" class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition" aria-label="Delete SLA"
+                                        onclick="confirmDelete('{{ sla.get_priority_display|escapejs }} SLA Policy', 'SLA Policy', function() { document.getElementById('deleteSlaForm{{ sla.pk }}').submit(); })">
                                     {% lucide "trash-2" size=16 %}
                                 </button>
                             </form>
@@ -99,7 +100,7 @@
                     <span class="text-text-secondary text-xs">Holidays: {{ cal.holidays|join:", "|default:"None" }}</span>
                 </div>
                 <button class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition shrink-0"
-                        onclick="document.getElementById('deleteCalForm{{ cal.pk }}').submit()" aria-label="Delete Calendar">
+                        onclick="confirmDelete('{{ cal.name|escapejs }}', 'Business Calendar', function() { document.getElementById('deleteCalForm{{ cal.pk }}').submit(); })" aria-label="Delete Calendar">
                     {% lucide "trash-2" size=16 %}
                 </button>
                 <form id="deleteCalForm{{ cal.pk }}" method="post" action="{% url 'tickets:calendar_delete' cal.pk %}" style="display:none;">
@@ -156,9 +157,10 @@
                         <td class="py-3 px-4 text-text-secondary">{{ rule.get_action_type_display }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ rule.notify_role|default:rule.reassign_to_role|default:"—" }}</td>
                         <td class="py-3 px-4 text-right">
-                            <form method="post" action="{% url 'tickets:rule_delete' rule.pk %}" onsubmit="return confirm('Delete this escalation rule?')">
+                            <form method="post" action="{% url 'tickets:rule_delete' rule.pk %}" id="deleteRuleForm{{ rule.pk }}">
                                 {% csrf_token %}
-                                <button class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition" aria-label="Delete Rule">
+                                <button type="button" class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition" aria-label="Delete Rule"
+                                        onclick="confirmDelete('{{ rule.get_priority_display|escapejs }} Escalation Rule', 'Escalation Rule', function() { document.getElementById('deleteRuleForm{{ rule.pk }}').submit(); })">
                                     {% lucide "trash-2" size=16 %}
                                 </button>
                             </form>

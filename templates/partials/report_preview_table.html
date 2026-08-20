@@ -1,0 +1,83 @@
+{% load lucide %}
+{% load ticket_filters %}
+
+{% if rows %}
+<div id="reportBulkSelectionBar" class="hidden items-center justify-between gap-3 px-4 py-2 bg-primary/5 border-b text-sm" style="border-color: var(--color-border);">
+    <span><strong id="reportSelectedCount">0</strong> selected</span>
+    <button type="button" class="btn-ghost text-xs px-2 py-1 rounded-lg" onclick="clearReportSelection()">Clear selection</button>
+</div>
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b" style="border-color: var(--color-border);">
+                <th class="py-3 px-4 w-8">
+                    <input type="checkbox" id="reportSelectAll" class="rounded border-border text-primary focus:ring-primary" onchange="toggleReportSelectAll(this)">
+                </th>
+                {% for col in columns %}
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap">{{ col }}</th>
+                {% endfor %}
+                <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap">View</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                <td class="py-3 px-4">
+                    <input type="checkbox" class="report-row-checkbox rounded border-border text-primary focus:ring-primary"
+                           value="{{ row|get_item:'_pk' }}" onchange="updateReportSelection()">
+                </td>
+                {% for col in columns %}
+                <td class="py-3 px-4 text-text-primary whitespace-nowrap">{{ row|get_item:col|default:"—" }}</td>
+                {% endfor %}
+                <td class="py-3 px-4 text-right">
+                    <a href="{% url 'tickets:report_record_detail' report_type=report_type pk=row|get_item:'_pk' %}"
+                       class="btn-ghost btn-icon" aria-label="View">
+                        {% lucide "eye" size=16 %}
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if page_obj.has_other_pages %}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ page_obj.start_index }}–{{ page_obj.end_index }}</strong> of <strong>{{ page_obj.paginator.count }}</strong> records
+    </span>
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not page_obj.has_previous %} is-disabled{% endif %}"
+                {% if page_obj.has_previous %}hx-get="{% url 'tickets:report_builder' report_type=report_type %}?{{ base_qs }}&page={{ page_obj.previous_page_number }}"
+                hx-target="#reportPreviewContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
+        </button>
+        <div class="pagination-numbers">
+            {% for page_num in page_obj.paginator.page_range %}
+                {% if page_num == page_obj.number %}
+                <span class="pagination-number is-current">{{ page_num }}</span>
+                {% elif page_num > page_obj.number|add:'-3' and page_num < page_obj.number|add:'3' %}
+                <button class="pagination-number"
+                        hx-get="{% url 'tickets:report_builder' report_type=report_type %}?{{ base_qs }}&page={{ page_num }}"
+                        hx-target="#reportPreviewContainer" hx-swap="innerHTML">{{ page_num }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        <button class="pagination-step{% if not page_obj.has_next %} is-disabled{% endif %}"
+                {% if page_obj.has_next %}hx-get="{% url 'tickets:report_builder' report_type=report_type %}?{{ base_qs }}&page={{ page_obj.next_page_number }}"
+                hx-target="#reportPreviewContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            Next {% lucide "chevron-right" size=14 %}
+        </button>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="flex flex-col items-center justify-center py-16 px-4 text-center">
+    <div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface-secondary/50 mb-3">
+        {% lucide "search-x" size=28 class="text-text-secondary opacity-50" %}
+    </div>
+    <p class="text-sm font-medium" style="color: var(--color-text-primary);">No records match your filters</p>
+    <p class="text-xs mt-1" style="color: var(--color-text-secondary);">Try widening the date range or clearing a filter.</p>
+</div>
+{% endif %}

@@ -40,7 +40,7 @@
         --focus-ring: 0 0 0 3px color-mix(in oklch, var(--color-primary) 35%, transparent);
   }
   html{
-    font-size: 90%;
+    font-size: 85%;
   }
     /* Dark mode (Palette 3 – Premium Enterprise)
        Primary stays in the same teal family as light mode (previously it
@@ -312,6 +312,11 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     .bg-error         { background-color: var(--color-error); }
     .bg-info          { background-color: var(--color-info); }
     .bg-text-secondary { background-color: var(--color-text-secondary); }
+    /* Same gap as bg-primary/10 above: "border" isn't a Tailwind-known
+       color, so bg-border never compiled either — needed for toolbar
+       divider bars (e.g. the KB editor toolbar) that use bg-border on a
+       thin span to draw a vertical separator. */
+    .bg-border { background-color: var(--color-border); }
 
     /* Border colors */
     .border-primary { border-color: var(--color-primary); }

@@ -1,0 +1,313 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load ticket_filters %}
+
+{% block dashboard_title %}System Settings{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full space-y-6">
+
+    <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+            {% lucide "settings" size=20 %}
+        </div>
+        <div>
+            <h2 class="text-base font-semibold text-text-primary">System Settings</h2>
+            <p class="text-xs text-text-secondary mt-0.5">Manage the lists and branding used across the system.</p>
+        </div>
+    </div>
+
+    {# Tabs #}
+    <div class="flex flex-wrap gap-2 border-b" style="border-color: var(--color-border);">
+        {% for r in resources %}
+        <button type="button" class="settings-tab-btn px-4 py-2 text-sm font-medium border-b-2 transition"
+                data-tab="{{ r.config.slug }}"
+                style="{% if forloop.first %}border-color: var(--color-primary); color: var(--color-primary);{% else %}border-color: transparent; color: var(--color-text-secondary);{% endif %}">
+            {{ r.config.label }}
+        </button>
+        {% endfor %}
+        <button type="button" class="settings-tab-btn px-4 py-2 text-sm font-medium border-b-2 transition"
+                data-tab="branding" style="border-color: transparent; color: var(--color-text-secondary);">
+            Branding
+        </button>
+    </div>
+
+    {# Resource tabs #}
+    {% for r in resources %}
+    <div class="settings-tab-panel {% if not forloop.first %}hidden{% endif %}" id="tab-{{ r.config.slug }}">
+        <div class="dashboard-card p-0 overflow-hidden">
+            <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--color-border);">
+                <h3 class="text-sm font-semibold text-text-primary">{{ r.config.label }}</h3>
+                <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                        onclick="openSettingsModal('{{ r.config.slug }}')">
+                    {% lucide "plus" size=14 %} Add {{ r.config.singular_label }}
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b" style="border-color: var(--color-border);">
+                            {% for col_attr, col_label in r.config.list_columns %}
+                            <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">{{ col_label }}</th>
+                            {% endfor %}
+                            <th class="text-right py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in r.rows %}
+                        <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);"
+                            data-pk="{{ row.pk }}"
+                            {% for f in r.config.fields %}data-{{ f.name }}="{{ row|getattr:f.name }}" {% endfor %}>
+                            {% for col_attr, col_label in r.config.list_columns %}
+                            <td class="py-2.5 px-4 text-text-primary">{{ row|getattr:col_attr }}</td>
+                            {% endfor %}
+                            <td class="py-2.5 px-4 text-right">
+                                <button type="button" class="btn-ghost btn-icon" onclick="openSettingsModal('{{ r.config.slug }}', this.closest('tr'))" aria-label="Edit">
+                                    {% lucide "pencil" size=14 %}
+                                </button>
+                                <button type="button" class="btn-ghost btn-icon" onclick="deleteSettingsRow('{{ r.config.slug }}', {{ row.pk }})" aria-label="Delete">
+                                    {% lucide "trash-2" size=14 class="text-error" %}
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="{{ r.config.list_columns|length|add:1 }}" class="py-6 px-4 text-center text-text-secondary text-sm">No {{ r.config.label|lower }} yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    {# Branding tab #}
+    <div class="settings-tab-panel hidden" id="tab-branding">
+        <div class="dashboard-card p-5 max-w-lg">
+            <h3 class="text-sm font-semibold text-text-primary mb-4">Company Branding</h3>
+            <form method="post" action="{% url 'tickets:branding_update' %}" enctype="multipart/form-data" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Company Name</label>
+                    <input type="text" name="company_name" value="{{ client_settings_obj.company_name }}"
+                           class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Logo</label>
+                    {% if client_settings_obj.logo %}
+                    <img src="{{ client_settings_obj.logo.url }}" alt="Current logo" class="h-12 mb-2 rounded">
+                    {% endif %}
+                    <input type="file" name="logo" accept="image/*"
+                           class="block w-full text-sm text-text-secondary file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary">
+                </div>
+                <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save Branding</button>
+            </form>
+        </div>
+    </div>
+
+    {# Shared Add/Edit modal — fields injected per resource by JS #}
+    <div id="settingsModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+         onclick="if(event.target===this) closeSettingsModal()">
+        <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4" style="background-color: var(--color-surface);">
+            <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--color-border);">
+                <h3 class="text-base font-semibold text-text-primary" id="settingsModalTitle">Add</h3>
+                <button type="button" onclick="closeSettingsModal()" class="btn-ghost btn-icon" aria-label="Close">{% lucide "x" size=18 %}</button>
+            </div>
+            <form id="settingsModalForm" class="px-6 py-5 space-y-4">
+                {% csrf_token %}
+                <div id="settingsModalFields" class="space-y-4"></div>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeSettingsModal()" class="btn-ghost text-sm px-4 py-2">Cancel</button>
+                    <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    const SETTINGS_FIELDS = {
+        {% for r in resources %}
+        '{{ r.config.slug }}': [
+            {% for f in r.config.fields %}
+            { name: '{{ f.name }}', label: '{{ f.label|escapejs }}', kind: '{{ f.kind }}', choices: [{% for value, label in f.choices %}['{{ value|escapejs }}', '{{ label|escapejs }}'],{% endfor %}] },
+            {% endfor %}
+        ],
+        {% endfor %}
+    };
+
+    const SETTINGS_SINGULAR_LABELS = {
+        {% for r in resources %}
+        '{{ r.config.slug }}': '{{ r.config.singular_label|escapejs }}',
+        {% endfor %}
+    };
+
+    const SETTINGS_TAB_KEY = 'systemSettingsActiveTab';
+    const SETTINGS_TOAST_KEY = 'systemSettingsPendingToast';
+
+    function switchSettingsTab(tab) {
+        const btn = document.querySelector('.settings-tab-btn[data-tab="' + tab + '"]');
+        const panel = document.getElementById('tab-' + tab);
+        if (!btn || !panel) return false;
+        document.querySelectorAll('.settings-tab-btn').forEach(function (b) {
+            b.style.borderColor = 'transparent';
+            b.style.color = 'var(--color-text-secondary)';
+        });
+        btn.style.borderColor = 'var(--color-primary)';
+        btn.style.color = 'var(--color-primary)';
+        document.querySelectorAll('.settings-tab-panel').forEach(function (p) { p.classList.add('hidden'); });
+        panel.classList.remove('hidden');
+        sessionStorage.setItem(SETTINGS_TAB_KEY, tab);
+        return true;
+    }
+
+    document.querySelectorAll('.settings-tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () { switchSettingsTab(btn.dataset.tab); });
+    });
+
+    // Restore whichever tab was active before the last save/delete (which
+    // reloads the page) or branding form submit — otherwise every action
+    // silently bounces the admin back to the first tab.
+    (function restoreSettingsTab() {
+        const savedTab = sessionStorage.getItem(SETTINGS_TAB_KEY);
+        if (savedTab) switchSettingsTab(savedTab);
+    })();
+
+    // A save/delete reloads the page (or, for branding, does a normal form
+    // POST+redirect), so a toast fired before that would never be seen —
+    // stash it and show it on the page that comes back instead.
+    (function showPendingSettingsToast() {
+        const pending = sessionStorage.getItem(SETTINGS_TOAST_KEY);
+        if (!pending) return;
+        sessionStorage.removeItem(SETTINGS_TOAST_KEY);
+        try {
+            const toast = JSON.parse(pending);
+            if (typeof showToast === 'function') showToast(toast.message, toast.type);
+        } catch (e) { /* ignore malformed/stale entry */ }
+    })();
+
+    // Persist the current tab before the branding form's normal (non-AJAX)
+    // submit navigates away.
+    const brandingForm = document.querySelector('#tab-branding form');
+    if (brandingForm) {
+        brandingForm.addEventListener('submit', function () {
+            sessionStorage.setItem(SETTINGS_TAB_KEY, 'branding');
+        });
+    }
+
+    let activeResource = null;
+    let activePk = null;
+
+    function openSettingsModal(resource, rowEl) {
+        activeResource = resource;
+        activePk = rowEl ? rowEl.dataset.pk : null;
+        const fields = SETTINGS_FIELDS[resource] || [];
+        const container = document.getElementById('settingsModalFields');
+        container.innerHTML = '';
+        const singularLabel = SETTINGS_SINGULAR_LABELS[resource] || resource.replace(/-/g, ' ');
+        document.getElementById('settingsModalTitle').textContent = (activePk ? 'Edit ' : 'Add ') + singularLabel;
+
+        fields.forEach(function (f) {
+            const wrap = document.createElement('div');
+            const currentValue = rowEl ? (rowEl.dataset[f.name] || '') : '';
+            let inputHtml = '';
+            const baseClass = 'block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary';
+            if (f.kind === 'textarea') {
+                inputHtml = `<textarea name="${f.name}" rows="3" class="${baseClass}">${currentValue}</textarea>`;
+            } else if (f.kind === 'checkbox') {
+                const checked = (currentValue === 'True' || currentValue === 'true') ? 'checked' : '';
+                inputHtml = `<label class="flex items-center gap-2 text-sm text-text-primary"><input type="checkbox" name="${f.name}" ${checked} class="rounded border-border text-primary"> ${f.label}</label>`;
+                wrap.innerHTML = inputHtml;
+                container.appendChild(wrap);
+                return;
+            } else if (f.kind === 'select') {
+                let options = f.choices.map(function (c) {
+                    const selected = c[0] === currentValue ? 'selected' : '';
+                    return `<option value="${c[0]}" ${selected}>${c[1]}</option>`;
+                }).join('');
+                inputHtml = `<select name="${f.name}" class="${baseClass}">${options}</select>`;
+            } else if (f.kind === 'multiselect') {
+                const selectedIds = currentValue ? currentValue.split(',') : [];
+                const boxes = f.choices.map(function (c) {
+                    const checked = selectedIds.indexOf(String(c[0])) !== -1 ? 'checked' : '';
+                    return `<label class="flex items-center gap-2 text-sm text-text-primary"><input type="checkbox" name="${f.name}" value="${c[0]}" ${checked} class="rounded border-border text-primary"> ${c[1]}</label>`;
+                }).join('');
+                inputHtml = `<div class="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">${boxes || '<p class="text-xs text-text-secondary">No options yet.</p>'}</div>`;
+            } else {
+                const type = f.kind === 'number' ? 'number' : 'text';
+                inputHtml = `<input type="${type}" name="${f.name}" value="${currentValue}" class="${baseClass}">`;
+            }
+            wrap.innerHTML = `<label class="block text-xs font-medium mb-1 text-text-secondary">${f.label}</label>${inputHtml}`;
+            container.appendChild(wrap);
+        });
+
+        document.getElementById('settingsModalOverlay').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+        document.getElementById('settingsModalOverlay').classList.add('hidden');
+        activeResource = null;
+        activePk = null;
+    }
+
+    function queueSettingsToast(message, type) {
+        sessionStorage.setItem(SETTINGS_TOAST_KEY, JSON.stringify({ message: message, type: type }));
+    }
+
+    document.getElementById('settingsModalForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const wasEdit = !!activePk;
+        const resource = activeResource;
+        const url = activePk
+            ? `/tickets/settings/${activeResource}/${activePk}/update/`
+            : `/tickets/settings/${activeResource}/create/`;
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+            body: formData,
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+              if (result.ok) {
+                  closeSettingsModal();
+                  const label = SETTINGS_SINGULAR_LABELS[resource] || 'Item';
+                  queueSettingsToast(`${label} ${wasEdit ? 'updated' : 'created'} successfully.`, 'success');
+                  sessionStorage.setItem(SETTINGS_TAB_KEY, resource);
+                  window.location.reload();
+              } else if (typeof showToast === 'function') {
+                  showToast(result.data.error || 'Could not save', 'error');
+              }
+          });
+    });
+
+    function deleteSettingsRow(resource, pk) {
+        const label = SETTINGS_SINGULAR_LABELS[resource] || 'Item';
+        confirmDelete(label, label, function () {
+            fetch(`/tickets/settings/${resource}/${pk}/delete/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+            }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+              .then(function (result) {
+                  if (result.ok) {
+                      queueSettingsToast(`${label} deleted successfully.`, 'success');
+                      sessionStorage.setItem(SETTINGS_TAB_KEY, resource);
+                      window.location.reload();
+                  } else if (typeof showToast === 'function') {
+                      showToast(result.data.error || 'Could not delete', 'error');
+                  }
+              });
+        });
+    }
+</script>
+{% endblock %}

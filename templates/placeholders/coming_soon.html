@@ -8,13 +8,13 @@
 {% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
 
 {% block sidebar_nav %}
-    {% if request.user.role == 'AGENT' %}
+    {% if active_role_name == 'AGENT' %}
         {% include "partials/sidebar_agent.html" %}
-    {% elif request.user.role == 'END_USER' %}
+    {% elif active_role_name == 'END_USER' %}
         {% include "partials/sidebar_end_user.html" %}
-    {% elif request.user.role == 'TEAM_LEAD' %}
+    {% elif active_role_name == 'TEAM_LEAD' %}
         {% include "partials/sidebar_team_lead.html" %}
-    {% elif request.user.role == 'ADMIN' or request.user.role == 'SUPERADMIN' %}
+    {% elif active_role_name == 'ADMIN' or active_role_name == 'SUPERADMIN' %}
         {% include "partials/sidebar_admin.html" %}
     {% else %}
         {% include "partials/sidebar_agent.html" %}

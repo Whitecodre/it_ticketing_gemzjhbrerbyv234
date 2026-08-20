@@ -1,0 +1,72 @@
+{% load lucide %}
+
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-border">
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Department</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Category</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Resolved</th>
+                <th class="text-right py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs w-12">Open</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ticket in tickets %}
+            <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                <td class="py-3 px-3">
+                    <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
+                </td>
+                <td class="py-3 px-3 max-w-xs truncate text-text-primary">{{ ticket.title }}</td>
+                <td class="py-3 px-3 text-text-secondary">{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }}</td>
+                <td class="py-3 px-3 text-text-secondary">{{ ticket.requester.get_department_display }}</td>
+                <td class="py-3 px-3 text-text-secondary">{{ ticket.category.name|default:"—" }}</td>
+                <td class="py-3 px-3">
+                    <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
+                </td>
+                <td class="py-3 px-3 text-text-secondary text-xs">
+                    {% firstof ticket.resolved_at ticket.closed_at as resolved_date %}
+                    {% if resolved_date %}{{ resolved_date|date:"M d, Y H:i" }}{% else %}—{% endif %}
+                </td>
+                <td class="py-3 px-3 text-right">
+                    <a href="{% url 'tickets:conversation' ticket.pk %}" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition inline-flex" aria-label="Open conversation">
+                        {% lucide "message-square" size=16 %}
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center py-6">
+                    <div class="flex flex-col items-center gap-0.5">
+                        <span class="text-2xl">📭</span>
+                        <p class="text-text-secondary text-sm">No resolved service requests found.</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if tickets.has_other_pages %}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ tickets.start_index }}–{{ tickets.end_index }}</strong> of <strong>{{ tickets.paginator.count }}</strong> requests
+    </span>
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not tickets.has_previous %} is-disabled{% endif %}"
+                {% if tickets.has_previous %}hx-get="{% url 'tickets:resolved_service_requests' %}?page={{ tickets.previous_page_number }}&q={{ q }}&department={{ department_filter }}"
+                hx-target="#resolvedRequestsTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
+        </button>
+        <button class="pagination-step{% if not tickets.has_next %} is-disabled{% endif %}"
+                {% if tickets.has_next %}hx-get="{% url 'tickets:resolved_service_requests' %}?page={{ tickets.next_page_number }}&q={{ q }}&department={{ department_filter }}"
+                hx-target="#resolvedRequestsTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            Next {% lucide "chevron-right" size=14 %}
+        </button>
+    </div>
+</div>
+{% endif %}

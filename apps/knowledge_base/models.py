@@ -25,6 +25,20 @@ class Article(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Set once, the first time an article is published — distinct from
+    # updated_at, which changes on every later edit while the article stays
+    # published. Not overwritten by subsequent edits.
+    published_at = models.DateTimeField(null=True, blank=True)
+    published_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='published_articles',
+    )
+
+    # Set when archived, to whatever status the article was in immediately
+    # before — lets Restore put it back where it came from (e.g. back to
+    # Published) instead of always dumping it into Draft. Cleared on restore.
+    archived_from_status = models.CharField(max_length=20, choices=Status.choices, null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = slugify(self.title)

@@ -38,7 +38,7 @@
                 <!-- Type -->
                 <td class="py-3 px-3">
                     <span class="text-sm" style="color: var(--color-text-primary);">
-                        {{ asset.asset_type|default:"—" }}
+                        {{ asset.category.name|default:"—" }}
                     </span>
                 </td>
                 
@@ -54,7 +54,7 @@
                     <div class="flex flex-col gap-0.5">
                         <span class="status-chip 
                             {% if asset.status == 'IN_STORE' or asset.status == 'READY' or asset.status == 'ACTIVE' %}success
-                            {% elif asset.status == 'CHECKED_OUT' or asset.status == 'IN_USE' %}primary
+                            {% elif asset.status == 'CHECKED_OUT' or asset.status == 'IN_USE' or asset.status == 'MOBILIZED' %}primary
                             {% elif asset.status == 'MAINTENANCE' or asset.status == 'REPAIR' %}warning
                             {% elif asset.status == 'RETIRED' or asset.status == 'SCRAPPED' %}neutral
                             {% elif asset.status == 'LOST' or asset.status == 'STOLEN' %}danger
@@ -67,8 +67,18 @@
                             <span class="text-[0.6rem] text-warning">
                                 Checked Out {% if asset.checked_out_at %}{{ asset.checked_out_at|date:"M d" }}{% endif %}
                             </span>
+                        {% elif asset.is_mobilized %}
+                            <span class="text-[0.6rem] text-primary">Mobilized</span>
+                        {% elif asset.is_consumable %}
+                            <span class="text-[0.6rem] text-success">{{ asset.quantity_in_stock }} in stock</span>
                         {% else %}
                             <span class="text-[0.6rem] text-success">Available</span>
+                        {% endif %}
+                        {% if asset.is_low_stock %}
+                            <span class="status-chip danger text-[0.55rem] w-fit">⚠️ Low Stock</span>
+                        {% endif %}
+                        {% if asset.is_renewal_due_soon %}
+                            <span class="status-chip {% if asset.next_renewal_date < today %}danger{% else %}warning{% endif %} text-[0.55rem] w-fit">📅 Renews {{ asset.next_renewal_date|date:"M j" }}</span>
                         {% endif %}
                     </div>
                 </td>
@@ -190,8 +200,8 @@
                             {% lucide "user-plus" size=15 %}
                         </button>
                         
-                        {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
-                        <a href="{% url 'tickets:asset_edit_page' asset.pk %}?source=list&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
+                        {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                        <a href="{% url 'tickets:asset_edit_page' asset.pk %}?source=list&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
                            class="p-1.5 rounded transition hover:bg-black/5"
                            style="color: var(--color-text-secondary);"
                            title="Edit">
@@ -208,7 +218,7 @@
                         </button>
                         {% endif %}
                         
-                        {% if asset.status == 'DAMAGED' and user.role in 'ADMIN,SUPERADMIN' %}
+                        {% if asset.status == 'DAMAGED' and active_role_name in 'ADMIN,SUPERADMIN' %}
                         <button onclick="openScrapApproveModal({{ asset.pk }})"
                                 class="p-1.5 rounded transition hover:bg-black/5"
                                 style="color: var(--color-text-secondary);"
@@ -242,7 +252,7 @@
     </span>
     <div class="pagination-controls">
         <button class="pagination-step{% if not assets.has_previous %} is-disabled{% endif %}"
-                {% if assets.has_previous %}hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                {% if assets.has_previous %}hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
                 hx-target="#assetTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             {% lucide "chevron-left" size=14 %} Prev
         </button>
@@ -252,14 +262,14 @@
                 <span class="pagination-number is-current">{{ num }}</span>
                 {% elif num > assets.number|add:'-3' and num < assets.number|add:'3' %}
                 <button class="pagination-number"
-                        hx-get="{% url 'tickets:assets' %}?page={{ num }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                        hx-get="{% url 'tickets:assets' %}?page={{ num }}&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
                         hx-target="#assetTableContainer" hx-swap="innerHTML">{{ num }}</button>
                 {% endif %}
             {% endfor %}
         </div>
         {% if assets.has_next %}
         <button class="pagination-step"
-                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
                 hx-target="#assetTableContainer" hx-swap="innerHTML">
             Next {% lucide "chevron-right" size=14 %}
         </button>

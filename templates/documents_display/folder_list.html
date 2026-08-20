@@ -1,0 +1,106 @@
+{# templates/documents_display/folder_list.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}My Folders{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        <div class="flex items-center gap-3">
+            <a href="{% url 'documents_display:dashboard' %}" class="btn-ghost text-sm flex items-center gap-1">
+                {% lucide "arrow-left" size=16 %} Back
+            </a>
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "folder" size=16 %}
+            </span>
+            <div>
+                <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">My Folders</h2>
+                <p class="text-xs text-text-secondary">Group documents together to share several at once. Private to you.</p>
+            </div>
+        </div>
+        <button type="button" onclick="document.getElementById('newFolderModal').classList.remove('hidden')" class="btn-primary text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+            {% lucide "plus" size=14 %} New Folder
+        </button>
+    </div>
+
+    {% if folders %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for folder in folders %}
+        <a href="{% url 'documents_display:folder_detail' folder.slug %}"
+           class="group block rounded-lg border p-4 hover:shadow-md transition hover:border-primary"
+           style="border-color: var(--color-border); background-color: var(--color-surface);">
+            <div class="flex items-start gap-3">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    {% lucide "folder" size=16 %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <h3 class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ folder.name }}</h3>
+                    {% if folder.description %}
+                    <p class="text-xs text-text-secondary truncate">{{ folder.description }}</p>
+                    {% endif %}
+                    <div class="flex items-center gap-2 mt-1 text-[0.65rem] text-text-secondary">
+                        <span>{{ folder.documents.count }} document(s)</span>
+                        <span>•</span>
+                        <span>Updated {{ folder.updated_at|date:"M d, Y" }}</span>
+                    </div>
+                    {% if request.user.is_superuser and folder.created_by_id != request.user.id %}
+                    <span class="text-[0.6rem] text-text-secondary">Created by {{ folder.created_by.get_full_name }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12 text-text-secondary">
+        <span class="text-4xl block mb-3">📁</span>
+        <p class="text-sm font-medium">No folders yet</p>
+        <p class="text-xs">Create a folder to group documents and share them together.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- New Folder Modal -->
+<div id="newFolderModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="dashboard-card w-full max-w-md p-6 shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">New Folder</h3>
+            <button type="button" onclick="document.getElementById('newFolderModal').classList.add('hidden')" class="btn-ghost btn-icon">
+                {% lucide "x" size=16 %}
+            </button>
+        </div>
+        {% if form.errors %}
+        <div class="rounded-lg bg-error/10 p-3 border border-error/30 text-error text-sm mb-3">
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}<p>{{ error }}</p>{% endfor %}
+            {% endfor %}
+        </div>
+        {% endif %}
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+            <div>
+                <label class="block text-sm font-medium mb-1 text-text-primary">Folder name</label>
+                {{ form.name }}
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1 text-text-primary">Description</label>
+                {{ form.description }}
+            </div>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="document.getElementById('newFolderModal').classList.add('hidden')" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+                <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg">Create Folder</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% if form.errors %}
+<script>document.getElementById('newFolderModal').classList.remove('hidden');</script>
+{% endif %}
+{% endblock %}

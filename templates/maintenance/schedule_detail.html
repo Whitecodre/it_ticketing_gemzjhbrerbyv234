@@ -2,14 +2,33 @@
 {% load static %}
 {% load lucide %}
 
-{% block page_title %}{{ schedule.title }}{% endblock %}
+{% block page_title_area %}
+{% comment %}
+The default page_title_area renders the heading full-width, but this page's
+content below is wrapped in max-w-4xl mx-auto — matching that here keeps the
+heading aligned with the card instead of sitting flush against the sidebar.
+{% endcomment %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-xl font-semibold truncate mb-4" style="color: var(--color-text-primary);">
+        {{ schedule.title }}
+    </h1>
+</div>
+{% endblock page_title_area %}
 
 {% block dashboard_content %}
 
 <div class="max-w-4xl mx-auto">
-    
+
+    {# Back #}
+    <a href="{% url 'maintenance:list' %}"
+       class="inline-flex items-center gap-1.5 mb-4 text-sm transition"
+       style="color: var(--color-text-secondary);">
+        {% lucide "arrow-left" size=14 %}
+        Back to Maintenance Schedules
+    </a>
+
     {# Status Banner #}
-    <div class="mb-6 rounded-lg p-4 border flex items-center justify-between" 
+    <div class="mb-6 rounded-lg p-4 border flex items-center justify-between"
          style="background-color: var(--color-surface); border-color: var(--color-border);">
         <div class="flex items-center gap-3">
             {% include "maintenance/partials/status_badge.html" with status=schedule.status %}
@@ -21,18 +40,39 @@
             </span>
         </div>
         <div class="flex items-center gap-2">
-            <a href="{% url 'maintenance:edit' schedule.pk %}" 
+            {% if user_can_manage and schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
+            <a href="{% url 'maintenance:edit' schedule.pk %}"
                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition"
                style="border-color: var(--color-border); color: var(--color-text-primary);">
                 {% lucide "edit" size=14 %}
                 Edit
             </a>
-            <button onclick="openStatusModal({{ schedule.pk }})"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition text-white"
-                    style="background-color: var(--color-primary);">
-                {% lucide "refresh-cw" size=14 %}
-                Update Status
-            </button>
+            {% endif %}
+            {% if can_change_status %}
+                {% if schedule.status == 'SCHEDULED' %}
+                <span class="text-xs italic" style="color: var(--color-text-secondary);">
+                    Starts automatically at the scheduled time.
+                </span>
+                {% elif schedule.status == 'IN_PROGRESS' %}
+                <form id="markCompleteForm{{ schedule.pk }}" method="post" hx-post="{% url 'maintenance:update_status' schedule.pk %}"
+                      hx-swap="none" hx-on::after-request="if(event.detail.successful) { location.reload(); }">
+                    {% csrf_token %}
+                    <input type="hidden" name="status" value="COMPLETED">
+                    <button type="button"
+                            onclick="confirmStatusChange('COMPLETED', '{{ schedule.title|default:schedule.get_maintenance_type_display|escapejs }}', function() { htmx.trigger('#markCompleteForm{{ schedule.pk }}', 'submit'); })"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition text-white"
+                            style="background-color: var(--color-success);">
+                        {% lucide "check" size=14 %}
+                        Mark Complete (Pending Owner Confirmation)
+                    </button>
+                </form>
+                {% endif %}
+                <button onclick="openStatusModal({{ schedule.pk }})" title="Cancel or set another status"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-lg border transition"
+                        style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                    {% lucide "more-horizontal" size=14 %}
+                </button>
+            {% endif %}
         </div>
     </div>
     
@@ -47,10 +87,10 @@
                     {# Department #}
                     <div>
                         <label class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
-                            Department
+                            Target Department(s)
                         </label>
                         <p class="text-sm mt-1" style="color: var(--color-text-primary);">
-                            {{ schedule.get_department_display }}
+                            {{ schedule.departments_display }}
                         </p>
                     </div>
                     
@@ -108,10 +148,15 @@
                                 <span>{{ schedule.completed_at|date:"M d, Y g:i A" }}</span>
                             </div>
                             {% endif %}
-                            {% if schedule.confirmed_at %}
-                            <div class="flex justify-between text-primary">
-                                <span>Confirmed</span>
-                                <span>{{ schedule.confirmed_at|date:"M d, Y g:i A" }}</span>
+                            {% if schedule.completed_at and confirmation_state != 'NOT_APPLICABLE' %}
+                            <div class="flex justify-between {% if confirmation_state == 'HAS_DISPUTE' %}text-error{% elif confirmation_state == 'ALL_CONFIRMED' %}text-primary{% else %}text-warning{% endif %}">
+                                <span>Owner Confirmation</span>
+                                <span>
+                                    {% if confirmation_state == 'ALL_CONFIRMED' %}All confirmed
+                                    {% elif confirmation_state == 'HAS_DISPUTE' %}Disputed
+                                    {% elif confirmation_state == 'PARTIALLY_CONFIRMED' %}Partially confirmed
+                                    {% else %}Pending{% endif %}
+                                </span>
                             </div>
                             {% endif %}
                         </div>
@@ -192,37 +237,95 @@
                 {% endif %}
             </div>
 
-            {# Confirmation Card #}
-            {% if schedule.status == 'COMPLETED' %}
+            {# Target Card #}
+            {% if schedule.facility_location or schedule.target_assets.all or schedule.vendors.all %}
             <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
                 <h4 class="text-xs font-medium uppercase tracking-wider mb-3" style="color: var(--color-text-secondary);">
-                    Manager Confirmation
+                    Target
                 </h4>
-                {% if schedule.confirmed_by %}
-                    <div class="flex items-center gap-2 text-success">
-                        <span>✓ Confirmed</span>
-                        <span class="text-sm" style="color: var(--color-text-secondary);">
-                            by {{ schedule.confirmed_by.get_full_name|default:schedule.confirmed_by.email }}
-                        </span>
-                    </div>
-                    {% if schedule.confirmed_at %}
-                    <p class="text-xs mt-1" style="color: var(--color-text-secondary);">
-                        {{ schedule.confirmed_at|date:"M d, Y g:i A" }}
-                    </p>
-                    {% endif %}
-                {% else %}
-                    <div class="flex flex-col gap-3">
-                        <p class="text-sm" style="color: var(--color-warning);">
-                            ⚠️ Awaiting manager confirmation
-                        </p>
-                        <button onclick="openConfirmModal({{ schedule.pk }})"
-                                class="inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition"
-                                style="background-color: var(--color-success);">
-                            {% lucide "check-circle" size=16 %}
-                            Confirm Completion
-                        </button>
-                    </div>
+                {% if schedule.facility_location %}
+                <p class="text-sm mb-2" style="color: var(--color-text-primary);">
+                    {% lucide "map-pin" size=14 %} {{ schedule.facility_location }}
+                </p>
                 {% endif %}
+                {% if schedule.target_assets.all %}
+                <div class="flex flex-wrap gap-1.5">
+                    {% for asset in schedule.target_assets.all %}
+                    <span class="text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">
+                        {{ asset.name }} ({{ asset.tracking_id }})
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% if schedule.vendors.all %}
+                <div class="mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                    <p class="text-xs mb-1.5" style="color: var(--color-text-secondary);">Third-party vendor(s):</p>
+                    <div class="flex flex-wrap gap-1.5">
+                        {% for vendor in schedule.vendors.all %}
+                        <span class="text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">
+                            {% lucide "truck" size=10 %} {{ vendor.name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% comment %} {# Owner Confirmation Card — per target asset, compact rows in a
+               capped-height scroll area so this doesn't push the rest of the
+               page down when a schedule has many target assets. #} {% endcomment %}
+            {% if asset_confirmations %}
+            <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
+                        Owner Confirmation
+                    </h4>
+                    <span class="text-[0.65rem]" style="color: var(--color-text-secondary);">
+                        {{ asset_confirmations|length }} asset{{ asset_confirmations|length|pluralize }}
+                    </span>
+                </div>
+                <div class="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {% for entry in asset_confirmations %}
+                    <details class="rounded-lg border" style="border-color: var(--color-border);">
+                        <summary class="flex items-center justify-between gap-2 px-2.5 py-2 cursor-pointer list-none">
+                            <span class="text-xs font-medium truncate" style="color: var(--color-text-primary);">
+                                {{ entry.row.asset.name }}
+                                <span style="color: var(--color-text-secondary);">({{ entry.row.asset.tracking_id }})</span>
+                            </span>
+                            {% include "maintenance/partials/asset_confirmation_badge.html" with status=entry.row.status %}
+                        </summary>
+                        <div class="px-2.5 pb-2.5">
+                            {% if entry.row.confirmed_by %}
+                            <p class="text-xs mt-1" style="color: var(--color-text-secondary);">
+                                {{ entry.row.get_status_display }} by {{ entry.row.confirmed_by.get_full_name|default:entry.row.confirmed_by.email }}
+                                · {{ entry.row.confirmed_at|date:"M d, Y g:i A" }}
+                            </p>
+                            {% if entry.row.status == 'DISPUTED' and entry.row.dispute_reason %}
+                            <p class="text-xs mt-1" style="color: var(--color-error);">{{ entry.row.dispute_reason }}</p>
+                            {% elif entry.row.notes %}
+                            <p class="text-xs mt-1" style="color: var(--color-text-secondary);">{{ entry.row.notes }}</p>
+                            {% endif %}
+                            {% endif %}
+                            {% if entry.can_confirm and entry.row.status == 'PENDING' %}
+                            <button onclick="openAssetConfirmModal({{ schedule.pk }}, {{ entry.row.asset.pk }})"
+                                    class="mt-2 inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium text-white rounded-lg transition"
+                                    style="background-color: var(--color-success);">
+                                {% lucide "check-circle" size=14 %}
+                                Confirm / Dispute
+                            </button>
+                            {% elif entry.can_confirm and entry.row.status != 'PENDING' %}
+                            <button onclick="openAssetConfirmModal({{ schedule.pk }}, {{ entry.row.asset.pk }})"
+                                    class="mt-2 inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition"
+                                    style="border-color: var(--color-border); color: var(--color-text-secondary);">
+                                {% lucide "refresh-cw" size=14 %}
+                                Override
+                            </button>
+                            {% endif %}
+                        </div>
+                    </details>
+                    {% endfor %}
+                </div>
             </div>
             {% endif %}
             

@@ -1,0 +1,256 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Incident {{ ticket.number }}{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-4xl mx-auto space-y-5">
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-start gap-3">
+            <a href="{% url 'tickets:report_builder' report_type=report_type %}" class="btn-ghost btn-icon mt-1" aria-label="Back">
+                {% lucide "arrow-left" size=18 %}
+            </a>
+            <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-base font-semibold text-text-primary">{{ ticket.title }}</h2>
+                    <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
+                    <span class="priority-chip {% if ticket.priority == 'P1' %}critical{% elif ticket.priority == 'P2' %}high{% elif ticket.priority == 'P3' %}medium{% else %}low{% endif %} text-xs">{{ ticket.get_priority_display }}</span>
+                </div>
+                <p class="text-xs text-text-secondary mt-1 font-mono">{{ ticket.number }}</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=ticket.pk %}?format=pdf" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-type" size=12 %} Export PDF
+            </a>
+            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=ticket.pk %}?format=docx" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-down" size=12 %} Export Word
+            </a>
+        </div>
+    </div>
+
+    {# Letterhead — mirrors the paper form's header #}
+    <div class="dashboard-card p-4 flex items-center gap-4">
+        <div class="h-14 w-24 rounded-lg border flex items-center justify-center flex-shrink-0 bg-white" style="border-color: var(--color-border);">
+            {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" class="max-h-10 max-w-20 object-contain">
+            {% else %}
+                <span class="text-xs font-semibold text-primary">{{ client_settings.company_name }}</span>
+            {% endif %}
+        </div>
+        <div class="flex-1 text-center">
+            <p class="text-sm font-bold text-text-primary tracking-wide">IT INCIDENT REPORT FORM</p>
+            <p class="text-[0.65rem] text-text-secondary">HDG-IT-FRM-086</p>
+        </div>
+        <div class="w-24 flex-shrink-0"></div>
+    </div>
+
+    {# Section 1 — Incident Details #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "alert-triangle" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 1 — Incident Details</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Incident Reference No.</span><span class="font-medium text-text-primary font-mono">{{ ticket.number }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Date &amp; Time of Incident</span><span class="font-medium text-text-primary">{{ ticket.incident_datetime|date:"M d, Y H:i"|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Incident Category</span><span class="font-medium text-text-primary">{{ incident_category_display }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Severity (Urgency)</span><span class="font-medium text-text-primary">{{ ticket.get_urgency_display }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Business Impact</span><span class="font-medium text-text-primary">{{ ticket.get_business_impact_display|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">How Discovered</span><span class="font-medium text-text-primary">{{ how_discovered_display }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Location / IP / Hostname</span><span class="font-medium text-text-primary">{{ ticket.location_hostname|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">System / Service / Asset Affected</span><span class="italic text-text-secondary">Not collected digitally — fill by hand</span></div>
+        </div>
+    </div>
+
+    {# Section 2 — Reporter Information #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-info);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-info) 12%, transparent); color: var(--color-info);">{% lucide "user" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 2 — Reporter Information</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Reported By</span><span class="font-medium text-text-primary">{{ ticket.requester.get_full_name|default:ticket.requester.email }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Department / Unit</span><span class="font-medium text-text-primary">{{ ticket.requester.get_department_display }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Job Title / Role</span><span class="font-medium text-text-primary">{{ ticket.requester.position|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Email</span><span class="font-medium text-text-primary">{{ ticket.requester.email }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Date &amp; Time Submitted</span><span class="font-medium text-text-primary">{{ ticket.created_at|date:"M d, Y H:i" }}</span></div>
+        </div>
+    </div>
+
+    {# Section 3 — Description #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-text-secondary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent); color: var(--color-text-secondary);">{% lucide "file-text" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 3 — Detailed Incident Description</h3>
+        </div>
+        <p class="text-sm whitespace-pre-line leading-relaxed">{{ ticket.description }}</p>
+        {% if ticket.immediate_actions %}
+        <div class="mt-4 pt-4 border-t" style="border-color: var(--color-border);">
+            <span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Immediate / Initial Actions Taken</span>
+            <p class="text-sm whitespace-pre-line leading-relaxed">{{ ticket.immediate_actions }}</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Section 5 — Root Cause Analysis #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-warning);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-warning) 12%, transparent); color: var(--color-warning);">{% lucide "search" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 5 — Root Cause Analysis</h3>
+        </div>
+        {% if root_cause_category_display %}
+        <div class="flex flex-wrap gap-1.5 mb-3">
+            {% for label in root_cause_category_display %}
+            <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">{{ label }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if resolution_root_cause %}
+            <p class="text-sm whitespace-pre-line leading-relaxed">{{ resolution_root_cause }}</p>
+        {% else %}
+            <p class="text-sm text-text-secondary italic">Not recorded.</p>
+        {% endif %}
+    </div>
+
+    {# Section 6 — Resolution & Corrective Actions #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-success);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-success) 12%, transparent); color: var(--color-success);">{% lucide "wrench" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 6 — Resolution &amp; Corrective Actions</h3>
+        </div>
+        {% if resolution_steps %}
+            <p class="text-sm whitespace-pre-line leading-relaxed">{{ resolution_steps }}</p>
+        {% else %}
+            <p class="text-sm text-text-secondary italic">Not recorded.</p>
+        {% endif %}
+    </div>
+
+    {# Sections 4, 7 — IT team only, still not collected digitally #}
+    <div class="dashboard-card p-5 opacity-75">
+        <div class="flex items-center gap-2 mb-2">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent); color: var(--color-text-secondary);">{% lucide "circle-dashed" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Sections 4, 7 — Systems Affected, Recommendations</h3>
+        </div>
+        <p class="text-sm text-text-secondary italic">
+            Systems/Users Affected and Recommendations &amp; Preventive Actions are completed by the IT team
+            on the physical/printed form — not yet captured digitally.
+        </p>
+    </div>
+
+    {# Section 8 — Communication & Distribution #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-info);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-info) 12%, transparent); color: var(--color-info);">{% lucide "share-2" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 8 — Communication &amp; Distribution</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Report Communicated To</span><span class="font-medium text-text-primary">IT Manager</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Method of Communication</span><span class="font-medium text-text-primary">IT Helpdesk Ticket</span></div>
+        </div>
+    </div>
+
+    {# Section 9 — Supporting Documentation #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-text-secondary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent); color: var(--color-text-secondary);">{% lucide "paperclip" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 9 — Supporting Documentation Attached</h3>
+        </div>
+        {% if attachments or image_attachments %}
+        <ul class="text-sm space-y-1.5 mb-3">
+            {% for a in attachments %}
+            <li class="flex items-center gap-2"><span class="flex h-6 w-6 items-center justify-center rounded shrink-0" style="background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent); color: var(--color-text-secondary);">{% lucide "paperclip" size=12 %}</span>{{ a.filename }}</li>
+            {% endfor %}
+        </ul>
+        {% if image_attachments %}
+        <div class="flex flex-wrap gap-3">
+            {% for a in image_attachments %}
+            <a href="{{ a.file.url }}" target="_blank" class="block">
+                <img src="{{ a.file.url }}" alt="{{ a.filename }}" class="h-24 w-24 object-cover rounded-lg border" style="border-color: var(--color-border);">
+                <span class="block text-xs text-text-secondary mt-1 max-w-[6rem] truncate">{{ a.filename }}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-sm text-text-secondary italic">No attachments.</p>
+        {% endif %}
+    </div>
+
+    {# Section 10 — Sign-off #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "pen-tool" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 10 — Sign-off &amp; Approvals</h3>
+        </div>
+        <div class="space-y-3 text-sm">
+            <div class="flex items-start gap-3 rounded-lg border p-3" style="border-color: var(--color-border);">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full shrink-0 mt-0.5" style="background-color: color-mix(in oklch, var(--color-success) 15%, transparent); color: var(--color-success);">{% lucide "check" size=13 %}</span>
+                <div class="flex-1 min-w-0">
+                    <span class="block text-[0.7rem] font-semibold uppercase tracking-wide text-text-secondary mb-1">Prepared By (Reporter)</span>
+                    {% if prepared_by_signoff.signature_url %}
+                    <img src="{{ prepared_by_signoff.signature_url }}" alt="signature" class="h-10 mb-1 bg-white rounded p-1">
+                    {% endif %}
+                    <p class="text-text-primary">{{ prepared_by_signoff.captured_text }}</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 rounded-lg border p-3" style="border-color: var(--color-border);">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full shrink-0 mt-0.5"
+                      style="{% if confirmed_resolved_signoff.captured_text %}background-color: color-mix(in oklch, var(--color-success) 15%, transparent); color: var(--color-success);{% else %}background-color: color-mix(in oklch, var(--color-warning) 15%, transparent); color: var(--color-warning);{% endif %}">
+                    {% if confirmed_resolved_signoff.captured_text %}{% lucide "check" size=13 %}{% else %}{% lucide "clock" size=13 %}{% endif %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <span class="block text-[0.7rem] font-semibold uppercase tracking-wide text-text-secondary mb-1">Confirmed Resolved By</span>
+                    {% if confirmed_resolved_signoff.captured_text %}
+                        {% if confirmed_resolved_signoff.signature_url %}
+                        <img src="{{ confirmed_resolved_signoff.signature_url }}" alt="signature" class="h-10 mb-1 bg-white rounded p-1">
+                        {% endif %}
+                        <p class="text-text-primary">{{ confirmed_resolved_signoff.captured_text }}</p>
+                    {% else %}
+                        <span class="italic text-text-secondary">Pending</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex items-start gap-3 rounded-lg border p-3" style="border-color: var(--color-border);">
+                <span class="flex h-6 w-6 items-center justify-center rounded-full shrink-0 mt-0.5"
+                      style="{% if it_manager_signoff.captured_text %}background-color: color-mix(in oklch, var(--color-success) 15%, transparent); color: var(--color-success);{% else %}background-color: color-mix(in oklch, var(--color-warning) 15%, transparent); color: var(--color-warning);{% endif %}">
+                    {% if it_manager_signoff.captured_text %}{% lucide "check" size=13 %}{% else %}{% lucide "clock" size=13 %}{% endif %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <span class="block text-[0.7rem] font-semibold uppercase tracking-wide text-text-secondary mb-1">Reviewed &amp; Approved By (IT Manager / Head of IT)</span>
+                    {% if it_manager_signoff.captured_text %}
+                        {% if it_manager_signoff.signature_url %}
+                        <img src="{{ it_manager_signoff.signature_url }}" alt="signature" class="h-10 mb-1 bg-white rounded p-1">
+                        {% endif %}
+                        <p class="text-text-primary">{{ it_manager_signoff.captured_text }}</p>
+                    {% elif request.user.role == 'ADMIN' or request.user.role == 'SUPERADMIN' %}
+                      {% if ticket.status == 'RESOLVED' or ticket.status == 'CLOSED' %}
+                        <form method="post" action="{% url 'tickets:approve_incident_report' ticket.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-success text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 mt-1">
+                                {% lucide "check-circle" size=14 %} Approve as IT Manager
+                            </button>
+                        </form>
+                      {% else %}
+                        <span class="italic text-text-secondary">Pending</span>
+                      {% endif %}
+                    {% else %}
+                        <span class="italic text-text-secondary">Pending</span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+</div>
+{% endblock %}

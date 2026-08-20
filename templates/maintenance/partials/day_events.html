@@ -5,7 +5,7 @@
         <div class="day-event-item" style="border-left-color: {% if schedule.status == 'SCHEDULED' %}var(--color-info){% elif schedule.status == 'IN_PROGRESS' %}var(--color-warning){% elif schedule.status == 'COMPLETED' %}var(--color-success){% else %}var(--color-text-secondary){% endif %};">
             <div class="event-info">
                 <span class="event-title-text">{{ schedule.title }}</span>
-                <span class="event-department">{{ schedule.get_department_display }}</span>
+                <span class="event-department">{{ schedule.departments_display }}</span>
                 <span class="text-xs text-text-secondary">
                     {{ schedule.scheduled_date|date:"M d" }}
                 </span>

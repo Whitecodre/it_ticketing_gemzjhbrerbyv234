@@ -34,10 +34,10 @@
                     <span class="text-sm text-text-primary">In Progress</span>
                 </label>
                 <label class="block">
-                    <input type="radio" name="status" value="COMPLETED" 
+                    <input type="radio" name="status" value="COMPLETED"
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'COMPLETED' %}checked{% endif %}>
-                    <span class="text-sm text-text-primary">Completed</span>
+                    <span class="text-sm text-text-primary">Mark complete (pending owner confirmation)</span>
                 </label>
                 <label class="block">
                     <input type="radio" name="status" value="CANCELLED" 

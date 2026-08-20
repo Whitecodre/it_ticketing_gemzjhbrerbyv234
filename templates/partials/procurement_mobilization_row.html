@@ -1,0 +1,30 @@
+{% load lucide %}
+<div class="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end procurement-row">
+    <input type="text" name="procurement_item_name" placeholder="Item name"
+           class="sm:col-span-2 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+    <select name="procurement_category_id" class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+            onchange="filterVendorSelectByCategory(this, this.closest('.procurement-row').querySelector('select[name=procurement_vendor_id]'))">
+        <option value="">Category</option>
+        {% for cat in asset_categories %}
+        <option value="{{ cat.pk }}">{{ cat.full_name }}</option>
+        {% endfor %}
+    </select>
+    <input type="number" name="procurement_quantity" min="1" value="1" placeholder="Qty"
+           class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+    <select name="procurement_vendor_id" class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+        <option value="">-- Vendor --</option>
+        {% for vendor in vendors %}
+        <option value="{{ vendor.pk }}" data-categories="{% for c in vendor.categories.all %}{{ c.pk }}{% if not forloop.last %},{% endif %}{% endfor %}">{{ vendor.name }}</option>
+        {% endfor %}
+    </select>
+    <div class="flex items-center gap-2">
+        <input type="date" name="procurement_expected_date"
+               class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+        <button type="button" onclick="this.closest('.procurement-row').remove()"
+                class="p-1 rounded hover:bg-black/5 text-text-secondary">
+            {% lucide "x" size=16 %}
+        </button>
+    </div>
+    <input type="text" name="procurement_vendor_name" placeholder="Or type a new vendor name..."
+           class="sm:col-span-6 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+</div>

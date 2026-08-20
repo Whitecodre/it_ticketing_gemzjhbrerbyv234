@@ -1,7 +1,7 @@
 # apps/documents_display/forms.py
 
 from django import forms
-from .models import DisplayDocument, DisplayCategory
+from .models import DisplayDocument, DisplayCategory, DocumentFolder
 from apps.accounts.models import User
 
 
@@ -169,6 +169,63 @@ class ShareDocumentForm(forms.Form):
         help_text="No account needed - the link itself grants access."
     )
     can_edit = forms.BooleanField(required=False, label="Can edit", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))
+    can_download = forms.BooleanField(required=False, label="Can download", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))
+    expires_at = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={
+            'type': 'date',
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        }),
+        help_text="Optional for internal shares. Required for external email shares."
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        recipient = cleaned.get('recipient')
+        external_email = cleaned.get('external_email')
+        if bool(recipient) == bool(external_email):
+            raise forms.ValidationError('Choose an existing user OR enter an email address - not both, not neither.')
+        if external_email and not cleaned.get('expires_at'):
+            raise forms.ValidationError('External email shares must have an expiration date.')
+        return cleaned
+
+
+class DocumentFolderForm(forms.ModelForm):
+    class Meta:
+        model = DocumentFolder
+        fields = ['name', 'description']
+        widgets = {
+            'name': forms.TextInput(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'placeholder': 'e.g. Q1 Compliance Documents'
+            }),
+            'description': forms.Textarea(attrs={
+                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'rows': 3,
+                'placeholder': 'Optional description'
+            }),
+        }
+
+
+class ShareFolderForm(forms.Form):
+    """Share an entire folder with either an existing in-system user
+    (`recipient`) or a raw external email address with no account
+    (`external_email`) - mirrors ShareDocumentForm minus can_edit, since
+    folder sharing only ever grants view/download of its documents."""
+    recipient = forms.ModelChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by('department', 'first_name', 'last_name'),
+        required=False,
+        widget=forms.Select(attrs=SELECT_ATTRS),
+        help_text="Must be an existing, active account."
+    )
+    external_email = forms.EmailField(
+        required=False,
+        widget=forms.EmailInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'placeholder': 'someone@example.com'
+        }),
+        help_text="No account needed - the link itself grants access."
+    )
     can_download = forms.BooleanField(required=False, label="Can download", widget=forms.CheckboxInput(attrs=CHECKBOX_ATTRS))
     expires_at = forms.DateField(
         required=False,

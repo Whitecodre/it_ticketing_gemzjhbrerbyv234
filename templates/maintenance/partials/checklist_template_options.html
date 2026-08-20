@@ -1,0 +1,13 @@
+{% if templates %}
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {% for tmpl in templates %}
+    <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition">
+        <input type="checkbox" name="checklist_items" value="{{ tmpl.text }}"
+               class="rounded border-border text-primary focus:ring-primary flex-shrink-0">
+        <span class="truncate">{{ tmpl.text }}</span>
+    </label>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-xs text-text-secondary">No saved checklist items for the selected department(s) yet — add a custom item below.</p>
+{% endif %}

@@ -4,6 +4,9 @@ set -e
 echo "=== Running database migrations ==="
 python manage.py migrate --noinput
 
+echo "=== Collecting static files ==="
+python manage.py collectstatic --noinput
+
 echo "=== Seeding ticket categories ==="
 python manage.py seed_categories
 
@@ -18,6 +21,12 @@ python manage.py seed_assets
 
 echo "=== Seeding Document Categories ==="
 python manage.py seed_document_categories
+
+echo "=== Seeding Roles (dual-role system) ==="
+python manage.py seed_roles
+
+echo "=== Seeding Service Categories ==="
+python manage.py seed_service_categories
 
 # start.sh
 echo "=== Checking npm version ==="

@@ -18,7 +18,7 @@ def switch_role(request):
     
     if success:
         request.session.modified = True
-        messages.success(request, f'Switched to {request.user.get_active_role_display()} view.')
+        messages.success(request, f'Switched to {request.user.get_active_role_display()} account.')
     else:
         messages.error(request, f'You do not have the {role_name} role.')
     

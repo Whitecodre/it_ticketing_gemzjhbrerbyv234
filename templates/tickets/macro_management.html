@@ -1,0 +1,178 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Macros{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full space-y-6">
+
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                {% lucide "zap" size=20 %}
+            </div>
+            <div>
+                <h2 class="text-base font-semibold text-text-primary">Macros</h2>
+                <p class="text-xs text-text-secondary mt-0.5">Canned replies available in the ticket conversation composer.</p>
+            </div>
+        </div>
+        <button type="button" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2" onclick="openMacroModal()">
+            {% lucide "plus" size=16 %} New Macro
+        </button>
+    </div>
+
+    <div class="dashboard-card p-0 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b" style="border-color: var(--color-border);">
+                        <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Title</th>
+                        <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Type</th>
+                        <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Visibility</th>
+                        <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Created By</th>
+                        <th class="text-right py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for macro in macros %}
+                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);"
+                        data-pk="{{ macro.pk }}" data-title="{{ macro.title }}" data-body="{{ macro.body }}"
+                        data-type="{{ macro.type }}" data-visibility="{{ macro.visibility }}">
+                        <td class="py-2.5 px-4 text-text-primary font-medium">{{ macro.title }}</td>
+                        <td class="py-2.5 px-4 text-text-secondary">{{ macro.get_type_display }}</td>
+                        <td class="py-2.5 px-4">
+                            <span class="text-xs px-2 py-0.5 rounded-full bg-surface-secondary text-text-secondary border border-border">
+                                {{ macro.get_visibility_display }}
+                            </span>
+                        </td>
+                        <td class="py-2.5 px-4 text-text-secondary">{{ macro.created_by.get_full_name|default:macro.created_by.email }}</td>
+                        <td class="py-2.5 px-4 text-right">
+                            {% if macro.created_by == request.user or active_role_name == "TEAM_LEAD" %}
+                            <button type="button" class="btn-ghost btn-icon" onclick="openMacroModal(this.closest('tr'))" aria-label="Edit">{% lucide "pencil" size=14 %}</button>
+                            <button type="button" class="btn-ghost btn-icon" onclick="deleteMacro({{ macro.pk }}, '{{ macro.title|escapejs }}')" aria-label="Delete">{% lucide "trash-2" size=14 class="text-error" %}</button>
+                            {% else %}
+                            <span class="text-xs text-text-secondary">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="py-8 px-4 text-center text-text-secondary text-sm">No macros yet — create one to speed up replies.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Add/Edit modal #}
+    <div id="macroModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+         onclick="if(event.target===this) closeMacroModal()">
+        <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4" style="background-color: var(--color-surface);">
+            <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--color-border);">
+                <h3 class="text-base font-semibold text-text-primary" id="macroModalTitle">New Macro</h3>
+                <button type="button" onclick="closeMacroModal()" class="btn-ghost btn-icon" aria-label="Close">{% lucide "x" size=18 %}</button>
+            </div>
+            <form id="macroModalForm" class="px-6 py-5 space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Title</label>
+                    <input type="text" name="title" id="macroTitle" required
+                           class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Body</label>
+                    <textarea name="body" id="macroBody" rows="5" required
+                              class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-secondary">Type</label>
+                        <select name="type" id="macroType" class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                            <option value="COMMENT">Comment</option>
+                            <option value="REASSIGN_REASON">Reassign Reason</option>
+                            <option value="RETURN_REASON">Return Reason</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-secondary">Visibility</label>
+                        <select name="visibility" id="macroVisibility" class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                            <option value="PUBLIC">Public</option>
+                            <option value="INTERNAL">Internal</option>
+                            <option value="PRIVATE">Private (only me)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeMacroModal()" class="btn-ghost text-sm px-4 py-2">Cancel</button>
+                    <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    let activeMacroPk = null;
+
+    function openMacroModal(rowEl) {
+        activeMacroPk = rowEl ? rowEl.dataset.pk : null;
+        document.getElementById('macroModalTitle').textContent = activeMacroPk ? 'Edit Macro' : 'New Macro';
+        document.getElementById('macroTitle').value = rowEl ? rowEl.dataset.title : '';
+        document.getElementById('macroBody').value = rowEl ? rowEl.dataset.body : '';
+        document.getElementById('macroType').value = rowEl ? rowEl.dataset.type : 'COMMENT';
+        document.getElementById('macroVisibility').value = rowEl ? rowEl.dataset.visibility : 'PUBLIC';
+        document.getElementById('macroModalOverlay').classList.remove('hidden');
+    }
+
+    function closeMacroModal() {
+        document.getElementById('macroModalOverlay').classList.add('hidden');
+        activeMacroPk = null;
+    }
+
+    document.getElementById('macroModalForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const url = activeMacroPk ? `/tickets/macros/${activeMacroPk}/update/` : '/tickets/macros/create/';
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+            body: formData,
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+              if (result.ok) {
+                  closeMacroModal();
+                  window.location.reload();
+              } else if (typeof showToast === 'function') {
+                  showToast(result.data.error || 'Could not save', 'error');
+              }
+          });
+    });
+
+    function deleteMacro(pk, title) {
+        confirmDelete(title, 'Macro', function () {
+            fetch(`/tickets/macros/${pk}/delete/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+            }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+              .then(function (result) {
+                  if (result.ok) {
+                      window.location.reload();
+                  } else if (typeof showToast === 'function') {
+                      showToast(result.data.error || 'Could not delete', 'error');
+                  }
+              });
+        });
+    }
+</script>
+{% endblock %}

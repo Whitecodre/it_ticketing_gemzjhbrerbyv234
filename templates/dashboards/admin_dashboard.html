@@ -170,10 +170,17 @@
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.category.name|default:"—" }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.created_at|date:"M d, Y" }}</td>
                         <td class="py-3 px-4 text-right">
-                            <button onclick="openFulfillModal({{ ticket.pk }})" 
+                            {% if ticket.is_mobilization_request %}
+                            <button onclick="openMobilizeModal({{ ticket.pk }})"
+                                    class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                                {% lucide "ship" size=12 %} Mobilize
+                            </button>
+                            {% else %}
+                            <button onclick="openFulfillModal({{ ticket.pk }})"
                                     class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
                                 {% lucide "check" size=12 %} Fulfill
                             </button>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

@@ -8,7 +8,7 @@
         <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-text-primary">{{ asset.name }}</p>
             <p class="text-[0.6rem] text-text-secondary">
-                {{ asset.tracking_id }} · {{ asset.asset_type }}
+                {{ asset.tracking_id }} · {{ asset.category.name|default:"Uncategorized" }}
                 {% if asset.serial_number %}· SN: {{ asset.serial_number }}{% endif %}
                 {% if asset.location %}· {{ asset.location }}{% endif %}
             </p>

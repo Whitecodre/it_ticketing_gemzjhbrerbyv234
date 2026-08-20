@@ -9,11 +9,13 @@
     <div style="max-width: 480px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; padding: 32px 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
         
         <div style="text-align: center; margin-bottom: 24px;">
-            <img src="https://gemzsoftware.com/_next/image?url=%2Fdownload.png&w=128&q=75" alt="Gemz Software" style="height: 40px; width: auto;">
+            {% if logo_url %}
+            <img src="{{ logo_url }}" alt="{{ client_settings.company_name }}" style="height: 40px; width: auto;">
+            {% endif %}
             <h1 style="font-size: 22px; font-weight: 600; color: #0D9488; margin: 12px 0 0 0;">Asset Request Fulfilled</h1>
         </div>
 
-        <p style="font-size: 16px; color: #1E293B; margin: 0 0 12px 0;">Hi <strong>{{ user.get_full_name|default:user.email }}</strong>,</p>
+        <p style="font-size: 16px; color: #1E293B; margin: 0 0 12px 0;">Hi <strong>{{ requester_name }}</strong>,</p>
         
         <p style="font-size: 15px; color: #334155; line-height: 1.5; margin: 0 0 12px 0;">
             Your asset request <strong>{{ ticket.number }}</strong> has been fulfilled!
@@ -22,7 +24,7 @@
         <div style="background-color: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 16px; margin: 16px 0;">
             <p style="font-size: 14px; color: #166534; margin: 0;">
                 <strong>Asset:</strong> {{ asset.name }} ({{ asset.tracking_id }})<br>
-                <strong>Type:</strong> {{ asset.asset_type }}<br>
+                <strong>Category:</strong> {{ asset.category.name|default:"—" }}<br>
                 <strong>Serial:</strong> {{ asset.serial_number|default:"N/A" }}<br>
                 <strong>Location:</strong> {{ asset.location|default:"Not specified" }}
             </p>
@@ -33,13 +35,13 @@
         </p>
 
         <div style="text-align: center; margin: 0 0 24px 0;">
-            <a href="{{ protocol }}://{{ domain }}{% url 'tickets:detail' ticket.pk %}" style="display: inline-block; background-color: #0D9488; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 9999px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">View Ticket</a>
+            <a href="{{ ticket_url }}" style="display: inline-block; background-color: #0D9488; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 9999px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">View Ticket</a>
         </div>
 
         <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 24px 0 16px 0;">
 
         <p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0;">
-            &copy; 2025 Gemz Software
+            &copy; {% now "Y" %} {{ client_settings.company_name }}
         </p>
     </div>
 </body>

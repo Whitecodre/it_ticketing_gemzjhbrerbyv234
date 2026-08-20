@@ -1,0 +1,87 @@
+{% load lucide %}
+
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+     onclick="if(event.target === this) this.remove();">
+    <div class="bg-surface rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+         onclick="event.stopPropagation()">
+
+        <div class="text-center">
+            <div class="flex h-14 w-14 items-center justify-center rounded-full mx-auto mb-4 bg-success/10">
+                {% lucide "check-circle" size=28 class="text-success" %}
+            </div>
+            <h3 class="text-lg font-semibold mb-2 text-text-primary">
+                Confirm or Dispute Maintenance
+            </h3>
+            <p class="text-sm text-text-secondary">
+                Was maintenance actually carried out on this asset?
+            </p>
+            <p class="text-xs mt-2 p-3 rounded-lg bg-background text-text-secondary">
+                <strong>{{ asset.name }}</strong> ({{ asset.tracking_id }})<br>
+                {{ schedule.title }} — {{ schedule.departments_display }}, {{ schedule.scheduled_date|date:"M d, Y" }}
+                {% if schedule.assigned_to %}
+                    <br>Performed by: {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
+                {% endif %}
+            </p>
+        </div>
+
+        <form method="post"
+              hx-post="{% url 'maintenance:asset_confirm' schedule.pk asset.pk %}"
+              hx-target="#confirmModalContainer"
+              hx-swap="outerHTML"
+              hx-on::after-request="if(event.detail.successful) { setTimeout(() => location.reload(), 500); }"
+              class="mt-6">
+
+            {% csrf_token %}
+
+            <div class="space-y-2">
+                {% for radio in form.decision %}
+                <label class="flex items-center gap-2 p-2 rounded-lg border cursor-pointer" style="border-color: var(--color-border);">
+                    {{ radio.tag }}
+                    <span class="text-sm text-text-primary">{{ radio.choice_label }}</span>
+                </label>
+                {% endfor %}
+                {% if form.decision.errors %}
+                <p class="text-xs text-error">{{ form.decision.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <div class="mt-4">
+                <label for="asset_confirm_notes" class="block text-sm font-medium mb-1 text-text-primary">
+                    Notes (Optional)
+                </label>
+                <textarea name="notes" id="asset_confirm_notes" rows="2"
+                          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+                          placeholder="Any notes about the maintenance...">{{ form.notes.value|default:'' }}</textarea>
+            </div>
+
+            <div class="mt-4">
+                <label for="asset_confirm_dispute_reason" class="block text-sm font-medium mb-1 text-text-primary">
+                    If disputing: what's wrong?
+                </label>
+                <textarea name="dispute_reason" id="asset_confirm_dispute_reason" rows="2"
+                          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+                          placeholder="Required only if you choose Dispute...">{{ form.dispute_reason.value|default:'' }}</textarea>
+                {% if form.dispute_reason.errors %}
+                <p class="text-xs text-error mt-1">{{ form.dispute_reason.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center justify-end gap-3 mt-6">
+                <button type="button" onclick="this.closest('.fixed').remove()"
+                        class="px-4 py-2 text-sm rounded-lg border transition border-border text-text-secondary">
+                    Cancel
+                </button>
+                <button type="submit"
+                        class="px-6 py-2 text-sm font-medium text-white rounded-lg transition flex items-center gap-2 bg-success">
+                    <span class="htmx-indicator">
+                        <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </span>
+                    Submit
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

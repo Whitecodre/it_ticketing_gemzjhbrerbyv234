@@ -63,6 +63,20 @@ class Command(BaseCommand):
                 self.stderr.write(self.style.ERROR(
                     f'❌ [{datetime.now().strftime("%H:%M:%S")}] Maintenance reminders failed: {str(e)}'
                 ))
+
+            try:
+                call_command('process_remote_session_expiry', verbosity=0)
+            except Exception as e:
+                self.stderr.write(self.style.ERROR(
+                    f'❌ [{datetime.now().strftime("%H:%M:%S")}] Remote session expiry processing failed: {str(e)}'
+                ))
+
+            try:
+                call_command('send_renewal_reminders', verbosity=0)
+            except Exception as e:
+                self.stderr.write(self.style.ERROR(
+                    f'❌ [{datetime.now().strftime("%H:%M:%S")}] Renewal reminders failed: {str(e)}'
+                ))
         
         # If --once flag, run once and exit
         if run_once:

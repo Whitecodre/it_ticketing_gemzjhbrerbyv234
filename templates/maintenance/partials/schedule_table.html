@@ -1,4 +1,5 @@
 {% load lucide %}
+{% load maintenance_tags %}
 
 <div class="rounded-lg border overflow-hidden" style="background-color: var(--color-surface); border-color: var(--color-border);">
     
@@ -8,7 +9,7 @@
             <thead>
                 <tr style="border-bottom: 1px solid var(--color-border);">
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
-                        Department
+                        Target Department
                     </th>
                     <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
                         Title
@@ -35,7 +36,7 @@
                 <tr class="border-t group" style="border-color: var(--color-border);">
                     <td class="px-4 py-3">
                         <span class="text-sm" style="color: var(--color-text-primary);">
-                            {{ schedule.get_department_display }}
+                            {{ schedule.departments_display }}
                         </span>
                     </td>
                     <td class="px-4 py-3">
@@ -108,16 +109,14 @@
                                 </a>
                             {% endif %}
                             
-                            {# Confirm - Only for Manager (Team Lead/Admin/Superadmin) #}
-                            {% if schedule.status == 'COMPLETED' and not schedule.confirmed_by %}
-                                {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
-                                    <button onclick="openConfirmModal({{ schedule.pk }})"
-                                            class="p-1.5 rounded transition hover:bg-black/5"
-                                            style="color: var(--color-success);"
-                                            title="Confirm Completion">
-                                        {% lucide "check-circle" size=16 %}
-                                    </button>
-                                {% endif %}
+                            {# Owner confirmation is now per-asset — see the schedule detail page #}
+                            {% if schedule.status == 'COMPLETED' and schedule.confirmation_state != 'ALL_CONFIRMED' %}
+                                <a href="{% url 'maintenance:detail' schedule.pk %}"
+                                   class="p-1.5 rounded transition hover:bg-black/5"
+                                   style="color: {% if schedule.confirmation_state == 'HAS_DISPUTE' %}var(--color-error){% else %}var(--color-warning){% endif %};"
+                                   title="Awaiting owner confirmation">
+                                    {% lucide "clock" size=16 %}
+                                </a>
                             {% endif %}
                             
                             {# View - Everyone #}
@@ -128,9 +127,10 @@
                                 {% lucide "eye" size=16 %}
                             </a>
                             
-                            {# Update Status - Only assigned IT or Admin/Team Lead #}
+                            {# Update Status - Only assigned officers or the target department's Team Lead #}
                             {% if schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
-                                {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' or schedule.assigned_to == user or user in schedule.additional_assignees.all %}
+                                {% can_change_status schedule user as user_can_change_status %}
+                                {% if user_can_change_status %}
                                     <button onclick="openStatusModal({{ schedule.pk }})"
                                             class="p-1.5 rounded transition hover:bg-black/5"
                                             style="color: var(--color-primary);"

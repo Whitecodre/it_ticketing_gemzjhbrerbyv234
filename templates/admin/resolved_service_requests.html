@@ -1,0 +1,58 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Resolved Service Requests{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "check-check" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Resolved Service Requests</h2>
+                <p class="text-sm text-text-secondary">Every service request that has been resolved or closed, org-wide.</p>
+            </div>
+        </div>
+        <div class="w-full sm:max-w-sm">
+            <div class="relative">
+                {% lucide "search" size=16 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
+                <input type="text" id="searchInput" placeholder="Search by ID, subject, or requester…"
+                       class="w-full rounded-lg border py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                       hx-get="{% url 'tickets:resolved_service_requests' %}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#resolvedRequestsTableContainer"
+                       hx-swap="innerHTML"
+                       hx-include="#departmentFilter"
+                       name="q" value="{{ q }}">
+            </div>
+        </div>
+    </div>
+
+    {# Filters #}
+    <div class="flex flex-wrap gap-2 mb-6">
+        <select id="departmentFilter" name="department"
+                class="text-sm rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                hx-get="{% url 'tickets:resolved_service_requests' %}"
+                hx-target="#resolvedRequestsTableContainer"
+                hx-swap="innerHTML"
+                hx-include="#searchInput">
+            <option value="">All Departments</option>
+            {% for value, label in department_choices %}
+                <option value="{{ value }}" {% if department_filter == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div id="resolvedRequestsTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
+        {% include "partials/resolved_service_requests_table.html" %}
+    </div>
+</div>
+{% endblock %}

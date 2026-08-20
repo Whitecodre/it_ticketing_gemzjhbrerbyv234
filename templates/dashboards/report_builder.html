@@ -1,0 +1,189 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ config.label }} Report{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full space-y-6">
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-start gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                {% lucide config.icon size=20 %}
+            </div>
+            <div>
+                <h2 class="text-base font-semibold text-text-primary">{{ config.label }}</h2>
+                <p class="text-xs text-text-secondary mt-0.5" id="reportRecordCount">{{ total_count }} record{{ total_count|pluralize }} match your filters</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a id="reportExportCsv" data-base-href="{% url 'tickets:export_report' report_type=report_type %}?format=csv&{{ querystring }}"
+               href="{% url 'tickets:export_report' report_type=report_type %}?format=csv&{{ querystring }}" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-spreadsheet" size=12 %} CSV
+            </a>
+            <a id="reportExportExcel" data-base-href="{% url 'tickets:export_report' report_type=report_type %}?format=excel&{{ querystring }}"
+               href="{% url 'tickets:export_report' report_type=report_type %}?format=excel&{{ querystring }}" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-spreadsheet" size=12 %} Excel
+            </a>
+            <a id="reportExportJson" data-base-href="{% url 'tickets:export_report' report_type=report_type %}?format=json&{{ querystring }}"
+               href="{% url 'tickets:export_report' report_type=report_type %}?format=json&{{ querystring }}" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-code" size=12 %} JSON
+            </a>
+            <a id="reportExportPdf" data-base-href="{% url 'tickets:export_report' report_type=report_type %}?format=pdf&{{ querystring }}"
+               href="{% url 'tickets:export_report' report_type=report_type %}?format=pdf&{{ querystring }}" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-type" size=12 %} PDF
+            </a>
+            <a id="reportExportDocx" data-base-href="{% url 'tickets:export_report' report_type=report_type %}?format=docx&{{ querystring }}"
+               href="{% url 'tickets:export_report' report_type=report_type %}?format=docx&{{ querystring }}" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-down" size=12 %} Word
+            </a>
+        </div>
+    </div>
+
+    {# Filter Panel #}
+    <div class="dashboard-card p-5">
+        <form id="reportFilterForm"
+              hx-get="{% url 'tickets:report_builder' report_type=report_type %}"
+              hx-target="#reportPreviewContainer"
+              hx-trigger="change"
+              hx-push-url="true">
+            <div class="flex flex-wrap items-end gap-3">
+                {# Date range #}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">{{ config.date_field_label }}</label>
+                    <div class="flex items-center gap-1">
+                        <input type="date" name="start_date" id="reportStartDate" value="{{ start_date }}"
+                               class="text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary focus:outline-none focus:ring-2 ring-primary">
+                        <span class="text-text-secondary text-xs">to</span>
+                        <input type="date" name="end_date" id="reportEndDate" value="{{ end_date }}"
+                               class="text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary focus:outline-none focus:ring-2 ring-primary">
+                    </div>
+                </div>
+
+                {# Type-specific filters #}
+                {% for f in filter_fields %}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">{{ f.label }}</label>
+                    {% if f.kind == 'select' %}
+                    <select name="{{ f.key }}" class="text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary min-w-[150px] focus:outline-none focus:ring-2 ring-primary">
+                        <option value="">All</option>
+                        {% for value, label in f.choices %}
+                        <option value="{{ value }}" {% if f.value == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" name="{{ f.key }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}"
+                           class="text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary focus:outline-none focus:ring-2 ring-primary">
+                    {% endif %}
+                </div>
+                {% endfor %}
+
+                {# Quick date presets #}
+                <div class="flex items-center gap-1.5 pb-0.5">
+                    <button type="button" onclick="applyDatePreset(0)" class="btn-ghost text-xs px-2 py-1.5 rounded-lg">Today</button>
+                    <button type="button" onclick="applyDatePreset(7)" class="btn-ghost text-xs px-2 py-1.5 rounded-lg">7 Days</button>
+                    <button type="button" onclick="applyDatePreset(30)" class="btn-ghost text-xs px-2 py-1.5 rounded-lg">This Month</button>
+                    <button type="button" onclick="applyDatePreset(90)" class="btn-ghost text-xs px-2 py-1.5 rounded-lg">This Quarter</button>
+                    <button type="button" onclick="clearReportFilters()" class="btn-ghost text-xs px-2 py-1.5 rounded-lg" style="color: var(--color-error);">Clear</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {# Live Preview #}
+    <div class="dashboard-card p-0 overflow-hidden">
+        <div id="reportPreviewContainer">
+            {% include "partials/report_preview_table.html" %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    function applyDatePreset(days) {
+        const end = new Date();
+        const start = new Date();
+        if (days > 0) {
+            start.setDate(end.getDate() - days);
+        }
+        const toISODate = (d) => d.toISOString().slice(0, 10);
+        document.getElementById('reportStartDate').value = toISODate(start);
+        document.getElementById('reportEndDate').value = toISODate(end);
+        document.getElementById('reportFilterForm').dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function clearReportFilters() {
+        window.location.href = window.location.pathname;
+    }
+
+    // ================================================================
+    // BULK ROW SELECTION — export only the checked records instead of
+    // the full filtered set. Selection is page-scoped: it resets whenever
+    // the table reloads (filter change, pagination).
+    // ================================================================
+    const EXPORT_LINK_IDS = ['reportExportCsv', 'reportExportExcel', 'reportExportJson', 'reportExportPdf', 'reportExportDocx'];
+
+    function getReportSelectedIds() {
+        return Array.from(document.querySelectorAll('.report-row-checkbox:checked')).map(cb => cb.value);
+    }
+
+    function updateExportLinks() {
+        const ids = getReportSelectedIds();
+        EXPORT_LINK_IDS.forEach(function(linkId) {
+            const link = document.getElementById(linkId);
+            if (!link) return;
+            const base = link.dataset.baseHref;
+            link.href = ids.length ? base + ids.map(id => '&ids=' + encodeURIComponent(id)).join('') : base;
+        });
+    }
+
+    function updateReportSelection() {
+        const ids = getReportSelectedIds();
+        const bar = document.getElementById('reportBulkSelectionBar');
+        const countEl = document.getElementById('reportSelectedCount');
+        const selectAll = document.getElementById('reportSelectAll');
+        if (countEl) countEl.textContent = ids.length;
+        if (bar) bar.classList.toggle('hidden', ids.length === 0);
+        if (bar) bar.classList.toggle('flex', ids.length > 0);
+        if (selectAll) {
+            const allCheckboxes = document.querySelectorAll('.report-row-checkbox');
+            selectAll.checked = allCheckboxes.length > 0 && ids.length === allCheckboxes.length;
+        }
+        updateExportLinks();
+    }
+
+    function toggleReportSelectAll(checkbox) {
+        document.querySelectorAll('.report-row-checkbox').forEach(function(cb) {
+            cb.checked = checkbox.checked;
+        });
+        updateReportSelection();
+    }
+
+    function clearReportSelection() {
+        document.querySelectorAll('.report-row-checkbox').forEach(function(cb) { cb.checked = false; });
+        const selectAll = document.getElementById('reportSelectAll');
+        if (selectAll) selectAll.checked = false;
+        updateReportSelection();
+    }
+
+    // The table partial is swapped wholesale on filter/pagination changes —
+    // selection naturally resets since the checkboxes themselves are
+    // replaced, but the export links must be reset back to "full set" too.
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.target && event.target.id === 'reportPreviewContainer') {
+            updateExportLinks();
+        }
+    });
+</script>
+{% endblock %}

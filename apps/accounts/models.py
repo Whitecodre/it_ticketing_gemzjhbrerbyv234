@@ -152,6 +152,7 @@ class User(AbstractUser):
         return self.is_superuser or self.role == self.Role.ADMIN
 
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    signature = models.ImageField(upload_to='signatures/', blank=True, null=True)
     email_verified = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         'self',
@@ -307,6 +308,8 @@ class User(AbstractUser):
                 old = User.objects.get(pk=self.pk)
                 if old.avatar and old.avatar != self.avatar:
                     old.avatar.delete(save=False)
+                if old.signature and old.signature != self.signature:
+                    old.signature.delete(save=False)
             except User.DoesNotExist:
                 pass
 

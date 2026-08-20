@@ -10,7 +10,8 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
 # ================================================================
 # PRODUCTION - Enable rate limiting
 # ================================================================
-RATELIMIT_ENABLED = True
+# django-ratelimit's actual setting is RATELIMIT_ENABLE (no trailing "D").
+RATELIMIT_ENABLE = True
 
 # ================================================================
 # SECURITY HEADERS

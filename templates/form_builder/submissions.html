@@ -37,8 +37,8 @@
                     {% lucide "download" size=16 %} Export
                     <span class="ml-1">▾</span>
                 </button>
-                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border"
-                    <a href="{% url 'form_builder:export' form_instance.pk %}?format=csv" 
+                <div id="exportDropdown" class="w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border">
+                    <a href="{% url 'form_builder:export' form_instance.pk %}?format=csv"
                        class="block px-4 py-2 text-xs hover:bg-black/5 transition">CSV</a>
                     <a href="{% url 'form_builder:export' form_instance.pk %}?format=excel" 
                        class="block px-4 py-2 text-xs hover:bg-black/5 transition">Excel</a>
@@ -78,18 +78,35 @@
 </div>
 
 <script>
+    let exportDropdownCleanup = null;
+
     function toggleExportDropdown() {
         const dropdown = document.getElementById('exportDropdown');
-        if (dropdown) {
-            dropdown.classList.toggle('hidden');
+        if (!dropdown) return;
+        if (dropdown.classList.contains('hidden')) {
+            dropdown.classList.remove('hidden');
+            const trigger = document.querySelector('[onclick="toggleExportDropdown()"]');
+            if (trigger && window.positionDropdown) {
+                exportDropdownCleanup = window.positionDropdown(trigger, dropdown, { align: 'right' });
+            }
+        } else {
+            dropdown.classList.add('hidden');
+            if (exportDropdownCleanup) {
+                exportDropdownCleanup();
+                exportDropdownCleanup = null;
+            }
         }
     }
-    
+
     // Close dropdown on outside click
     document.addEventListener('click', function(event) {
         const dropdown = document.getElementById('exportDropdown');
-        if (dropdown && !dropdown.contains(event.target)) {
+        if (dropdown && !dropdown.classList.contains('hidden') && !dropdown.contains(event.target)) {
             dropdown.classList.add('hidden');
+            if (exportDropdownCleanup) {
+                exportDropdownCleanup();
+                exportDropdownCleanup = null;
+            }
         }
     });
 </script>

@@ -1,11 +1,27 @@
 from django.db import models
 from django.conf import settings
 
+
+def get_role_choices():
+    """Role choices for fields that need them, without importing the User
+    model directly (same pattern as apps/tickets/models.py::get_role_choices,
+    duplicated locally rather than cross-imported since common is the
+    lower-level app other apps depend on, not the reverse)."""
+    return [
+        ('SUPERADMIN', 'Super Admin'),
+        ('ADMIN', 'Admin'),
+        ('TEAM_LEAD', 'Team Lead'),
+        ('AGENT', 'Support Team'),
+        ('END_USER', 'User'),
+    ]
+
+
 class Category(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='children')
     description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, blank=True, help_text='Lucide icon name, e.g. "book-open"')
 
     class Meta:
         verbose_name_plural = 'Categories'
@@ -42,6 +58,13 @@ class Notification(models.Model):
     is_read = models.BooleanField(default=False)
     url = models.URLField(blank=True)
     type = models.CharField(max_length=25, choices=Type.choices, default=Type.GENERAL)
+    # Which of the recipient's roles this notification pertains to — null
+    # means role-agnostic (system/general notifications), always shown
+    # regardless of active role. Populated at creation time by whichever
+    # view raises the notification; existing rows stay null (unscoped),
+    # which is the safe default for anything created before this field
+    # existed.
+    role = models.CharField(max_length=20, choices=get_role_choices(), null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

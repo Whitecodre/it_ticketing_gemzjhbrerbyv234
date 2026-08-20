@@ -49,18 +49,18 @@
     </div>
 </div>
 
-{# ========== SECTION: PRODUCTIVITY ========== #}
+{# ========== SECTION: SUPPORT TOOLS ========== #}
 <div class="mt-2">
     <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
-            data-section="productivity-section"
+            data-section="support-tools-section"
             style="color: var(--color-text-secondary);">
         <span class="section-icon">{% lucide "sparkles" size=16 %}</span>
-        <span>Productivity</span>
+        <span>Support Tools</span>
         <span class="section-chevron ml-auto transition-transform duration-200">
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="productivity-section"
+    <div id="support-tools-section"
          class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
         <a href="{% url 'kb:management' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
@@ -87,6 +87,31 @@
             <span class="shrink-0">{% lucide "hard-drive" size=16 class="h-4 w-4" %}</span>
             <span>Assets</span>
         </a>
+        <a href="{% url 'tickets:my_assets' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/my-assets/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0 relative">
+                {% lucide "laptop" size=16 class="h-4 w-4" %}
+                <div id="myAssetsBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:my_assets_pending_count' %}"
+                     hx-trigger="every 5s"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
+            <span>My Assets</span>
+        </a>
+        <a href="{% url 'tickets:mobilizations' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/mobilizations/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "ship" size=16 class="h-4 w-4" %}</span>
+            <span>Mobilizations</span>
+        </a>
+        <a href="{% url 'tickets:macro_management' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/macros/manage/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "zap" size=16 class="h-4 w-4" %}</span>
+            <span>Macros</span>
+        </a>
     </div>
 </div>
 
@@ -101,31 +126,53 @@
             {% lucide "chevron-down" size=14 %}
         </span>
     </button>
-    <div id="maintenance-section" 
+    <div id="maintenance-section"
          class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
-        <a href="{% url 'maintenance:list' %}"
+        {% comment %} <a href="{% url 'maintenance:list' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' and request.GET.mine != '1' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "calendar" size=16 class="h-4 w-4" %}</span>
             <span>Schedule</span>
-        </a>
+        </a> {% endcomment %}
         <a href="{% url 'maintenance:list' %}?mine=1"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'maintenance' and request.GET.mine == '1' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "user-check" size=16 class="h-4 w-4" %}</span>
             <span>My Tasks</span>
         </a>
-        <a href="{% url 'maintenance:create' %}"
+        {% comment %} <a href="{% url 'maintenance:create' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if request.resolver_match.url_name == 'create' and request.resolver_match.app_name == 'maintenance' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "plus-circle" size=16 class="h-4 w-4" %}</span>
             <span>New Schedule</span>
-        </a>
-        <a href="{% url 'maintenance:calendar' %}" 
+        </a> {% endcomment %}
+        <a href="{% url 'maintenance:calendar' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if request.resolver_match.url_name == 'calendar' and request.resolver_match.app_name == 'maintenance' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "calendar-days" size=16 class="h-4 w-4" %}</span>
             <span>Calendar View</span>
+        </a>
+    </div>
+</div>
+
+{# ========== SECTION: DOCUMENTS ========== #}
+<div class="mt-2">
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+            data-section="documents-section"
+            style="color: var(--color-text-secondary);">
+        <span class="section-icon">{% lucide "file-text" size=16 %}</span>
+        <span>Documents</span>
+        <span class="section-chevron ml-auto transition-transform duration-200">
+            {% lucide "chevron-down" size=14 %}
+        </span>
+    </button>
+    <div id="documents-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
+        <a href="{% url 'documents_display:dashboard' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/documents-display/' in request.path and not '/create/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "layout-dashboard" size=16 class="h-4 w-4" %}</span>
+            <span>Dashboard</span>
         </a>
     </div>
 </div>

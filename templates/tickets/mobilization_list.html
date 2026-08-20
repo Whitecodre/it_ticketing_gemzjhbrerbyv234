@@ -1,0 +1,112 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Mobilizations{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "ship" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold text-text-primary">Mobilizations</h2>
+                <p class="text-sm text-text-secondary">Track assets sent out to a job, vessel, or dive system — and what's currently out.</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+            <button onclick="openMobilizationCreateModal()"
+                    class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "package-plus" size=16 %} Mobilize Assets
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <form id="mobilizationFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3 bg-surface border-border"
+        hx-get="{% url 'tickets:mobilizations' %}"
+        hx-target="#mobilizationTableContainer"
+        hx-swap="innerHTML"
+        hx-trigger="change">
+
+        <select name="filter_job" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">All Jobs</option>
+            {% for job in job_numbers %}
+            <option value="{{ job.id }}" {% if selected_job == job.id|stringformat:"s" %}selected{% endif %}>{{ job.number }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="filter_vessel" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">All Vessels</option>
+            {% for vessel in vessels %}
+            <option value="{{ vessel.id }}" {% if selected_vessel == vessel.id|stringformat:"s" %}selected{% endif %}>{{ vessel.name }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="filter_system" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">All Dive Systems</option>
+            {% for system in dive_systems %}
+            <option value="{{ system.id }}" {% if selected_system == system.id|stringformat:"s" %}selected{% endif %}>{{ system.name }}</option>
+            {% endfor %}
+        </select>
+
+        <select name="filter_status" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">All Status</option>
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="reset" class="btn-ghost text-sm">Reset</button>
+    </form>
+
+    <div id="mobilizationTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
+        {% include "partials/mobilization_table.html" %}
+    </div>
+</div>
+
+<!-- Modal Overlay -->
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeMobilizationModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    function openMobilizationCreateModal() {
+        const url = "{% url 'tickets:mobilization_create_modal' %}";
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
+    function closeMobilizationModal() {
+        const overlay = document.getElementById('modalOverlay');
+        const container = document.getElementById('modalContainer');
+        if (overlay) overlay.classList.add('hidden');
+        if (container) container.innerHTML = '';
+    }
+</script>
+{% endblock %}

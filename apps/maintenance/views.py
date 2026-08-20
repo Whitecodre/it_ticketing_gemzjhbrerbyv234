@@ -15,11 +15,21 @@ from datetime import datetime, timedelta, date
 import calendar
 import logging
 
-from .models import MaintenanceSchedule, MaintenanceActivityLog
-from .forms import MaintenanceScheduleForm, MaintenanceStatusForm, MaintenanceConfirmForm
+from .models import (
+    MaintenanceSchedule, MaintenanceActivityLog, MaintenanceChecklistTemplate,
+    MaintenanceAssetConfirmation, Vendor,
+)
+from .forms import MaintenanceScheduleForm, MaintenanceStatusForm, MaintenanceAssetConfirmForm
 from apps.accounts.models import User
-from apps.common.utils import send_email_via_brevo
+from apps.tickets.models import Asset
+
+ASSET_EXCLUDED_STATUSES = [
+    Asset.Status.RETIRED, Asset.Status.SCRAPPED, Asset.Status.DISPOSED,
+    Asset.Status.LOST, Asset.Status.STOLEN,
+]
+from apps.common.utils import send_email_via_brevo, role_of
 from apps.common.models import Notification
+from apps.common.permissions import get_sidebar_template
 
 logger = logging.getLogger(__name__)
 
@@ -36,49 +46,192 @@ def notify_maintenance_assignees(schedule, message):
     for recipient in {r.pk: r for r in recipients}.values():
         Notification.objects.create(
             recipient=recipient,
+            role=role_of(recipient),
             message=message,
             url=url,
             type=Notification.Type.GENERAL,
         )
+
+def notify_maintenance_management(schedule, message, actor):
+    """Notify Admin/Superadmin org-wide plus any of the target departments'
+    Team Leads when a schedule starts or completes — excludes the acting
+    user so nobody gets notified about their own action."""
+    recipients = User.objects.filter(
+        Q(role=User.Role.TEAM_LEAD, department__in=schedule.departments) |
+        Q(role__in=[User.Role.ADMIN, User.Role.SUPERADMIN]),
+        is_active=True,
+    )
+    if actor:
+        recipients = recipients.exclude(pk=actor.pk)
+    url = reverse('maintenance:detail', kwargs={'pk': schedule.pk})
+    for recipient in {r.pk: r for r in recipients}.values():
+        Notification.objects.create(
+            recipient=recipient,
+            role=role_of(recipient),
+            message=message,
+            url=url,
+            type=Notification.Type.GENERAL,
+        )
+
+
+def _asset_confirmation_recipients(asset):
+    """Who is eligible to confirm/dispute maintenance on this asset — mirrors
+    can_confirm_asset_maintenance's resolution so 'who is notified' matches
+    'who may act': asset.assigned_to if set, else every Team Lead of the
+    asset's department, plus (always) every Admin/Superadmin."""
+    if asset.assigned_to_id:
+        recipients = [asset.assigned_to]
+    else:
+        recipients = list(User.objects.filter(
+            role=User.Role.TEAM_LEAD, department=asset.department, is_active=True,
+        ))
+    recipients += list(User.objects.filter(
+        role__in=[User.Role.ADMIN, User.Role.SUPERADMIN], is_active=True,
+    ))
+    return list({r.pk: r for r in recipients}.values())
+
+
+def _asset_review_url(asset, schedule, recipient):
+    """Where a confirmation notification/email should send its recipient.
+    The asset's OWNER lands on their own My Assets page with the relevant
+    confirm modal deep-linked open (?schedule=&asset=) — never the
+    IT-internal maintenance detail page, which would expose personnel,
+    activity log, and notification-status info that isn't this person's
+    business. A department-Team-Lead/Admin fallback confirmer, by contrast,
+    IS IT-side staff with legitimate access, so they go to the normal
+    schedule detail page (same as every other IT notification)."""
+    if asset.assigned_to_id == recipient.pk:
+        return f"{reverse('tickets:my_assets')}?schedule={schedule.pk}&asset={asset.pk}"
+    return reverse('maintenance:detail', kwargs={'pk': schedule.pk})
+
+
+def notify_asset_confirmers(asset, schedule, message, exclude=None):
+    """In-app notification to everyone eligible to confirm/dispute
+    maintenance on a given asset (see _asset_confirmation_recipients)."""
+    recipients = _asset_confirmation_recipients(asset)
+    if exclude:
+        recipients = [r for r in recipients if r.pk != exclude.pk]
+    for recipient in recipients:
+        Notification.objects.create(
+            recipient=recipient,
+            role=role_of(recipient),
+            message=message,
+            url=_asset_review_url(asset, schedule, recipient),
+            type=Notification.Type.GENERAL,
+        )
+
+
+def notify_asset_owners_completion(schedule):
+    """Fired once from schedule_update_status when a schedule is marked
+    COMPLETED — tells each target asset's owner (or fallback confirmer) that
+    the schedule is now awaiting their confirmation."""
+    for asset in schedule.target_assets.all():
+        notify_asset_confirmers(
+            asset, schedule,
+            f'🔧 "{schedule.title}" was marked complete — please confirm or dispute the work done on {asset.name} ({asset.tracking_id}).',
+        )
+
+
+def notify_department_team_leads(schedule, departments, request, actor=None):
+    """One-time, informational notice to the Team Lead(s) of the given
+    departments when maintenance is scheduled for their department — in-app
+    + email. Callers pass only the departments that should be notified now
+    (e.g. all of them on create, or just the newly-added ones on edit)."""
+    if not departments:
+        return
+    team_leads = User.objects.filter(
+        role=User.Role.TEAM_LEAD, department__in=departments, is_active=True,
+    )
+    if actor:
+        team_leads = team_leads.exclude(pk=actor.pk)
+    url = reverse('maintenance:detail', kwargs={'pk': schedule.pk})
+    for tl in team_leads:
+        Notification.objects.create(
+            recipient=tl,
+            role=role_of(tl),
+            message=f'📅 New maintenance scheduled for {tl.get_department_display()}: "{schedule.title}" ({schedule.scheduled_date}).',
+            url=url,
+            type=Notification.Type.GENERAL,
+        )
+        send_maintenance_teamlead_notice_email(schedule, tl, request)
+
+
+def sync_checklist_templates(departments, items, user):
+    """Ensure every checklist item text used on a schedule exists as a
+    reusable MaintenanceChecklistTemplate for each of the schedule's target
+    departments, reusing an existing item if one already matches
+    case-insensitively. A schedule covering multiple departments grows the
+    picklist for each of them (a checklist item is still a single
+    department's content — the schedule's picker just unions across all its
+    target departments)."""
+    for department in departments:
+        for item in items:
+            exists = MaintenanceChecklistTemplate.objects.filter(
+                department=department, text__iexact=item
+            ).exists()
+            if not exists:
+                MaintenanceChecklistTemplate.objects.create(
+                    department=department, text=item, created_by=user
+                )
+
 
 def get_user_role(request):
     """Helper to get user's active role name."""
     role = request.user.get_active_role()
     return role.name if role else request.user.role
 
-# Helper to get sidebar template
-def get_sidebar_template(user):
-    """Returns the correct sidebar partial based on user's active role."""
-    mapping = {
-        'END_USER': 'partials/sidebar_end_user.html',
-        'AGENT': 'partials/sidebar_agent.html',
-        'TEAM_LEAD': 'partials/sidebar_team_lead.html',
-        'ADMIN': 'partials/sidebar_admin.html',
-        'SUPERADMIN': 'partials/sidebar_superadmin.html',
-    }
-    active_role = user.get_active_role()
-    role_name = active_role.name if active_role else user.role
-    return mapping.get(role_name, 'partials/sidebar_end_user.html')
+# get_sidebar_template is imported from apps.common.permissions (see top of file).
 
 
 def can_manage_maintenance(user):
-    """Check if user can manage maintenance (create, edit, delete)."""
+    """Check if user can manage maintenance (create, edit, delete).
+
+    A Team Lead outside IT is scoped solely to the service-request approval
+    flow for now, so maintenance management stays IT-only regardless of
+    role name."""
     role = user.get_active_role()
-    if not role:
-        return user.role in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']
-    return role.name in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']
+    role_name = role.name if role else user.role
+    if role_name not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+        return False
+    if role_name == 'TEAM_LEAD':
+        return user.department == 'IT'
+    return True
 
 
-def can_confirm_maintenance(user, schedule):
-    """Check if user can confirm a schedule (department manager or admin)."""
-    # Admin/Superadmin can confirm anything
-    role = user.get_active_role()
-    if role and role.name in ['ADMIN', 'SUPERADMIN']:
+def can_change_maintenance_status(user, schedule):
+    """Who may transition a schedule's status (start/complete/cancel):
+    the assigned officer(s), or one of the schedule's OWN target
+    departments' Team Lead. Admin/Superadmin can view but not directly
+    change status — asset owners confirm completion separately via
+    can_confirm_asset_maintenance."""
+    if schedule.is_assigned_to(user):
         return True
-    # Team Lead can confirm their department
-    if role and role.name == 'TEAM_LEAD':
-        return user.department == schedule.department
+    role = user.get_active_role()
+    role_name = role.name if role else user.role
+    if role_name == 'TEAM_LEAD' and user.department in schedule.departments:
+        return True
     return False
+
+
+def can_confirm_asset_maintenance(user, asset, schedule):
+    """Who may confirm/dispute maintenance completion on ONE target asset —
+    this is the anti-fraud control: the technician who did the work is never
+    the confirmer.
+
+    Resolution: asset.assigned_to (the owner) if set, else any Team Lead of
+    the asset's own department (not schedule.departments — a schedule can
+    span several). Admin/Superadmin can ALWAYS confirm/override/dispute
+    regardless of the above, since they scheduled the maintenance and are
+    accountable for it — this also automatically covers the "zero Team
+    Leads for this department" fallback, since Admin/Superadmin are
+    unconditionally eligible whether or not a Team Lead exists."""
+    role = user.get_active_role()
+    role_name = role.name if role else user.role
+    if role_name in ('ADMIN', 'SUPERADMIN'):
+        return True
+    if asset.assigned_to_id:
+        return asset.assigned_to_id == user.id
+    return role_name == 'TEAM_LEAD' and user.department == asset.department
 
 
 def log_activity(schedule, action, actor=None, details=None):
@@ -108,7 +261,7 @@ def schedule_list(request):
             Q(assigned_to=request.user) | Q(additional_assignees=request.user)
         ).distinct()
     if department:
-        schedules = schedules.filter(department=department)
+        schedules = schedules.filter(departments__contains=[department])
     if status:
         schedules = schedules.filter(status=status)
     if month:
@@ -121,11 +274,11 @@ def schedule_list(request):
         except ValueError:
             pass
     
-    # If team lead, only see their department
+    # If team lead, only see schedules that target their department
     role = request.user.get_active_role()
     if role and role.name == 'TEAM_LEAD':
-        schedules = schedules.filter(department=request.user.department)
-    
+        schedules = schedules.filter(departments__contains=[request.user.department])
+
     schedules = schedules.order_by('-scheduled_date', '-created_at')
     
     # Pagination
@@ -180,6 +333,7 @@ def schedule_create(request):
             # Set checklist items
             schedule.checklist_items = form.cleaned_data.get('checklist_items', [])
             schedule.save(update_fields=['checklist_items'])
+            sync_checklist_templates(schedule.departments, schedule.checklist_items, request.user)
 
             # Log creation
             log_activity(schedule, MaintenanceActivityLog.Action.CREATED, request.user)
@@ -188,6 +342,10 @@ def schedule_create(request):
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
             notify_maintenance_assignees(schedule, f'🔧 You were assigned to maintenance: "{schedule.title}" ({schedule.scheduled_date}).')
+
+            # Inform each target department's Team Lead(s) — informational,
+            # fires once at creation for every department on the schedule.
+            notify_department_team_leads(schedule, schedule.departments, request, actor=request.user)
 
             messages.success(request, f'Maintenance schedule "{schedule.title}" created successfully.')
 
@@ -205,17 +363,18 @@ def schedule_create(request):
     # Get IT users for dropdown
     it_roles = ['SUPERADMIN', 'ADMIN', 'TEAM_LEAD', 'AGENT']
     it_users = User.objects.filter(role__in=it_roles, is_active=True).order_by('first_name', 'last_name')
-    
+
     context = {
         'form': form,
         'schedule': None,
         'it_users': it_users,
+        'vendors': Vendor.objects.filter(is_active=True).order_by('name'),
         'department_choices': MaintenanceSchedule.Department.choices,
         'sidebar_template': get_sidebar_template(request.user),
         'checklist_items': [],
         'user_role': get_user_role(request)
     }
-    
+
     return render(request, 'maintenance/schedule_form.html', context)
 
 
@@ -232,6 +391,7 @@ def schedule_edit(request, pk):
         return redirect('maintenance:detail', pk=pk)
     
     if request.method == 'POST':
+        old_departments = set(schedule.departments)
         form = MaintenanceScheduleForm(request.POST, instance=schedule)
         if form.is_valid():
             old_status = schedule.status
@@ -240,6 +400,7 @@ def schedule_edit(request, pk):
             # Update checklist
             schedule.checklist_items = form.cleaned_data.get('checklist_items', [])
             schedule.save(update_fields=['checklist_items'])
+            sync_checklist_templates(schedule.departments, schedule.checklist_items, request.user)
 
             # Log update
             log_activity(schedule, MaintenanceActivityLog.Action.UPDATED, request.user)
@@ -248,6 +409,11 @@ def schedule_edit(request, pk):
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
             notify_maintenance_assignees(schedule, f'🔧 Maintenance schedule updated: "{schedule.title}" ({schedule.scheduled_date}).')
+
+            # Only notify Team Leads of departments newly added to the
+            # schedule — avoids re-notifying on every unrelated edit.
+            newly_added_departments = [d for d in schedule.departments if d not in old_departments]
+            notify_department_team_leads(schedule, newly_added_departments, request, actor=request.user)
 
             messages.success(request, f'Maintenance schedule "{schedule.title}" updated successfully.')
 
@@ -272,6 +438,7 @@ def schedule_edit(request, pk):
         'form': form,
         'schedule': schedule,
         'it_users': it_users,
+        'vendors': Vendor.objects.filter(is_active=True).order_by('name'),
         'department_choices': MaintenanceSchedule.Department.choices,
         'sidebar_template': get_sidebar_template(request.user),
         'checklist_items': schedule.checklist_items,
@@ -287,23 +454,33 @@ def schedule_detail(request, pk):
     
     schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
     
-    # Security: Team Lead can only view their department
+    # Security: Team Lead can only view schedules targeting their department
     role = request.user.get_active_role()
-    if role and role.name == 'TEAM_LEAD' and request.user.department != schedule.department:
+    if role and role.name == 'TEAM_LEAD' and request.user.department not in schedule.departments:
         messages.error(request, 'You do not have permission to view this schedule.')
         return redirect('maintenance:list')
     
     # Activity logs
     logs = schedule.activity_logs.all()[:20]
-    
+
+    asset_confirmations = [
+        {
+            'row': row,
+            'can_confirm': can_confirm_asset_maintenance(request.user, row.asset, schedule),
+        }
+        for row in schedule.asset_confirmations.select_related('asset', 'confirmed_by')
+    ]
     context = {
         'schedule': schedule,
         'activity_logs': logs,
-        'can_confirm': can_confirm_maintenance(request.user, schedule),
+        'asset_confirmations': asset_confirmations,
+        'confirmation_state': schedule.confirmation_state(),
+        'can_change_status': can_change_maintenance_status(request.user, schedule),
+        'user_can_manage': can_manage_maintenance(request.user),
         'sidebar_template': get_sidebar_template(request.user),
          'user_role': get_user_role(request),
     }
-    
+
     return render(request, 'maintenance/schedule_detail.html', context)
 
 
@@ -313,10 +490,10 @@ def schedule_update_status(request, pk):
     """Update schedule status via HTMX modal."""
     
     schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
-    
-    # Security: Only assigned IT or admin can update status
-    role = request.user.get_active_role()
-    if not (role and role.name in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']) and not schedule.is_assigned_to(request.user):
+
+    # Security: only the assigned officer(s) or the target department's
+    # Team Lead may change status — Admin/Superadmin can view but not act.
+    if not can_change_maintenance_status(request.user, schedule):
         return HttpResponse(status=403)
     
     form = MaintenanceStatusForm(request.POST)
@@ -334,10 +511,27 @@ def schedule_update_status(request, pk):
         # Set completed_at if status is COMPLETED
         if new_status == MaintenanceSchedule.Status.COMPLETED:
             schedule.completed_at = timezone.now()
-            # Send email to manager for confirmation
+            # There's no per-item toggle UI today — completing the task
+            # marks every checklist item done, so progress reflects reality
+            # instead of staying stuck at 0%.
+            schedule.completed_checklist = list(schedule.checklist_items)
+            # Send email to manager — informational; the schedule isn't
+            # actually closed until each target asset's owner confirms below.
             send_maintenance_completion_email(schedule, request)
-        
+
         schedule.save()
+
+        # Technician's "mark complete" only starts the confirmation process —
+        # create one PENDING confirmation row per target asset, to be
+        # resolved by that asset's owner (not the technician), per
+        # can_confirm_asset_maintenance.
+        if new_status == MaintenanceSchedule.Status.COMPLETED:
+            for asset in schedule.target_assets.all():
+                MaintenanceAssetConfirmation.objects.get_or_create(
+                    schedule=schedule, asset=asset,
+                    defaults={'technician_completed_at': schedule.completed_at},
+                )
+            notify_asset_owners_completion(schedule)
         
         # Log status change
         log_activity(
@@ -346,7 +540,22 @@ def schedule_update_status(request, pk):
             request.user,
             {'from': old_status, 'to': new_status, 'comment': comment}
         )
-        
+
+        # Notify admins + the target department's Team Lead when work
+        # actually starts or finishes.
+        if new_status == MaintenanceSchedule.Status.IN_PROGRESS:
+            notify_maintenance_management(
+                schedule,
+                f'▶️ "{schedule.title}" was started by {request.user.get_full_name()}.',
+                request.user,
+            )
+        elif new_status == MaintenanceSchedule.Status.COMPLETED:
+            notify_maintenance_management(
+                schedule,
+                f'✅ "{schedule.title}" was marked complete by {request.user.get_full_name()} — pending owner confirmation.',
+                request.user,
+            )
+
         messages.success(request, f'Status updated to {schedule.get_status_display()}.')
         
         if request.headers.get('HX-Request'):
@@ -365,79 +574,169 @@ def schedule_status_modal(request, pk):
     """Return the status update modal (HTMX)."""
     
     schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
+
+    if not can_change_maintenance_status(request.user, schedule):
+        return HttpResponse(status=403)
+
     form = MaintenanceStatusForm(initial={'status': schedule.status})
-    
+
     return render(request, 'maintenance/partials/status_modal.html', {
         'schedule': schedule,
         'form': form,
     })
 
 
+def _simple_modal_notice(request, message):
+    """A minimal modal-shell notice, styled to match the real confirm modal,
+    for cases the modal can't proceed (permission/state) — used instead of a
+    bare-text error response so a mistimed deep-link (e.g. a pre-maintenance
+    reminder email opened before the technician has marked the work
+    complete) doesn't dump raw error text into the page."""
+    return render(request, 'maintenance/partials/simple_modal_notice.html', {'message': message})
+
+
 @login_required
-def schedule_confirm_modal(request, pk):
-    """Return the confirmation modal (HTMX)."""
-    
+def asset_confirm_modal(request, pk, asset_pk):
+    """Return the per-asset confirm/dispute modal (HTMX)."""
+
     schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
-    
-    if not can_confirm_maintenance(request.user, schedule):
-        return HttpResponse('You do not have permission to confirm this maintenance.', status=403)
-    
-    if not schedule.can_confirm():
-        return HttpResponse('This maintenance is not ready for confirmation.', status=400)
-    
-    form = MaintenanceConfirmForm()
-    
-    return render(request, 'maintenance/partials/confirmation_modal.html', {
+    asset = get_object_or_404(schedule.target_assets, pk=asset_pk)
+
+    if not can_confirm_asset_maintenance(request.user, asset, schedule):
+        return _simple_modal_notice(request, 'You do not have permission to confirm this asset\'s maintenance.')
+
+    row = schedule.asset_confirmations.filter(asset=asset).first()
+    if not row:
+        return _simple_modal_notice(request, 'This maintenance hasn\'t been marked complete yet — there\'s nothing to confirm just yet. You\'ll be notified again once it is.')
+
+    # A resolved row can only be re-opened by Admin/Superadmin (their
+    # permanent override) — the owner's confirmation is otherwise final.
+    role = request.user.get_active_role()
+    role_name = role.name if role else request.user.role
+    if row.status != MaintenanceAssetConfirmation.Status.PENDING and role_name not in ('ADMIN', 'SUPERADMIN'):
+        return _simple_modal_notice(request, 'This asset has already been confirmed/disputed.')
+
+    form = MaintenanceAssetConfirmForm()
+
+    return render(request, 'maintenance/partials/asset_confirmation_modal.html', {
         'schedule': schedule,
+        'asset': asset,
+        'row': row,
         'form': form,
     })
 
 
 @login_required
 @require_POST
-def schedule_confirm(request, pk):
-    """Confirm maintenance completion (manager action)."""
-    
+def asset_confirm(request, pk, asset_pk):
+    """Confirm or dispute maintenance completion for one target asset
+    (asset owner, department Team Lead fallback, or Admin/Superadmin
+    override — see can_confirm_asset_maintenance)."""
+
     schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
-    
-    if not can_confirm_maintenance(request.user, schedule):
-        messages.error(request, 'You do not have permission to confirm this maintenance.')
-        return redirect('maintenance:detail', pk=pk)
-    
-    if not schedule.can_confirm():
+    asset = get_object_or_404(schedule.target_assets, pk=asset_pk)
+
+    # Non-HTMX fallback only (the real modal flow always submits via HTMX
+    # and never reaches these redirects) — sends the asset's owner back to
+    # My Assets rather than the IT-internal schedule detail page.
+    fallback_redirect = (
+        redirect('tickets:my_assets') if asset.assigned_to_id == request.user.pk
+        else redirect('maintenance:detail', pk=pk)
+    )
+
+    if not can_confirm_asset_maintenance(request.user, asset, schedule):
+        messages.error(request, 'You do not have permission to confirm this asset\'s maintenance.')
+        return fallback_redirect
+
+    row = schedule.asset_confirmations.filter(asset=asset).first()
+    if not row:
         messages.error(request, 'This maintenance is not ready for confirmation.')
-        return redirect('maintenance:detail', pk=pk)
-    
-    form = MaintenanceConfirmForm(request.POST)
+        return fallback_redirect
+
+    role = request.user.get_active_role()
+    role_name = role.name if role else request.user.role
+    if row.status != MaintenanceAssetConfirmation.Status.PENDING and role_name not in ('ADMIN', 'SUPERADMIN'):
+        messages.error(request, 'This asset has already been confirmed/disputed.')
+        return fallback_redirect
+
+    form = MaintenanceAssetConfirmForm(request.POST)
     if form.is_valid():
-        schedule.confirmed_by = request.user
-        schedule.confirmed_at = timezone.now()
-        schedule.confirmation_comment = form.cleaned_data.get('comment', '')
-        schedule.save()
-        
-        # Log confirmation
+        decision = form.cleaned_data['decision']
+        row.status = decision
+        row.confirmed_by = request.user
+        row.confirmed_at = timezone.now()
+        row.notes = form.cleaned_data.get('notes', '')
+        row.dispute_reason = form.cleaned_data.get('dispute_reason', '') if decision == 'DISPUTED' else ''
+        row.save()
+
         log_activity(
             schedule,
-            MaintenanceActivityLog.Action.CONFIRMED,
+            MaintenanceActivityLog.Action.CONFIRMED if decision == 'CONFIRMED' else MaintenanceActivityLog.Action.DISPUTED,
             request.user,
-            {'comment': schedule.confirmation_comment}
+            {'asset': asset.tracking_id, 'status': decision, 'notes': row.notes, 'dispute_reason': row.dispute_reason},
         )
-        
-        # Send confirmation email to IT personnel
-        if schedule.assigned_to:
-            send_confirmation_email(schedule, request)
-        notify_maintenance_assignees(schedule, f'✅ "{schedule.title}" was confirmed complete by {request.user.get_full_name()}.')
 
-        messages.success(request, f'Maintenance "{schedule.title}" confirmed successfully.')
-        
+        send_asset_confirmation_email(schedule, asset, row, request)
+        if decision == 'CONFIRMED':
+            notify_maintenance_assignees(schedule, f'✅ {asset.name} ({asset.tracking_id}) was confirmed complete by {request.user.get_full_name()}.')
+            messages.success(request, f'Maintenance on {asset.name} confirmed successfully.')
+        else:
+            notify_maintenance_assignees(schedule, f'⚠️ {asset.name} ({asset.tracking_id}) maintenance was disputed by {request.user.get_full_name()}: {row.dispute_reason}')
+            messages.warning(request, f'Maintenance on {asset.name} marked as disputed.')
+
         if request.headers.get('HX-Request'):
             return HttpResponse('')
-        
-        return redirect('maintenance:detail', pk=pk)
-    
-    return render(request, 'maintenance/partials/confirmation_modal.html', {
+
+        return fallback_redirect
+
+    return render(request, 'maintenance/partials/asset_confirmation_modal.html', {
         'schedule': schedule,
+        'asset': asset,
+        'row': row,
         'form': form,
+    })
+
+
+@login_required
+def checklist_templates_partial(request):
+    """HTMX endpoint: checkbox list of active checklist templates unioned
+    across all currently-checked target departments, reloaded whenever the
+    schedule form's department selection changes."""
+    departments = request.GET.getlist('departments')
+    templates = MaintenanceChecklistTemplate.objects.filter(
+        department__in=departments, is_active=True
+    ) if departments else MaintenanceChecklistTemplate.objects.none()
+
+    return render(request, 'maintenance/partials/checklist_template_options.html', {
+        'templates': templates,
+    })
+
+
+@login_required
+def target_assets_partial(request):
+    """HTMX endpoint: checkbox list of assets across all currently-checked
+    target departments, reloaded whenever the schedule form's department
+    selection changes. Pre-checks assets already linked to the schedule
+    being edited (schedule_id, optional) so reloading the partial doesn't
+    silently drop existing selections."""
+    departments = request.GET.getlist('departments')
+    schedule_id = request.GET.get('schedule_id', '')
+
+    selected_ids = set()
+    if schedule_id:
+        try:
+            schedule = MaintenanceSchedule.objects.get(pk=schedule_id)
+            selected_ids = set(schedule.target_assets.values_list('pk', flat=True))
+        except (MaintenanceSchedule.DoesNotExist, ValueError):
+            pass
+
+    assets = Asset.objects.filter(department__in=departments).exclude(
+        status__in=ASSET_EXCLUDED_STATUSES
+    ).order_by('name') if departments else Asset.objects.none()
+
+    return render(request, 'maintenance/partials/target_asset_options.html', {
+        'assets': assets,
+        'selected_ids': selected_ids,
     })
 
 
@@ -458,8 +757,8 @@ def calendar_view(request):
     # Filter by department for Team Lead
     role = request.user.get_active_role()
     if role and role.name == 'TEAM_LEAD':
-        schedules = schedules.filter(department=request.user.department)
-    
+        schedules = schedules.filter(departments__contains=[request.user.department])
+
     # Build calendar days with events
     cal = calendar.monthcalendar(year, month)
     month_name = calendar.month_name[month]
@@ -542,8 +841,8 @@ def calendar_day_events(request):
     # Filter by department for Team Lead
     role = request.user.get_active_role()
     if role and role.name == 'TEAM_LEAD':
-        schedules = schedules.filter(department=request.user.department)
-    
+        schedules = schedules.filter(departments__contains=[request.user.department])
+
     schedules = schedules.order_by('status')
     
     return render(request, 'maintenance/partials/day_events.html', {
@@ -565,14 +864,14 @@ def send_maintenance_assignment_email(schedule, request):
     context = {
         'schedule': schedule,
         'assigned_to': schedule.assigned_to.get_full_name() or schedule.assigned_to.email,
-        'department': schedule.get_department_display(),
+        'department': schedule.departments_display,
         'date': schedule.scheduled_date.strftime('%B %d, %Y'),
         'detail_url': request.build_absolute_uri(
             f'/maintenance/{schedule.pk}/'
         ),
         'checklist': schedule.checklist_items,
     }
-    
+
     html_message = render_to_string('emails/maintenance_assignment.html', context)
     
     success, result = send_email_via_brevo(
@@ -599,35 +898,41 @@ def send_maintenance_assignment_email(schedule, request):
 def send_maintenance_completion_email(schedule, request):
     """Send email to department manager when maintenance is completed."""
     
-    # Find the manager for this department (Team Lead or Admin)
+    # Find a manager belonging to any of the target departments (Team Lead
+    # or Admin), falling back to any Admin — same two-step lookup as the
+    # original single-department version, just department__in-aware.
     manager = User.objects.filter(
         Q(role=User.Role.TEAM_LEAD) | Q(role=User.Role.ADMIN) | Q(role=User.Role.SUPERADMIN),
-        department=schedule.department,
+        department__in=schedule.departments,
         is_active=True
     ).first()
-    
+
     if not manager:
         # Fallback: send to any admin
         manager = User.objects.filter(role=User.Role.ADMIN, is_active=True).first()
-    
+
     if not manager:
         return
-    
+
     context = {
         'schedule': schedule,
-        'department': schedule.get_department_display(),
+        'department': schedule.departments_display,
         'date': schedule.scheduled_date.strftime('%B %d, %Y'),
         'assigned_to': schedule.assigned_to.get_full_name() or schedule.assigned_to.email,
         'detail_url': request.build_absolute_uri(
             f'/maintenance/{schedule.pk}/'
         ),
+        # Confirmation is per-asset now (see MaintenanceAssetConfirmation) —
+        # there's no single schedule-level confirm action any more, so this
+        # links to the same detail page, which lists every target asset's
+        # confirmation state and the per-asset Confirm/Dispute action.
         'confirm_url': request.build_absolute_uri(
-            f'/maintenance/{schedule.pk}/confirm-modal/'
+            f'/maintenance/{schedule.pk}/'
         ),
         'checklist': schedule.checklist_items,
         'completed_checklist': schedule.completed_checklist,
     }
-    
+
     html_message = render_to_string('emails/maintenance_completion.html', context)
     
     success, result = send_email_via_brevo(
@@ -648,39 +953,116 @@ def send_maintenance_completion_email(schedule, request):
         logger.error(f"Failed to send completion email for schedule {schedule.pk}: {result}")
 
 
-def send_confirmation_email(schedule, request):
-    """Send email to IT personnel when manager confirms."""
-    
+def send_asset_confirmation_email(schedule, asset, row, request):
+    """Send email to the technician (assigned_to) when an asset owner
+    confirms or disputes maintenance completion on one target asset."""
+
     if not schedule.assigned_to:
         return
-    
+
     context = {
         'schedule': schedule,
-        'confirmed_by': schedule.confirmed_by.get_full_name() or schedule.confirmed_by.email,
-        'department': schedule.get_department_display(),
+        'asset': asset,
+        'row': row,
+        'confirmed_by': row.confirmed_by.get_full_name() or row.confirmed_by.email,
+        'department': schedule.departments_display,
         'date': schedule.scheduled_date.strftime('%B %d, %Y'),
-        'comment': schedule.confirmation_comment,
+        'notes': row.notes,
+        'dispute_reason': row.dispute_reason,
         'detail_url': request.build_absolute_uri(
             f'/maintenance/{schedule.pk}/'
         ),
     }
-    
-    html_message = render_to_string('emails/maintenance_confirmed.html', context)
-    
+
+    html_message = render_to_string('emails/maintenance_asset_confirmed.html', context)
+
+    subject = (
+        f"Maintenance Confirmed: {schedule.title} — {asset.name}"
+        if row.status == MaintenanceAssetConfirmation.Status.CONFIRMED
+        else f"Maintenance Disputed: {schedule.title} — {asset.name}"
+    )
+
     success, result = send_email_via_brevo(
         to_email=schedule.assigned_to.email,
-        subject=f"Maintenance Confirmed: {schedule.title}",
+        subject=subject,
         html_content=html_message,
         from_email=settings.DEFAULT_FROM_EMAIL
     )
-    
+
     if success:
         log_activity(
             schedule,
             MaintenanceActivityLog.Action.EMAIL_SENT,
             None,
-            {'recipient': schedule.assigned_to.email, 'type': 'confirmation'}
+            {'recipient': schedule.assigned_to.email, 'type': 'asset_confirmation', 'asset': asset.tracking_id}
         )
     else:
-        logger.error(f"Failed to send confirmation email for schedule {schedule.pk}: {result}")
+        logger.error(f"Failed to send asset confirmation email for schedule {schedule.pk}/asset {asset.pk}: {result}")
+
+
+def send_maintenance_teamlead_notice_email(schedule, team_lead, request):
+    """Informational email to a department Team Lead when maintenance is
+    scheduled for their department — fired once at scheduling time, not an
+    action item."""
+
+    context = {
+        'schedule': schedule,
+        'team_lead': team_lead.get_full_name() or team_lead.email,
+        'department': team_lead.get_department_display(),
+        'date': schedule.scheduled_date.strftime('%B %d, %Y'),
+        'assigned_to': schedule.assigned_to.get_full_name() if schedule.assigned_to else 'Unassigned',
+        'detail_url': request.build_absolute_uri(f'/maintenance/{schedule.pk}/'),
+    }
+
+    html_message = render_to_string('emails/maintenance_teamlead_notice.html', context)
+
+    success, result = send_email_via_brevo(
+        to_email=team_lead.email,
+        subject=f"Maintenance Scheduled for {context['department']}: {schedule.title}",
+        html_content=html_message,
+        from_email=settings.DEFAULT_FROM_EMAIL
+    )
+
+    if success:
+        log_activity(
+            schedule,
+            MaintenanceActivityLog.Action.EMAIL_SENT,
+            None,
+            {'recipient': team_lead.email, 'type': 'teamlead_notice'}
+        )
+    else:
+        logger.error(f"Failed to send Team Lead notice email for schedule {schedule.pk}: {result}")
+
+
+def send_asset_owner_reminder_email(schedule, asset, recipient, label):
+    """Reminder email to an asset owner (or fallback confirmer) — reused for
+    both pre-maintenance due-date reminders (label e.g. '24 hours') and the
+    post-completion overdue-confirmation nudge (label 'overdue confirmation').
+
+    Called from the send_maintenance_reminders management command, which has
+    no HttpRequest to build an absolute URL from — settings.SITE_URL is the
+    fallback base for that case (see base.py). Uses _asset_review_url so the
+    owner lands on My Assets (modal deep-linked, once a confirmation row
+    exists) rather than the IT-internal maintenance detail page."""
+
+    context = {
+        'schedule': schedule,
+        'asset': asset,
+        'recipient': recipient.get_full_name() or recipient.email,
+        'label': label,
+        'date': schedule.scheduled_date.strftime('%B %d, %Y'),
+        'detail_url': f'{settings.SITE_URL}{_asset_review_url(asset, schedule, recipient)}',
+    }
+
+    html_message = render_to_string('emails/maintenance_owner_reminder.html', context)
+
+    success, result = send_email_via_brevo(
+        to_email=recipient.email,
+        subject=f"Maintenance Reminder: {schedule.title} — {asset.name}",
+        html_content=html_message,
+        from_email=settings.DEFAULT_FROM_EMAIL
+    )
+
+    if not success:
+        logger.error(f"Failed to send owner reminder email for schedule {schedule.pk}/asset {asset.pk}: {result}")
 

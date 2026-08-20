@@ -1,0 +1,244 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Mobilization Detail{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex items-center gap-3 mb-6">
+        <a href="{% url 'tickets:mobilizations' %}" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
+            {% lucide "arrow-left" size=18 %}
+        </a>
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "ship" size=19 %}</span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">{{ mobilization.destination_display }}</h2>
+            <p class="text-sm text-text-secondary">
+                Mobilized by {{ mobilization.mobilized_by.get_full_name|default:mobilization.mobilized_by.email }}
+                on {{ mobilization.mobilized_at|date:"M d, Y H:i" }}
+            </p>
+        </div>
+        <span class="status-chip {% if mobilization.status == 'ACTIVE' %}primary{% else %}success{% endif %} text-xs ml-auto">
+            {{ mobilization.get_status_display }}
+        </span>
+        {% if mobilization.status == 'ACTIVE' and active_role_name in 'ADMIN,SUPERADMIN' %}
+        <button onclick="openDemobilizeAllModal({{ mobilization.pk }})" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+            {% lucide "log-in" size=14 %} Demobilize All
+        </button>
+        {% endif %}
+    </div>
+
+    {% if mobilization.ticket %}
+    <div class="mb-4 p-3 rounded-lg border border-border bg-surface text-sm">
+        <span class="text-text-secondary">Fulfilled request:</span>
+        <a href="{% url 'tickets:detail' mobilization.ticket.pk %}" class="text-primary hover:underline ml-1">{{ mobilization.ticket.number }}</a>
+    </div>
+    {% endif %}
+
+    {% if mobilization.expected_return_date %}
+    <div class="mb-4 p-3 rounded-lg border border-border bg-surface text-sm flex flex-wrap items-center gap-3">
+        {% if mobilization.original_expected_return_date and mobilization.original_expected_return_date != mobilization.expected_return_date %}
+        <span class="text-text-secondary">Original return date: <span class="line-through">{{ mobilization.original_expected_return_date|date:"M d, Y" }}</span></span>
+        <span class="text-text-secondary">Current return date: <strong class="text-text-primary">{{ mobilization.expected_return_date|date:"M d, Y" }}</strong></span>
+        {% else %}
+        <span class="text-text-secondary">Return date: <strong class="text-text-primary">{{ mobilization.expected_return_date|date:"M d, Y" }}</strong></span>
+        {% endif %}
+        {% if mobilization.status == 'ACTIVE' and active_role_name in 'ADMIN,SUPERADMIN' %}
+        <button onclick="openExtendDateModal({{ mobilization.pk }})" class="btn-ghost text-xs px-2 py-1 rounded flex items-center gap-1 ml-auto">
+            {% lucide "calendar-clock" size=13 %} Extend Date
+        </button>
+        {% endif %}
+    </div>
+
+    {% if date_extensions %}
+    <div class="mb-4 p-3 rounded-lg border border-border bg-surface text-xs text-text-secondary space-y-1">
+        <p class="font-medium text-text-primary mb-1">Date extensions</p>
+        {% for ext in date_extensions %}
+        <p>{{ ext.previous_date|date:"M d, Y"|default:"—" }} → {{ ext.new_date|date:"M d, Y" }} by {{ ext.extended_by.get_full_name|default:ext.extended_by.email }} on {{ ext.extended_at|date:"M d, Y H:i" }}{% if ext.reason %} — "{{ ext.reason }}"{% endif %}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if mobilization.notes %}
+    <div class="mb-4 p-3 rounded-lg border border-border bg-surface text-sm text-text-primary">
+        {{ mobilization.notes }}
+    </div>
+    {% endif %}
+
+    {% with open_procurement=mobilization.procurement_requests.all %}
+    {% if open_procurement %}
+    <div class="mb-4 p-3 rounded-lg border border-warning/40 bg-warning/10">
+        <p class="text-sm font-medium text-text-primary flex items-center gap-1.5 mb-2">
+            {% lucide "truck" size=14 %} On order for this job
+        </p>
+        <ul class="space-y-2">
+            {% for pr in open_procurement %}
+            {% if pr.is_open %}
+            <li class="flex items-center justify-between text-sm">
+                <span class="text-text-primary">{{ pr.item_name }} x{{ pr.quantity }}{% if pr.vendor %} — {{ pr.vendor.name }}{% endif %}
+                    {% if pr.expected_arrival_date %}<span class="text-text-secondary text-xs">(expected {{ pr.expected_arrival_date|date:"M j" }})</span>{% endif %}
+                </span>
+                {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                <button onclick="openReceiveModal({{ pr.pk }})" class="btn-primary text-xs px-3 py-1.5 rounded">Receive</button>
+                {% endif %}
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b" style="border-color: var(--color-border);">
+                        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset</th>
+                        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Demobilized</th>
+                        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Condition</th>
+                        <th class="text-center py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-24">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                        <td class="py-3 px-3">
+                            <div class="font-medium text-sm text-text-primary">{{ item.asset.name }}</div>
+                            <div class="text-xs font-mono text-primary">{{ item.asset.tracking_id }}</div>
+                            {% if item.asset.is_consumable %}
+                            <div class="text-xs text-text-secondary">
+                                Qty: {{ item.quantity }}{% if item.return_quantity is not None %} ({{ item.return_quantity }} returned){% endif %}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-3">
+                            <span class="status-chip {% if item.is_active %}primary{% else %}success{% endif %} text-xs">
+                                {% if item.is_active %}Mobilized{% else %}Demobilized{% endif %}
+                            </span>
+                        </td>
+                        <td class="py-3 px-3 text-text-secondary">
+                            {% if item.demobilized_at %}
+                                {{ item.demobilized_at|date:"M d, Y H:i" }} by {{ item.demobilized_by.get_full_name|default:item.demobilized_by.email }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-3 px-3 text-text-secondary">{{ item.get_return_condition_display|default:"—" }}</td>
+                        <td class="py-3 px-2 text-center">
+                            {% if item.is_active and active_role_name in 'ADMIN,SUPERADMIN' %}
+                            <button onclick="openDemobilizeModal({{ item.pk }})"
+                                    class="p-1.5 rounded transition hover:bg-black/5 inline-flex"
+                                    style="color: var(--color-text-secondary);"
+                                    title="Demobilize">
+                                {% lucide "log-in" size=15 %}
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-12 text-text-secondary">No assets on this mobilization.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Overlay -->
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeMobilizationModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    function openDemobilizeModal(itemPk) {
+        const url = `/tickets/mobilizations/items/${itemPk}/demobilize-modal/`;
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
+    function closeMobilizationModal() {
+        const overlay = document.getElementById('modalOverlay');
+        const container = document.getElementById('modalContainer');
+        if (overlay) overlay.classList.add('hidden');
+        if (container) container.innerHTML = '';
+    }
+
+    function openReceiveModal(pk) {
+        const url = `/tickets/procurement/${pk}/receive-modal/`;
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
+    function closeProcurementModal() {
+        closeMobilizationModal();
+    }
+
+    function openDemobilizeAllModal(mobilizationPk) {
+        const url = `/tickets/mobilizations/${mobilizationPk}/demobilize-all-modal/`;
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
+    function openExtendDateModal(mobilizationPk) {
+        const url = `/tickets/mobilizations/${mobilizationPk}/extend-date-modal/`;
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+</script>
+{% endblock %}

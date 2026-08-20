@@ -2,10 +2,35 @@ import subprocess
 import os
 import tempfile
 import logging
+import requests
 from django.core.files import File
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _local_path_for(field_file):
+    """Returns a local filesystem path for a Django FieldFile, regardless of
+    storage backend: the field's own `.path` in dev (FileSystemStorage), or
+    a downloaded temp copy in production (Cloudinary/other remote storage,
+    whose `.path` raises NotImplementedError). Mirrors the same fallback
+    already used for DOCX exports in apps/tickets/report_exporters.py's
+    _docx_image_source(). Returns (path, is_temp) so callers know whether to
+    clean the file up themselves."""
+    try:
+        return field_file.path, False
+    except NotImplementedError:
+        pass
+
+    suffix = os.path.splitext(field_file.name)[1]
+    resp = requests.get(field_file.url, timeout=30)
+    resp.raise_for_status()
+    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+    try:
+        tmp.write(resp.content)
+    finally:
+        tmp.close()
+    return tmp.name, True
 
 def convert_office_to_pdf(input_file_path, output_dir=None):
     """
@@ -17,13 +42,36 @@ def convert_office_to_pdf(input_file_path, output_dir=None):
         logger.error(f"Input file not found: {input_file_path}")
         return None
 
-    # Create a temporary directory for output if not provided
-    if output_dir is None:
-        temp_dir = tempfile.mkdtemp(prefix='libreoffice_')
-        output_dir = temp_dir
+    # Create a temporary directory for output if not provided. Only clean
+    # this up ourselves on a *failure* path below - on success, the
+    # returned PDF lives inside it, so the caller (generate_preview_for_
+    # document) is responsible for removing it once it's done reading the
+    # file. A blanket `finally: shutil.rmtree(output_dir)` here used to
+    # delete the directory - and the PDF we'd just returned a path to -
+    # before the caller ever got to open it, silently breaking every
+    # conversion regardless of storage backend or OS.
+    created_own_dir = output_dir is None
+    if created_own_dir:
+        output_dir = tempfile.mkdtemp(prefix='libreoffice_')
+
+    def _cleanup_on_failure():
+        if created_own_dir:
+            import shutil
+            shutil.rmtree(output_dir, ignore_errors=True)
 
     try:
-        # Run LibreOffice headless conversion
+        # Run LibreOffice headless conversion.
+        #
+        # NOTE: a per-call -env:UserInstallation profile was tried here to
+        # avoid "already running" lock conflicts under concurrent
+        # conversions, but it made every single call pay LibreOffice's slow
+        # first-run profile initialization cost (30s-2min+ on Windows,
+        # worse under antivirus scanning) instead of reusing a warm,
+        # already-initialized default profile - a bad trade for a
+        # concurrency edge case that wasn't an observed problem. Reverted;
+        # the existing per-document cache lock in views.py's document_viewer
+        # already prevents the common case (double-clicking view on the
+        # same missing preview).
         binary = getattr(settings, 'LIBREOFFICE_BINARY_PATH', 'soffice')
         cmd = [
             binary,
@@ -41,6 +89,7 @@ def convert_office_to_pdf(input_file_path, output_dir=None):
 
         if result.returncode != 0:
             logger.error(f"LibreOffice conversion failed: {result.stderr}")
+            _cleanup_on_failure()
             return None
 
         # The output file will be named <input_filename>.pdf
@@ -48,21 +97,19 @@ def convert_office_to_pdf(input_file_path, output_dir=None):
         output_pdf_path = os.path.join(output_dir, f"{base_name}.pdf")
         if not os.path.exists(output_pdf_path):
             logger.error(f"PDF output not found: {output_pdf_path}")
+            _cleanup_on_failure()
             return None
 
         return output_pdf_path
 
     except subprocess.TimeoutExpired:
         logger.error("LibreOffice conversion timed out (120s)")
+        _cleanup_on_failure()
         return None
     except Exception as e:
         logger.error(f"Unexpected conversion error: {e}")
+        _cleanup_on_failure()
         return None
-    finally:
-        # Clean up temporary directory if we created one
-        if output_dir and output_dir.startswith(tempfile.gettempdir()):
-            import shutil
-            shutil.rmtree(output_dir, ignore_errors=True)
 
 
 def generate_preview_for_document(document):
@@ -84,12 +131,23 @@ def generate_preview_for_document(document):
             document.save(update_fields=['preview_pdf'])
         return True  # nothing to do, but we consider it successful
 
-    # Convert the file
-    input_path = document.file.path
-    pdf_path = convert_office_to_pdf(input_path)
+    # Convert the file — fetch it to a local path first, since remote
+    # storage (Cloudinary in production) doesn't support `.file.path`.
+    input_path, input_is_temp = _local_path_for(document.file)
+    try:
+        pdf_path = convert_office_to_pdf(input_path)
+    finally:
+        if input_is_temp:
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
 
     if pdf_path and os.path.exists(pdf_path):
-        # Save the PDF as a Django FileField
+        # Save the PDF as a Django FileField, then remove convert_office_to_
+        # pdf's temp output directory now that we've actually read the file
+        # out of it (it deliberately leaves this to us on success - see the
+        # comment in convert_office_to_pdf).
         with open(pdf_path, 'rb') as f:
             doc_file = File(f, name=f"{document.slug}_preview.pdf")
             document.preview_pdf.save(
@@ -98,8 +156,8 @@ def generate_preview_for_document(document):
                 save=False
             )
         document.save(update_fields=['preview_pdf'])
-        # Clean up temporary PDF (if not in a temp dir, it's in the media directory already)
-        # We assume convert_office_to_pdf placed it in a temp dir, so it's already cleaned up.
+        import shutil
+        shutil.rmtree(os.path.dirname(pdf_path), ignore_errors=True)
         return True
     else:
         # If conversion fails, clear any existing preview

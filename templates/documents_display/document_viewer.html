@@ -43,7 +43,13 @@
         <div class="bg-background" style="height: 70vh;">
             {% if is_viewable_inline %}
                 {% if file_extension == 'pdf' %}
-                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}" type="application/pdf" class="w-full h-full border-0">
+                     {% comment %} This hides the browser's own PDF viewer toolbar
+                       (which has its own download/print icons, outside the
+                       app's control) when the user isn't permitted to
+                       download - doesn't block Save-As/print-to-PDF, but
+                       removes the one-click affordance for users who
+                       shouldn't have it. {% endcomment %}
+                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}{% if not can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
                 {% elif file_extension in 'png,jpg,jpeg,gif,webp' %}
                     <img src="{% url 'documents_display:document_serve_file' document.slug %}" alt="{{ document.title }}" class="max-w-full max-h-full object-contain rounded-lg shadow-sm">
                 {% elif file_extension in 'txt,csv' %}
@@ -51,7 +57,7 @@
                 {% endif %}
             {% elif is_office_file %}
                 {% if document.preview_pdf %}
-                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}?preview=true" type="application/pdf" class="w-full h-full border-0">
+                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}?preview=true{% if not can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
                 {% else %}
                     <div class="flex flex-col items-center justify-center h-full p-4 text-center">
                         <span class="text-6xl mb-4 opacity-30">📄</span>

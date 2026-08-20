@@ -22,13 +22,19 @@
             </div>
             <div>
                 <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">New Service Request</h2>
-                <p class="text-xs text-text-secondary">Need access, equipment, or help with something? Submit a request.</p>
+                <p class="text-xs text-text-secondary">Need access, equipment, vessel support, or help with something? Submit a request.</p>
             </div>
         </div>
 
-        <form method="post" enctype="multipart/form-data" class="space-y-5 mt-4" data-guard-submit>
+        <form method="post" enctype="multipart/form-data" class="space-y-5 mt-4" data-guard-submit id="serviceRequestForm">
             {% csrf_token %}
             <input type="hidden" name="type" value="SERVICE_REQUEST">
+            <input type="hidden" name="submission_latitude" id="id_submission_latitude">
+            <input type="hidden" name="submission_longitude" id="id_submission_longitude">
+            <input type="hidden" name="submission_location_address" id="id_submission_location_address">
+            <p id="locationStatus" class="text-xs text-text-secondary flex items-center gap-1">
+                {% lucide "map-pin" size=12 %} Detecting location…
+            </p>
 
             {% if form.errors %}
             <div class="rounded-lg bg-error/10 p-4 border border-error/30 text-error text-sm">
@@ -38,81 +44,243 @@
                             <li>{{ error }}</li>
                         {% endfor %}
                     {% endfor %}
+                    {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
                 </ul>
             </div>
             {% endif %}
 
-            {# Category & Title – two columns #}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label for="id_category" class="block text-sm font-medium mb-1 text-text-primary">
-                        Category <span class="text-error">*</span>
-                    </label>
-                    <select name="category" id="id_category"
-                            class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                            onchange="toggleOtherField('category')">
-                        <option value="" disabled {% if not form.category.value %}selected{% endif %}>Select a category</option>
-                        {% for value, label in form.category.field.widget.choices %}
-                            {% if value != '' %}
-                            <option value="{{ value }}" {% if form.category.value == value %}selected{% endif %}>{{ label }}</option>
-                            {% endif %}
-                        {% endfor %}
-                    </select>
-                    <div id="category_other_container" class="mt-2 hidden">
-                        <input type="text" name="category_other" id="category_other"
-                            value="{{ form.category_other.value|default:'' }}"
-                            class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                            placeholder="Enter custom category...">
-                        <p class="text-xs text-text-secondary mt-1">Custom category will be created and saved.</p>
-                    </div>
-                </div>
-                {# Title with floating KB suggestions #}
-                <div class="relative">
-                    <label for="id_title" class="block text-sm font-medium mb-1 text-text-primary">
-                        Title <span class="text-error">*</span>
-                    </label>
-                    <input type="text" name="title" id="id_title" required
-                        value="{{ form.title.value|default:'' }}"
-                        class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                        placeholder="Brief summary of your request..."
-                        hx-get="{% url 'kb:suggestions' %}"
-                        hx-trigger="keyup changed delay:400ms"
-                        hx-target="#kbSuggestions"
-                        hx-swap="innerHTML"
-                        hx-indicator="#suggestionsSpinner"
-                        hx-params="*"
-                        autocomplete="off">
-                    <div id="suggestionsSpinner" class="htmx-indicator mt-1 text-xs text-text-secondary">
-                        {% lucide "loader-circle" size=14 class="animate-spin inline" %} Searching articles...
-                    </div>
-                    <!-- Suggestions appear as a floating dropdown -->
-                    <div id="kbSuggestions" class="absolute left-0 right-0 z-10 mt-1"></div>
-                </div>
-            </div>
-
-            {# Description – full width #}
-            <div>
-                <label for="id_description" class="block text-sm font-medium mb-1 text-text-primary">
-                    Description <span class="text-error">*</span>
+            {# Title with floating KB suggestions #}
+            <div class="relative">
+                <label for="id_title" class="block text-sm font-medium mb-1 text-text-primary">
+                    Request Title <span class="text-error">*</span>
                 </label>
-                {{ form.description }}
+                <input type="text" name="title" id="id_title" required
+                    value="{{ form.title.value|default:'' }}"
+                    class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                    placeholder="Brief summary of your request..."
+                    hx-get="{% url 'kb:suggestions' %}"
+                    hx-trigger="keyup changed delay:400ms"
+                    hx-target="#kbSuggestions"
+                    hx-swap="innerHTML"
+                    hx-indicator="#suggestionsSpinner"
+                    hx-params="*"
+                    autocomplete="off">
+                <div id="suggestionsSpinner" class="htmx-indicator mt-1 text-xs text-text-secondary">
+                    {% lucide "loader-circle" size=14 class="animate-spin inline" %} Searching articles...
+                </div>
+                <div id="kbSuggestions" class="absolute left-0 right-0 z-10 mt-1"></div>
             </div>
 
-            {# Impact & Urgency – two columns #}
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <label for="id_impact" class="block text-sm font-medium mb-1 text-text-primary">Impact</label>
-                    {{ form.impact }}
+            {# Request Details #}
+            <div class="rounded-lg border p-4 space-y-4" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Request Details</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label for="id_service_category" class="block text-sm font-medium mb-1 text-text-primary">
+                            Service Category <span class="text-error">*</span>
+                        </label>
+                        <select name="service_category" id="id_service_category" required
+                                class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                                onchange="onServiceCategoryChange(this)">
+                            <option value="" {% if not form.service_category.value %}selected{% endif %}>-- Select Service Category --</option>
+                            {% for category in form.fields.service_category.queryset %}
+                                <option value="{{ category.pk }}" data-field-group="{{ category.field_group }}"
+                                        {% if form.service_category.value|stringformat:"s" == category.pk|stringformat:"s" %}selected{% endif %}>
+                                    {{ category.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="id_purpose" class="block text-sm font-medium mb-1 text-text-primary">
+                            Purpose <span class="text-error">*</span>
+                        </label>
+                        <input type="text" name="purpose" id="id_purpose" value="{{ form.purpose.value|default:'' }}" required
+                               placeholder="Why is this needed?"
+                               class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    </div>
                 </div>
+
                 <div>
                     <label for="id_urgency" class="block text-sm font-medium mb-1 text-text-primary">Urgency</label>
                     {{ form.urgency }}
+                </div>
+
+                <div>
+                    <label for="id_description" class="block text-sm font-medium mb-1 text-text-primary">
+                        Description <span class="text-error">*</span>
+                    </label>
+                    {{ form.description }}
+                </div>
+            </div>
+
+            {# Dynamic, category-driven fields #}
+            <div>
+                <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Category-Specific Details</p>
+                <p id="dynfields-empty-hint" class="text-sm text-text-secondary">
+                    Select a service category above to see any additional fields for it.
+                </p>
+                {% for group, fields in dynamic_fields_by_group.items %}
+                    {% if fields %}
+                    <div id="dynfields-{{ group }}" class="hidden rounded-lg border p-4 space-y-3" style="border-color: var(--color-border); background-color: var(--color-background);">
+                        {% if group == 'ASSET' %}
+                        <label class="flex items-start gap-2 text-sm text-text-primary cursor-pointer">
+                            <input type="checkbox" name="is_mobilization_request" id="id_is_mobilization_request" class="mt-0.5 rounded border-border text-primary focus:ring-primary">
+                            <span>
+                                This request is to mobilize equipment to a job/vessel/dive system
+                                <span class="block text-xs text-text-secondary">Check this for a batch of gear going out to a job, not a single item for yourself — use the Job Number / Vessel(s) / Dive System(s) fields below to say where.</span>
+                            </span>
+                        </label>
+                        {% endif %}
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {% for f in fields %}
+                            <div>
+                                <label for="id_{{ f.key }}" class="block text-sm font-medium mb-1 text-text-primary">
+                                    {{ f.label }} {% if f.required %}<span class="text-error">*</span>{% endif %}
+                                </label>
+                                {% if f.kind == 'textarea' %}
+                                <textarea name="{{ f.key }}" id="id_{{ f.key }}" rows="3" placeholder="{{ f.placeholder }}"
+                                          class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"></textarea>
+                                {% elif f.kind == 'select' %}
+                                <select name="{{ f.key }}" id="id_{{ f.key }}"
+                                        class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                                        {% if f.has_other %}onchange="toggleDynFieldOther('{{ f.key }}', this)"{% endif %}>
+                                    <option value="">-- Select {{ f.label }} --</option>
+                                    {% for value, label in f.choices %}
+                                    <option value="{{ value }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% if f.has_other %}
+                                <div id="dynfield_{{ f.key }}_other_container" class="mt-2 hidden">
+                                    <input type="text" name="{{ f.key }}_other" id="id_{{ f.key }}_other"
+                                           placeholder="Describe the {{ f.label|lower }}..."
+                                           class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                                </div>
+                                {% endif %}
+                                {% else %}
+                                <input type="{{ f.kind }}" name="{{ f.key }}" id="id_{{ f.key }}" placeholder="{{ f.placeholder }}"
+                                       class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            {# Additional context — optional, applies to any service category #}
+            <div class="rounded-lg border p-4 space-y-4" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Additional Context <span class="normal-case font-normal">(optional)</span></p>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-text-primary">Vessel(s)</label>
+                    {% if vessels %}
+                    <div x-data="searchableSelect({
+                            mode: 'multi',
+                            fieldName: 'vessels',
+                            options: [{% for vessel in vessels %}{id: '{{ vessel.pk }}', label: '{{ vessel.name|escapejs }}'}{% if not forloop.last %}, {% endif %}{% endfor %}],
+                            initialSelected: [{% for id in selected_vessels %}'{{ id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+                            placeholder: 'Search vessels…',
+                         })"
+                         data-searchable-select="vessels" @click.outside="open = false" class="relative">
+                        <div class="flex flex-wrap gap-1.5 mb-2" x-show="selected.length" x-cloak>
+                            <template x-for="id in selected" :key="id">
+                                <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2.5 py-1">
+                                    <span x-text="labelFor(id)"></span>
+                                    <button type="button" @click="remove(id)" class="hover:text-error" aria-label="Remove">&times;</button>
+                                </span>
+                            </template>
+                        </div>
+                        <input type="text" x-model="query" @focus="open = true" :placeholder="placeholder" autocomplete="off"
+                               class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <ul x-show="open" x-cloak class="absolute z-10 mt-1 w-full rounded-lg border shadow-lg max-h-56 overflow-y-auto" style="border-color: var(--color-border); background-color: var(--color-background);">
+                            <template x-for="opt in filtered" :key="opt.id">
+                                <li @click="toggle(opt.id)" class="px-3 py-2 text-sm cursor-pointer hover:bg-black/5 text-text-primary" x-text="opt.label"></li>
+                            </template>
+                            <li x-show="!filtered.length" class="px-3 py-2 text-sm text-text-secondary">No matches.</li>
+                        </ul>
+                        <template x-for="id in selected" :key="'in-' + id">
+                            <input type="hidden" name="vessels" :value="id">
+                        </template>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-text-secondary">No vessels configured yet — contact an admin to add them.</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-text-primary">Dive System(s)</label>
+                    {% if dive_systems %}
+                    <div x-data="searchableSelect({
+                            mode: 'multi',
+                            fieldName: 'dive_systems',
+                            options: [{% for system in dive_systems %}{id: '{{ system.pk }}', label: '{{ system.name|escapejs }}'}{% if not forloop.last %}, {% endif %}{% endfor %}],
+                            initialSelected: [{% for id in selected_dive_systems %}'{{ id }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+                            placeholder: 'Search dive systems…',
+                         })"
+                         data-searchable-select="dive_systems" @click.outside="open = false" class="relative">
+                        <div class="flex flex-wrap gap-1.5 mb-2" x-show="selected.length" x-cloak>
+                            <template x-for="id in selected" :key="id">
+                                <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2.5 py-1">
+                                    <span x-text="labelFor(id)"></span>
+                                    <button type="button" @click="remove(id)" class="hover:text-error" aria-label="Remove">&times;</button>
+                                </span>
+                            </template>
+                        </div>
+                        <input type="text" x-model="query" @focus="open = true" :placeholder="placeholder" autocomplete="off"
+                               class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <ul x-show="open" x-cloak class="absolute z-10 mt-1 w-full rounded-lg border shadow-lg max-h-56 overflow-y-auto" style="border-color: var(--color-border); background-color: var(--color-background);">
+                            <template x-for="opt in filtered" :key="opt.id">
+                                <li @click="toggle(opt.id)" class="px-3 py-2 text-sm cursor-pointer hover:bg-black/5 text-text-primary" x-text="opt.label"></li>
+                            </template>
+                            <li x-show="!filtered.length" class="px-3 py-2 text-sm text-text-secondary">No matches.</li>
+                        </ul>
+                        <template x-for="id in selected" :key="'in-' + id">
+                            <input type="hidden" name="dive_systems" :value="id">
+                        </template>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-text-secondary">No dive systems configured yet — contact an admin to add them.</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="id_job_number_search" class="block text-sm font-medium mb-1 text-text-primary">Job Number</label>
+                    <div x-data="searchableSelect({
+                            mode: 'single-create',
+                            fieldName: 'job_number',
+                            options: [{% for job in job_numbers %}{id: '{{ job.pk }}', label: '{{ job.number|escapejs }}'}{% if not forloop.last %}, {% endif %}{% endfor %}],
+                            initialSelectedId: '', initialNewText: '',
+                            placeholder: 'Search job numbers…',
+                         })"
+                         data-searchable-select="job_number" @click.outside="open = false" class="relative">
+                        <input type="text" id="id_job_number_search" x-model="query" @focus="open = true" :placeholder="placeholder" autocomplete="off"
+                               class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <ul x-show="open" x-cloak class="absolute z-10 mt-1 w-full rounded-lg border shadow-lg max-h-56 overflow-y-auto" style="border-color: var(--color-border); background-color: var(--color-background);">
+                            <template x-for="opt in filtered" :key="opt.id">
+                                <li @click="selectSingle(opt.id)" class="px-3 py-2 text-sm cursor-pointer hover:bg-black/5 text-text-primary" x-text="opt.label"></li>
+                            </template>
+                            <li x-show="showCreateRow" @click="createNew()" class="px-3 py-2 text-sm cursor-pointer hover:bg-black/5 text-primary font-medium">
+                                + Create "<span x-text="query"></span>"
+                            </li>
+                            <li x-show="!filtered.length && !showCreateRow" class="px-3 py-2 text-sm text-text-secondary">No matches.</li>
+                        </ul>
+                        <input type="hidden" name="job_number" :value="selectedId">
+                        <input type="hidden" name="new_job_number_text" :value="selectedId === 'NEW' ? newText : ''">
+                        <p class="text-xs text-text-secondary mt-1" x-show="selectedId === 'NEW'" x-cloak>
+                            This job number isn't in the system yet — submitting will notify an admin to review and add it.
+                        </p>
+                    </div>
                 </div>
             </div>
 
             {# Attachments #}
             <div>
-                <label class="block text-sm font-medium mb-1 text-text-primary">Attachments <span class="text-text-secondary text-xs font-normal">(optional)</span></label>
+                <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">Attachments <span class="normal-case font-normal">(optional, multiple allowed)</span></p>
                 <div class="relative">
                     <input type="file" name="attachments" multiple
                            class="block w-full text-sm text-text-secondary file:mr-4 file:py-2.5 file:px-5 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 transition cursor-pointer">
@@ -123,6 +291,7 @@
             {# Actions #}
             <div class="flex flex-wrap items-center justify-end gap-3 pt-4 border-t" style="border-color: var(--color-border);">
                 <a href="{% url 'dashboard' %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
+                <button type="button" id="saveDraftBtn" class="btn-outline text-sm px-5 py-2">Save Draft</button>
                 <button type="submit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5">
                     {% lucide "send" size=16 %} Submit Request
                 </button>
@@ -135,29 +304,30 @@
 
 {% block scripts %}
 {{ block.super }}
+<script src="{% static 'js/searchable_select.js' %}"></script>
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
+<script src="{% static 'js/form_draft.js' %}"></script>
 <script>
-    // ================================================================
-    // OTHER FIELD TOGGLE
-    // ================================================================
-    
-    function toggleOtherField(fieldType) {
-        const selectMap = {
-            'category': {
-                select: 'id_category',
-                container: 'category_other_container',
-                input: 'category_other'
-            }
-        };
-        
-        const config = selectMap[fieldType];
-        if (!config) return;
-        
-        const select = document.getElementById(config.select);
-        const container = document.getElementById(config.container);
-        const input = document.getElementById(config.input);
-        
-        if (!select || !container || !input) return;
-        
+    function onServiceCategoryChange(select) {
+        document.querySelectorAll('[id^="dynfields-"]').forEach(function (el) {
+            el.classList.add('hidden');
+        });
+        const selectedOption = select.options[select.selectedIndex];
+        const group = selectedOption ? selectedOption.dataset.fieldGroup : '';
+        const hint = document.getElementById('dynfields-empty-hint');
+        const block = group ? document.getElementById('dynfields-' + group) : null;
+        if (block) {
+            block.classList.remove('hidden');
+            if (hint) hint.classList.add('hidden');
+        } else if (hint) {
+            hint.classList.remove('hidden');
+        }
+    }
+
+    function toggleDynFieldOther(key, select) {
+        const container = document.getElementById('dynfield_' + key + '_other_container');
+        const input = document.getElementById('id_' + key + '_other');
+        if (!container || !input) return;
         if (select.value === 'OTHER') {
             container.classList.remove('hidden');
             input.required = true;
@@ -167,13 +337,101 @@
             input.required = false;
         }
     }
-    
-    // Initialize on page load
+
+    function detectLocation() {
+        const statusEl = document.getElementById('locationStatus');
+        const latInput = document.getElementById('id_submission_latitude');
+        const lonInput = document.getElementById('id_submission_longitude');
+        const addressInput = document.getElementById('id_submission_location_address');
+        if (!statusEl || !latInput || !lonInput) return;
+
+        function setStatus(text) {
+            statusEl.innerHTML = '';
+            statusEl.appendChild(document.createTextNode(text));
+        }
+
+        if (!navigator.geolocation) {
+            setStatus('📍 Location unavailable');
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            function (position) {
+                const lat = position.coords.latitude.toFixed(6);
+                const lon = position.coords.longitude.toFixed(6);
+                latInput.value = lat;
+                lonInput.value = lon;
+                setStatus('📍 Location detected: ' + lat + ', ' + lon + ' (resolving address…)');
+
+                fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lon + '&zoom=18&addressdetails=1')
+                    .then(function (res) { return res.ok ? res.json() : null; })
+                    .then(function (data) {
+                        if (data && data.display_name) {
+                            addressInput.value = data.display_name;
+                            setStatus('📍 Location detected: ' + data.display_name);
+                        } else {
+                            setStatus('📍 Location detected: ' + lat + ', ' + lon + ' (address unavailable)');
+                        }
+                    })
+                    .catch(function () {
+                        setStatus('📍 Location detected: ' + lat + ', ' + lon + ' (address unavailable)');
+                    });
+            },
+            function () {
+                setStatus('📍 Location unavailable');
+            },
+            { timeout: 8000, maximumAge: 60000 }
+        );
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        const categorySelect = document.getElementById('id_category');
-        if (categorySelect && categorySelect.value === 'OTHER') {
-            const container = document.getElementById('category_other_container');
-            if (container) container.classList.remove('hidden');
+        detectLocation();
+
+        const select = document.getElementById('id_service_category');
+        if (select && select.value) {
+            onServiceCategoryChange(select);
+        }
+        document.querySelectorAll('select[onchange^="toggleDynFieldOther"]').forEach(function (el) {
+            if (el.value === 'OTHER') {
+                const key = el.id.replace('id_', '');
+                toggleDynFieldOther(key, el);
+            }
+        });
+        if (window.initFormDraft) {
+            window.initFormDraft({
+                form: document.getElementById('serviceRequestForm'),
+                ticketType: 'SERVICE_REQUEST',
+                saveDraftBtnId: 'saveDraftBtn',
+                onRestore: function (data) {
+                    data = data || {};
+                    const select = document.getElementById('id_service_category');
+                    if (select) onServiceCategoryChange(select);
+
+                    function alpineStateFor(fieldName) {
+                        const el = document.querySelector('[data-searchable-select="' + fieldName + '"]');
+                        return el && window.Alpine ? window.Alpine.$data(el) : null;
+                    }
+                    function asArray(value) {
+                        if (value === undefined || value === null || value === '') return [];
+                        return Array.isArray(value) ? value : [value];
+                    }
+
+                    const vesselsState = alpineStateFor('vessels');
+                    if (vesselsState) vesselsState.selected = asArray(data.vessels);
+
+                    const diveSystemsState = alpineStateFor('dive_systems');
+                    if (diveSystemsState) diveSystemsState.selected = asArray(data.dive_systems);
+
+                    const jobNumberState = alpineStateFor('job_number');
+                    if (jobNumberState) {
+                        jobNumberState.selectedId = data.job_number || '';
+                        jobNumberState.newText = data.job_number === 'NEW' ? (data.new_job_number_text || '') : '';
+                        jobNumberState.query = jobNumberState.selectedId === 'NEW'
+                            ? jobNumberState.newText
+                            : jobNumberState.labelFor(jobNumberState.selectedId);
+                    }
+                },
+            });
         }
     });
 </script>

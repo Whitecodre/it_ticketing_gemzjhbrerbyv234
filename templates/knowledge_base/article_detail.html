@@ -14,14 +14,28 @@
 
 {% block dashboard_content %}
 <div class="max-w-3xl mx-auto">
-    <a href="{% url 'kb:portal' %}" class="text-xs font-medium mb-4 inline-flex items-center gap-1 text-primary">
-        {% lucide "arrow-left" size=14 %} Back to Knowledge Base
-    </a>
+    {# Breadcrumbs #}
+    <nav class="text-xs text-text-secondary mb-4 flex flex-wrap items-center gap-1">
+        <a href="{% url 'kb:portal' %}" class="hover:text-primary hover:underline">Knowledge Base</a>
+        {% if article.category %}
+            {% if article.category.parent %}
+            <span>›</span>
+            <a href="{% url 'kb:portal' %}?category={{ article.category.parent.pk }}" class="hover:text-primary hover:underline">{{ article.category.parent.name }}</a>
+            <span>›</span>
+            <a href="{% url 'kb:portal' %}?category={{ article.category.pk }}" class="hover:text-primary hover:underline">{{ article.category.name }}</a>
+            {% else %}
+            <span>›</span>
+            <a href="{% url 'kb:portal' %}?category={{ article.category.pk }}" class="hover:text-primary hover:underline">{{ article.category.name }}</a>
+            {% endif %}
+        {% endif %}
+        <span>›</span>
+        <span class="text-text-primary">{{ article.title }}</span>
+    </nav>
 
     <div class="dashboard-card">
         <div class="flex items-start justify-between gap-3">
             <h1 class="text-lg font-bold text-text-primary">{{ article.title }}</h1>
-            {% if user.role in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
+            {% if active_role_name in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
             <span class="status-chip shrink-0 text-xs
                 {% if article.status == 'DRAFT' %}closed
                 {% elif article.status == 'PENDING_REVIEW' %}pending_approval
@@ -34,6 +48,10 @@
             <span class="inline-flex items-center gap-1">{% lucide "folder" size=12 %} {{ article.category.name|default:"Uncategorized" }}</span>
             <span>·</span>
             <span class="inline-flex items-center gap-1">{% lucide "clock" size=12 %} Updated {{ article.updated_at|timesince }} ago</span>
+            {% if article.published_at %}
+            <span>·</span>
+            <span class="inline-flex items-center gap-1">{% lucide "send" size=12 %} Published {{ article.published_at|timesince }} ago{% if article.published_by %} by {{ article.published_by.get_full_name|default:article.published_by.email }}{% endif %}</span>
+            {% endif %}
         </div>
 
         {# Tags Display #}
@@ -47,8 +65,18 @@
         </div>
         {% endif %}
 
-        <div class="mt-6 pt-5 border-t border-border prose max-w-none text-sm text-text-primary">
-            {{ article.content|safe|linebreaks }}
+        {# Table of Contents — collapsible, built client-side from the
+           rendered content's headings (auto-slugified anchors). #}
+        <div id="articleToc" class="mt-6 hidden">
+            <button type="button" id="articleTocToggle" class="w-full flex items-center justify-between text-left text-xs font-medium px-3 py-2 rounded-lg bg-background border border-border text-text-primary">
+                <span>Table of contents</span>
+                {% lucide "chevron-down" size=14 id="articleTocChevron" %}
+            </button>
+            <div id="articleTocList" class="hidden mt-1 px-3 py-2 rounded-lg border border-border text-xs space-y-1"></div>
+        </div>
+
+        <div id="articleContent" class="mt-6 pt-5 border-t border-border prose max-w-none text-sm text-text-primary">
+            {{ article.content|safe }}
         </div>
 
         {# Feedback #}
@@ -67,18 +95,18 @@
     </div>
 
     {# Agent/Admin Actions #}
-    {% if user.role in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
+    {% if active_role_name in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
     <div class="dashboard-card mt-4 flex flex-wrap items-center justify-between gap-2 py-3">
         <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
             {% lucide "clock" size=14 %} Version History
         </a>
         <div class="flex items-center gap-2">
-            {% if article.status == 'DRAFT' and user == article.author or user.role in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
-                <a href="{% url 'kb:edit' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
+            {% if user == article.author or active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
+                <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
                     {% lucide "edit" size=14 %} Edit
                 </a>
             {% endif %}
-            {% if user.role in 'TEAM_LEAD,ADMIN,SUPERADMIN' and article.status == 'PENDING_REVIEW' %}
+            {% if active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' and article.status == 'PENDING_REVIEW' %}
                 <form method="post" action="{% url 'kb:publish' article.pk %}" class="inline">
                     {% csrf_token %}
                     <button type="submit" class="btn-success text-xs px-3 py-1.5 rounded">Publish</button>
@@ -93,6 +121,41 @@
 {% block scripts %}
 {{ block.super }}
 <script>
+    // Build a collapsible table of contents from the article's own
+    // headings — client-side only, no server/model changes needed since
+    // the editor already emits real h1-h3 elements.
+    (function buildToc() {
+        const content = document.getElementById('articleContent');
+        const tocWrap = document.getElementById('articleToc');
+        const tocList = document.getElementById('articleTocList');
+        if (!content || !tocWrap || !tocList) return;
+
+        const headings = content.querySelectorAll('h1, h2, h3');
+        if (headings.length < 2) return; // not worth a TOC for 0-1 headings
+
+        const usedIds = new Set();
+        const entries = [];
+        headings.forEach((heading) => {
+            let base = heading.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'section';
+            let id = base;
+            let n = 2;
+            while (usedIds.has(id)) { id = `${base}-${n}`; n += 1; }
+            usedIds.add(id);
+            heading.id = id;
+            entries.push({ id, level: Number(heading.tagName[1]), text: heading.textContent.trim() });
+        });
+
+        tocList.innerHTML = entries.map((e) => (
+            `<a href="#${e.id}" class="block hover:text-primary text-text-secondary" style="padding-left:${(e.level - 1) * 0.75}rem">${e.text}</a>`
+        )).join('');
+        tocWrap.classList.remove('hidden');
+
+        document.getElementById('articleTocToggle').addEventListener('click', function () {
+            tocList.classList.toggle('hidden');
+            document.getElementById('articleTocChevron').classList.toggle('rotate-180');
+        });
+    })();
+
     function submitFeedback(helpful) {
         fetch('{% url "kb:feedback" article.pk %}', {
             method: 'POST',

@@ -2,12 +2,34 @@
 import json, requests
 import base64
 import html as html_lib
+import logging
 from django.conf import settings
 from pywebpush import webpush, WebPushException
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 from .models import PushSubscription
+
+logger = logging.getLogger(__name__)
+
+def role_of(user):
+    """The role name (string) a Notification.role should be tagged with for
+    a given recipient/actor — their active role at this moment, so a dual-
+    role account only sees the notification while wearing the matching hat.
+    Returns None (role-agnostic) if the user has no role assigned at all."""
+    if not user:
+        return None
+    active_role = user.get_active_role()
+    return active_role.name if active_role else None
+
+
+def notification_role_q(user):
+    """Q object scoping a Notification queryset to `user`'s currently active
+    role, plus role-agnostic (null-role) notifications, which always show
+    regardless of active role. Combine with .filter(recipient=user, ...)."""
+    from django.db.models import Q
+    return Q(role=role_of(user)) | Q(role__isnull=True)
+
 
 def send_push_notification(notification):
     """
@@ -59,8 +81,7 @@ def send_push_notification(notification):
                 expired += 1
             else:
                 failed += 1
-                # Log error (optional)
-                print(f"Push failed for {sub.user.email}: {e}")
+                logger.warning(f"Push failed for {sub.user.email}: {e}")
 
     return {'sent': sent, 'failed': failed, 'expired': expired}
 
@@ -90,10 +111,10 @@ def send_email_via_brevo(to_email, subject, html_content, from_email=None, templ
         msg = EmailMultiAlternatives(subject, plain_text, from_email, [to_email])
         msg.attach_alternative(html_content, "text/html")
         msg.send(fail_silently=False)
-        print(f"Email sent to {to_email} via SMTP")
+        logger.info(f"Email sent to {to_email} via SMTP")
         return True, "sent via SMTP"
     except Exception as smtp_error:
-        print(f"SMTP send failed for {to_email}: {smtp_error}")
+        logger.warning(f"SMTP send failed for {to_email}: {smtp_error}")
         return _send_via_brevo_api(to_email, subject, html_content, plain_text, from_email)
 
 
@@ -102,7 +123,7 @@ def _send_via_brevo_api(to_email, subject, html_content, plain_text, from_email)
     api_key = settings.BREVO_API_KEY
 
     if not api_key:
-        print("BREVO_API_KEY not configured in .env")
+        logger.error("BREVO_API_KEY not configured in .env")
         return False, "SMTP failed and BREVO_API_KEY not configured for fallback"
 
     url = "https://api.brevo.com/v3/smtp/email"
@@ -125,12 +146,12 @@ def _send_via_brevo_api(to_email, subject, html_content, plain_text, from_email)
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
         result = response.json()
-        print(f"Email sent to {to_email} via Brevo API (SMTP fallback)")
+        logger.info(f"Email sent to {to_email} via Brevo API (SMTP fallback)")
         return True, result
     except requests.exceptions.RequestException as e:
-        print(f"Brevo API fallback also failed for {to_email}: {str(e)}")
+        logger.error(f"Brevo API fallback also failed for {to_email}: {str(e)}")
         if hasattr(e, 'response') and e.response:
-            print(f"Response: {e.response.text}")
+            logger.error(f"Response: {e.response.text}")
         return False, str(e)
 
 

@@ -54,6 +54,9 @@
                 <a href="{% url 'documents_display:document_share' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "share-2" size=16 %} Share
                 </a>
+                <button type="button" onclick="document.getElementById('addToFolderModal').classList.remove('hidden')" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "folder-plus" size=16 %} Add to Folder
+                </button>
                 {% endif %}
             </div>
         </div>
@@ -132,4 +135,34 @@
         document.getElementById('versionModalContainer').innerHTML = '';
     }
 </script>
+
+{% if user.can_manage_display_documents %}
+<div id="addToFolderModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onclick="if(event.target===this) this.classList.add('hidden')">
+    <div class="dashboard-card w-full max-w-md p-6 shadow-lg">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-semibold" style="color: var(--color-text-primary);">Add to Folder</h3>
+            <button type="button" onclick="document.getElementById('addToFolderModal').classList.add('hidden')" class="btn-ghost btn-icon">
+                {% lucide "x" size=16 %}
+            </button>
+        </div>
+        {% if my_folders %}
+        <div class="space-y-2 mb-4">
+            {% for folder in my_folders %}
+            <form method="post" action="{% url 'documents_display:folder_add_documents' folder.slug %}" class="flex items-center justify-between rounded-lg border p-2.5" style="border-color: var(--color-border);">
+                {% csrf_token %}
+                <input type="hidden" name="document_ids" value="{{ document.pk }}">
+                <span class="text-sm flex items-center gap-2" style="color: var(--color-text-primary);">{% lucide "folder" size=14 %} {{ folder.name }}</span>
+                <button type="submit" class="btn-ghost text-xs px-2 py-1 rounded">Add</button>
+            </form>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-text-secondary mb-4">You don't have any folders yet, or this document is already in all of them.</p>
+        {% endif %}
+        <a href="{% url 'documents_display:folder_list' %}" class="text-sm text-primary flex items-center gap-1">
+            {% lucide "plus" size=14 %} Create a new folder
+        </a>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

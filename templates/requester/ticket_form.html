@@ -3,7 +3,18 @@
 {% load lucide %}
 
 {% block dashboard_title %}New Ticket{% endblock %}
-{% block page_title %}Create New Ticket{% endblock %}
+{% block page_title_area %}
+{% comment %}
+The default page_title_area renders the heading full-width, but this page's
+content below is wrapped in max-w-4xl mx-auto — matching that here keeps the
+heading aligned with the card instead of sitting flush against the sidebar.
+{% endcomment %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-xl font-semibold truncate mb-4" style="color: var(--color-text-primary);">
+        Create New Ticket
+    </h1>
+</div>
+{% endblock page_title_area %}
 {% block role_label %}{{ user.get_role_display }}{% endblock %}
 {% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
 

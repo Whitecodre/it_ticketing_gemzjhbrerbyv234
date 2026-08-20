@@ -35,7 +35,7 @@ function openScrapApproveModal(assetId) {
         return;
     }
     
-    const url = scrapApproveModalUrl.replace('0', assetId);
+    const url = scrapApproveModalUrl.replace('/0/', '/' + assetId + '/');
     const overlay = document.getElementById('modalOverlay');
     const container = document.getElementById('modalContainer');
     
@@ -76,7 +76,7 @@ function openScrapRequestModal(assetId) {
         return;
     }
     
-    const url = scrapRequestModalUrl.replace('0', assetId);
+    const url = scrapRequestModalUrl.replace('/0/', '/' + assetId + '/');
     const overlay = document.getElementById('modalOverlay');
     const container = document.getElementById('modalContainer');
     
@@ -117,7 +117,7 @@ function openAssetReassignModal(assetId) {
         return;
     }
     
-    const url = assetReassignModalUrl.replace('0', assetId);
+    const url = assetReassignModalUrl.replace('/0/', '/' + assetId + '/');
     const overlay = document.getElementById('modalOverlay');
     const container = document.getElementById('modalContainer');
     
@@ -180,7 +180,7 @@ function editAsset(assetId) {
         return;
     }
     
-    const url = editUrl.replace('0', assetId);
+    const url = editUrl.replace('/0/', '/' + assetId + '/');
     const overlay = document.getElementById('modalOverlay');
     const container = document.getElementById('modalContainer');
     
@@ -230,10 +230,23 @@ function resetFilters(event) {
 // EXPORT DROPDOWN
 // ================================================================
 
+let exportDropdownCleanup = null;
+
 function toggleExportDropdown() {
     const dropdown = document.getElementById('exportDropdown');
-    if (dropdown) {
-        dropdown.classList.toggle('hidden');
+    if (!dropdown) return;
+    if (dropdown.classList.contains('hidden')) {
+        dropdown.classList.remove('hidden');
+        const trigger = document.querySelector('[onclick="toggleExportDropdown()"]');
+        if (trigger && window.positionDropdown) {
+            exportDropdownCleanup = window.positionDropdown(trigger, dropdown, { align: 'right' });
+        }
+    } else {
+        dropdown.classList.add('hidden');
+        if (exportDropdownCleanup) {
+            exportDropdownCleanup();
+            exportDropdownCleanup = null;
+        }
     }
 }
 
@@ -255,6 +268,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const button = document.querySelector('[onclick="toggleExportDropdown()"]');
         if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) {
             dropdown.classList.add('hidden');
+            if (exportDropdownCleanup) {
+                exportDropdownCleanup();
+                exportDropdownCleanup = null;
+            }
         }
     });
     

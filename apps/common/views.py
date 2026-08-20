@@ -8,7 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.middleware.csrf import get_token
 from django.core.paginator import Paginator
 from .models import Notification, PushSubscription
-from .utils import send_push_notification
+from .utils import send_push_notification, notification_role_q
 
 
 def _get_sidebar_template(user):
@@ -58,13 +58,15 @@ def test_push(request):
 
 @login_required
 def unread_count(request):
-    count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    count = Notification.objects.filter(notification_role_q(request.user), recipient=request.user, is_read=False).count()
     return render(request, 'partials/notification_badge.html', {'count': count})
 
 @login_required
 @require_POST
 def mark_all_read(request):
-    Notification.objects.filter(recipient=request.user, is_read=False).update(is_read=True)
+    # Scoped to the active role too — "mark all read" shouldn't silently
+    # clear notifications belonging to a role the user isn't even looking at.
+    Notification.objects.filter(notification_role_q(request.user), recipient=request.user, is_read=False).update(is_read=True)
     # After marking all as read, count is always 0 → badge will be hidden
     return render(request, 'partials/notification_badge.html', {'count': 0})
 
@@ -78,11 +80,14 @@ def mark_read(request, pk):
         return JsonResponse({'status': 'ok'})
     except Notification.DoesNotExist:
         return JsonResponse({'status': 'error'}, status=404)
-    
+
 @login_required
 def list_notifications(request):
-    # Get all notifications for the user, newest first
-    all_notifications = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+    # Get all notifications for the user under their currently active role
+    # (plus role-agnostic ones), newest first.
+    all_notifications = Notification.objects.filter(
+        notification_role_q(request.user), recipient=request.user
+    ).order_by('-created_at')
     unread = all_notifications.filter(is_read=False).count()
     notifications = all_notifications[:10]   # slice after counting
     return render(request, 'partials/notification_dropdown.html', {
@@ -97,13 +102,15 @@ def notifications_page(request):
     """Full notifications page ('View all' destination) — not to be confused
     with list_notifications, which renders the bell dropdown fragment and is
     fetched via HTMX from several places; this is a real, standalone page."""
-    notifications_qs = Notification.objects.filter(recipient=request.user).order_by('-created_at')
+    notifications_qs = Notification.objects.filter(
+        notification_role_q(request.user), recipient=request.user
+    ).order_by('-created_at')
 
     filter_value = request.GET.get('filter', 'all')
     if filter_value == 'unread':
         notifications_qs = notifications_qs.filter(is_read=False)
 
-    unread_count = Notification.objects.filter(recipient=request.user, is_read=False).count()
+    unread_count = Notification.objects.filter(notification_role_q(request.user), recipient=request.user, is_read=False).count()
 
     paginator = Paginator(notifications_qs, 20)
     page_obj = paginator.get_page(request.GET.get('page'))
@@ -120,6 +127,7 @@ def notifications_page(request):
 def websocket_init_data(request):
     """Returns data needed to initialize the WebSocket connection."""
     unread_count = Notification.objects.filter(
+        notification_role_q(request.user),
         recipient=request.user,
         is_read=False
     ).count()

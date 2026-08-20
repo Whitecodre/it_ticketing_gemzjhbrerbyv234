@@ -52,7 +52,7 @@
             
             <!-- Basic Information -->
             <div class="mb-6">
-                <h3 class="text-sm font-semibold mb-3 text-text-secondary">
+                <h3 class="flex gap-2 text-sm font-semibold mb-3 text-text-secondary">
                     {% lucide "info" size=14 %} Basic Information
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -62,29 +62,21 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Category</label>
-                        <select name="category" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                            <option value="">-- Select Category --</option>
-                            {% for category in categories %}
-                            <option value="{{ category.pk }}" {% if asset.category_id == category.pk %}selected{% endif %}>
-                                {{ category.full_name }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Type</label>
-                        <select name="asset_type" id="asset_type_select" 
-                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                                onchange="toggleOtherField('asset_type')">
-                            <option value="">-- Select Type --</option>
-                            {% for value, label in asset_types %}
-                            <option value="{{ value }}" {% if asset.asset_type == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                        <div id="asset_type_other_container" class="mt-2 hidden">
-                            {{ form.asset_type_other }}
-                            <p class="text-xs text-text-secondary mt-1">Custom type will be saved to the database.</p>
+                        {{ form.category }}
+                        <div id="category_other_container" class="mt-2 hidden">
+                            {{ form.category_other }}
+                            <p class="text-xs text-text-secondary mt-1">Creates a new category, available for future assets too.</p>
                         </div>
+                    </div>
+                    <div id="quantity_in_stock_container" class="hidden">
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Quantity in Stock</label>
+                        {{ form.quantity_in_stock }}
+                        <p class="text-xs mt-1 text-text-secondary">This category is bulk/consumable — tracked by count, not as one unique item.</p>
+                    </div>
+                    <div id="low_stock_threshold_container" class="hidden">
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Low Stock Alert Threshold</label>
+                        {{ form.low_stock_threshold }}
+                        <p class="text-xs mt-1 text-text-secondary">Admins get notified when stock drops to or below this. Leave blank to disable.</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Serial Number</label>
@@ -100,33 +92,21 @@
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Location</label>
-                        <select name="location" id="location_select"
-                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                                onchange="toggleOtherField('location')">
-                            <option value="">-- Select Location --</option>
-                            {% for value, label in location_choices %}
-                            <option value="{{ value }}" {% if asset.location == value %}selected{% endif %}>{{ label }}</option>
+                        {{ form.location }}
+                        <datalist id="locationOptions">
+                            {% for loc in locations %}
+                            <option value="{{ loc }}">
                             {% endfor %}
-                        </select>
-                        <div id="location_other_container" class="mt-2 hidden">
-                            {{ form.location_other }}
-                            <p class="text-xs text-text-secondary mt-1">Custom location will be saved to the database.</p>
-                        </div>
+                        </datalist>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Department</label>
+                        {{ form.department }}
+                        <p class="text-xs mt-1 text-text-secondary">The asset's owning department (distinct from "Assigned Department" below).</p>
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Status</label>
-                        <select name="status" id="status_select"
-                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                                onchange="toggleOtherField('status')">
-                            <option value="">-- Select Status --</option>
-                            {% for value, label in status_choices %}
-                            <option value="{{ value }}" {% if asset.status == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                        <div id="status_other_container" class="mt-2 hidden">
-                            {{ form.status_other }}
-                            <p class="text-xs text-text-secondary mt-1">Custom status will be saved to the database.</p>
-                        </div>
+                        {{ form.status }}
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Condition</label>
@@ -143,27 +123,15 @@
                 </div>
             </div>
 
-            <!-- Financial & Warranty -->
+            <!-- Warranty -->
             <div class="mb-6">
-                <h3 class="text-sm font-semibold mb-3 text-text-secondary">
-                    {% lucide "dollar-sign" size=14 %} Financial & Warranty
+                <h3 class="flex gap-2 text-sm font-semibold mb-3 text-text-secondary">
+                    {% lucide "shield-check" size=14 %} Warranty
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Purchase Date</label>
                         {{ form.purchase_date }}
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Purchase Price</label>
-                        {{ form.purchase_price }}
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Depreciation (Years)</label>
-                        {{ form.depreciation_years }}
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Salvage Value</label>
-                        {{ form.salvage_value }}
                     </div>
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Warranty Duration</label>
@@ -185,59 +153,42 @@
                 </div>
             </div>
 
-            <!-- Maintenance -->
-            <div class="mb-6">
-                <h3 class="text-sm font-semibold mb-3 text-text-secondary">
-                    {% lucide "wrench" size=14 %} Maintenance
+            <!-- Renewal — only for categories flagged Renewable in System Settings -->
+            <div id="renewal_section" class="mb-6 hidden">
+                <h3 class="flex gap-2 text-sm font-semibold mb-3 text-text-secondary">
+                    {% lucide "refresh-cw" size=14 %} Renewal
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Last Maintenance</label>
-                        {{ form.last_maintenance }}
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Next Renewal Date</label>
+                        {{ form.next_renewal_date }}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Next Maintenance</label>
-                        {{ form.next_maintenance }}
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Renewal Interval (months)</label>
+                        {{ form.renewal_interval_months }}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Interval (Months)</label>
-                        {{ form.maintenance_interval_months }}
-                    </div>
-                    <div class="md:col-span-3">
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Maintenance Notes</label>
-                        {{ form.maintenance_notes }}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Supplier -->
-            <div class="mb-6">
-                <h3 class="text-sm font-semibold mb-3 text-text-secondary">
-                    {% lucide "truck" size=14 %} Supplier & Purchasing
-                </h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Supplier</label>
-                        {{ form.supplier }}
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Renewal Cost</label>
+                        {{ form.renewal_cost }}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Invoice Number</label>
-                        {{ form.invoice_number }}
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Renewal Vendor</label>
+                        {{ form.renewal_vendor }}
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">PO Number</label>
-                        {{ form.po_number }}
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium mb-1 text-text-primary">License/Subscription/Contract Reference</label>
+                        {{ form.renewal_reference }}
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Purchase Order</label>
-                        {{ form.purchase_order }}
+                    <div class="flex items-center gap-2 mt-6">
+                        {{ form.auto_renews }}
+                        <label class="text-sm text-text-primary">Auto-renews (no manual action needed)</label>
                     </div>
                 </div>
             </div>
 
             <!-- Notes -->
             <div class="mb-6">
-                <h3 class="text-sm font-semibold mb-3 text-text-secondary">
+                <h3 class="flex gap-2 text-sm font-semibold mb-3 text-text-secondary">
                     {% lucide "file-text" size=14 %} Notes
                 </h3>
                 <div>
@@ -266,37 +217,16 @@
 {{ block.super }}
 <script>
     // ================================================================
-    // OTHER FIELD TOGGLE
+    // CATEGORY "OTHER" TOGGLE
     // ================================================================
-    
-    function toggleOtherField(fieldType) {
-        const selectMap = {
-            'asset_type': {
-                select: 'asset_type_select',
-                container: 'asset_type_other_container',
-                input: 'id_asset_type_other'
-            },
-            'status': {
-                select: 'status_select',
-                container: 'status_other_container',
-                input: 'id_status_other'
-            },
-            'location': {
-                select: 'location_select',
-                container: 'location_other_container',
-                input: 'id_location_other'
-            }
-        };
-        
-        const config = selectMap[fieldType];
-        if (!config) return;
-        
-        const select = document.getElementById(config.select);
-        const container = document.getElementById(config.container);
-        const input = document.getElementById(config.input);
-        
+
+    function toggleCategoryOther() {
+        const select = document.getElementById('id_category');
+        const container = document.getElementById('category_other_container');
+        const input = document.getElementById('id_category_other');
+
         if (!select || !container || !input) return;
-        
+
         if (select.value === 'OTHER') {
             container.classList.remove('hidden');
             input.required = true;
@@ -306,16 +236,67 @@
             input.required = false;
         }
     }
-    
-    function initOtherFields() {
-        ['asset_type', 'status', 'location'].forEach(function(field) {
-            toggleOtherField(field);
-        });
+
+    // ================================================================
+    // QUANTITY IN STOCK — only shown for bulk/consumable categories
+    // ================================================================
+    const CONSUMABLE_CATEGORY_IDS = new Set([
+        {% for cat in categories %}{% if cat.is_consumable %}{{ cat.id }},{% endif %}{% endfor %}
+    ]);
+
+    function toggleQuantityInStock() {
+        const select = document.getElementById('id_category');
+        const qtyContainer = document.getElementById('quantity_in_stock_container');
+        const thresholdContainer = document.getElementById('low_stock_threshold_container');
+        if (!select) return;
+
+        const isConsumable = CONSUMABLE_CATEGORY_IDS.has(parseInt(select.value, 10));
+        if (qtyContainer) qtyContainer.classList.toggle('hidden', !isConsumable);
+        if (thresholdContainer) thresholdContainer.classList.toggle('hidden', !isConsumable);
     }
-    
-    // Check if any field already has a custom value (edit mode with custom value)
+
+    // ================================================================
+    // RENEWAL FIELDS — only shown for renewable categories
+    // ================================================================
+    const RENEWABLE_CATEGORY_IDS = new Set([
+        {% for cat in categories %}{% if cat.is_renewable %}{{ cat.id }},{% endif %}{% endfor %}
+    ]);
+
+    function toggleRenewalSection() {
+        const select = document.getElementById('id_category');
+        const section = document.getElementById('renewal_section');
+        if (!select || !section) return;
+
+        const isRenewable = RENEWABLE_CATEGORY_IDS.has(parseInt(select.value, 10));
+        section.classList.toggle('hidden', !isRenewable);
+    }
+
+    // ================================================================
+    // RENEWAL VENDOR — narrowed to vendors that supply the selected category
+    // ================================================================
+    function filterRenewalVendor() {
+        const select = document.getElementById('id_category');
+        const vendorSelect = document.getElementById('id_renewal_vendor');
+        if (select && vendorSelect && typeof filterVendorSelectByCategory === 'function') {
+            filterVendorSelectByCategory(select, vendorSelect);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
-        initOtherFields();
+        const select = document.getElementById('id_category');
+        if (select) {
+            select.addEventListener('change', toggleCategoryOther);
+            select.addEventListener('change', toggleQuantityInStock);
+            select.addEventListener('change', toggleRenewalSection);
+            select.addEventListener('change', filterRenewalVendor);
+            toggleCategoryOther();
+            toggleQuantityInStock();
+            toggleRenewalSection();
+        }
+        // Not filtered on load — an existing asset's renewal_vendor should
+        // stay visible/selected even if the category select's initial
+        // value doesn't match categorization set later, avoiding a
+        // surprise "vendor cleared" on opening the edit page.
     });
 </script>
 {% endblock %}

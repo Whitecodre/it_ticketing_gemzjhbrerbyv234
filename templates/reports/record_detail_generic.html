@@ -1,0 +1,50 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ config.label }} Detail{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-start gap-3">
+            <a href="{% url 'tickets:report_builder' report_type=report_type %}" class="btn-ghost btn-icon mt-1" aria-label="Back">
+                {% lucide "arrow-left" size=18 %}
+            </a>
+            <div>
+                <h2 class="text-base font-semibold text-text-primary">{{ config.label }} Record</h2>
+                <p class="text-xs text-text-secondary mt-0.5">Full detail for this record</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=obj.pk %}?format=pdf" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-type" size=12 %} Export PDF
+            </a>
+            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=obj.pk %}?format=docx" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-down" size=12 %} Export Word
+            </a>
+        </div>
+    </div>
+
+    <div class="dashboard-card p-5">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {% for key, value in row.items %}
+            <div>
+                <span class="block text-xs text-text-secondary">{{ key }}</span>
+                <span class="text-text-primary">{{ value|default:"—" }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

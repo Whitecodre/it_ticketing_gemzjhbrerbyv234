@@ -109,10 +109,12 @@
         justify-content: center;
         z-index: 1000;
         opacity: 0;
+        pointer-events: none;
         transition: opacity 0.25s ease;
     }
     .version-modal-overlay.visible {
         opacity: 1;
+        pointer-events: auto;
     }
     .version-modal {
         max-width: 700px;
@@ -205,8 +207,8 @@
                 <div class="version-actions">
                     <button class="btn-view" onclick="previewVersion({{ version.pk }})">View</button>
                     {% if not forloop.first %}
-                        {% if user.role in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
-                            <button class="btn-revert" onclick="revertVersion({{ version.pk }})">Revert to this</button>
+                        {% if active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
+                            <button class="btn-revert" onclick="revertVersion({{ version.pk }}, this)">Revert to this</button>
                         {% else %}
                             <button class="btn-revert disabled" disabled>Revert (Leads only)</button>
                         {% endif %}
@@ -239,6 +241,10 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
 <script>
     // Preview version (fetch content via AJAX)
     function previewVersion(versionPk) {
@@ -269,13 +275,22 @@
     }
 
     // Revert version (POST)
-    function revertVersion(versionPk) {
-        if (!confirm('Are you sure you want to revert to this version? This will replace the current article content.')) return;
-        
-        const btn = event.target;
+    function revertVersion(versionPk, btn) {
+        openConfirmationModal({
+            title: 'Revert Article',
+            message: 'Are you sure you want to revert to this version?',
+            detail: 'This will replace the current article content.',
+            confirmText: 'Yes, revert it',
+            confirmButtonClass: 'btn-warning',
+            icon: 'warning',
+            onConfirm: function() { doRevertVersion(versionPk, btn); }
+        });
+    }
+
+    function doRevertVersion(versionPk, btn) {
         btn.classList.add('loading');
         btn.textContent = 'Reverting...';
-        
+
         fetch(`{% url 'kb:revert' article.pk 0 %}`.replace('0', versionPk), {
             method: 'POST',
             headers: {
@@ -291,7 +306,7 @@
             }
         })
         .catch(err => {
-            alert('Error reverting. Please try again.');
+            if (typeof showToast === 'function') showToast('Error reverting. Please try again.', 'error');
             btn.classList.remove('loading');
             btn.textContent = 'Revert to this';
         });

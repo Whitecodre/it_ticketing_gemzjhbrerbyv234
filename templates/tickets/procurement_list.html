@@ -1,0 +1,148 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Procurement{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "truck" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold text-text-primary">Procurement</h2>
+                <p class="text-sm text-text-secondary">Items not currently in inventory, being sourced from a vendor for a service request or job mobilization.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <form id="procurementFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3 bg-surface border-border"
+        hx-get="{% url 'tickets:procurement_list' %}"
+        hx-target="#procurementTableContainer"
+        hx-select="#procurementTableContainer"
+        hx-swap="outerHTML"
+        hx-trigger="change">
+
+        <select name="status" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">All Status</option>
+            {% for value, label in status_choices %}
+            <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+
+        <button type="reset" class="btn-ghost text-sm">Reset</button>
+    </form>
+
+    <div id="procurementTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
+        {% if procurement_requests %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Item</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Qty</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Vendor</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">For</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Expected</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                        <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pr in procurement_requests %}
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                        <td class="py-3 px-4 text-text-primary">{{ pr.item_name }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ pr.quantity }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ pr.vendor.name|default:"—" }}</td>
+                        <td class="py-3 px-4 text-text-secondary">
+                            {% if pr.ticket %}<a href="{% url 'tickets:conversation' pr.ticket.pk %}" class="text-primary underline">{{ pr.ticket.number }}</a>
+                            {% elif pr.mobilization %}<a href="{% url 'tickets:mobilization_detail' pr.mobilization.pk %}" class="text-primary underline">{{ pr.mobilization.destination_display }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">{{ pr.expected_arrival_date|date:"M j, Y"|default:"—" }}</td>
+                        <td class="py-3 px-4">
+                            <span class="status-chip text-xs
+                                {% if pr.status == 'REQUESTED' %}pending
+                                {% elif pr.status == 'ORDERED' %}info
+                                {% elif pr.status == 'RECEIVED' %}success
+                                {% else %}error{% endif %}">{{ pr.get_status_display }}</span>
+                        </td>
+                        <td class="py-3 px-4 text-right whitespace-nowrap">
+                            <a href="{% url 'tickets:procurement_export_pdf' pr.pk %}" class="btn-ghost text-xs px-2 py-1.5 rounded inline-flex items-center gap-1" data-tooltip="Download Form">
+                                {% lucide "download" size=14 %}
+                            </a>
+                            {% if pr.status == 'REQUESTED' %}
+                            <form method="post" action="{% url 'tickets:procurement_mark_ordered' pr.pk %}" class="inline" id="markOrderedForm{{ pr.pk }}">
+                                {% csrf_token %}
+                                <button type="button" class="btn-ghost text-xs px-2 py-1.5 rounded"
+                                        onclick="confirmStatusChange('ORDERED', '{{ pr.item_name|escapejs }}', function() { document.getElementById('markOrderedForm{{ pr.pk }}').submit(); })">Mark Ordered</button>
+                            </form>
+                            {% endif %}
+                            {% if pr.is_open %}
+                            <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded" onclick="openReceiveModal({{ pr.pk }})">Receive</button>
+                            <form method="post" action="{% url 'tickets:procurement_cancel' pr.pk %}" class="inline" id="cancelProcurementForm{{ pr.pk }}">
+                                {% csrf_token %}
+                                <button type="button" class="btn-ghost text-xs px-2 py-1.5 rounded text-error"
+                                        onclick="confirmDelete('{{ pr.item_name|escapejs }}', 'Procurement Request', function() { document.getElementById('cancelProcurementForm{{ pr.pk }}').submit(); })">Cancel</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            {% lucide "truck" size=36 %}
+            <p class="empty-state-title">No procurement requests</p>
+            <p class="empty-state-subtext">Items ordered from vendors for service requests or mobilizations will show up here.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal Overlay -->
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeProcurementModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    function openReceiveModal(pk) {
+        const url = `/tickets/procurement/${pk}/receive-modal/`;
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
+    function closeProcurementModal() {
+        const overlay = document.getElementById('modalOverlay');
+        const container = document.getElementById('modalContainer');
+        if (overlay) overlay.classList.add('hidden');
+        if (container) container.innerHTML = '';
+    }
+</script>
+{% endblock %}

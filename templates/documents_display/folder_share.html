@@ -1,0 +1,156 @@
+{# templates/documents_display/folder_share.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Share “{{ folder.name }}”{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <a href="{% url 'documents_display:folder_detail' folder.slug %}" class="btn-ghost text-sm flex items-center gap-1">
+            {% lucide "arrow-left" size=16 %} Back to Folder
+        </a>
+    </div>
+
+    <div class="dashboard-card p-6 shadow-sm mb-6">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "share-2" size=20 %}
+            </div>
+            <div>
+                <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Share this folder</h2>
+                <p class="text-sm text-text-secondary">Grants access to all {{ folder.documents.count }} document(s) in this folder at once.</p>
+            </div>
+        </div>
+
+        {% if form.errors %}
+        <div class="rounded-lg bg-error/10 p-4 border border-error/30 text-error text-sm mb-4">
+            <ul class="list-disc list-inside space-y-0.5">
+                {% for field, errors in form.errors.items %}
+                    {% for error in errors %}
+                        <li><strong>{{ field|title }}:</strong> {{ error }}</li>
+                    {% endfor %}
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <form method="post" class="space-y-4">
+            {% csrf_token %}
+
+            <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                    <input type="radio" name="share_type" value="internal" id="shareTypeInternal" checked class="text-primary focus:ring-primary">
+                    Existing user in the system
+                </label>
+                <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                    <input type="radio" name="share_type" value="external" id="shareTypeExternal" class="text-primary focus:ring-primary">
+                    External email address
+                </label>
+            </div>
+
+            <div id="internalRecipientGroup">
+                <label class="block text-sm font-medium mb-1 text-text-primary">Share with</label>
+                {{ form.recipient }}
+                <p class="text-xs text-text-secondary mt-1">{{ form.recipient.help_text }}</p>
+            </div>
+
+            <div id="externalEmailGroup" class="hidden">
+                <label class="block text-sm font-medium mb-1 text-text-primary">Email address</label>
+                {{ form.external_email }}
+                <p class="text-xs text-text-secondary mt-1">{{ form.external_email.help_text }}</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium mb-1 text-text-primary">Link expires <span id="expiresRequiredMark" class="text-error hidden">*</span></label>
+                {{ form.expires_at }}
+                <p class="text-xs text-text-secondary mt-1">Optional for existing users. Required for external email shares.</p>
+            </div>
+
+            <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 text-sm text-text-primary">
+                    {{ form.can_download }} Can download
+                </label>
+            </div>
+            <p class="text-xs text-text-secondary">Read access to every document in the folder is always included. They'll get an email with a link — external recipients don't need an account.</p>
+            <div class="flex justify-end">
+                <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "send" size=16 %} Share & Notify
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="dashboard-card p-6 shadow-sm">
+        <h3 class="text-sm font-semibold mb-3" style="color: var(--color-text-secondary);">Currently shared with</h3>
+        {% if shares %}
+        <div class="space-y-2">
+            {% for share in shares %}
+            <div class="flex items-center justify-between text-sm p-3 rounded-lg border {% if not share.is_active %}opacity-50{% endif %}" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div>
+                    <span class="font-medium" style="color: var(--color-text-primary);">{{ share.display_target }}</span>
+                    {% if share.recipient %}
+                    <span class="text-xs text-text-secondary ml-2">{{ share.recipient.email }}</span>
+                    {% else %}
+                    <span class="status-chip warning text-xs ml-2">External</span>
+                    {% endif %}
+                    <div class="flex items-center gap-1.5 mt-1">
+                        <span class="status-chip info text-xs">Read</span>
+                        {% if share.can_download %}<span class="status-chip info text-xs">Download</span>{% endif %}
+                        {% if share.revoked_at %}<span class="status-chip error text-xs">Revoked</span>{% elif share.is_expired %}<span class="status-chip error text-xs">Expired</span>{% elif share.accepted_at %}<span class="status-chip success text-xs">Opened</span>{% else %}<span class="status-chip warning text-xs">Pending</span>{% endif %}
+                        {% if share.expires_at %}<span class="text-xs text-text-secondary">Expires {{ share.expires_at|date:"M d, Y" }}</span>{% endif %}
+                    </div>
+                </div>
+                {% if share.is_active %}
+                <form method="post" action="{% url 'documents_display:folder_share_revoke' folder.slug share.id %}" id="revokeShareForm{{ share.id }}">
+                    {% csrf_token %}
+                    <button type="button" class="btn-ghost text-xs text-error flex items-center gap-1"
+                            onclick="confirmRevokeAccess('{{ share.display_target|escapejs }}', function() { document.getElementById('revokeShareForm{{ share.id }}').submit(); })">
+                        {% lucide "x" size=14 %} Revoke
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-text-secondary">Not shared with anyone yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const internalRadio = document.getElementById('shareTypeInternal');
+        const externalRadio = document.getElementById('shareTypeExternal');
+        const internalGroup = document.getElementById('internalRecipientGroup');
+        const externalGroup = document.getElementById('externalEmailGroup');
+        const expiresRequiredMark = document.getElementById('expiresRequiredMark');
+        const recipientField = internalGroup.querySelector('select, input');
+        const emailField = externalGroup.querySelector('input');
+
+        function toggle() {
+            const external = externalRadio.checked;
+            internalGroup.classList.toggle('hidden', external);
+            externalGroup.classList.toggle('hidden', !external);
+            expiresRequiredMark.classList.toggle('hidden', !external);
+            if (external) {
+                if (recipientField) recipientField.value = '';
+            } else {
+                if (emailField) emailField.value = '';
+            }
+        }
+        internalRadio.addEventListener('change', toggle);
+        externalRadio.addEventListener('change', toggle);
+        toggle();
+    });
+</script>
+{% endblock %}

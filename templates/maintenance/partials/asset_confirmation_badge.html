@@ -1,0 +1,18 @@
+{% load lucide %}
+
+{% if status == 'PENDING' %}
+    <span class="status-chip status-chip-warning">
+        {% lucide "clock" size=12 %}
+        Pending
+    </span>
+{% elif status == 'CONFIRMED' %}
+    <span class="status-chip status-chip-success">
+        {% lucide "check" size=12 %}
+        Confirmed
+    </span>
+{% elif status == 'DISPUTED' %}
+    <span class="status-chip status-chip-danger">
+        {% lucide "alert-triangle" size=12 %}
+        Disputed
+    </span>
+{% endif %}

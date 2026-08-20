@@ -1,8 +1,11 @@
+import calendar
 import datetime
 from django.db import models
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
 from django.utils import timezone
 from apps.common.storage import raw_file_storage
+from apps.accounts.models import User
 
 # ================================================================
 # IMPORT USER AFTER MODELS ARE DEFINED (Avoid circular import)
@@ -19,6 +22,107 @@ def get_role_choices():
         ('AGENT', 'Support Team'),
         ('END_USER', 'User'),
     ]
+
+
+class Vessel(models.Model):
+    """A vessel in the client's fleet, selectable (multi) on vessel-related
+    service requests. Admin-managed data — no fixed/hardcoded vessel list,
+    since it's real per-client business data, not structural taxonomy.
+
+    Also doubles as the target for third-party vessels proposed inline on a
+    mobilization (see Mobilization/MobilizationItem in this file): proposing
+    one creates a row here with is_active=False, same propose-and-approve
+    shape as JobNumber.proposed_by below."""
+    name = models.CharField(max_length=150, unique=True)
+    imo_number = models.CharField(max_length=20, blank=True, help_text="IMO number, if known")
+    is_active = models.BooleanField(default=True)
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='proposed_vessels'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class DiveSystem(models.Model):
+    """An admin-managed named diving equipment/support set, selectable
+    (multi) on any service request — same shape as Vessel."""
+    name = models.CharField(max_length=150, unique=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class JobNumber(models.Model):
+    """Admin-curated job number list. A requester can also propose a new
+    job number inline on the service request form — that creates a row here
+    with is_active=False (invisible in future dropdowns) and notifies admins;
+    an admin approves it by flipping is_active to True in System Settings."""
+    number = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='proposed_job_numbers'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.number
+
+
+class ServiceCategory(models.Model):
+    """Drives the dynamic fields shown on the Service Request form. Only
+    `field_group` is code-mapped (apps.tickets.service_request_fields); name,
+    description, icon, active state, and order are admin-editable data."""
+
+    class FieldGroup(models.TextChoices):
+        ASSET = 'ASSET', 'Asset / Equipment'
+        JOB = 'JOB', 'Job / Work Order'
+        VESSEL = 'VESSEL', 'Vessel / Marine Operations'
+        PROCUREMENT = 'PROCUREMENT', 'Procurement / Purchase'
+        HR = 'HR', 'HR / Personnel'
+        LOGISTICS = 'LOGISTICS', 'Logistics / Freight'
+        GENERAL = 'GENERAL', 'General'
+
+    name = models.CharField(max_length=100, unique=True)
+    slug = models.SlugField(unique=True)
+    description = models.CharField(max_length=255, blank=True)
+    field_group = models.CharField(max_length=20, choices=FieldGroup.choices, default=FieldGroup.GENERAL)
+    icon = models.CharField(max_length=40, blank=True, help_text="lucide icon name")
+    is_active = models.BooleanField(default=True)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name_plural = 'Service categories'
+
+    def __str__(self):
+        return self.name
+
+
+class TicketDraft(models.Model):
+    """One in-progress, unsubmitted Incident/Service Request form per user
+    per ticket type — supports both auto-save (unstable network resilience)
+    and manual "Save Draft"."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='ticket_drafts')
+    ticket_type = models.CharField(max_length=20)
+    form_data = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'ticket_type')
 
 
 class Ticket(models.Model):
@@ -108,6 +212,39 @@ class Ticket(models.Model):
         P3 = 'P3', 'P3 - Medium'
         P4 = 'P4', 'P4 - Low'
 
+    class IncidentCategory(models.TextChoices):
+        HARDWARE_FAILURE = 'HARDWARE_FAILURE', 'Hardware Failure'
+        SOFTWARE_ERROR = 'SOFTWARE_ERROR', 'Software / Application Error'
+        NETWORK_CONNECTIVITY = 'NETWORK_CONNECTIVITY', 'Network / Connectivity'
+        SECURITY_BREACH = 'SECURITY_BREACH', 'Security Breach / Unauthorized Access'
+        DATA_LOSS = 'DATA_LOSS', 'Data Loss / Corruption'
+        POWER_FAILURE = 'POWER_FAILURE', 'Power Failure'
+        OTHER = 'OTHER', 'Other'
+
+    class BusinessImpact(models.TextChoices):
+        FULL_OUTAGE = 'FULL_OUTAGE', 'Full Outage'
+        PARTIAL_OUTAGE = 'PARTIAL_OUTAGE', 'Partial Outage'
+        DEGRADED_PERFORMANCE = 'DEGRADED_PERFORMANCE', 'Degraded Performance'
+        NO_IMPACT = 'NO_IMPACT', 'No Immediate Impact'
+
+    class DiscoveryMethod(models.TextChoices):
+        MONITORING_ALERT = 'MONITORING_ALERT', 'Monitoring Tool / Alert'
+        USER_COMPLAINT = 'USER_COMPLAINT', 'User Complaint'
+        ROUTINE_CHECK = 'ROUTINE_CHECK', 'Routine Check'
+        EXTERNAL_NOTIFICATION = 'EXTERNAL_NOTIFICATION', 'External Notification'
+        OTHER = 'OTHER', 'Other'
+
+    class RootCauseCategory(models.TextChoices):
+        HUMAN_ERROR = 'HUMAN_ERROR', 'Human Error'
+        CONFIGURATION_ERROR = 'CONFIGURATION_ERROR', 'Configuration Error'
+        SOFTWARE_BUG = 'SOFTWARE_BUG', 'Software Bug / Patch Issue'
+        HARDWARE_FAILURE = 'HARDWARE_FAILURE', 'Hardware Failure'
+        CYBER_ATTACK = 'CYBER_ATTACK', 'Cyber Attack / Malware'
+        POWER_INFRASTRUCTURE_FAILURE = 'POWER_INFRASTRUCTURE_FAILURE', 'Power / Infrastructure Failure'
+        VENDOR_THIRD_PARTY = 'VENDOR_THIRD_PARTY', 'Vendor / Third-Party Issue'
+        CHANGE_MANAGEMENT_FAILURE = 'CHANGE_MANAGEMENT_FAILURE', 'Change Management Failure'
+        UNKNOWN = 'UNKNOWN', 'Unknown'
+
     # Core identification
     number = models.CharField(max_length=50, unique=True, editable=False)
     type = models.CharField(max_length=20, choices=Type.choices, default=Type.INCIDENT)
@@ -120,6 +257,44 @@ class Ticket(models.Model):
     impact = models.CharField(max_length=20, choices=Impact.choices, default=Impact.INDIVIDUAL)
     urgency = models.CharField(max_length=20, choices=Urgency.choices, default=Urgency.MEDIUM)
     priority = models.CharField(max_length=2, choices=Priority.choices, editable=False)
+
+    # Incident-report-specific fields (HDG-IT-FRM-086 Sections 1 & 3) — blank
+    # for Service Request tickets and any ticket created before this field
+    # set existed.
+    incident_datetime = models.DateTimeField(null=True, blank=True, help_text="When the incident actually started")
+    incident_category = models.CharField(max_length=25, choices=IncidentCategory.choices, blank=True)
+    incident_category_other = models.CharField(max_length=100, blank=True)
+    business_impact = models.CharField(max_length=25, choices=BusinessImpact.choices, blank=True)
+    how_discovered = models.CharField(max_length=25, choices=DiscoveryMethod.choices, blank=True)
+    how_discovered_other = models.CharField(max_length=100, blank=True)
+    location_hostname = models.CharField(max_length=200, blank=True, help_text="Location / IP address / hostname, if known")
+    immediate_actions = models.TextField(blank=True, help_text="Immediate/initial actions taken at the time of the incident")
+    resolution_root_cause = models.TextField(blank=True, help_text="Root cause identified by the resolving agent")
+    resolution_steps = models.TextField(blank=True, help_text="Steps taken by the resolving agent to fix the issue")
+    resolution_root_cause_category = ArrayField(
+        models.CharField(max_length=30, choices=RootCauseCategory.choices),
+        blank=True, default=list, help_text="Root cause categories ticked by the resolving agent"
+    )
+
+    # Service-Request-specific fields — dynamic, category-driven (see
+    # apps.tickets.service_request_fields). Left blank for Incident tickets
+    # and any ticket created before this field set existed; the legacy
+    # `category` field above is untouched so historical Service Requests
+    # keep displaying correctly.
+    service_category = models.ForeignKey(ServiceCategory, on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
+    purpose = models.CharField(max_length=255, blank=True)
+    vessels = models.ManyToManyField(Vessel, blank=True, related_name='tickets')
+    job_number = models.ForeignKey(JobNumber, on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
+    dive_systems = models.ManyToManyField(DiveSystem, blank=True, related_name='tickets')
+    service_request_details = models.JSONField(default=dict, blank=True)
+
+    # Best-effort device location captured client-side (browser Geolocation
+    # API + reverse geocoding) at submission time. Optional and often blank
+    # for offshore/at-sea coordinates, where reverse geocoding has no
+    # address to return — the raw coordinates are kept as a fallback.
+    submission_latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    submission_longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    submission_location_address = models.CharField(max_length=255, blank=True, default='')
 
     # Status & assignment
     status = models.CharField(max_length=30, choices=Status.choices, default=Status.NEW)
@@ -144,6 +319,11 @@ class Ticket(models.Model):
     
     # ========== NEW FIELDS FOR ASSET FULFILLMENT ==========
     is_asset_request = models.BooleanField(default=False)
+    # Sub-flag of is_asset_request: this is asking for a batch of gear to go
+    # out to a job/vessel/dive system (routed to the Mobilization flow) as
+    # opposed to a single item for the requester personally (routed to
+    # fulfill_asset_request). Always False when is_asset_request is False.
+    is_mobilization_request = models.BooleanField(default=False)
     assigned_asset = models.ForeignKey(
         'Asset',
         on_delete=models.SET_NULL,
@@ -173,6 +353,18 @@ class Ticket(models.Model):
         related_name='confirmed_resolutions'
     )
 
+    # ========== INCIDENT REPORT — IT MANAGER / HEAD OF IT SIGN-OFF ==========
+    # Merged approval: IT Manager and Head of IT are the same role in this
+    # org, so a single approval satisfies both sign-off rows on the report.
+    incident_approved_at = models.DateTimeField(null=True, blank=True)
+    incident_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='+'
+    )
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
@@ -181,6 +373,7 @@ class Ticket(models.Model):
             models.Index(fields=['requester', 'created_at']),
             models.Index(fields=['number']),
             models.Index(fields=['status', 'is_asset_request']),
+            models.Index(fields=['status', 'is_mobilization_request']),
         ]
 
     def __str__(self):
@@ -361,6 +554,7 @@ class Macro(models.Model):
     class Visibility(models.TextChoices):
         PUBLIC = 'PUBLIC', 'Public'
         INTERNAL = 'INTERNAL', 'Internal'
+        PRIVATE = 'PRIVATE', 'Private (only me)'
 
     title = models.CharField(max_length=100)
     body = models.TextField()
@@ -407,7 +601,19 @@ class AssetCategory(models.Model):
     # Default settings
     default_warranty_months = models.PositiveIntegerField(default=12)
     default_depreciation_years = models.PositiveIntegerField(default=3)
-    
+
+    # Bulk/consumable stock (cable ties, PPE, etc.) vs. individually-tracked
+    # assets (laptops, radios — default, unchanged behavior). When True,
+    # assets in this category represent a stock-count SKU rather than one
+    # unique physical unit each.
+    is_consumable = models.BooleanField(default=False)
+
+    # Assets that renew on a recurring cadence regardless of physical
+    # condition (software licenses, subscriptions, support contracts) rather
+    # than being acquired once. When True, assets in this category expose
+    # the renewal date/cost/vendor field group below.
+    is_renewable = models.BooleanField(default=False)
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -437,23 +643,22 @@ class AssetCategory(models.Model):
         super().save(*args, **kwargs)
 
 
+def _add_months(start_date, months):
+    """Calendar-correct month addition (no python-dateutil dependency),
+    clamping to the last valid day of the target month (e.g. Jan 31 + 1
+    month -> Feb 28/29, not an invalid Feb 31)."""
+    month_index = start_date.month - 1 + months
+    year = start_date.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(start_date.day, calendar.monthrange(year, month)[1])
+    return datetime.date(year, month, day)
+
+
 # ==========================================================================
 # ASSET MODEL (UPDATED)
 # ==========================================================================
 
 class Asset(models.Model):
-    # ================================================================
-    # TYPES (Kept for backward compatibility)
-    # ================================================================
-    class AssetType(models.TextChoices):
-        COMPUTER = 'COMPUTER', 'Computer'
-        LAPTOP = 'LAPTOP', 'Laptop'
-        SERVER = 'SERVER', 'Server'
-        NETWORK = 'NETWORK', 'Network Device'
-        PRINTER = 'PRINTER', 'Printer'
-        SOFTWARE = 'SOFTWARE', 'Software License'
-        OTHER = 'OTHER', 'Other'
-
     # ================================================================
     # LOCATIONS
     # ================================================================
@@ -483,11 +688,13 @@ class Asset(models.Model):
         # Active Use
         CHECKED_OUT = 'CHECKED_OUT', 'Checked Out'
         IN_USE = 'IN_USE', 'In Use'
+        MOBILIZED = 'MOBILIZED', 'Mobilized'
         
         # Maintenance
         MAINTENANCE = 'MAINTENANCE', 'Maintenance'
         REPAIR = 'REPAIR', 'Repair'
-        
+        DAMAGED = 'DAMAGED', 'Damaged'
+
         # End of Life
         RETURNED = 'RETURNED', 'Returned'
         RETIRED = 'RETIRED', 'Retired'
@@ -528,7 +735,6 @@ class Asset(models.Model):
     name = models.CharField(max_length=200)
     tracking_id = models.CharField(max_length=50, unique=True, editable=False)
     
-    # Category (NEW - replaces need for asset_type hierarchy)
     category = models.ForeignKey(
         AssetCategory,
         on_delete=models.PROTECT,
@@ -537,44 +743,52 @@ class Asset(models.Model):
         related_name='assets'
     )
     
-    # Kept for backward compatibility
-    asset_type = models.CharField(max_length=20, blank=True, default='')
-    
     # Technical details
     serial_number = models.CharField(max_length=100, blank=True)
     model = models.CharField(max_length=100, blank=True)
     manufacturer = models.CharField(max_length=100, blank=True)
     location = models.CharField(max_length=200, blank=True, default=Location.HQ)
 
+    # Meaningful only when category.is_consumable — the number of units
+    # currently in stock for this bulk/consumable SKU. Individually-tracked
+    # assets (the default) leave this at 1 and never show/edit it; their
+    # identity is the unique tracking_id, not a count.
+    quantity_in_stock = models.PositiveIntegerField(default=1)
+
+    # Low-stock alerting — asset-lifecycle infrastructure, not tied to any
+    # one workflow. low_stock_notified guards against re-notifying on every
+    # single change while stock stays under threshold; refresh_low_stock_alert()
+    # below is the single place that reads/writes it, called from wherever
+    # quantity_in_stock changes.
+    low_stock_threshold = models.PositiveIntegerField(null=True, blank=True)
+    low_stock_notified = models.BooleanField(default=False)
+
     # ================================================================
-    # FINANCIAL TRACKING (NEW)
+    # RENEWAL (software licenses, subscriptions, support contracts) —
+    # meaningful only when category.is_renewable. Same "flag-gated field
+    # group" shape as the consumable-stock fields above.
+    # ================================================================
+    next_renewal_date = models.DateField(null=True, blank=True)
+    renewal_interval_months = models.PositiveIntegerField(null=True, blank=True)
+    renewal_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    renewal_vendor = models.ForeignKey(
+        'maintenance.Vendor', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='asset_renewals'
+    )
+    renewal_reference = models.CharField(max_length=100, blank=True)
+    auto_renews = models.BooleanField(default=False)
+    # Reset together by mark_renewed() so the next cycle's reminders fire
+    # again — unlike send_maintenance_reminders' one-shot flags, these are
+    # recurring per renewal cycle, same reset-on-clear idea as
+    # low_stock_notified above.
+    renewal_reminder_90d_sent = models.BooleanField(default=False)
+    renewal_reminder_30d_sent = models.BooleanField(default=False)
+    renewal_reminder_7d_sent = models.BooleanField(default=False)
+
+    # ================================================================
+    # PURCHASE / WARRANTY
     # ================================================================
     purchase_date = models.DateField(null=True, blank=True)
-    purchase_price = models.DecimalField(
-        max_digits=12, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        help_text="Purchase price in your local currency"
-    )
-    current_value = models.DecimalField(
-        max_digits=12, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        help_text="Current depreciated value (auto-calculated)"
-    )
-    depreciation_years = models.PositiveIntegerField(
-        default=3,
-        help_text="Number of years over which this asset depreciates"
-    )
-    salvage_value = models.DecimalField(
-        max_digits=12, 
-        decimal_places=2, 
-        null=True, 
-        blank=True,
-        help_text="Estimated value at end of useful life"
-    )
 
     # ================================================================
     # WARRANTY
@@ -598,6 +812,11 @@ class Asset(models.Model):
         related_name='assigned_assets'
     )
     assigned_to_department = models.CharField(max_length=50, blank=True)
+
+    # The asset's owning department — distinct from assigned_to_department
+    # (free text describing whoever currently holds it). Used to scope
+    # assets to a department elsewhere (e.g. maintenance target-asset picker).
+    department = models.CharField(max_length=30, choices=User.DEPARTMENT_CHOICES, blank=True)
 
     # ================================================================
     # STATUS & WORKFLOW (Enhanced)
@@ -665,25 +884,6 @@ class Asset(models.Model):
     )
 
     # ================================================================
-    # MAINTENANCE (NEW)
-    # ================================================================
-    last_maintenance = models.DateField(null=True, blank=True)
-    next_maintenance = models.DateField(null=True, blank=True)
-    maintenance_interval_months = models.PositiveIntegerField(
-        default=6,
-        help_text="Months between scheduled maintenance"
-    )
-    maintenance_notes = models.TextField(blank=True)
-
-    # ================================================================
-    # SUPPLIER/PURCHASING (NEW)
-    # ================================================================
-    supplier = models.CharField(max_length=200, blank=True)
-    invoice_number = models.CharField(max_length=100, blank=True)
-    po_number = models.CharField(max_length=100, blank=True)
-    purchase_order = models.CharField(max_length=100, blank=True, help_text="Purchase Order number")
-
-    # ================================================================
     # SCRAP WORKFLOW (Existing)
     # ================================================================
     scrap_approved = models.BooleanField(default=False)
@@ -711,6 +911,18 @@ class Asset(models.Model):
         related_name='assets_created'
     )
 
+    # Audit trail back to the vendor procurement request this asset was
+    # received against, if any — set only at receiving time, never edited
+    # afterward. Null for assets that were already in inventory / created
+    # directly rather than procured through AssetProcurementRequest.
+    procurement_request = models.ForeignKey(
+        'AssetProcurementRequest',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_assets'
+    )
+
     # ================================================================
     # PROPERTIES
     # ================================================================
@@ -719,16 +931,124 @@ class Asset(models.Model):
     def is_checked_out(self):
         """Check if asset is currently checked out."""
         return self.checked_out_to is not None and self.returned_at is None
-    
+
+    @property
+    def is_consumable(self):
+        """True for bulk/consumable stock (cable ties, PPE) — a stock-count
+        SKU rather than one individually-tracked physical unit."""
+        return bool(self.category_id and self.category.is_consumable)
+
     @property
     def is_available(self):
-        """Check if asset is available for checkout."""
-        return self.status in [self.Status.IN_STORE, self.Status.READY]
-    
+        """Check if asset is available for checkout/mobilization. Consumable
+        stock is available purely based on remaining count — its status
+        stays IN_STORE throughout (the SKU record persists even when
+        partially mobilized, only quantity_in_stock changes)."""
+        if self.is_consumable:
+            return self.quantity_in_stock > 0
+        return self.status in [self.Status.IN_STORE, self.Status.READY] and self.checked_out_to_id is None
+
     @property
     def is_active(self):
         """Check if asset is actively in use."""
-        return self.status in [self.Status.CHECKED_OUT, self.Status.IN_USE]
+        return self.status in [self.Status.CHECKED_OUT, self.Status.IN_USE, self.Status.MOBILIZED]
+
+    @property
+    def is_low_stock(self):
+        """True when a consumable's remaining count is at or below its
+        configured reorder threshold. Always False for non-consumables or
+        when no threshold is set."""
+        return (
+            self.is_consumable
+            and self.low_stock_threshold is not None
+            and self.quantity_in_stock <= self.low_stock_threshold
+        )
+
+    def refresh_low_stock_alert(self):
+        """Call this after anything changes quantity_in_stock (mobilize,
+        demobilize/restock, manual edit) — the single place that decides
+        whether a low-stock notification is due, so the alert is correct
+        regardless of which workflow moved the number. Notifies
+        Admin/Superadmin once per dip below threshold; resets so a later
+        dip notifies again once stock has recovered above it."""
+        if not self.is_consumable or self.low_stock_threshold is None:
+            return
+
+        from apps.common.models import Notification
+        from apps.common.utils import role_of
+        from apps.accounts.models import User
+
+        if self.quantity_in_stock <= self.low_stock_threshold:
+            if not self.low_stock_notified:
+                recipients = User.objects.filter(role__in=[User.Role.ADMIN, User.Role.SUPERADMIN], is_active=True)
+                for recipient in recipients:
+                    Notification.objects.create(
+                        recipient=recipient,
+                        role=role_of(recipient),
+                        message=(
+                            f'⚠️ Stock for "{self.name}" is low: {self.quantity_in_stock} left '
+                            f'(threshold {self.low_stock_threshold}).'
+                        ),
+                        url=f'/tickets/assets/{self.pk}/detail/',
+                        type=Notification.Type.GENERAL,
+                    )
+                self.low_stock_notified = True
+                self.save(update_fields=['low_stock_notified'])
+        elif self.low_stock_notified:
+            self.low_stock_notified = False
+            self.save(update_fields=['low_stock_notified'])
+
+    @property
+    def is_renewable(self):
+        """True when this asset's category tracks recurring renewal dates
+        (software licenses, subscriptions, support contracts)."""
+        return bool(self.category_id and self.category.is_renewable)
+
+    @property
+    def is_renewal_due_soon(self):
+        """True when a renewable asset's next renewal is within 30 days —
+        including already overdue."""
+        return (
+            self.is_renewable
+            and self.next_renewal_date is not None
+            and self.next_renewal_date <= timezone.now().date() + datetime.timedelta(days=30)
+        )
+
+    def mark_renewed(self, actor, new_cost=None):
+        """Record that this renewal was actually paid/actioned — advances
+        next_renewal_date forward by renewal_interval_months, resets the
+        reminder flags so the next cycle can notify again, and logs an
+        audit-trail AssetLog entry."""
+        if not self.is_renewable or not self.renewal_interval_months:
+            return
+
+        today = timezone.now().date()
+        base_date = self.next_renewal_date if self.next_renewal_date and self.next_renewal_date > today else today
+        self.next_renewal_date = _add_months(base_date, self.renewal_interval_months)
+        if new_cost is not None:
+            self.renewal_cost = new_cost
+        self.renewal_reminder_90d_sent = False
+        self.renewal_reminder_30d_sent = False
+        self.renewal_reminder_7d_sent = False
+        self.save(update_fields=[
+            'next_renewal_date', 'renewal_cost',
+            'renewal_reminder_90d_sent', 'renewal_reminder_30d_sent', 'renewal_reminder_7d_sent',
+        ])
+
+        AssetLog.objects.create(
+            asset=self,
+            action=AssetLog.Action.RENEWED,
+            actor=actor,
+            details={
+                'renewed_until': self.next_renewal_date.isoformat(),
+                'cost': str(self.renewal_cost) if self.renewal_cost is not None else None,
+            }
+        )
+
+    @property
+    def is_mobilized(self):
+        """Check if asset is currently mobilized to a job/vessel/dive system."""
+        return self.status == self.Status.MOBILIZED
     
     @property
     def is_end_of_life(self):
@@ -776,21 +1096,6 @@ class Asset(models.Model):
         return 'VALID'
     
     @property
-    def current_value_calculated(self):
-        """Calculate current value using straight-line depreciation."""
-        if not self.purchase_price or not self.purchase_date:
-            return self.current_value
-        
-        years_old = (timezone.now().date() - self.purchase_date).days / 365.25
-        if years_old >= self.depreciation_years:
-            return self.salvage_value or 0
-        
-        depreciation_per_year = self.purchase_price / self.depreciation_years
-        depreciation = depreciation_per_year * years_old
-        value = max(0, self.purchase_price - depreciation)
-        return value if value > 0 else self.salvage_value or 0
-    
-    @property
     def status_display(self):
         """Get status with color indicator for UI."""
         colors = {
@@ -802,6 +1107,7 @@ class Asset(models.Model):
             'READY': 'success',
             'CHECKED_OUT': 'warning',
             'IN_USE': 'primary',
+            'MOBILIZED': 'primary',
             'MAINTENANCE': 'warning',
             'REPAIR': 'danger',
             'RETURNED': 'success',
@@ -869,8 +1175,39 @@ class Asset(models.Model):
         return history
 
     def save(self, *args, **kwargs):
-        # Auto-generate tracking ID
-        if not self.tracking_id:
+        # Auto-calculate warranty expiry
+        if self.purchase_date and self.warranty_duration_years > 0:
+            try:
+                self.warranty_expiry = self.purchase_date.replace(
+                    year=self.purchase_date.year + self.warranty_duration_years
+                )
+            except ValueError:
+                # Handle Feb 29 edge case
+                from datetime import timedelta
+                self.warranty_expiry = self.purchase_date + timedelta(days=365 * self.warranty_duration_years)
+
+        # Update status_updated_at if status changed
+        if self.pk:
+            try:
+                old = Asset.objects.get(pk=self.pk)
+                if old.status != self.status:
+                    self.status_updated_at = timezone.now()
+            except Asset.DoesNotExist:
+                self.status_updated_at = timezone.now()
+        else:
+            self.status_updated_at = timezone.now()
+
+        if self.tracking_id:
+            super().save(*args, **kwargs)
+            return
+
+        # Auto-generate tracking ID, retrying on collision with a
+        # concurrent create computing the same next number. Each attempt
+        # runs in its own savepoint so a collision doesn't poison an
+        # outer transaction the caller may be inside.
+        from django.db import IntegrityError, transaction
+        max_attempts = 5
+        for attempt in range(1, max_attempts + 1):
             year = timezone.now().year
             last_asset = Asset.objects.filter(tracking_id__startswith=f'AST-{year}').order_by('tracking_id').last()
             if last_asset:
@@ -885,34 +1222,14 @@ class Asset(models.Model):
             else:
                 num = 1
             self.tracking_id = f'AST-{year}-{num:04d}'
-        
-        # Auto-calculate current value
-        if self.purchase_price:
-            self.current_value = self.current_value_calculated
-        
-        # Auto-calculate warranty expiry
-        if self.purchase_date and self.warranty_duration_years > 0:
             try:
-                self.warranty_expiry = self.purchase_date.replace(
-                    year=self.purchase_date.year + self.warranty_duration_years
-                )
-            except ValueError:
-                # Handle Feb 29 edge case
-                from datetime import timedelta
-                self.warranty_expiry = self.purchase_date + timedelta(days=365 * self.warranty_duration_years)
-        
-        # Update status_updated_at if status changed
-        if self.pk:
-            try:
-                old = Asset.objects.get(pk=self.pk)
-                if old.status != self.status:
-                    self.status_updated_at = timezone.now()
-            except Asset.DoesNotExist:
-                self.status_updated_at = timezone.now()
-        else:
-            self.status_updated_at = timezone.now()
-        
-        super().save(*args, **kwargs)
+                with transaction.atomic():
+                    super().save(*args, **kwargs)
+                return
+            except IntegrityError:
+                self.tracking_id = ''
+                if attempt == max_attempts:
+                    raise
 
     def __str__(self):
         status_icon = "🔴" if self.is_checked_out else "🟢"
@@ -980,6 +1297,210 @@ class AssetCheckoutHistory(models.Model):
 
 
 # ==========================================================================
+# MOBILIZATION / DEMOBILIZATION
+# ==========================================================================
+
+class Mobilization(models.Model):
+    """A batch of assets sent out together to a job, vessel, and/or dive
+    system. Individual assets are demobilized (returned) independently via
+    MobilizationItem, so a mobilization can be partially returned."""
+
+    class Status(models.TextChoices):
+        ACTIVE = 'ACTIVE', 'Active'
+        COMPLETED = 'COMPLETED', 'Completed'
+
+    job_number = models.ForeignKey(
+        JobNumber, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='mobilizations'
+    )
+    vessels = models.ManyToManyField(Vessel, blank=True, related_name='mobilizations')
+    dive_systems = models.ManyToManyField(DiveSystem, blank=True, related_name='mobilizations')
+    ticket = models.ForeignKey(
+        'Ticket', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mobilizations'
+    )
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    mobilized_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='mobilizations_initiated'
+    )
+    mobilized_at = models.DateTimeField(default=timezone.now)
+    # Current/effective return date — mutable, extended via
+    # mobilization_extend_date (see MobilizationDateExtension below).
+    expected_return_date = models.DateField(null=True, blank=True)
+    # Snapshotted once at creation, equal to expected_return_date at the
+    # time; never touched again. Lets the detail page show "original vs
+    # current" without walking the extension history.
+    original_expected_return_date = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-mobilized_at']
+
+    def __str__(self):
+        return f"Mobilization #{self.pk} — {self.job_number or 'No job'} ({self.mobilized_at.date()})"
+
+    @property
+    def destination_display(self):
+        parts = []
+        if self.job_number_id:
+            parts.append(f"Job {self.job_number.number}")
+        vessel_names = list(self.vessels.values_list('name', flat=True))
+        if vessel_names:
+            parts.append(' & '.join(vessel_names))
+        system_names = list(self.dive_systems.values_list('name', flat=True))
+        if system_names:
+            parts.append(' & '.join(system_names))
+        return ' · '.join(parts) if parts else 'No destination set'
+
+    def refresh_status(self):
+        """Flip to COMPLETED once no active items remain, back to ACTIVE otherwise."""
+        new_status = (
+            self.Status.COMPLETED
+            if not self.items.filter(demobilized_at__isnull=True).exists()
+            else self.Status.ACTIVE
+        )
+        if new_status != self.status:
+            self.status = new_status
+            self.save(update_fields=['status'])
+
+
+class MobilizationItem(models.Model):
+    """A single asset within a Mobilization, demobilized independently.
+
+    For individually-tracked assets, quantity is always 1 (enforced in the
+    view, not user-editable) — this row still means "this exact physical
+    asset is out." For consumable/bulk assets, quantity is the number of
+    units taken out of that asset's stock count."""
+
+    mobilization = models.ForeignKey(Mobilization, on_delete=models.CASCADE, related_name='items')
+    asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='mobilization_items')
+    quantity = models.PositiveIntegerField(default=1)
+
+    demobilized_at = models.DateTimeField(null=True, blank=True)
+    demobilized_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='demobilizations_initiated'
+    )
+    return_condition = models.CharField(
+        max_length=20, choices=Asset.Condition.choices, null=True, blank=True
+    )
+    return_notes = models.TextField(blank=True)
+    # For consumables: how many of `quantity` units were actually returned
+    # to stock (supports partial returns of damaged/used stock). Defaults to
+    # the full quantity when unset at demobilize time. Irrelevant for
+    # individually-tracked assets (quantity is always 1 there anyway).
+    return_quantity = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-mobilization__mobilized_at']
+
+    def __str__(self):
+        return f"{self.asset.tracking_id} — {self.mobilization.destination_display}"
+
+    @property
+    def is_active(self):
+        return self.demobilized_at is None
+
+
+class MobilizationDateExtension(models.Model):
+    """Immutable record of a demobilization-date extension. The
+    Mobilization's own expected_return_date is updated to `new_date` when
+    this is created, but nothing is overwritten — each extension keeps its
+    own from/to/who/why row, same "append-only history" shape as
+    AssetCheckoutHistory."""
+
+    mobilization = models.ForeignKey(Mobilization, on_delete=models.CASCADE, related_name='date_extensions')
+    previous_date = models.DateField(null=True, blank=True)
+    new_date = models.DateField()
+    reason = models.TextField(blank=True)
+    extended_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+        related_name='mobilization_extensions_made'
+    )
+    extended_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-extended_at']
+
+    def __str__(self):
+        return f"{self.mobilization} — extended to {self.new_date}"
+
+
+# ==========================================================================
+# VENDOR PROCUREMENT (assets not yet in inventory)
+# ==========================================================================
+
+class AssetProcurementRequest(models.Model):
+    """Tracks that an item needed for a Service Request or a Mobilization
+    isn't currently in inventory and is being sourced from a vendor.
+
+    This does NOT place orders or manage purchase orders — the org's actual
+    procurement system (an external PMS) does that. This is inventory
+    bookkeeping only: a record of what's expected, and a Receiving step
+    where it becomes a real, trackable Asset — at which point whatever
+    originally needed it (the linked ticket or mobilization) is fulfilled
+    automatically, the same as if it had been picked from existing stock.
+    """
+
+    class Status(models.TextChoices):
+        REQUESTED = 'REQUESTED', 'Requested'
+        ORDERED = 'ORDERED', 'Ordered'
+        RECEIVED = 'RECEIVED', 'Received'
+        CANCELLED = 'CANCELLED', 'Cancelled'
+
+    item_name = models.CharField(max_length=255)
+    category = models.ForeignKey(AssetCategory, on_delete=models.PROTECT, related_name='procurement_requests')
+    quantity = models.PositiveIntegerField(default=1)
+    vendor = models.ForeignKey(
+        'maintenance.Vendor', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='procurement_requests'
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.REQUESTED)
+    expected_arrival_date = models.DateField(null=True, blank=True)
+
+    # Free-text PO/request number from the org's separate Procurement
+    # Management System (pms.hydrodive.com). No API integration exists yet —
+    # this is a plain reference field so a future sync/webhook can populate
+    # or reconcile against it without a schema change.
+    external_reference = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+
+    # Exactly one of these is normally set — where the received asset(s)
+    # should go. Both nullable rather than DB-constrained: enforced by the
+    # creating views, not the schema.
+    ticket = models.ForeignKey(
+        'Ticket', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='procurement_requests'
+    )
+    mobilization = models.ForeignKey(
+        'Mobilization', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='procurement_requests'
+    )
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='procurement_requests_made'
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='procurement_requests_received'
+    )
+    received_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-requested_at']
+
+    def __str__(self):
+        return f"{self.item_name} x{self.quantity} ({self.get_status_display()})"
+
+    @property
+    def is_open(self):
+        return self.status in (self.Status.REQUESTED, self.Status.ORDERED)
+
+
+# ==========================================================================
 # ASSET MAINTENANCE LOG (NEW)
 # ==========================================================================
 
@@ -1031,6 +1552,9 @@ class AssetLog(models.Model):
         SCRAP_REQUESTED = 'SCRAP_REQUESTED', 'Scrap Requested'
         SCRAP_APPROVED = 'SCRAP_APPROVED', 'Scrap Approved'
         SCRAP_REJECTED = 'SCRAP_REJECTED', 'Scrap Rejected'
+        MOBILIZED = 'MOBILIZED', 'Mobilized'
+        DEMOBILIZED = 'DEMOBILIZED', 'Demobilized'
+        RENEWED = 'RENEWED', 'Renewed'
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='logs')
     action = models.CharField(max_length=20, choices=Action.choices)
@@ -1064,19 +1588,22 @@ class RemoteConnector(models.Model):
 
 
 class RemoteSession(models.Model):
-    STATUS_CHOICES = [
-        ('REQUESTED', 'Requested'),
-        ('ACCEPTED', 'Accepted'),
-        ('REJECTED', 'Rejected'),
-        ('STARTED', 'Started'),
-        ('ENDED', 'Ended'),
-        ('EXPIRED', 'Expired'),
-    ]
+    class Status(models.TextChoices):
+        REQUESTED = 'REQUESTED', 'Requested'
+        ACCEPTED = 'ACCEPTED', 'Accepted'
+        REJECTED = 'REJECTED', 'Rejected'
+        STARTED = 'STARTED', 'Started'
+        ENDED = 'ENDED', 'Ended'
+        EXPIRED = 'EXPIRED', 'Expired'
+
+    # Kept for any code still referencing the old plain-tuple name.
+    STATUS_CHOICES = Status.choices
+
     ticket = models.ForeignKey('Ticket', on_delete=models.CASCADE, related_name='remote_sessions')
     requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='requested_remote_sessions')
     agent = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='agent_remote_sessions')
     connector = models.ForeignKey(RemoteConnector, on_delete=models.PROTECT)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='REQUESTED')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.REQUESTED)
     session_code = models.CharField(max_length=20, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)

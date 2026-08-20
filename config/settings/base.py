@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'tailwind',
     # Rate Limiter
-    # 'django_ratelimit',
+    'django_ratelimit',
 
     # Our apps (make sure these names match apps.py)
     'apps.accounts',
@@ -74,6 +74,11 @@ RATELIMIT_USE_CACHE = 'default'
 
 # LibreOffice binary used to convert Office documents to PDF previews in documents_display
 LIBREOFFICE_BINARY_PATH = env('LIBREOFFICE_BINARY_PATH', default='soffice.exe' if os.name == 'nt' else 'soffice')
+
+# Base URL used to build absolute links in emails sent from contexts with no
+# HttpRequest available (e.g. management commands) — most email helpers use
+# request.build_absolute_uri() instead; this is only the fallback for those.
+SITE_URL = env('SITE_URL', default='http://localhost:8000')
 
 # ================================================================
 # CACHE CONFIGURATION (for rate limiting)

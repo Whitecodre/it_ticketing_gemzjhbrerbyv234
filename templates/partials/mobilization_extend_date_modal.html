@@ -1,0 +1,46 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
+            {% lucide "calendar-clock" size=20 %} Extend Return Date
+        </h3>
+        <button type="button" onclick="closeMobilizationModal()" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
+            {% lucide "x" size=18 %}
+        </button>
+    </div>
+
+    <div class="mb-4 p-3 rounded-lg border border-border bg-background text-sm">
+        <p class="text-text-secondary">Current return date:
+            <strong class="text-text-primary">{{ mobilization.expected_return_date|date:"M d, Y"|default:"Not set" }}</strong>
+        </p>
+        <p class="text-xs text-text-secondary mt-1">
+            The current date and who extends it stay on record — nothing is overwritten.
+        </p>
+    </div>
+
+    <form method="post" action="{% url 'tickets:mobilization_extend_date' mobilization.pk %}">
+        {% csrf_token %}
+
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1 text-text-primary">New Return Date <span class="text-error">*</span></label>
+            <input type="date" name="new_date" required
+                   min="{{ mobilization.expected_return_date|date:'Y-m-d' }}"
+                   class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1 text-text-primary">Reason</label>
+            <textarea name="reason" rows="3"
+                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      placeholder="Why is the job running longer than planned?"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-border">
+            <button type="button" onclick="closeMobilizationModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "calendar-clock" size=16 %} Extend Date
+            </button>
+        </div>
+    </form>
+</div>

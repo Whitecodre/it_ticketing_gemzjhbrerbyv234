@@ -20,8 +20,11 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
         # Referrer policy
         response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
         
-        # Permissions policy
-        response['Permissions-Policy'] = 'geolocation=(), microphone=(), camera=()'
+        # Permissions policy — geolocation is allowed same-origin only, for
+        # the Service Request form's device-location capture (see
+        # templates/requester/service_request_form.html); microphone/camera
+        # stay fully disabled, since nothing in the app uses them.
+        response['Permissions-Policy'] = 'geolocation=(self), microphone=(), camera=()'
 
         # ================================================================
         # Skip X-Frame-Options for document viewer (PDF/Office previews)

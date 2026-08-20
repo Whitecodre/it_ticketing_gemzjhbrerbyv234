@@ -102,7 +102,7 @@
             opacity-0 scale-95 pointer-events-none transition-all duration-150 ease-out"
      style="border-color: var(--color-border); background-color: var(--color-surface); transform-origin: top center;">
     <button class="dropdown-view w-full text-left px-4 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2 text-text-primary">
-        {% lucide "eye" size=14 %} View Details
+        {% lucide "eye" size=14 %} View Chat
     </button>
     <button class="dropdown-cancel w-full text-left px-4 py-2 text-sm hover:bg-black/5 transition flex items-center gap-2 text-text-primary">
         {% lucide "circle-x" size=14 %} Cancel Ticket
@@ -120,25 +120,7 @@
 
         const viewBtn = dropdown.querySelector('.dropdown-view');
         const cancelBtn = dropdown.querySelector('.dropdown-cancel');
-
-        function positionDropdown(btn) {
-            const rect = btn.getBoundingClientRect();
-            let top = rect.bottom + 6;
-            let left = rect.left + rect.width / 2 - 80;
-
-            if (top + 150 > window.innerHeight) {
-                top = rect.top - 150 - 6;
-            }
-            if (left + 160 > window.innerWidth) {
-                left = window.innerWidth - 170;
-            }
-            if (left < 10) {
-                left = 10;
-            }
-
-            dropdown.style.top = top + 'px';
-            dropdown.style.left = left + 'px';
-        }
+        let dropdownCleanup = null;
 
         window.userTicketActionBtnClick = function(btn) {
             closeDropdown();
@@ -154,7 +136,9 @@
 
             cancelBtn.style.display = activeData.canCancel ? 'flex' : 'none';
 
-            positionDropdown(btn);
+            if (window.positionDropdown) {
+                dropdownCleanup = window.positionDropdown(btn, dropdown, { align: 'center' });
+            }
             dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
             dropdown.classList.add('opacity-100', 'scale-100');
         };
@@ -163,13 +147,11 @@
             dropdown.classList.remove('opacity-100', 'scale-100');
             dropdown.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
             activeButton = null;
-        }
-
-        window.addEventListener('resize', function() {
-            if (activeButton && !dropdown.classList.contains('pointer-events-none')) {
-                positionDropdown(activeButton);
+            if (dropdownCleanup) {
+                dropdownCleanup();
+                dropdownCleanup = null;
             }
-        });
+        }
 
         document.addEventListener('click', function(e) {
             if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn')) {

@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, EscalationRule, SLA
 from apps.common.models import Notification
+from apps.common.utils import role_of
 from django.db.models import Q
 
 User = get_user_model()
@@ -125,6 +126,7 @@ class Command(BaseCommand):
                 
                 Notification.objects.create(
                     recipient=agent,
+                    role=role_of(agent),
                     message=f"⚠️ Ticket {ticket.number} has been auto-assigned to you due to SLA breach.",
                     url=f'/tickets/{ticket.pk}/',
                     type=Notification.Type.TICKET
@@ -178,6 +180,7 @@ class Command(BaseCommand):
                 for user in users:
                     Notification.objects.create(
                         recipient=user,
+                        role=role_of(user),
                         message=f"⚠️ Ticket {ticket.number} has been escalated. Please review.",
                         url=f'/tickets/{ticket.pk}/',
                         type=Notification.Type.TICKET
@@ -194,6 +197,7 @@ class Command(BaseCommand):
                     
                     Notification.objects.create(
                         recipient=new_assignee,
+                        role=role_of(new_assignee),
                         message=f"🔄 Ticket {ticket.number} has been auto-reassigned to you due to SLA breach.",
                         url=f'/tickets/{ticket.pk}/',
                         type=Notification.Type.TICKET

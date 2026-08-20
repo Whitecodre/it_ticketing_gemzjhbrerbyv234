@@ -51,12 +51,27 @@ function closeAttachmentModal() {
 // ================================================================
 // STATUS DROPDOWN
 // ================================================================
+let statusDropdownCleanup = null;
+
 function toggleStatusDropdown() {
     const menu = document.getElementById('statusMenu');
     const chevron = document.getElementById('statusChevron');
+    const trigger = document.getElementById('statusDropdownBtn');
     if (!menu || !chevron) return;
-    menu.classList.toggle('hidden');
-    chevron.classList.toggle('rotate-180');
+    if (menu.classList.contains('hidden')) {
+        menu.classList.remove('hidden');
+        chevron.classList.add('rotate-180');
+        if (trigger && window.positionDropdown) {
+            statusDropdownCleanup = window.positionDropdown(trigger, menu, { align: 'right' });
+        }
+    } else {
+        menu.classList.add('hidden');
+        chevron.classList.remove('rotate-180');
+        if (statusDropdownCleanup) {
+            statusDropdownCleanup();
+            statusDropdownCleanup = null;
+        }
+    }
 }
 
 document.addEventListener('click', function(event) {
@@ -66,6 +81,10 @@ document.addEventListener('click', function(event) {
     if (dropdown && menu && !dropdown.contains(event.target)) {
         menu.classList.add('hidden');
         if (chevron) chevron.classList.remove('rotate-180');
+        if (statusDropdownCleanup) {
+            statusDropdownCleanup();
+            statusDropdownCleanup = null;
+        }
     }
 });
 
@@ -251,15 +270,25 @@ function formatDocument(command) {
 function insertMacro(body, visibility) {
     const editor = document.getElementById('commentEditor');
     if (editor) {
-        editor.innerHTML = body;
+        // Appended as its own block rather than replacing outright — picking
+        // one macro into an empty composer makes it the only content;
+        // picking another afterward stacks it below instead of erasing it.
+        const block = document.createElement('div');
+        block.innerHTML = body;
+        editor.appendChild(block);
+        editor.focus();
         editor.dispatchEvent(new Event('input'));
         setActiveTab(visibility.toLowerCase());
         const radios = document.getElementsByName('visibility');
         for (let radio of radios) {
             if (radio.value === visibility) radio.checked = true;
         }
-        const dropdown = document.getElementById('macroDropdown');
-        if (dropdown) dropdown.classList.add('hidden');
+        if (window.closeMacroDropdown) {
+            window.closeMacroDropdown();
+        } else {
+            const dropdown = document.getElementById('macroDropdown');
+            if (dropdown) dropdown.classList.add('hidden');
+        }
     }
 }
 
@@ -268,7 +297,14 @@ document.addEventListener('click', function(event) {
     const dropdown = document.getElementById('macroDropdown');
     const button = document.querySelector('[data-tooltip="Macros"]');
     if (dropdown && !dropdown.classList.contains('hidden') && !dropdown.contains(event.target) && button && !button.contains(event.target)) {
-        dropdown.classList.add('hidden');
+        // ticket_conversation.html defines closeMacroDropdown() to also
+        // reset the trigger button's icon back from X — fall back to a
+        // plain hide if some other page ever reuses #macroDropdown without it.
+        if (window.closeMacroDropdown) {
+            window.closeMacroDropdown();
+        } else {
+            dropdown.classList.add('hidden');
+        }
     }
 });
 

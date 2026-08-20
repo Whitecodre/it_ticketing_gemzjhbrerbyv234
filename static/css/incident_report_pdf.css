@@ -1,0 +1,111 @@
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: #e5e7eb;
+}
+
+.page {
+  width: 850px;
+  max-width: 100%;
+  margin: 40px auto;
+  background: #ffffff;
+  padding: 45px 55px;
+  box-shadow: 0 0 12px rgba(0,0,0,0.15);
+}
+
+.logo-text {
+  font-family: 'Brush Script MT', cursive;
+  font-size: 26px;
+  font-weight: bold;
+  font-style: italic;
+  background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.5px;
+}
+
+.logo-underline {
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+  border-radius: 2px;
+  margin-top: 2px;
+}
+
+.section-box {
+  border: 2px solid #000;
+}
+
+.section-title {
+  font-weight: bold;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #000;
+}
+
+.cell {
+  border-top: 1px solid #000;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.cell-label {
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.dotted-line {
+  border-bottom: 1px solid #000;
+  display: inline-block;
+}
+
+.chk {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1.3px solid #000;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.chk-filled {
+  background: #000;
+}
+
+table.grid td, table.grid th {
+  border: 1px solid #000;
+  padding: 6px 8px;
+  font-size: 12px;
+  vertical-align: top;
+}
+
+.continues-top {
+  border-left: 1px solid #000;
+  border-right: 1px solid #000;
+  border-top: none;
+}
+
+@page { size: A4; margin: 10mm 12mm; }
+
+@media print {
+  body { background: #ffffff; }
+  .page {
+    width: auto;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
+  }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+
+  /* Forces whatever follows onto a fresh page — used e.g. by the maintenance
+     report's "Owner Confirmation" section, which can otherwise land
+     awkwardly mid-page after a variable-length schedule-details section
+     above it. */
+  .section-break-before {
+    page-break-before: always;
+    break-before: page;
+  }
+}

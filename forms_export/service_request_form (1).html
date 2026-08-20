@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HydroDive Service Request Form</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap');
+
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #e5e7eb;
+  }
+
+  .page {
+    width: 850px;
+    max-width: 100%;
+    margin: 40px auto;
+    background: #ffffff;
+    padding: 50px 60px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.15);
+  }
+
+  /* underline fields */
+  .field-line {
+    border-bottom: 1px solid #000;
+    display: inline-block;
+  }
+
+  .logo-text {
+    font-family: 'Brush Script MT', cursive;
+    font-size: 30px;
+    font-weight: bold;
+    font-style: italic;
+    background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: 0.5px;
+  }
+
+  .logo-underline {
+    height: 3px;
+    width: 100%;
+    background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+    border-radius: 2px;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header Table -->
+  <table class="w-full border-collapse border-2 border-black mb-10">
+    <tr>
+      <!-- Logo cell -->
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        <div class="logo-text">HydroDive</div>
+        <div class="logo-underline"></div>
+      </td>
+
+      <!-- Title cell -->
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">SERVICE REQUEST FORM</span>
+      </td>
+
+      <!-- Metadata cell: code -->
+      <td class="border-2 border-black text-xs text-center font-semibold p-1" colspan="2">
+        HDG-IT-FRM-081
+      </td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1 of 1</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">18<sup>th</sup> May 2023</td>
+    </tr>
+  </table>
+
+  <!-- Form Body -->
+  <div class="space-y-6 text-[15px]">
+
+    <!-- Requester's Name / Date -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Name:</span>
+      <span class="field-line flex-1 px-1">Marcus Ilori</span>
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">14th August 2026</span>
+    </div>
+
+    <!-- Department / Location -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Department:</span>
+      <span class="field-line w-64 px-1">Subsea Operations</span>
+      <span class="font-bold whitespace-nowrap ml-16 mr-2">Location:</span>
+      <span class="field-line flex-1 px-1">Offshore Support Base, Onne Port</span>
+    </div>
+
+    <!-- Reported To -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Reported To:</span>
+      <span class="field-line w-72 px-1">Tunde Bakare, IT Officer</span>
+    </div>
+
+    <!-- Vessel / Job Number -->
+    <div class="flex items-end pt-6">
+      <span class="font-bold whitespace-nowrap mr-2">Vessel:</span>
+      <span class="field-line w-64 px-1">MV Hydro Explorer</span>
+      <span class="font-bold whitespace-nowrap ml-16 mr-2">Job Number:</span>
+      <span class="field-line flex-1 px-1">HDG-JB-2026-0347</span>
+    </div>
+
+    <!-- Dive Spread -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Dive Spread:</span>
+      <span class="field-line flex-1 px-1">Spread 2 &ndash; Air Diving System (ADS-2)</span>
+    </div>
+
+    <!-- Description -->
+    <div class="pt-6">
+      <span class="font-bold">Description of Work Order Request:</span>
+    </div>
+    <div class="pt-6">
+      <span class="field-line w-full block px-1">Onboard IT workstation in the dive control van is not powering on. Dive supervisor logging terminal and topside comms software are unavailable, affecting dive log recording for current operations.</span>
+    </div>
+    <div class="pt-8">
+      <span class="field-line w-full block px-1">Requesting IT to inspect the workstation, replace faulty hardware if required, and restore dive logging software before next dive rotation.</span>
+    </div>
+
+    <!-- Requester's Confirmation Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Confirmation Signature:</span>
+      <span class="field-line w-40 px-1 italic">M. Ilori</span>
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">14th August 2026</span>
+    </div>
+
+    <!-- IT Officer Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">IT Officer Signature:</span>
+      <span class="field-line w-64 px-1 italic">T. Bakare</span>
+      <span class="font-bold whitespace-nowrap ml-16 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">15th August 2026</span>
+    </div>
+
+    <!-- Requester's Feedback -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Feedback:</span>
+      <span class="field-line flex-1 px-1">Workstation repaired and dive logging software restored and verified prior to next rotation.</span>
+    </div>
+    <div class="pt-6">
+      <span class="field-line w-full block px-1">Faulty power supply unit was replaced. System tested with dive supervisor on duty; comms and logging confirmed operational.</span>
+    </div>
+    <div class="pt-6">
+      <span class="field-line w-full block">&nbsp;</span>
+    </div>
+
+    <!-- Requester's Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Signature:</span>
+      <span class="field-line w-56 px-1 italic">M. Ilori</span>
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">15th August 2026</span>
+    </div>
+
+    <!-- IT Manager Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">IT Manager Signature:</span>
+      <span class="field-line w-56 px-1 italic">C. Adeyemi</span>
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">15th August 2026</span>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="text-center text-sm mt-16 leading-relaxed">
+    <p>The IT department receives and processes service requests and work orders daily.</p>
+    <p class="mt-2">Our overall goal is to schedule and complete these services on time. A requester is expected to complete the service<br>
+    request form and return it to the IT officer for action.</p>
+    <p class="mt-2">Thank you for your cooperation.</p>
+  </div>
+
+</div>
+
+</body>
+</html>

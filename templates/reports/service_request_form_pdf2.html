@@ -1,0 +1,163 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+{% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
+<title>HydroDive Service Request Form — {{ ticket.number }}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="{% static 'css/service_request_pdf.css' %}?v=2">
+
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Header Table -->
+  <table class="w-full border-collapse border-2 border-black mb-10">
+    <tr>
+      <!-- Logo cell -->
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+            <img src="{{ client_settings.logo_url }}">
+        {% else %}
+            <div class="logo-text">HydroDive</div>
+            <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+
+      <!-- Title cell -->
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">SERVICE REQUEST FORM</span>
+      </td>
+
+      <!-- Metadata cell: code -->
+      <td class="border-2 border-black text-xs text-center font-semibold p-1" colspan="2">
+        HDG-IT-FRM-081
+      </td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1 of 1</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- Form Body -->
+  <div class="space-y-6 text-[15px]">
+
+    <!-- Requester's Name / Date -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Name:</span>
+      <span class="field-line flex-1 px-1">{{ requester_name }}</span>
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">{{ ticket.created_at|date:"M d, Y" }}</span>
+    </div>
+
+    <!-- Department / Location -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Department:</span>
+      <span class="field-line w-64 px-1">{{ requester_department }}</span>
+      <span class="font-bold whitespace-nowrap ml-16 mr-2">Location:</span>
+      <span class="field-line flex-1 px-1">{% if location.display %}{{ location.display }}{% else %}<span class="italic text-gray-400">Not available</span>{% endif %}</span>
+    </div>
+
+    <!-- Reported To -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Reported To:</span>
+      <span class="field-line w-72 px-1">{{ reported_to|default:"Unassigned" }}</span>
+    </div>
+
+    {% if vessels or job_number %}
+    <!-- Vessel / Job Number -->
+    <div class="flex items-end pt-6">
+      <span class="font-bold whitespace-nowrap mr-2">Vessel:</span>
+      <span class="field-line w-64 px-1">{% if vessels %}{% for v in vessels %}{{ v.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}<span class="italic text-gray-400">&mdash;</span>{% endif %}</span>
+      <span class="font-bold whitespace-nowrap ml-16 mr-2">Job Number:</span>
+      <span class="field-line flex-1 px-1">{% if job_number %}{{ job_number.number }}{% else %}<span class="italic text-gray-400">&mdash;</span>{% endif %}</span>
+    </div>
+    {% endif %}
+
+    {% if dive_systems %}
+    <!-- Dive System -->
+    <div class="flex items-end">
+      <span class="font-bold whitespace-nowrap mr-2">Dive System:</span>
+      <span class="field-line flex-1 px-1">{% for s in dive_systems %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+    </div>
+    {% endif %}
+
+    <!-- Description -->
+    <div class="pt-6">
+      <span class="font-bold">Description of Work Order Request:</span>
+    </div>
+    <div class="pt-6">
+      <span class="field-line w-full block px-1">{{ ticket.description|linebreaksbr }}</span>
+    </div>
+
+    <!-- Requester's Confirmation Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Confirmation Signature:</span>
+      <span class="field-line flex-1 px-1">{% if requester_signoff.signature_url %}<img src="{{ requester_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ requester_signoff.captured_text }}</span>{% endif %}</span>
+      {% if requester_signoff.signature_url %}
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">{{ requester_signoff.date|date:"M d, Y H:i" }}</span>
+      {% endif %}
+    </div>
+
+    <!-- IT Officer Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">IT Officer Signature:</span>
+      <span class="field-line flex-1 px-1">{% if it_officer_signoff.captured_text %}{% if it_officer_signoff.signature_url %}<img src="{{ it_officer_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ it_officer_signoff.captured_text }}</span>{% endif %}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</span>
+      {% if it_officer_signoff.signature_url %}
+      <span class="font-bold whitespace-nowrap ml-16 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">{{ it_officer_signoff.date|date:"M d, Y H:i" }}</span>
+      {% endif %}
+    </div>
+
+    <!-- Requester's Feedback -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Feedback:</span>
+      <span class="field-line flex-1 px-1">{% if feedback_comment or feedback_rating %}{{ feedback_comment|default:"—" }}{% if feedback_rating %} (Rating: {{ feedback_rating }}/5){% endif %}{% else %}<span class="italic text-gray-400">No feedback submitted yet.</span>{% endif %}</span>
+    </div>
+
+    <!-- Requester's Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">Requester's Signature:</span>
+      <span class="field-line flex-1 px-1">{% if requester_feedback_signoff.captured_text %}{% if requester_feedback_signoff.signature_url %}<img src="{{ requester_feedback_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ requester_feedback_signoff.captured_text }}</span>{% endif %}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</span>
+      {% if requester_feedback_signoff.signature_url %}
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">{{ requester_feedback_signoff.date|date:"M d, Y H:i" }}</span>
+      {% endif %}
+    </div>
+
+    <!-- IT Manager Signature -->
+    <div class="flex items-end pt-8">
+      <span class="font-bold whitespace-nowrap mr-2">IT Manager Signature:</span>
+      <span class="field-line flex-1 px-1">{% if it_manager_signoff.captured_text %}{% if it_manager_signoff.signature_url %}<img src="{{ it_manager_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ it_manager_signoff.captured_text }}</span>{% endif %}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</span>
+      {% if it_manager_signoff.signature_url %}
+      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
+      <span class="field-line w-48 px-1">{{ it_manager_signoff.date|date:"M d, Y H:i" }}</span>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  {% comment %} <div class="text-center text-sm mt-16 leading-relaxed">
+    <p>The IT department receives and processes service requests and work orders daily.</p>
+    <p class="mt-2">Our overall goal is to schedule and complete these services on time. A requester is expected to complete the service<br>
+    request form and return it to the IT officer for action.</p>
+    <p class="mt-2">Thank you for your cooperation.</p>
+  </div> {% endcomment %}
+
+</div>
+
+</body>
+</html>

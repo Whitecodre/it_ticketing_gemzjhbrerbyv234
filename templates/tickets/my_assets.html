@@ -1,0 +1,98 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}My Assets{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full max-w-4xl">
+    <div class="flex items-center gap-3 mb-6">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "laptop" size=19 %}</span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">My Assets</h2>
+            <p class="text-sm text-text-secondary">Assets allocated to you, including any scheduled maintenance.</p>
+        </div>
+    </div>
+
+    {% if rows %}
+    <div class="space-y-3">
+        {% for entry in rows %}
+        <div class="dashboard-card p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p class="text-sm font-semibold text-text-primary">{{ entry.asset.name }}</p>
+                    <p class="text-xs text-text-secondary mt-0.5">
+                        {{ entry.asset.tracking_id }} · {{ entry.asset.category.name|default:"Uncategorized" }} · {{ entry.asset.get_department_display|default:entry.asset.department }}
+                    </p>
+                </div>
+                <span class="status-chip status-chip-neutral">{{ entry.asset.get_status_display }}</span>
+            </div>
+
+            {% if entry.pending_confirmations %}
+            <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border);">
+                {% for row in entry.pending_confirmations %}
+                <div class="rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3"
+                     style="background-color: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface)); border-color: var(--color-warning);">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="text-warning shrink-0">{% lucide "wrench" size=16 %}</span>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-text-primary truncate">
+                                Maintenance completed — please confirm
+                            </p>
+                            <p class="text-xs text-text-secondary">
+                                "{{ row.schedule.title }}" · {{ row.technician_completed_at|date:"M d, Y g:i A" }}
+                            </p>
+                        </div>
+                    </div>
+                    <button type="button" onclick="openAssetConfirmModal({{ row.schedule.pk }}, {{ entry.asset.pk }})"
+                            class="btn-primary text-xs px-3 py-1.5 rounded shrink-0">
+                        Review &amp; Confirm
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+            {% elif entry.upcoming_schedules %}
+            <div class="mt-3 pt-3 border-t space-y-1.5" style="border-color: var(--color-border);">
+                {% for schedule in entry.upcoming_schedules %}
+                <div class="flex items-center gap-2 text-xs text-text-secondary">
+                    {% lucide "calendar-clock" size=12 %}
+                    Maintenance scheduled: "{{ schedule.title }}" — {{ schedule.scheduled_date|date:"M d, Y" }}
+                    {% include "maintenance/partials/status_badge.html" with status=schedule.status %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="dashboard-card p-8 text-center">
+        <p class="text-sm text-text-secondary">No assets are currently allocated to you.</p>
+    </div>
+    {% endif %}
+</div>
+
+{% include "maintenance/partials/status_modals.html" %}
+<script>
+    // A notification/email link can deep-link straight into the confirm
+    // modal (?schedule=<pk>&asset=<pk>) instead of sending the asset owner
+    // to the IT-internal maintenance detail page — this page is the
+    // landing surface for that link, with the relevant modal auto-opened.
+    document.addEventListener('DOMContentLoaded', function () {
+        const params = new URLSearchParams(window.location.search);
+        const scheduleId = params.get('schedule');
+        const assetId = params.get('asset');
+        if (scheduleId && assetId) {
+            openAssetConfirmModal(scheduleId, assetId);
+            history.replaceState(null, '', window.location.pathname);
+        }
+    });
+</script>
+{% endblock %}

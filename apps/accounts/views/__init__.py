@@ -22,15 +22,16 @@ from datetime import timedelta, date
 from ..forms import ProfileForm, EmailAuthenticationForm, RegistrationStep1Form, RegistrationStep2Form, ChangePasswordForm, UserSettingsForm
 from ..models import User, UserProfile, Role
 from ..utils import validate_password_strength
-from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, Asset, RemoteConnector, TicketComment
+from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, Asset, RemoteConnector, TicketComment, RemoteSession
 from apps.tickets.views import get_sidebar_template
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
+from django_ratelimit.decorators import ratelimit
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-# @method_decorator(ratelimit(key='ip', rate='5/15m', method='POST', block=True), name='dispatch')
+@method_decorator(ratelimit(key='ip', rate='5/15m', method='POST', block=True), name='dispatch')
 @method_decorator(csrf_protect, name='dispatch')
 class CustomLoginView(LoginView):
     template_name = 'registration/login.html'
@@ -97,10 +98,6 @@ class CustomPasswordResetView(PasswordResetView):
         )
         
         if not success:
-            print(f"Failed to send password reset email to {to_email}: {result}")
-            # Log the error but don't fail silently
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"Password reset email failed for {to_email}: {result}")
         
         return success
@@ -202,14 +199,22 @@ def dashboard(request):
     # ================================================================
     active_role = user.get_active_role()
     
-    # If no active role, use the highest priority role
+    # If no active role, use the highest priority role. Save `role` (legacy
+    # field) alongside `active_role` in the same call — several templates
+    # and views still gate on the legacy field directly, so leaving it
+    # stale here was the root cause of the role-visibility desync bug.
     if not active_role:
         active_role = user.roles.order_by('priority').first()
         if active_role:
             user.active_role = active_role
-            user.save(update_fields=['active_role'])
+            user.role = active_role.name
+            user.save(update_fields=['active_role', 'role'])
     
-    # Determine template based on active role
+    # Determine template based on active role. A Team Lead outside IT is
+    # scoped solely to the service-request approval flow for now, so they
+    # get the same dashboard an End User sees (no IT-operational stats)
+    # rather than the IT Team Lead one.
+    is_it_team_lead = active_role and active_role.name == 'TEAM_LEAD' and user.department == 'IT'
     if active_role:
         role_name = active_role.name
         template_map = {
@@ -219,7 +224,10 @@ def dashboard(request):
             'AGENT': 'dashboards/agent_dashboard.html',
             'END_USER': 'dashboards/end_user_dashboard.html',
         }
-        template = template_map.get(role_name, 'dashboards/end_user_dashboard.html')
+        if role_name == 'TEAM_LEAD' and not is_it_team_lead:
+            template = 'dashboards/end_user_dashboard.html'
+        else:
+            template = template_map.get(role_name, 'dashboards/end_user_dashboard.html')
     else:
         # Fallback for users with no roles
         template = 'dashboards/end_user_dashboard.html'
@@ -228,8 +236,29 @@ def dashboard(request):
     # Build context based on active role
     # ================================================================
     context = {}
-    
-    if active_role and active_role.name == 'END_USER':
+
+    # Remote sessions needing this user's action right now — surfaced as a
+    # banner at the top of the dashboard so Accept/Reject/Start aren't only
+    # reachable via a notification/email link. Scoped to whichever role is
+    # currently active: the requester-side "needs accept/reject" prompt only
+    # while active as End User, the agent-side "needs start" prompt only
+    # while active in a staff role — a dual-role account (e.g. Agent + End
+    # User) shouldn't see both prompts at once regardless of which hat is on
+    # (previously this queried both sides unconditionally).
+    _active_role_name = active_role.name if active_role else None
+    if _active_role_name == 'END_USER' or (_active_role_name == 'TEAM_LEAD' and not is_it_team_lead):
+        _pending_q = Q(requester=request.user, status=RemoteSession.Status.REQUESTED)
+    elif _active_role_name in ('AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'):
+        _pending_q = Q(agent=request.user, status=RemoteSession.Status.ACCEPTED)
+    else:
+        _pending_q = None
+
+    context['pending_remote_sessions'] = list(
+        RemoteSession.objects.filter(_pending_q)
+        .select_related('ticket', 'requester', 'agent').order_by('-created_at')
+    ) if _pending_q is not None else []
+
+    if active_role and (active_role.name == 'END_USER' or (active_role.name == 'TEAM_LEAD' and not is_it_team_lead)):
         context['open_tickets_count'] = Ticket.objects.filter(
             requester=request.user,
             status__in=['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
@@ -240,8 +269,8 @@ def dashboard(request):
         context['in_progress_count'] = Ticket.objects.filter(requester=request.user, status='IN_PROGRESS').count()
         context['resolved_count'] = Ticket.objects.filter(requester=request.user, status='RESOLVED').count()
         context['closed_count'] = Ticket.objects.filter(requester=request.user, status='CLOSED').count()
-        
-    elif active_role and active_role.name in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+
+    elif active_role and active_role.name in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] and (active_role.name != 'TEAM_LEAD' or is_it_team_lead):
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
         
         resolved_tickets = Ticket.objects.filter(
@@ -591,7 +620,7 @@ def register(request):
                     )
                     if not success:
                         email_error = True
-                        print(f"Failed to send verification email to {user.email}: {result}")
+                        logger.error(f"Failed to send verification email to {user.email}: {result}")
                 except Exception as e:
                     logger.error(f"Failed to send verification email to {user.email}: {str(e)}")
                     email_error = True
@@ -772,12 +801,6 @@ def profile(request):
         highest_role = request.user.get_highest_role()
         if highest_role:
             available_roles = [highest_role]
-
-     # Debug: Print active role info
-    print(f"Profile view - User: {request.user.email}")
-    print(f"Profile view - Active role: {request.user.active_role}")
-    print(f"Profile view - Active role name: {request.user.get_active_role_name()}")
-    print(f"Profile view - All roles: {[r.name for r in request.user.roles.all()]}")
 
     sidebar_map = {
         'END_USER': 'partials/sidebar_end_user.html',

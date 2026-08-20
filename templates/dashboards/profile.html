@@ -101,6 +101,31 @@
                 </div>
             </div>
 
+            {# Signature — used on Service Request / Incident report sign-off lines when available #}
+            <div class="mt-6 pt-4 border-t" style="border-color: var(--color-border);">
+                <label class="block text-sm font-medium mb-1 text-text-primary">Signature</label>
+                <p class="text-xs text-text-secondary mb-3">Uploaded here, your signature image is used on Service Request and Incident report exports wherever your sign-off appears — otherwise a "captured digitally" note is shown instead.</p>
+                <div class="flex flex-wrap items-center gap-4">
+                    <div class="relative">
+                        <div id="signaturePreview" class="h-20 w-48 rounded-lg overflow-hidden border-2 border-border bg-white flex items-center justify-center">
+                            {% if user.signature %}
+                                <img src="{{ user.signature.url }}" alt="Signature" class="h-full w-full object-contain" id="signatureImage">
+                            {% else %}
+                                <span class="text-xs text-gray-400">No signature uploaded</span>
+                            {% endif %}
+                        </div>
+                        <label for="id_signature" class="absolute bottom-0 right-0 btn-primary rounded-full p-2 cursor-pointer shadow-lg hover:scale-105 transition" title="Change Signature">
+                            {% lucide "pen-line" size=16 %}
+                            {{ form.signature }}
+                        </label>
+                    </div>
+                    <div>
+                        <p class="text-xs text-text-secondary">PNG with a transparent or white background recommended, max 2MB.</p>
+                        <p class="text-xs text-text-secondary" id="signatureFileName"></p>
+                    </div>
+                </div>
+            </div>
+
             <div class="flex justify-end mt-6 pt-4 border-t" style="border-color: var(--color-border);">
                 <button type="submit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5 rounded-lg">
                     {% lucide "save" size=16 %} Save Profile
@@ -111,7 +136,7 @@
 
     {# ==================== COMPANY BRANDING SECTION ==================== #}
     {# Only visible to Admin users #}
-    {% if active_role and active_role.name == 'ADMIN' or user.role == 'ADMIN' %}
+    {% if active_role_name == 'ADMIN' %}
     <div class="dashboard-card shadow-sm p-6">
         <div class="flex items-center gap-3 mb-4">
             <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
@@ -420,6 +445,34 @@
                         }
                         img.src = e.target.result;
                         avatarFileName.textContent = file.name;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        // --- Signature preview ---
+        const signatureInput = document.getElementById('id_signature');
+        const signaturePreview = document.getElementById('signaturePreview');
+        const signatureFileName = document.getElementById('signatureFileName');
+
+        if (signatureInput) {
+            signatureInput.addEventListener('change', function() {
+                const file = this.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        let img = signaturePreview.querySelector('img');
+                        if (!img) {
+                            img = document.createElement('img');
+                            img.id = 'signatureImage';
+                            img.className = 'h-full w-full object-contain';
+                            img.alt = 'Signature';
+                            signaturePreview.innerHTML = '';
+                            signaturePreview.appendChild(img);
+                        }
+                        img.src = e.target.result;
+                        signatureFileName.textContent = file.name;
                     };
                     reader.readAsDataURL(file);
                 }

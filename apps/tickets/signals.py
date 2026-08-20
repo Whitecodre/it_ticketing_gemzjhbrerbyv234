@@ -4,15 +4,15 @@ from django.urls import reverse
 from .models import Ticket, TicketComment
 from apps.accounts.models import User
 from apps.common.models import Notification
+from apps.common.utils import role_of
 
 @receiver(post_save, sender=Ticket)
 def create_ticket_notification(sender, instance, created, **kwargs):
     if created:
-        print("Ticket created signal fired!")
-        
         # Notify the requester (always)
         Notification.objects.create(
             recipient=instance.requester,
+            role=role_of(instance.requester),
             message=f"Ticket {instance.number} created successfully.",
             url=reverse('tickets:detail', args=[instance.pk])
         )
@@ -24,6 +24,7 @@ def create_ticket_notification(sender, instance, created, **kwargs):
             for agent in agents:
                 Notification.objects.create(
                     recipient=agent,
+                    role=role_of(agent),
                     message=f"New unassigned ticket {instance.number}: {instance.title}",
                     url=reverse('tickets:detail', args=[instance.pk])
                 )
@@ -37,6 +38,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
         if instance.author != instance.ticket.requester:
             Notification.objects.create(
                 recipient=instance.ticket.requester,
+                role=role_of(instance.ticket.requester),
                 message=f"New reply on ticket {instance.ticket.number}.",
                 url=reverse('tickets:detail', args=[instance.ticket.pk])
             )
@@ -44,6 +46,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
         if instance.author == instance.ticket.requester and instance.ticket.assigned_to:
             Notification.objects.create(
                 recipient=instance.ticket.assigned_to,
+                role=role_of(instance.ticket.assigned_to),
                 message=f"{instance.ticket.requester.get_full_name()} replied to ticket {instance.ticket.number}.",
                 url=reverse('tickets:detail', args=[instance.ticket.pk])
             )
@@ -63,6 +66,7 @@ def handle_ticket_fulfillment_notification(sender, instance, created, **kwargs):
                 # This is a new fulfillment
                 Notification.objects.create(
                     recipient=instance.requester,
+                    role=role_of(instance.requester),
                     message=f'✅ Your asset request {instance.number} has been fulfilled. Asset assigned to you.',
                     url=reverse('tickets:detail', args=[instance.pk])
                 )

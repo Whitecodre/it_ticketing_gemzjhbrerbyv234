@@ -49,8 +49,11 @@ class EmailBackend(ModelBackend):
         if not user_obj.is_authenticated:
             return False
 
-        # Superadmin bypasses all checks
-        if user_obj.role == 'SUPERADMIN':
+        # Superadmin bypasses all checks — resolved from the active role so
+        # this stays correct for dual-role accounts that have switched away
+        # from Superadmin, rather than trusting the legacy `role` field
+        # (which can drift out of sync with active_role).
+        if self._get_effective_role_name(user_obj) == 'SUPERADMIN':
             return True
 
         role_name = self._get_effective_role_name(user_obj)

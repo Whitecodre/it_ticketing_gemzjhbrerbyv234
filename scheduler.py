@@ -34,6 +34,16 @@ def process_sla():
     except Exception as e:
         print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Maintenance reminders failed: {str(e)}')
 
+    try:
+        call_command('process_remote_session_expiry', verbosity=0)
+    except Exception as e:
+        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Remote session expiry failed: {str(e)}')
+
+    try:
+        call_command('send_renewal_reminders', verbosity=0)
+    except Exception as e:
+        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Renewal reminders failed: {str(e)}')
+
 if __name__ == '__main__':
     print(f'🔄 SLA Scheduler started. Processing every 5 minutes...')
     print(f'📅 Started at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')

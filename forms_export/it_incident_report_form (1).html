@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HydroDive IT Incident Report Form</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #e5e7eb;
+  }
+
+  .page {
+    width: 850px;
+    max-width: 100%;
+    margin: 40px auto;
+    background: #ffffff;
+    padding: 45px 55px;
+    box-shadow: 0 0 12px rgba(0,0,0,0.15);
+  }
+
+  .logo-text {
+    font-family: 'Brush Script MT', cursive;
+    font-size: 26px;
+    font-weight: bold;
+    font-style: italic;
+    background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: 0.5px;
+  }
+
+  .logo-underline {
+    height: 3px;
+    width: 100%;
+    background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+    border-radius: 2px;
+    margin-top: 2px;
+  }
+
+  .section-box {
+    border: 2px solid #000;
+  }
+
+  .section-title {
+    font-weight: bold;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #000;
+  }
+
+  .cell {
+    border-top: 1px solid #000;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .cell-label {
+    font-weight: bold;
+    font-size: 12px;
+  }
+
+  .dotted-line {
+    border-bottom: 1px solid #000;
+    display: inline-block;
+  }
+
+  .chk {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border: 1.3px solid #000;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  table.grid td, table.grid th {
+    border: 1px solid #000;
+    padding: 6px 8px;
+    font-size: 12px;
+    vertical-align: top;
+  }
+
+  .continues-top {
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+    border-top: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- HEADER TEMPLATE (repeated each page, page number substituted) -->
+<!-- ============================================================ -->
+
+<!-- ================= PAGE 1 ================= -->
+<div class="page">
+
+  <!-- Header -->
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        <div class="logo-text">HydroDive</div>
+        <div class="logo-underline"></div>
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">18<sup>th</sup> May 2026</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 1 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 1 &mdash; INCIDENT DETAILS</div>
+
+    <!-- Incident Reference No / Date&Time -->
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-2">Incident Reference No.:</div>
+        <div class="dotted-line w-full">HDG-INC-2026-0347</div>
+      </div>
+      <div>
+        <span class="cell-label">Date &amp; Time of Incident:</span>
+        <span class="ml-2">13/08/2026&nbsp;&nbsp;Time: 14:30</span>
+      </div>
+    </div>
+
+    <!-- Incident Title -->
+    <div class="cell">
+      <div class="cell-label mb-1">Incident Title / Short Description:</div>
+      <div class="mb-6">Dive control van workstation power failure &ndash; MV Hydro Explorer</div>
+    </div>
+
+    <!-- System affected / Incident Category -->
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">System / Service / Asset Affected:</div>
+        <div class="mb-10">Dive control workstation &amp; dive logging software (DCV-WS-02)</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Incident Category (tick one):</div>
+        <div><span class="chk" style="background:#000;"></span>Hardware Failure &nbsp;<span class="chk"></span>Software/Application Error &nbsp;<span class="chk"></span> Network/Connectivity</div>
+        <div class="mt-1"><span class="chk"></span>Security Breach / Unauthorized Access &nbsp;<span class="chk"></span>Data Loss / Corruption &nbsp;<span class="chk"></span>Power Failure &nbsp;<span class="chk"></span>Other: ______</div>
+      </div>
+    </div>
+
+    <!-- Severity Level / Business Impact -->
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Severity Level (tick one):</div>
+        <div><span class="chk"></span>Critical (P1) &nbsp;<span class="chk" style="background:#000;"></span>High (P2) &nbsp;<span class="chk"></span>Medium (P3) &nbsp;<span class="chk"></span>Low (P4)</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Business Impact:</div>
+        <div><span class="chk"></span>Full Outage &nbsp;<span class="chk" style="background:#000;"></span>Partial Outage &nbsp;<span class="chk"></span>Degraded Performance</div>
+        <div class="mt-1"><span class="chk"></span>No Immediate Impact</div>
+      </div>
+    </div>
+
+    <!-- Location / How discovered -->
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Location / IP Address / Hostname:</div>
+        <div class="mb-10">Dive Control Van, MV Hydro Explorer, Onne Port &ndash; Host: DCV-WS-02</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">How Was the Incident Discovered?</div>
+        <div><span class="chk"></span>Monitoring Tool / Alert &nbsp;<span class="chk" style="background:#000;"></span>User Complaint &nbsp;<span class="chk"></span>Routine Check</div>
+        <div class="mt-1"><span class="chk"></span>External Notification &nbsp;<span class="chk"></span>Other: ______</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 2 &mdash; REPORTER INFORMATION</div>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div><div class="cell-label mb-1">Reported By (Full Name):</div><div class="mb-8">Marcus Ilori</div></div>
+      <div><div class="cell-label mb-1">Department / Unit:</div><div class="mb-8">Subsea Operations</div></div>
+    </div>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div><div class="cell-label mb-1">Job Title / Role:</div><div class="mb-8">Dive Supervisor</div></div>
+      <div><div class="cell-label mb-1">Phone / Email:</div><div class="mb-8">+234 803 555 0192 &nbsp;/&nbsp; m.ilori@hydrodive.com</div></div>
+    </div>
+    <div class="cell">
+      <span class="cell-label">Date &amp; Time Report Was Submitted:</span>
+      <span class="ml-2">13/08/2026&nbsp;&nbsp;Time: 15:00</span>
+    </div>
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="section-box">
+    <div class="section-title">SECTION 3 &mdash; DETAILED INCIDENT DESCRIPTION</div>
+    <div class="cell">
+      <div class="cell-label mb-1">Provide a clear, factual, chronological description of what happened. Include what was observed, any error messages, alerts, or anomalies noted:</div>
+      <div class="mb-2">At approximately 14:30 on 13th August 2026, the dive control workstation (DCV-WS-02) in the dive control van aboard MV Hydro Explorer failed to power on during a routine pre-dive systems check ahead of Job No. HDG-JB-2026-0347. The dive supervisor on watch attempted a standard restart with no response &ndash; no power indicator lights, no fan activity, and no display output. A burning odour was briefly noted near the rear of the unit. The dive logging software and topside communications terminal hosted on this workstation became unavailable, preventing automated dive log entries. Backup manual logging procedures were initiated immediately. The IT helpdesk was notified by radio at 14:40.</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ================= PAGE 2 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        <div class="logo-text">HydroDive</div>
+        <div class="logo-underline"></div>
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">2 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">18<sup>th</sup> May 2026</td>
+    </tr>
+  </table>
+
+  <!-- Continuation of Section 3 description box -->
+  <div class="continues-top mb-6" style="height: 90px;"></div>
+
+  <!-- Immediate actions box (part of continuing border) -->
+  <div class="section-box mb-6">
+    <div class="cell" style="border-top:none;">
+      <div class="cell-label mb-1">Immediate / Initial Actions Taken at the Time of Incident:</div>
+      <div class="mb-2">Dive supervisor switched to manual paper logging and confirmed diver comms remained available via the independent backup radio set. Power to the workstation was isolated at the breaker as a precaution against the noted odour. IT Officer (T. Bakare) was dispatched to the vessel and arrived on site at 15:20. Preliminary inspection confirmed no power draw from the unit's PSU. The workstation was tagged out of service and the incident was logged with the IT helpdesk under ticket ref. HDG-IT-TKT-1142.</div>
+    </div>
+  </div>
+
+  <!-- SECTION 4 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 4 &mdash; SYSTEMS / USERS AFFECTED</div>
+  </div>
+  <table class="grid w-full border-collapse mb-6">
+    <tr>
+      <th class="text-left bg-white font-bold w-1/2">System / Application / Device</th>
+      <th class="text-left bg-white font-bold w-1/4">No. of Users / Devices Impacted</th>
+      <th class="text-left bg-white font-bold w-1/4">Nature of Impact</th>
+    </tr>
+    <tr>
+      <td>Dive control workstation (DCV-WS-02)<br>&nbsp;</td>
+      <td>1 device</td>
+      <td>Complete power loss / unavailable</td>
+    </tr>
+    <tr>
+      <td>Dive logging software</td>
+      <td>2 users (dive supervisors, both shifts)</td>
+      <td>Unable to record automated dive logs</td>
+    </tr>
+    <tr>
+      <td>Topside comms terminal (secondary)<br>&nbsp;</td>
+      <td>1 device</td>
+      <td>Offline; primary radio comms unaffected</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 5 -->
+  <div class="section-box">
+    <div class="section-title">SECTION 5 &mdash; ROOT CAUSE ANALYSIS (To be completed by IT Team)</div>
+    <div class="cell">
+      <div class="cell-label mb-1">Root Cause Category (tick one or more):</div>
+      <div><span class="chk"></span>Human Error &nbsp;<span class="chk"></span>Configuration Error &nbsp;<span class="chk"></span>Software Bug / Patch Issue &nbsp;<span class="chk" style="background:#000;"></span>Hardware Failure</div>
+      <div class="mt-1"><span class="chk"></span>Cyber Attack / Malware &nbsp;<span class="chk"></span>Power / Infrastructure Failure &nbsp;<span class="chk"></span>Vendor / Third-Party Issue &nbsp;<span class="chk"></span>Change Management Failure &nbsp;<span class="chk"></span>Unknown</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Detailed Root Cause / Contributing Factors:</div>
+      <div class="mb-6">Investigation found the internal power supply unit (PSU) had failed, consistent with the burning odour reported. The unit was over five years old and had shown no prior fault history. Age-related component degradation, likely accelerated by the humid offshore environment in the dive control van, is assessed as the primary contributing factor.</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Failure in Management / IT Controls (if any):</div>
+      <div class="mb-4">No scheduled preventive maintenance or PSU health checks were in place for dive van IT equipment. This has been flagged for inclusion in the vessel IT maintenance schedule.</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ================= PAGE 3 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        <div class="logo-text">HydroDive</div>
+        <div class="logo-underline"></div>
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">3 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">18<sup>th</sup> May 2026</td>
+    </tr>
+  </table>
+
+  <!-- Continuation of Section 5 box -->
+  <div class="continues-top mb-6" style="height: 70px;"></div>
+
+  <!-- SECTION 6 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 6 &mdash; RESOLUTION &amp; CORRECTIVE ACTIONS</div>
+    <div class="cell">
+      <div><span class="cell-label">Resolution Status:</span> <span class="chk" style="background:#000;"></span> Fully Resolved &nbsp;<span class="chk"></span> Partially Resolved &nbsp;<span class="chk"></span> Workaround Applied &nbsp;<span class="chk"></span> Pending / Escalated</div>
+      <div class="mt-1"><span class="cell-label">Date &amp; Time of Resolution:</span> 14/08/2026&nbsp;&nbsp;Time: 11:15&nbsp;&nbsp;&nbsp;<span class="cell-label">Total Downtime:</span> 20 hrs 45 mins</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Steps Taken to Resolve the Incident:</div>
+      <div class="mb-2">IT Officer isolated and removed the failed PSU on 13th August. A replacement PSU was sourced from onshore spares stock and transported to the vessel via crew boat, arriving 14th August 09:30. The replacement PSU was fitted and the workstation powered up successfully. Dive logging software and topside comms terminal were tested and confirmed fully operational by the dive supervisor before sign-off. Manual logs recorded during the outage were transcribed into the system.</div>
+    </div>
+  </div>
+
+  <!-- SECTION 7 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 7 &mdash; RECOMMENDATIONS &amp; PREVENTIVE ACTIONS</div>
+  </div>
+  <table class="grid w-full border-collapse">
+    <tr>
+      <th class="text-left bg-white font-bold w-2/5">Recommended Action</th>
+      <th class="text-left bg-white font-bold w-1/5">Responsible Person</th>
+      <th class="text-left bg-white font-bold w-1/5">Target Date</th>
+      <th class="text-left bg-white font-bold w-1/5">Status</th>
+    </tr>
+    <tr>
+      <td style="height:45px;">Add dive van IT equipment to quarterly preventive maintenance schedule</td>
+      <td>T. Bakare</td>
+      <td>30/09/2026</td>
+      <td><span class="chk" style="background:#000;"></span> Open<br><span class="chk"></span> Closed</td>
+    </tr>
+    <tr>
+      <td style="height:45px;">Provision spare PSU units for all offshore dive control workstations</td>
+      <td>C. Adeyemi</td>
+      <td>15/09/2026</td>
+      <td><span class="chk" style="background:#000;"></span> Open<br><span class="chk"></span> Closed</td>
+    </tr>
+    <tr>
+      <td style="height:45px;">Review humidity control in dive control van for IT equipment bay</td>
+      <td>M. Ilori</td>
+      <td>01/10/2026</td>
+      <td><span class="chk" style="background:#000;"></span> Open<br><span class="chk"></span> Closed</td>
+    </tr>
+    <tr>
+      <td style="height:45px;">Document incident and update vessel IT asset register</td>
+      <td>T. Bakare</td>
+      <td>20/08/2026</td>
+      <td><span class="chk"></span> Open<br><span class="chk" style="background:#000;"></span> Closed</td>
+    </tr>
+  </table>
+
+</div>
+
+
+<!-- ================= PAGE 4 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        <div class="logo-text">HydroDive</div>
+        <div class="logo-underline"></div>
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">4 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">18<sup>th</sup> May 2026</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 8 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 8 &mdash; COMMUNICATION &amp; DISTRIBUTION</div>
+    <div class="cell">
+      <div class="cell-label mb-1">Report Communicated To (tick all that apply):</div>
+      <div><span class="chk"></span>Managing Director / CEO &nbsp;<span class="chk" style="background:#000;"></span>IT Manager &nbsp;<span class="chk" style="background:#000;"></span>Head of Operations &nbsp;<span class="chk"></span>HR Department &nbsp;<span class="chk"></span>Finance Department</div>
+      <div class="mt-1"><span class="chk" style="background:#000;"></span>QHSE / Compliance &nbsp;<span class="chk"></span>Legal / Risk &nbsp;<span class="chk"></span>External Vendor / Support: _______________</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Method of Communication:</div>
+      <div><span class="chk" style="background:#000;"></span>Email &nbsp;<span class="chk"></span>Internal Memo &nbsp;<span class="chk"></span>Verbal Briefing &nbsp;<span class="chk"></span>Management Meeting &nbsp;<span class="chk" style="background:#000;"></span>IT Helpdesk Ticket &nbsp;<span class="chk"></span>Other:</div>
+      <div class="mb-6">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- SECTION 9 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 9 &mdash; SUPPORTING DOCUMENTATION ATTACHED</div>
+    <div class="cell">
+      <div><span class="chk"></span>Screenshots / Error Logs &nbsp;<span class="chk"></span>System Audit Trail &nbsp;<span class="chk" style="background:#000;"></span>Email Correspondence &nbsp;<span class="chk"></span>Vendor Report &nbsp;<span class="chk"></span>CCTV / Access Log Evidence</div>
+      <div class="mt-1"><span class="chk"></span>Network Diagrams &nbsp;<span class="chk" style="background:#000;"></span>Other: IT Helpdesk Ticket HDG-IT-TKT-1142, manual dive log sheets</div>
+      <div class="mb-8">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- SECTION 10 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 10 &mdash; SIGN-OFF &amp; APPROVALS</div>
+  </div>
+  <table class="grid w-full border-collapse mb-4">
+    <tr>
+      <th class="text-center bg-white font-bold w-1/3">Role</th>
+      <th class="text-center bg-white font-bold w-1/2">Name &amp; Signature</th>
+      <th class="text-center bg-white font-bold w-1/6">Date</th>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:50px;">Prepared By (Reporter)</td>
+      <td class="italic">Marcus Ilori</td>
+      <td class="text-center">14/08/2026</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:50px;">Reviewed By (IT Manager / Supervisor)</td>
+      <td class="italic">Tunde Bakare</td>
+      <td class="text-center">14/08/2026</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:50px;">Approved By (Head of IT / CTO)</td>
+      <td class="italic">Chidinma Adeyemi</td>
+      <td class="text-center">15/08/2026</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:50px;">Acknowledged By (Admin Director)</td>
+      <td class="italic">Folake Nwachukwu</td>
+      <td class="text-center">15/08/2026</td>
+    </tr>
+  </table>
+
+  <p class="text-center text-xs italic mt-4">
+    This report is classified CONFIDENTIAL. Distribution is restricted to authorised personnel only. Retention: 5 years from date of incident closure.
+  </p>
+
+</div>
+
+</body>
+</html>

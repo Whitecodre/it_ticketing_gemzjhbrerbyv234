@@ -131,14 +131,34 @@
                                 <dt class="text-text-secondary">Department</dt>
                                 <dd class="text-text-primary">{{ ticket.requester.get_department_display }}</dd>
                             </div>
-                            {% if ticket.attachments.all %}
-                            <div class="flex justify-between">
-                                <dt class="text-text-secondary">Attachments</dt>
-                                <dd class="text-text-primary">{{ ticket.attachments.count }}</dd>
-                            </div>
-                            {% endif %}
                         </dl>
                     </div>
+
+                    {% if attachments %}
+                    <!-- Attachments -->
+                    <div class="rounded-lg border p-4 border-border bg-background">
+                        <h3 class="text-xs font-semibold uppercase tracking-wider mb-3 text-text-secondary">
+                            Attachments <span class="text-text-secondary font-normal">({{ attachments|length }})</span>
+                        </h3>
+                        <div class="space-y-1">
+                            {% for att in attachments %}
+                            <div class="flex items-center gap-2 text-xs">
+                                {% lucide "paperclip" size=12 class="text-text-secondary" %}
+                                <span class="truncate text-text-primary">{{ att.filename }}</span>
+                                <button class="btn-ghost p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
+                                        hx-get="{% url 'tickets:attachment_preview' att.pk %}"
+                                        hx-target="#modalContainer"
+                                        hx-swap="innerHTML"
+                                        onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
+                                        data-tooltip="Preview">
+                                    {% lucide "eye" size=14 %}
+                                </button>
+                                <a href="{% url 'tickets:attachment_download' att.pk %}" class="text-primary ml-auto hover:underline" download>Download</a>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
 
                     <!-- Review Actions -->
                     <div class="rounded-lg border p-4 border-warning" style="background-color: rgba(245, 158, 11, 0.04);">
@@ -158,13 +178,13 @@
                                               placeholder="Provide reason for your decision…"></textarea>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
-                                    <button type="button" onclick="submitAction('approve')" 
-                                            class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1.5 hover:scale-105 transition-transform">
-                                        {% lucide "check-circle" size=14 %} Approve
-                                    </button>
                                     <button type="button" onclick="submitAction('request_changes')" 
                                             class="btn-warning text-sm px-4 py-2 rounded-lg flex items-center gap-1.5 hover:scale-105 transition-transform bg-warning text-white">
                                         {% lucide "refresh-cw" size=14 %} Request Changes
+                                    </button>
+                                    <button type="button" onclick="submitAction('approve')" 
+                                            class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1.5 hover:scale-105 transition-transform">
+                                        {% lucide "check-circle" size=14 %} Approve
                                     </button>
                                     <button type="button" onclick="submitAction('reject')" 
                                             class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1.5 hover:scale-105 transition-transform">
@@ -180,10 +200,27 @@
     </div>
 </div>
 
+<!-- Modal Overlay for Attachment Preview -->
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeAttachmentModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
+    </div>
+</div>
+
 <script>
+    function closeAttachmentModal() {
+        const overlay = document.getElementById('modalOverlay');
+        if (overlay) overlay.classList.add('hidden');
+        const container = document.getElementById('modalContainer');
+        if (container) container.innerHTML = '';
+    }
+
     function submitAction(action) {
-        document.getElementById('actionInput').value = action;
-        document.getElementById('reviewForm').submit();
+        confirmReviewDecision(action, function() {
+            document.getElementById('actionInput').value = action;
+            document.getElementById('reviewForm').submit();
+        });
     }
 
     // Prevent double submission and show spinner

@@ -7,7 +7,7 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from django.conf import settings
 from .models import Notification
-from .utils import send_push_notification
+from .utils import send_push_notification, notification_role_q
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,11 @@ def broadcast_notification(sender, instance, created, **kwargs):
         channel_layer = get_channel_layer()
         group_name = f"user_{instance.recipient.pk}"
 
-        from django.db.models import Count
+        # Scoped to the recipient's active role at push time, matching the
+        # REST-polled badge count (unread_count in apps/common/views.py) so
+        # the live-pushed number and the one you'd get from a refresh agree.
         unread_count = Notification.objects.filter(
+            notification_role_q(instance.recipient),
             recipient=instance.recipient,
             is_read=False
         ).count()

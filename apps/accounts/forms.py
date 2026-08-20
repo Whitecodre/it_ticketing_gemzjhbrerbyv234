@@ -96,11 +96,12 @@ class ProfileForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'username', 'avatar']
+        fields = ['first_name', 'last_name', 'username', 'avatar', 'signature']
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
             'last_name': forms.TextInput(attrs={'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'}),
             'avatar': forms.FileInput(attrs={'class': 'hidden'}),
+            'signature': forms.FileInput(attrs={'class': 'hidden'}),
         }
 
     def clean_username(self):
@@ -115,6 +116,34 @@ class ProfileForm(forms.ModelForm):
         if qs.exists():
             raise ValidationError('This username is already taken.')
         return username
+
+    def clean_signature(self):
+        """Flatten any transparency onto a white background: xhtml2pdf (the
+        report PDF export engine) renders a transparent PNG's alpha channel
+        as solid black rather than see-through, which would otherwise turn
+        an uploaded signature into an opaque black box on the exported form."""
+        signature = self.cleaned_data.get('signature')
+        if not signature or not hasattr(signature, 'file'):
+            return signature
+        try:
+            from io import BytesIO
+            from PIL import Image
+            from django.core.files.uploadedfile import InMemoryUploadedFile
+
+            image = Image.open(signature)
+            if image.mode in ('RGBA', 'LA') or (image.mode == 'P' and 'transparency' in image.info):
+                image = image.convert('RGBA')
+                flattened = Image.new('RGB', image.size, (255, 255, 255))
+                flattened.paste(image, mask=image.split()[-1])
+                buffer = BytesIO()
+                flattened.save(buffer, format='PNG')
+                buffer.seek(0)
+                signature = InMemoryUploadedFile(
+                    buffer, 'signature', signature.name, 'image/png', buffer.getbuffer().nbytes, None,
+                )
+        except Exception:
+            pass
+        return signature
 
 class UserSettingsForm(forms.ModelForm):
     class Meta:

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HydroDive Service Request — {{ ticket.number }}</title>
+    <style>
+        @page { size: A4; margin: 1.6cm; }
+        body { font-family: 'Arial', 'Helvetica', sans-serif; margin: 0; color: #000000; font-size: 10pt; }
+
+        /* Header — logo | title (both rowspan) | code, then Page/Rev/Date meta rows */
+        .form-header { width: 100%; border-collapse: collapse; margin-bottom: 18pt; }
+        .form-header td { border: 1.5pt solid #000000; padding: 6pt 8pt; vertical-align: middle; }
+        .form-header .logo-cell { width: 25%; text-align: center; }
+        .form-header .logo-cell img { max-height: 42pt; max-width: 100%; }
+        .form-header .logo-cell .brand-fallback { font-weight: bold; font-size: 13pt; color: #0D9488; }
+        .form-header .title-cell { width: 50%; text-align: center; }
+        .form-header .title-cell .form-title { font-weight: bold; font-size: 13pt; letter-spacing: 0.5pt; }
+        .form-header .code-cell { font-size: 8pt; text-align: center; font-weight: bold; }
+        .form-header .meta-label { font-size: 8pt; font-weight: bold; width: 30pt; }
+        .form-header .meta-value { font-size: 8pt; }
+
+        h1 { font-size: 12pt; margin: 0 0 12pt 0; }
+
+        /* Field rows — label + underlined value, mirroring a fillable paper form */
+        .field-row { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+        .field-row td { padding: 0 4pt 2pt 0; font-size: 10pt; vertical-align: bottom; }
+        .flabel { font-weight: bold; white-space: nowrap; padding-right: 4pt; }
+        .fvalue { border-bottom: 1pt solid #000000; }
+        .fvalue.narrow { width: 150pt; }
+        .fvalue .empty { color: #94A3B8; font-style: italic; }
+
+        .block-label { font-weight: bold; font-size: 10pt; margin-bottom: 6pt; }
+        .block-text { border-bottom: 1pt solid #000000; padding-bottom: 8pt; margin-bottom: 14pt; min-height: 14pt; }
+        .block-text.empty { color: #94A3B8; font-style: italic; }
+
+        .signoff-img { height: 26pt; display: block; margin-bottom: 2pt; }
+
+        .footer { text-align: center; font-size: 8.5pt; margin-top: 20pt; line-height: 1.5; color: #1F2937; }
+        .footer p { margin: 4pt 0; }
+    </style>
+</head>
+<body>
+
+    <table class="form-header">
+        <tr>
+            <td class="logo-cell" rowspan="4">
+                {% if client_settings.logo_url %}
+                    <img src="{{ client_settings.logo_url }}">
+                {% else %}
+                    <span class="brand-fallback">{{ client_settings.company_name }}</span>
+                {% endif %}
+            </td>
+            <td class="title-cell" rowspan="4">
+                <span class="form-title">SERVICE REQUEST FORM</span>
+            </td>
+            <td class="code-cell" colspan="2">HDG-IT-FRM-081</td>
+        </tr>
+        <tr>
+            <td class="meta-label">Page:</td>
+            <td class="meta-value">1 of 1</td>
+        </tr>
+        <tr>
+            <td class="meta-label">Rev.:</td>
+            <td class="meta-value">1</td>
+        </tr>
+        <tr>
+            <td class="meta-label">Date:</td>
+            <td class="meta-value">18th May 2023</td>
+        </tr>
+    </table>
+
+    <table class="field-row">
+        <tr>
+            <td class="flabel">Requester's Name:</td>
+            <td class="fvalue">{{ requester_name }}</td>
+            <td class="flabel">Date:</td>
+            <td class="fvalue narrow">{{ ticket.created_at|date:"M d, Y" }}</td>
+        </tr>
+    </table>
+    <table class="field-row">
+        <tr>
+            <td class="flabel">Department:</td>
+            <td class="fvalue narrow">{{ requester_department }}</td>
+            <td class="flabel">Location:</td>
+            <td class="fvalue">
+                {% if location.display %}
+                    {{ location.display }}{% if location.map_url %} <a href="{{ location.map_url }}">(View on map)</a>{% endif %}
+                {% else %}
+                    <span class="empty">Not available</span>
+                {% endif %}
+            </td>
+        </tr>
+    </table>
+    <table class="field-row">
+        <tr>
+            <td class="flabel">Reported To:</td>
+            <td class="fvalue" colspan="3">{{ reported_to|default:"Unassigned" }}</td>
+        </tr>
+    </table>
+    {% if vessels or job_number %}
+    <table class="field-row">
+        <tr>
+            <td class="flabel">Vessel:</td>
+            <td class="fvalue">{% if vessels %}{% for v in vessels %}{{ v.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}<span class="empty">—</span>{% endif %}</td>
+            <td class="flabel">Job Number:</td>
+            <td class="fvalue narrow">{% if job_number %}{{ job_number.number }}{% else %}<span class="empty">—</span>{% endif %}</td>
+        </tr>
+    </table>
+    {% endif %}
+    {% if dive_systems %}
+    <table class="field-row">
+        <tr><td class="flabel">Dive System:</td><td class="fvalue" colspan="3">{% for s in dive_systems %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td></tr>
+    </table>
+    {% endif %}
+
+    <div class="block-label">Description of Work Order Request:</div>
+    <div class="block-text">{{ ticket.description|linebreaksbr }}</div>
+
+    <table class="field-row">
+        <tr>
+            <td class="flabel">Requester's Confirmation Signature:</td>
+            <td class="fvalue">
+                {% if requester_signoff.signature_url %}<img class="signoff-img" src="{{ requester_signoff.signature_url }}" alt="signature">{% else %}{{ requester_signoff.name }}{% endif %}
+            </td>
+            <td class="flabel">Date:</td>
+            <td class="fvalue narrow">{{ requester_signoff.date|date:"M d, Y H:i" }}</td>
+        </tr>
+    </table>
+    <table class="field-row">
+        <tr>
+            <td class="flabel">IT Officer Signature:</td>
+            <td class="fvalue">
+                {% if it_officer_signoff.captured_text %}
+                    {% if it_officer_signoff.signature_url %}<img class="signoff-img" src="{{ it_officer_signoff.signature_url }}" alt="signature">{% else %}{{ it_officer_signoff.name }}{% endif %}
+                {% else %}
+                    <span class="empty">Pending</span>
+                {% endif %}
+            </td>
+            <td class="flabel">Date:</td>
+            <td class="fvalue narrow">{{ it_officer_signoff.date|date:"M d, Y H:i"|default:"" }}</td>
+        </tr>
+    </table>
+
+    <div class="block-label">Requester's Feedback:</div>
+    <div class="block-text {% if not feedback_comment and not feedback_rating %}empty{% endif %}">
+        {% if feedback_comment or feedback_rating %}
+            {{ feedback_comment|default:"—" }}{% if feedback_rating %} (Rating: {{ feedback_rating }}/5){% endif %}
+        {% else %}
+            No feedback submitted yet.
+        {% endif %}
+    </div>
+
+    <table class="field-row">
+        <tr>
+            <td class="flabel">Requester's Signature:</td>
+            <td class="fvalue">
+                {% if requester_feedback_signoff.captured_text %}
+                    {% if requester_feedback_signoff.signature_url %}<img class="signoff-img" src="{{ requester_feedback_signoff.signature_url }}" alt="signature">{% else %}{{ requester_feedback_signoff.name }}{% endif %}
+                {% else %}
+                    <span class="empty">Pending</span>
+                {% endif %}
+            </td>
+            <td class="flabel">Date:</td>
+            <td class="fvalue narrow">{{ requester_feedback_signoff.date|date:"M d, Y H:i"|default:"" }}</td>
+        </tr>
+    </table>
+    <table class="field-row">
+        <tr>
+            <td class="flabel">IT Manager Signature:</td>
+            <td class="fvalue">
+                {% if it_manager_signoff.captured_text %}
+                    {% if it_manager_signoff.signature_url %}<img class="signoff-img" src="{{ it_manager_signoff.signature_url }}" alt="signature">{% else %}{{ it_manager_signoff.name }}{% endif %}
+                {% else %}
+                    <span class="empty">Pending</span>
+                {% endif %}
+            </td>
+            <td class="flabel">Date:</td>
+            <td class="fvalue narrow">{{ it_manager_signoff.date|date:"M d, Y H:i"|default:"" }}</td>
+        </tr>
+    </table>
+
+    <div class="footer">
+        <p>The IT department receives and processes service requests and work orders daily.</p>
+        <p>Our overall goal is to schedule and complete these services on time. A requester is expected to complete the service request form and return it to the IT officer for action.</p>
+        <p>Thank you for your cooperation.</p>
+    </div>
+
+</body>
+</html>

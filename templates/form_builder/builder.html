@@ -634,8 +634,10 @@
 {% block scripts %}
 {{ block.super }}
 
-{# Temporary page-local compatibility while this advanced editor is migrated
-   from its reactive renderer to vanilla DOM code. #}
+{% comment %}
+Temporary page-local compatibility while this advanced editor is migrated
+from its reactive renderer to vanilla DOM code.
+{% endcomment %}
 <script defer src="{% static 'js/alpine.min.js' %}"></script>
 
 <script>

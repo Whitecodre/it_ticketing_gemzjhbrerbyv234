@@ -23,13 +23,14 @@
         </thead>
         <tbody id="ticketTableBody-{{ iid }}">
             {% for ticket in tickets %}
-            <tr class="border-b hover:bg-black/5 transition-colors group ticket-row
+            <tr class="border-b hover:bg-black/5 transition-colors group ticket-row cursor-pointer
                 {% if ticket.status == 'ESCALATED' %}border-l-4 border-l-red-500{% endif %}"
                 style="border-color: var(--color-border);"
-                data-ticket-id="{{ ticket.pk }}">
+                data-ticket-id="{{ ticket.pk }}"
+                data-conversation-url="{% url 'tickets:conversation' ticket.pk %}">
                 {# Only show checkbox if tickets are unassigned #}
                 {% if not hide_checkboxes %}
-                <td class="py-3 px-2">
+                <td class="py-3 px-2" onclick="event.stopPropagation();">
                     <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox ticket-checkbox-{{ iid }} rounded" onchange="handleCheckboxChange_{{ iid }}(this)">
                 </td>
                 {% endif %}
@@ -256,8 +257,13 @@
     function bulkClaimTickets() {
         var count = selectedIds.size;
         if (count === 0) return;
-
         if (isProcessing) return;
+
+        confirmBulkAction('assign', count, function() { doBulkClaimTickets(); });
+    }
+
+    function doBulkClaimTickets() {
+        var count = selectedIds.size;
         isProcessing = true;
 
         var btn = document.getElementById('bulkClaimBtn-' + instanceId);
@@ -411,24 +417,16 @@
 
     var activeButton = null;
     var activeData = {};
-
-    function positionDropdown(btn) {
-        var rect = btn.getBoundingClientRect();
-        var top = rect.bottom + 6;
-        var left = rect.left + rect.width / 2 - 80;
-
-        if (top + 150 > window.innerHeight) top = rect.top - 150 - 6;
-        if (left + 160 > window.innerWidth) left = window.innerWidth - 170;
-        if (left < 10) left = 10;
-
-        dropdown.style.top = top + 'px';
-        dropdown.style.left = left + 'px';
-    }
+    var dropdownCleanup = null;
 
     function closeDropdown() {
         dropdown.classList.remove('opacity-100', 'scale-100');
         dropdown.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
         activeButton = null;
+        if (dropdownCleanup) {
+            dropdownCleanup();
+            dropdownCleanup = null;
+        }
     }
 
     window.loadTicketSlideoverFromDropdown = window.loadTicketSlideoverFromDropdown || function(url) {
@@ -456,7 +454,9 @@
         if (claimBtn) claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
         if (viewBtn) viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
 
-        positionDropdown(btn);
+        if (window.positionDropdown) {
+            dropdownCleanup = window.positionDropdown(btn, dropdown, { align: 'center' });
+        }
         dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
         dropdown.classList.add('opacity-100', 'scale-100');
     }
@@ -469,6 +469,20 @@
             ticketActionBtnClick(btn);
         }
     });
+
+    // ================================================================
+    // ROW CLICK - navigate straight to the conversation page
+    // ================================================================
+    if (tableBody) {
+        tableBody.addEventListener('click', function(e) {
+            if (e.target.closest('.ticket-action-btn-' + instanceId)) return;
+            if (e.target.closest('a, button, input, label')) return;
+            var row = e.target.closest('.ticket-row');
+            if (!row || !tableBody.contains(row)) return;
+            var url = row.getAttribute('data-conversation-url');
+            if (url) window.location.href = url;
+        });
+    }
 
     if (viewBtn) {
         viewBtn.addEventListener('click', function(e) {
@@ -551,12 +565,6 @@
     document.addEventListener('click', function(e) {
         if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn-' + instanceId)) {
             closeDropdown();
-        }
-    });
-
-    window.addEventListener('resize', function() {
-        if (activeButton && !dropdown.classList.contains('pointer-events-none')) {
-            positionDropdown(activeButton);
         }
     });
 

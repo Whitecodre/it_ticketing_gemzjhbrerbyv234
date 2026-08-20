@@ -489,6 +489,26 @@ class ProfileTests(TestCase):
         self.assertEqual(self.user.first_name, 'Updated')
         self.assertEqual(self.user.last_name, 'Name')
 
+    def test_profile_signature_upload(self):
+        """Signature upload mirrors the avatar pattern — used on report
+        sign-off lines when present (see apps.tickets.report_registry)."""
+        import base64
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        png_bytes = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+        )
+        response = self.client.post(self.profile_url, {
+            'save_profile': '1',
+            'first_name': 'Test',
+            'last_name': 'User',
+            'signature': SimpleUploadedFile('sig.png', png_bytes, content_type='image/png'),
+        })
+        self.assertRedirects(response, self.profile_url)
+
+        self.user.refresh_from_db()
+        self.assertTrue(bool(self.user.signature))
+
     def test_password_change_valid(self):
         """Test changing password with valid data."""
         response = self.client.post(self.profile_url, {
@@ -685,3 +705,275 @@ class AdminUserManagementTests(TestCase):
         self.assertEqual(response.status_code, 200)
         user.refresh_from_db()
         self.assertTrue(user.check_password('NewStrongPass123!'))
+
+    def test_admin_user_create_keeps_role_and_active_role_in_sync(self):
+        """admin_user_create sets `role` and `active_role` together
+        explicitly (matching the self-service switcher's invariant), and
+        User.save()'s sync_roles() self-heals the Role/roles M2M on every
+        save regardless — confirm both end up consistent for a freshly
+        admin-created user even when no Role row existed beforehand."""
+        Role.objects.filter(name='TEAM_LEAD').delete()
+        response = self.client.post(reverse('accounts:admin_user_create'), {
+            'email': 'syncedrole@example.com',
+            'first_name': 'Synced',
+            'last_name': 'Role',
+            'department': 'IT',
+            'role': 'TEAM_LEAD',
+        })
+        self.assertEqual(response.status_code, 200)
+        created = User.objects.get(email='syncedrole@example.com')
+        self.assertEqual(created.role, 'TEAM_LEAD')
+        self.assertIsNotNone(created.active_role)
+        self.assertEqual(created.active_role.name, created.role)
+
+    def test_admin_user_edit_keeps_role_and_active_role_in_sync(self):
+        user = User.objects.create_user(
+            email='editme@example.com', password='TestPass123!',
+            first_name='Edit', last_name='Me', department='IT',
+            role=User.Role.END_USER, is_active=True,
+        )
+        response = self.client.post(reverse('accounts:admin_user_edit', args=[user.pk]), {
+            'first_name': 'Edit', 'last_name': 'Me', 'department': 'IT',
+            'is_active': 'true', 'role': 'AGENT',
+        })
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.role, 'AGENT')
+        self.assertIsNotNone(user.active_role)
+        self.assertEqual(user.active_role.name, user.role)
+
+
+class TeamLeadAnyDepartmentTests(TestCase):
+    """TEAM_LEAD is a departmental approval gate and must be assignable in
+    any department, while AGENT/ADMIN/SUPERADMIN stay IT-only."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(
+            email='superadmin@example.com',
+            password='AdminPass123!',
+            first_name='Super',
+            last_name='Admin',
+            department='IT'
+        )
+        self.client.login(email='superadmin@example.com', password='AdminPass123!')
+
+    def test_create_team_lead_outside_it_succeeds(self):
+        response = self.client.post(
+            reverse('accounts:admin_user_create'),
+            {
+                'email': 'marinelead@example.com',
+                'first_name': 'Marine',
+                'last_name': 'Lead',
+                'role': 'TEAM_LEAD',
+                'department': 'MARINE',
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 200)
+        user = User.objects.get(email='marinelead@example.com')
+        self.assertEqual(user.role, 'TEAM_LEAD')
+        self.assertEqual(user.department, 'MARINE')
+
+    def test_create_agent_outside_it_fails(self):
+        response = self.client.post(
+            reverse('accounts:admin_user_create'),
+            {
+                'email': 'marineagent@example.com',
+                'first_name': 'Marine',
+                'last_name': 'Agent',
+                'role': 'AGENT',
+                'department': 'MARINE',
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(email='marineagent@example.com').exists())
+
+    def test_create_admin_outside_it_fails(self):
+        response = self.client.post(
+            reverse('accounts:admin_user_create'),
+            {
+                'email': 'marineadmin@example.com',
+                'first_name': 'Marine',
+                'last_name': 'Admin',
+                'role': 'ADMIN',
+                'department': 'MARINE',
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(email='marineadmin@example.com').exists())
+
+    def test_edit_team_lead_outside_it_succeeds(self):
+        user = User.objects.create_user(
+            email='accountsuser@example.com', password='TestPass123!',
+            first_name='Accounts', last_name='User', department='ACCOUNTING',
+        )
+        response = self.client.post(
+            reverse('accounts:admin_user_edit', args=[user.pk]),
+            {
+                'first_name': 'Accounts', 'last_name': 'User',
+                'role': 'TEAM_LEAD', 'department': 'ACCOUNTING', 'is_active': 'true',
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.role, 'TEAM_LEAD')
+
+    def test_selected_roles_agent_outside_it_fails(self):
+        Role.objects.get_or_create(name='AGENT', defaults={'display_name': 'Support Team', 'priority': 4})
+        response = self.client.post(
+            reverse('accounts:admin_user_create'),
+            {
+                'email': 'marinemulti@example.com',
+                'first_name': 'Marine',
+                'last_name': 'Multi',
+                'role': 'TEAM_LEAD',
+                'department': 'MARINE',
+                'selected_roles': ['TEAM_LEAD', 'AGENT'],
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(email='marinemulti@example.com').exists())
+
+
+class SuperadminHiddenTests(TestCase):
+    """SUPERADMIN is a vendor/support-only role and must stay invisible to
+    and ungrantable by ordinary tenant Admins."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='plainadmin@example.com',
+            password='AdminPass123!',
+            first_name='Plain',
+            last_name='Admin',
+            department='IT',
+            role=User.Role.ADMIN,
+            is_active=True,
+            email_verified=True,
+        )
+        self.client.login(email='plainadmin@example.com', password='AdminPass123!')
+
+    def test_non_superadmin_cannot_grant_superadmin_via_selected_roles(self):
+        Role.objects.get_or_create(name='SUPERADMIN', defaults={'display_name': 'Super Admin', 'priority': 1})
+        target = User.objects.create_user(
+            email='target@example.com', password='TestPass123!',
+            first_name='Target', last_name='User', department='IT',
+        )
+        response = self.client.post(
+            reverse('accounts:admin_user_edit', args=[target.pk]),
+            {
+                'first_name': 'Target', 'last_name': 'User',
+                'role': 'AGENT', 'department': 'IT', 'is_active': 'true',
+                'selected_roles': ['AGENT', 'SUPERADMIN'],
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest'
+        )
+        self.assertEqual(response.status_code, 403)
+        target.refresh_from_db()
+        self.assertFalse(target.roles.filter(name='SUPERADMIN').exists())
+
+    def test_admin_user_list_hides_superadmin_from_non_superadmin(self):
+        User.objects.create_superuser(
+            email='vendor@example.com', password='VendorPass123!',
+            first_name='Vendor', last_name='Support', department='IT',
+        )
+        response = self.client.get(reverse('accounts:admin_users'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('SUPERADMIN', response.content.decode())
+        self.assertNotIn('Super Admin', response.content.decode())
+
+    def test_django_admin_queryset_excludes_superadmin_for_non_superadmin(self):
+        User.objects.create_superuser(
+            email='vendor2@example.com', password='VendorPass123!',
+            first_name='Vendor', last_name='Two', department='IT',
+        )
+        request = RequestFactory().get('/admin/accounts/user/')
+        request.user = self.admin
+        admin = UserAdmin(User, AdminSite())
+        qs = admin.get_queryset(request)
+        self.assertFalse(qs.filter(role=User.Role.SUPERADMIN).exists())
+
+    def test_django_admin_form_strips_superadmin_choice_for_non_superadmin(self):
+        request = RequestFactory().get('/admin/accounts/user/add/')
+        request.user = self.admin
+        admin = UserAdmin(User, AdminSite())
+        form_class = admin.get_form(request)
+        role_values = [choice[0] for choice in form_class.base_fields['role'].choices]
+        self.assertNotIn('SUPERADMIN', role_values)
+
+
+class DashboardRemoteSessionBannerRoleScopingTests(TestCase):
+    """The dashboard's remote-session 'action needed' banner should only
+    show the pending item matching the currently active role — a dual-role
+    account (Agent + End User) with one pending item on each side shouldn't
+    see both prompts regardless of which hat is on."""
+
+    def setUp(self):
+        from apps.tickets.models import Ticket, RemoteSession, RemoteConnector
+        from apps.common.models import Category
+
+        self.RemoteSession = RemoteSession
+
+        self.user = User.objects.create_user(
+            email='dashbanner@example.com', password='TestPass123!',
+            first_name='Dash', last_name='Banner', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        agent_role, _ = Role.objects.get_or_create(
+            name='AGENT', defaults={'display_name': 'Support Team', 'priority': 4}
+        )
+        end_user_role, _ = Role.objects.get_or_create(
+            name='END_USER', defaults={'display_name': 'User', 'priority': 5}
+        )
+        self.user.roles.add(agent_role, end_user_role)
+
+        self.other_agent = User.objects.create_user(
+            email='otheragent-db@example.com', password='TestPass123!',
+            first_name='Other', last_name='Agent', department='IT',
+            role=User.Role.AGENT, is_active=True, email_verified=True,
+        )
+        self.other_requester = User.objects.create_user(
+            email='otherreq-db@example.com', password='TestPass123!',
+            first_name='Other', last_name='Requester', department='IT',
+            is_active=True, email_verified=True,
+        )
+        category = Category.objects.create(name='Hardware', slug='dashboard-banner-hw')
+        connector = RemoteConnector.objects.create(name='Quick Assist DB', is_active=True)
+
+        ticket_a = Ticket.objects.create(
+            number='TK#DB1', title='Requester side', description='d',
+            requester=self.user, category=category, status=Ticket.Status.NEW,
+        )
+        self.requester_side_session = RemoteSession.objects.create(
+            ticket=ticket_a, requester=self.user, agent=self.other_agent,
+            connector=connector, status=RemoteSession.Status.REQUESTED,
+        )
+
+        ticket_b = Ticket.objects.create(
+            number='TK#DB2', title='Agent side', description='d',
+            requester=self.other_requester, category=category, status=Ticket.Status.NEW,
+        )
+        self.agent_side_session = RemoteSession.objects.create(
+            ticket=ticket_b, requester=self.other_requester, agent=self.user,
+            connector=connector, status=RemoteSession.Status.ACCEPTED,
+        )
+
+        self.client = Client()
+        self.client.login(email='dashbanner@example.com', password='TestPass123!')
+
+    def test_banner_shows_only_requester_prompt_while_active_as_end_user(self):
+        self.user.set_active_role('END_USER')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'A remote session was requested')
+        self.assertNotContains(response, 'accepted your remote session request')
+
+    def test_banner_shows_only_agent_prompt_while_active_as_agent(self):
+        self.user.set_active_role('AGENT')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'accepted your remote session request')
+        self.assertNotContains(response, 'A remote session was requested')

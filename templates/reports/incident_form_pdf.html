@@ -1,0 +1,442 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+{% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
+<title>HydroDive IT Incident Report Form — {{ ticket.number }}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
+</head>
+<body>
+
+<!-- ================= PAGE 1 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"HydroDive" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 1 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 1 &mdash; INCIDENT DETAILS</div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-2">Incident Reference No.:</div>
+        <div class="dotted-line w-full">{{ ticket.number }}</div>
+      </div>
+      <div>
+        <span class="cell-label">Date &amp; Time of Incident:</span>
+        <span class="ml-2">{% if ticket.incident_datetime %}{{ ticket.incident_datetime|date:"d/m/Y" }}&nbsp;&nbsp;Time: {{ ticket.incident_datetime|date:"H:i" }}{% else %}<span class="text-gray-400 italic">Not recorded</span>{% endif %}</span>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Incident Title / Short Description:</div>
+      <div class="mb-6">{{ ticket.title }}</div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">System / Service / Asset Affected:</div>
+        <div class="mb-10">{{ ticket.location_hostname|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Incident Category (tick one):</div>
+        <div><span class="chk{% if ticket.incident_category == 'HARDWARE_FAILURE' %} chk-filled{% endif %}"></span>Hardware Failure &nbsp;<span class="chk{% if ticket.incident_category == 'SOFTWARE_ERROR' %} chk-filled{% endif %}"></span>Software/Application Error &nbsp;<span class="chk{% if ticket.incident_category == 'NETWORK_CONNECTIVITY' %} chk-filled{% endif %}"></span> Network/Connectivity</div>
+        <div class="mt-1"><span class="chk{% if ticket.incident_category == 'SECURITY_BREACH' %} chk-filled{% endif %}"></span>Security Breach / Unauthorized Access &nbsp;<span class="chk{% if ticket.incident_category == 'DATA_LOSS' %} chk-filled{% endif %}"></span>Data Loss / Corruption &nbsp;<span class="chk{% if ticket.incident_category == 'POWER_FAILURE' %} chk-filled{% endif %}"></span>Power Failure &nbsp;<span class="chk{% if ticket.incident_category == 'OTHER' %} chk-filled{% endif %}"></span>Other: {% if ticket.incident_category == 'OTHER' %}{{ ticket.incident_category_other|default:"" }}{% endif %}</div>
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Severity Level (tick one):</div>
+        <div><span class="chk{% if ticket.urgency == 'CRITICAL' %} chk-filled{% endif %}"></span>Critical (P1) &nbsp;<span class="chk{% if ticket.urgency == 'HIGH' %} chk-filled{% endif %}"></span>High (P2) &nbsp;<span class="chk{% if ticket.urgency == 'MEDIUM' %} chk-filled{% endif %}"></span>Medium (P3) &nbsp;<span class="chk{% if ticket.urgency == 'LOW' %} chk-filled{% endif %}"></span>Low (P4)</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Business Impact:</div>
+        <div><span class="chk{% if ticket.business_impact == 'FULL_OUTAGE' %} chk-filled{% endif %}"></span>Full Outage &nbsp;<span class="chk{% if ticket.business_impact == 'PARTIAL_OUTAGE' %} chk-filled{% endif %}"></span>Partial Outage &nbsp;<span class="chk{% if ticket.business_impact == 'DEGRADED_PERFORMANCE' %} chk-filled{% endif %}"></span>Degraded Performance</div>
+        <div class="mt-1"><span class="chk{% if ticket.business_impact == 'NO_IMPACT' %} chk-filled{% endif %}"></span>No Immediate Impact</div>
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Location / IP Address / Hostname:</div>
+        <div class="mb-10">{{ ticket.location_hostname|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">How Was the Incident Discovered?</div>
+        <div><span class="chk{% if ticket.how_discovered == 'MONITORING_ALERT' %} chk-filled{% endif %}"></span>Monitoring Tool / Alert &nbsp;<span class="chk{% if ticket.how_discovered == 'USER_COMPLAINT' %} chk-filled{% endif %}"></span>User Complaint &nbsp;<span class="chk{% if ticket.how_discovered == 'ROUTINE_CHECK' %} chk-filled{% endif %}"></span>Routine Check</div>
+        <div class="mt-1"><span class="chk{% if ticket.how_discovered == 'EXTERNAL_NOTIFICATION' %} chk-filled{% endif %}"></span>External Notification &nbsp;<span class="chk{% if ticket.how_discovered == 'OTHER' %} chk-filled{% endif %}"></span>Other: {% if ticket.how_discovered == 'OTHER' %}{{ ticket.how_discovered_other|default:"" }}{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 2 &mdash; REPORTER INFORMATION</div>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div><div class="cell-label mb-1">Reported By (Full Name):</div><div class="mb-8">{{ ticket.requester.get_full_name|default:ticket.requester.email }}</div></div>
+      <div><div class="cell-label mb-1">Department / Unit:</div><div class="mb-8">{{ ticket.requester.get_department_display }}</div></div>
+    </div>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div><div class="cell-label mb-1">Job Title / Role:</div><div class="mb-8">{{ ticket.requester.position|default:"—" }}</div></div>
+      <div><div class="cell-label mb-1">Phone / Email:</div><div class="mb-8">{{ ticket.requester.email }}</div></div>
+    </div>
+    <div class="cell">
+      <span class="cell-label">Date &amp; Time Report Was Submitted:</span>
+      <span class="ml-2">{{ ticket.created_at|date:"d/m/Y" }}&nbsp;&nbsp;Time: {{ ticket.created_at|date:"H:i" }}</span>
+    </div>
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="section-box">
+    <div class="section-title">SECTION 3 &mdash; DETAILED INCIDENT DESCRIPTION</div>
+    <div class="cell">
+      <div class="cell-label mb-1">Provide a clear, factual, chronological description of what happened. Include what was observed, any error messages, alerts, or anomalies noted:</div>
+      <div class="mb-2">{{ ticket.description|linebreaksbr }}</div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ================= PAGE 2 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"HydroDive" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">2 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- Immediate actions box -->
+  <div class="section-box mb-6">
+    <div class="section-title">IMMEDIATE / INITIAL ACTIONS TAKEN AT THE TIME OF INCIDENT</div>
+    <div class="cell">
+      {% if ticket.immediate_actions %}
+        <div class="mb-2">{{ ticket.immediate_actions|linebreaksbr }}</div>
+      {% else %}
+        <div class="mb-8 italic text-gray-400">Not recorded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- SECTION 4 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 4 &mdash; SYSTEMS / USERS AFFECTED</div>
+  </div>
+  <table class="grid w-full border-collapse mb-6">
+    <tr>
+      <th class="text-left bg-white font-bold w-1/2">System / Application / Device</th>
+      <th class="text-left bg-white font-bold w-1/4">No. of Users / Devices Impacted</th>
+      <th class="text-left bg-white font-bold w-1/4">Nature of Impact</th>
+    </tr>
+    <tr>
+      <td class="italic text-gray-400" style="height:45px;">To be completed by the IT team</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="height:35px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 5 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 5 &mdash; ROOT CAUSE ANALYSIS (To be completed by IT Team)</div>
+    <div class="cell">
+      <div class="cell-label mb-1">Root Cause Category (tick one or more):</div>
+      <div><span class="chk{% if 'HUMAN_ERROR' in root_cause_category_values %} chk-filled{% endif %}"></span>Human Error &nbsp;<span class="chk{% if 'CONFIGURATION_ERROR' in root_cause_category_values %} chk-filled{% endif %}"></span>Configuration Error &nbsp;<span class="chk{% if 'SOFTWARE_BUG' in root_cause_category_values %} chk-filled{% endif %}"></span>Software Bug / Patch Issue &nbsp;<span class="chk{% if 'HARDWARE_FAILURE' in root_cause_category_values %} chk-filled{% endif %}"></span>Hardware Failure</div>
+      <div class="mt-1"><span class="chk{% if 'CYBER_ATTACK' in root_cause_category_values %} chk-filled{% endif %}"></span>Cyber Attack / Malware &nbsp;<span class="chk{% if 'POWER_INFRASTRUCTURE_FAILURE' in root_cause_category_values %} chk-filled{% endif %}"></span>Power / Infrastructure Failure &nbsp;<span class="chk{% if 'VENDOR_THIRD_PARTY' in root_cause_category_values %} chk-filled{% endif %}"></span>Vendor / Third-Party Issue &nbsp;<span class="chk{% if 'CHANGE_MANAGEMENT_FAILURE' in root_cause_category_values %} chk-filled{% endif %}"></span>Change Management Failure &nbsp;<span class="chk{% if 'UNKNOWN' in root_cause_category_values %} chk-filled{% endif %}"></span>Unknown</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Detailed Root Cause / Contributing Factors:</div>
+      {% if resolution_root_cause %}
+        <div class="mb-6">{{ resolution_root_cause|linebreaksbr }}</div>
+      {% else %}
+        <div class="mb-6 italic text-gray-400">Not recorded.</div>
+      {% endif %}
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Failure in Management / IT Controls (if any):</div>
+      <div class="mb-4 italic text-gray-400">To be completed by the IT team.</div>
+    </div>
+  </div>
+
+  <!-- SECTION 6 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 6 &mdash; RESOLUTION &amp; CORRECTIVE ACTIONS</div>
+    <div class="cell">
+      <div><span class="cell-label">Resolution Status:</span> <span class="chk{% if ticket.status == 'RESOLVED' or ticket.status == 'CLOSED' %} chk-filled{% endif %}"></span> Fully Resolved &nbsp;<span class="chk"></span> Partially Resolved &nbsp;<span class="chk"></span> Workaround Applied &nbsp;<span class="chk{% if ticket.status != 'RESOLVED' and ticket.status != 'CLOSED' %} chk-filled{% endif %}"></span> Pending / Escalated</div>
+      <div class="mt-1"><span class="cell-label">Date &amp; Time of Resolution:</span> {% if ticket.resolution_confirmed_at %}{{ ticket.resolution_confirmed_at|date:"d/m/Y" }}&nbsp;&nbsp;Time: {{ ticket.resolution_confirmed_at|date:"H:i" }}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Steps Taken to Resolve the Incident:</div>
+      {% if resolution_steps %}
+        <div class="mb-2">{{ resolution_steps|linebreaksbr }}</div>
+      {% else %}
+        <div class="mb-2 italic text-gray-400">Not recorded.</div>
+      {% endif %}
+    </div>
+  </div>
+
+
+</div>
+
+
+<!-- ================= PAGE 3 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"HydroDive" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">3 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 7 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 7 &mdash; RECOMMENDATIONS &amp; PREVENTIVE ACTIONS</div>
+  </div>
+  <table class="grid w-full border-collapse mb-6">
+    <tr>
+      <th class="text-left bg-white font-bold w-2/5">Recommended Action</th>
+      <th class="text-left bg-white font-bold w-1/5">Responsible Person</th>
+      <th class="text-left bg-white font-bold w-1/5">Target Date</th>
+      <th class="text-left bg-white font-bold w-1/5">Status</th>
+    </tr>
+    <tr>
+      <td class="italic text-gray-400" style="height:45px;">To be completed by the IT team</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td><span class="chk"></span> Open<br><span class="chk"></span> Closed</td>
+    </tr>
+    <tr>
+      <td style="height:45px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td><span class="chk"></span> Open<br><span class="chk"></span> Closed</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 8 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 8 &mdash; COMMUNICATION &amp; DISTRIBUTION</div>
+    <div class="cell">
+      <div class="cell-label mb-1">Report Communicated To (tick all that apply):</div>
+      <div><span class="chk"></span>Managing Director / CEO &nbsp;<span class="chk chk-filled"></span>IT Manager &nbsp;<span class="chk"></span>Head of Operations &nbsp;<span class="chk"></span>HR Department &nbsp;<span class="chk"></span>Finance Department</div>
+      <div class="mt-1"><span class="chk"></span>QHSE / Compliance &nbsp;<span class="chk"></span>Legal / Risk &nbsp;<span class="chk"></span>External Vendor / Support: _______________</div>
+    </div>
+    <div class="cell">
+      <div class="cell-label mb-1">Method of Communication:</div>
+      <div><span class="chk"></span>Email &nbsp;<span class="chk"></span>Internal Memo &nbsp;<span class="chk"></span>Verbal Briefing &nbsp;<span class="chk"></span>Management Meeting &nbsp;<span class="chk chk-filled"></span>IT Helpdesk Ticket &nbsp;<span class="chk"></span>Other:</div>
+      <div class="mb-6">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- SECTION 9 -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION 9 &mdash; SUPPORTING DOCUMENTATION ATTACHED</div>
+    <div class="cell">
+      {% if attachments or image_attachments %}
+        {% for a in attachments %}<div>&bull; {{ a.filename }}</div>{% endfor %}
+        {% for a in image_attachments %}<div>&bull; {{ a.filename }} (see attached page)</div>{% endfor %}
+        <div class="mb-8">&nbsp;</div>
+      {% else %}
+        <div class="mb-8 italic text-gray-400">No attachments.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- SECTION 10 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 10 &mdash; SIGN-OFF &amp; APPROVALS</div>
+  </div>
+  <table class="grid w-full border-collapse mb-4">
+    <tr>
+      <th class="text-center bg-white font-bold w-1/3">Role</th>
+      <th class="text-center bg-white font-bold w-1/2">Name &amp; Signature</th>
+      <th class="text-center bg-white font-bold w-1/6">Date</th>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:50px;">Prepared By (Reporter)</td>
+      <td class="italic">
+        {% if prepared_by_signoff.signature_url %}<img src="{{ prepared_by_signoff.signature_url }}" alt="signature" style="height:24px; margin-bottom:2px;">{% else %}{{ prepared_by_signoff.captured_text }}{% endif %}
+      </td>
+      <td class="text-center">{% if prepared_by_signoff.signature_url %}{{ prepared_by_signoff.date|date:"d/m/Y" }}{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:50px;">Reviewed &amp; Approved By (IT Manager / Head of IT)</td>
+      <td class="italic{% if not it_manager_signoff.captured_text %} text-gray-400{% endif %}">
+        {% if it_manager_signoff.captured_text %}
+          {% if it_manager_signoff.signature_url %}<img src="{{ it_manager_signoff.signature_url }}" alt="signature" style="height:24px; margin-bottom:2px;">{% else %}{{ it_manager_signoff.captured_text }}{% endif %}
+        {% else %}
+          Pending
+        {% endif %}
+      </td>
+      <td class="text-center">{% if it_manager_signoff.signature_url %}{{ it_manager_signoff.date|date:"d/m/Y" }}{% else %}&nbsp;{% endif %}</td>
+    </tr>
+  </table>
+
+  <p class="text-center text-xs italic mt-4">
+    This report is classified CONFIDENTIAL. Distribution is restricted to authorised personnel only. Retention: 5 years from date of incident closure.
+  </p>  
+
+</div>
+
+
+{% comment %} <!-- ================= PAGE 4 ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"HydroDive" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">4 of 4</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  
+
+  
+
+</div> {% endcomment %}
+
+{% for a in image_attachments %}
+<!-- ================= SUPPORTING DOCUMENTATION PAGE ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-8">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"HydroDive" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">IT INCIDENT REPORT FORM</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-086</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">Supporting Documentation</td>
+      
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">A01</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  <div class="font-bold text-[13px] mb-2">SECTION 9 &mdash; SUPPORTING DOCUMENTATION: {{ a.filename }}</div>
+  <img src="{{ a.file.url }}" style="max-width:100%; max-height:850px; display:block; margin:0 auto;">
+
+</div>
+{% endfor %}
+
+</body>
+</html>

@@ -1,0 +1,55 @@
+{# templates/documents_display/folder_shared_view.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}{{ folder.name }} (Shared){% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-3xl mx-auto">
+    <div class="mb-4 flex items-center gap-3">
+        <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+            {% lucide "folder" size=16 %}
+        </span>
+        <div>
+            <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">{{ folder.name }}</h2>
+            <p class="text-xs text-text-secondary">Shared with you by {{ share.shared_by.get_full_name|default:"an admin" }} • {{ documents|length }} document(s)</p>
+        </div>
+    </div>
+
+    <div class="dashboard-card p-5">
+        {% if documents %}
+        <div class="space-y-2">
+            {% for doc in documents %}
+            <a href="{% url 'documents_display:document_detail' doc.slug %}" class="flex items-center gap-4 rounded-lg border p-3 hover:border-primary transition" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    {% if doc.file_extension == 'pdf' %}
+                        {% lucide "file-text" size=16 %}
+                    {% elif doc.file_extension in 'png,jpg,jpeg,gif,webp' %}
+                        {% lucide "image" size=16 %}
+                    {% else %}
+                        {% lucide "file" size=16 %}
+                    {% endif %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <h4 class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ doc.title }}</h4>
+                    <p class="text-xs text-text-secondary truncate">{{ doc.file_name }} ({{ doc.file_size|filesizeformat }})</p>
+                </div>
+                <span class="text-primary">{% lucide "chevron-right" size=16 %}</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-text-secondary">This folder has no documents yet.</p>
+        {% endif %}
+        {% if share.expires_at %}
+        <p class="text-xs text-text-secondary mt-4">This share expires {{ share.expires_at|date:"F d, Y" }}.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

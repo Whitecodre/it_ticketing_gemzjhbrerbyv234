@@ -1,0 +1,88 @@
+{% load lucide %}
+
+<div class="overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b" style="border-color: var(--color-border);">
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Destination</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assets</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Mobilized By</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Mobilized At</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                <th class="text-center py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-16">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for mobilization in mobilizations %}
+            <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+                <td class="py-3 px-3">
+                    <span class="text-sm font-medium text-text-primary">{{ mobilization.destination_display }}</span>
+                </td>
+                <td class="py-3 px-3">
+                    <span class="text-sm text-text-primary">{{ mobilization.items.count }} item(s)</span>
+                </td>
+                <td class="py-3 px-3 text-text-secondary">{{ mobilization.mobilized_by.get_full_name|default:mobilization.mobilized_by.email }}</td>
+                <td class="py-3 px-3 text-text-secondary">{{ mobilization.mobilized_at|date:"M d, Y H:i" }}</td>
+                <td class="py-3 px-3">
+                    <span class="status-chip {% if mobilization.status == 'ACTIVE' %}primary{% else %}success{% endif %} text-xs">
+                        {{ mobilization.get_status_display }}
+                    </span>
+                </td>
+                <td class="py-3 px-2 text-center">
+                    <a href="{% url 'tickets:mobilization_detail' mobilization.pk %}"
+                       class="p-1.5 rounded transition hover:bg-black/5 inline-flex"
+                       style="color: var(--color-text-secondary);"
+                       title="View Details">
+                        {% lucide "eye" size=15 %}
+                    </a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" class="text-center py-12 text-text-secondary">
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="text-4xl opacity-30">🚢</span>
+                        <p class="text-sm font-medium">No mobilizations found</p>
+                        <p class="text-xs">Try adjusting your filters or mobilize some assets.</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if mobilizations.has_other_pages %}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ mobilizations.start_index }}–{{ mobilizations.end_index }}</strong> of <strong>{{ mobilizations.paginator.count }}</strong> mobilizations
+    </span>
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not mobilizations.has_previous %} is-disabled{% endif %}"
+                {% if mobilizations.has_previous %}hx-get="{% url 'tickets:mobilizations' %}?page={{ mobilizations.previous_page_number }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}"
+                hx-target="#mobilizationTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
+        </button>
+        <div class="pagination-numbers">
+            {% for num in mobilizations.paginator.page_range %}
+                {% if num == mobilizations.number %}
+                <span class="pagination-number is-current">{{ num }}</span>
+                {% elif num > mobilizations.number|add:'-3' and num < mobilizations.number|add:'3' %}
+                <button class="pagination-number"
+                        hx-get="{% url 'tickets:mobilizations' %}?page={{ num }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}"
+                        hx-target="#mobilizationTableContainer" hx-swap="innerHTML">{{ num }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% if mobilizations.has_next %}
+        <button class="pagination-step"
+                hx-get="{% url 'tickets:mobilizations' %}?page={{ mobilizations.next_page_number }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}"
+                hx-target="#mobilizationTableContainer" hx-swap="innerHTML">
+            Next {% lucide "chevron-right" size=14 %}
+        </button>
+        {% else %}
+        <button class="pagination-step is-disabled" disabled>Next {% lucide "chevron-right" size=14 %}</button>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

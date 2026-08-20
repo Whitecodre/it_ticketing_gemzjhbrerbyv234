@@ -37,6 +37,39 @@
             </div>
         </div>
         
+        {% if open_procurement %}
+        <div class="mb-4 p-3 rounded-lg border border-warning/40 bg-warning/10">
+            <p class="text-sm font-medium text-text-primary flex items-center gap-1.5">
+                {% lucide "truck" size=14 %} On order: {{ open_procurement.item_name }} x{{ open_procurement.quantity }}
+                {% if open_procurement.vendor %}from {{ open_procurement.vendor.name }}{% endif %}
+            </p>
+            <p class="text-xs text-text-secondary mt-1">
+                {% if open_procurement.expected_arrival_date %}Expected {{ open_procurement.expected_arrival_date|date:"M j, Y" }}.{% endif %}
+                Receive it under <a href="{% url 'tickets:procurement_list' %}" class="text-primary underline">Procurement</a> once it arrives — this request will be fulfilled automatically.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if ticket.job_number or ticket.vessels.all or ticket.dive_systems.all %}
+        <div class="mb-4 p-3 rounded-lg border border-border bg-background">
+            <p class="text-xs font-medium text-text-secondary mb-2 flex items-center gap-1.5">
+                {% lucide "package-check" size=14 %} Already out on this job
+            </p>
+            {% if already_mobilized %}
+            <ul class="text-sm space-y-1">
+                {% for item in already_mobilized %}
+                <li class="flex items-center justify-between text-text-primary">
+                    <span>{{ item.asset.name }} <span class="text-text-secondary font-mono text-xs">({{ item.asset.tracking_id }})</span></span>
+                    <span class="text-xs text-text-secondary">since {{ item.mobilization.mobilized_at|date:"M j" }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-sm text-text-secondary">Nothing currently mobilized for this job/vessel/dive system.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <form method="post" action="{% url 'tickets:fulfill_asset_request' ticket.pk %}" id="fulfillForm">
             {% csrf_token %}
             
@@ -75,11 +108,71 @@
             {# Actions #}
             <div class="flex justify-end gap-2 pt-2 border-t border-border">
                 <button type="button" data-close-modal class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+                {% if not open_procurement %}
+                <button type="button" onclick="document.getElementById('orderFromVendorSection').classList.toggle('hidden')"
+                        class="btn-ghost text-sm px-4 py-2 rounded-lg flex items-center gap-1.5">
+                    {% lucide "truck" size=16 %} Order from Vendor
+                </button>
+                {% endif %}
                 <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2"
                         {% if not available_assets %}disabled{% endif %}>
                     {% lucide "check" size=16 %} Fulfill Request
                 </button>
             </div>
         </form>
+
+        {% if not open_procurement %}
+        <div id="orderFromVendorSection" class="hidden mt-4 pt-4 border-t border-border">
+            <h4 class="text-sm font-semibold mb-2 text-text-primary flex items-center gap-1.5">
+                {% lucide "truck" size=14 %} Order from Vendor
+            </h4>
+            <p class="text-xs text-text-secondary mb-3">
+                Nothing available in stock? Record that this item is being sourced from a vendor —
+                the ticket stays open and is fulfilled automatically once you mark it received.
+            </p>
+            <form method="post" action="{% url 'tickets:procurement_request_create' ticket.pk %}">
+                {% csrf_token %}
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium mb-1 text-text-primary">Item</label>
+                        {{ procurement_form.item_name }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-primary">Category</label>
+                        {{ procurement_form.category }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-primary">Quantity</label>
+                        {{ procurement_form.quantity }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-primary">Vendor</label>
+                        {{ procurement_form.vendor }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-primary">New Vendor Name</label>
+                        {{ procurement_form.new_vendor_name }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-primary">PMS Reference (optional)</label>
+                        {{ procurement_form.external_reference }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium mb-1 text-text-primary">Expected Date</label>
+                        {{ procurement_form.expected_arrival_date }}
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-xs font-medium mb-1 text-text-primary">Notes</label>
+                        {{ procurement_form.notes }}
+                    </div>
+                </div>
+                <div class="flex justify-end">
+                    <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1.5">
+                        {% lucide "truck" size=14 %} Record as On Order
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
     </div>
 </div>

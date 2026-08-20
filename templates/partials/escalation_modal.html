@@ -11,9 +11,11 @@
                 {% lucide "x" size=18 %}
             </button>
         </div>
-        {# NOTE: tickets:escalate_ticket has no backing view yet — escalation today only
-           happens automatically via EscalationRule/SLA timers (see apps/tickets/views.py).
-           This modal is currently unreachable; a real view+url must be added before use. #}
+        {% comment %}
+        NOTE: tickets:escalate_ticket has no backing view yet — escalation today only
+        happens automatically via EscalationRule/SLA timers (see apps/tickets/views.py).
+        This modal is currently unreachable; a real view+url must be added before use.
+        {% endcomment %}
         <form id="escalateForm" method="post" action="{% url 'tickets:escalate_ticket' ticket.pk %}"
               hx-post="{% url 'tickets:escalate_ticket' ticket.pk %}"
               hx-target="#escalationModal"

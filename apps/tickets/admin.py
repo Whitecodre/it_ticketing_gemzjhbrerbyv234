@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Ticket, TicketComment, Attachment, TicketActivityLog, Macro, RemoteConnector, Asset, RemoteSession
+from .models import (
+    Ticket, TicketComment, Attachment, TicketActivityLog, Macro, RemoteConnector, Asset, RemoteSession,
+    ServiceCategory, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetCategory,
+)
 
 class CommentInline(admin.TabularInline):
     model = TicketComment
@@ -43,10 +46,20 @@ class MacroAdmin(admin.ModelAdmin):
 class RemoteConnectorAdmin(admin.ModelAdmin):
     list_display = ['name', 'is_active', 'created_at']
 
+@admin.register(AssetCategory)
+class AssetCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'parent', 'get_asset_count']
+    search_fields = ['name']
+
+    def get_asset_count(self, obj):
+        return obj.get_asset_count()
+    get_asset_count.short_description = 'Assets'
+
+
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
-    list_display = ['tracking_id', 'name', 'asset_type', 'serial_number', 'assigned_to', 'status', 'location']
-    list_filter = ['asset_type', 'status', 'location']
+    list_display = ['tracking_id', 'name', 'category', 'serial_number', 'assigned_to', 'status', 'location']
+    list_filter = ['category', 'status', 'location']
     search_fields = ['tracking_id', 'name', 'serial_number', 'model', 'manufacturer']
     readonly_fields = ['tracking_id', 'created_at', 'updated_at']
 
@@ -55,3 +68,52 @@ class RemoteSessionAdmin(admin.ModelAdmin):
     list_display = ['ticket', 'requester', 'agent', 'connector', 'status', 'created_at']
     list_filter = ['status', 'connector']
     readonly_fields = ['created_at', 'updated_at', 'started_at', 'ended_at']
+
+
+@admin.register(ServiceCategory)
+class ServiceCategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'field_group', 'is_active', 'order']
+    list_filter = ['field_group', 'is_active']
+    list_editable = ['is_active', 'order']
+    search_fields = ['name', 'description']
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(Vessel)
+class VesselAdmin(admin.ModelAdmin):
+    list_display = ['name', 'imo_number', 'is_active']
+    list_filter = ['is_active']
+    list_editable = ['is_active']
+    search_fields = ['name', 'imo_number']
+
+
+@admin.register(DiveSystem)
+class DiveSystemAdmin(admin.ModelAdmin):
+    list_display = ['name', 'is_active']
+    list_filter = ['is_active']
+    list_editable = ['is_active']
+    search_fields = ['name']
+
+
+@admin.register(JobNumber)
+class JobNumberAdmin(admin.ModelAdmin):
+    list_display = ['number', 'proposed_by', 'is_active', 'created_at']
+    list_filter = ['is_active']
+    list_editable = ['is_active']
+    search_fields = ['number']
+    readonly_fields = ['proposed_by', 'created_at']
+
+
+class MobilizationItemInline(admin.TabularInline):
+    model = MobilizationItem
+    extra = 0
+    readonly_fields = ['demobilized_at', 'demobilized_by']
+
+
+@admin.register(Mobilization)
+class MobilizationAdmin(admin.ModelAdmin):
+    list_display = ['id', 'job_number', 'status', 'mobilized_by', 'mobilized_at']
+    list_filter = ['status']
+    search_fields = ['job_number__number', 'notes']
+    readonly_fields = ['mobilized_at']
+    inlines = [MobilizationItemInline]

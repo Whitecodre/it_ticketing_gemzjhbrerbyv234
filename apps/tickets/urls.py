@@ -1,10 +1,17 @@
 from django.urls import path
 from . import views
+from . import views_reports
+from . import views_drafts
+from . import views_settings
+from . import views_macros
 
 app_name = 'tickets'
 
 urlpatterns = [
     path('new/', views.create_ticket, name='create'),
+    path('draft/save/', views_drafts.save_draft, name='save_draft'),
+    path('draft/get/', views_drafts.get_draft, name='get_draft'),
+    path('draft/discard/', views_drafts.discard_draft, name='discard_draft'),
     path('<int:pk>/cancel/', views.cancel_ticket, name='cancel_ticket'),
     path('my/', views.my_ticket_list, name='my_list'),
     path('<int:pk>/', views.ticket_detail, name='detail'),
@@ -27,10 +34,12 @@ urlpatterns = [
     path('audit/', views.audit_log, name='audit_log'),
     path('reports/', views.reports_dashboard, name='reports'),
     path('reports/tickets/', views.reports_ticket_list, name='reports_ticket_list'),
+    path('admin/resolved-requests/', views.resolved_service_requests, name='resolved_service_requests'),
     path('attachment/<int:pk>/preview/', views.attachment_preview, name='attachment_preview'),
     path('attachment/<int:pk>/', views.attachment_download, name='attachment_download'),
     # Resolution Confirmation & Feedback
     path('<int:pk>/resolve/', views.resolve_ticket, name='resolve_ticket'),
+    path('<int:pk>/approve-incident-report/', views.approve_incident_report, name='approve_incident_report'),
     path('<int:pk>/confirm-resolution/', views.confirm_resolution, name='confirm_resolution'),
     path('<int:pk>/feedback/', views.submit_feedback, name='submit_feedback'),
 
@@ -38,11 +47,14 @@ urlpatterns = [
     path('connectors/', views.connectors, name='connectors'),
     path('connectors/edit/<int:pk>/', views.connector_edit, name='connector_edit'),
     path('assets/', views.assets, name='assets'),
+    path('my-assets/', views.my_assets, name='my_assets'),
+    path('my-assets/pending-count/', views.my_assets_pending_count, name='my_assets_pending_count'),
     path('assets/create-page/', views.asset_create_page, name='asset_create_page'),
     path('assets/<int:pk>/edit-page/', views.asset_edit_page, name='asset_edit_page'),
     path('assets/<int:pk>/reassign/', views.asset_reassign, name='asset_reassign'),
     path('assets/<int:pk>/reassign-modal/', views.asset_reassign_modal, name='asset_reassign_modal'),
     path('assets/<int:pk>/detail/', views.asset_detail, name='asset_detail'),
+    path('assets/<int:pk>/mark-renewed/', views.asset_mark_renewed, name='asset_mark_renewed'),
     path('assets/<int:pk>/scrap-request/', views.asset_scrap_request, name='asset_scrap_request'),
     path('assets/<int:pk>/scrap-request-modal/', views.scrap_request_modal, name='scrap_request_modal'),
     path('assets/<int:pk>/scrap-approve/', views.asset_scrap_approve, name='asset_scrap_approve'),
@@ -86,10 +98,37 @@ urlpatterns = [
     path('assets/available/', views.available_assets_for_fulfillment, name='available_assets_for_fulfillment'),
     path('assets/fulfill-modal/<int:pk>/', views.fulfill_asset_modal, name='fulfill_asset_modal'),
 
-    # EXPORTABLES
-    path('exportables/', views.exportables, name='exportables'),
-    path('export/service-requests/', views.export_service_requests, name='export_service_requests'),
-    path('export/incidents/', views.export_incidents, name='export_incidents'),
+    # VENDOR PROCUREMENT (assets not yet in inventory)
+    path('procurement/', views.procurement_list, name='procurement_list'),
+    path('procurement/ticket/<int:pk>/request/', views.procurement_request_create, name='procurement_request_create'),
+    path('procurement/<int:pk>/mark-ordered/', views.procurement_mark_ordered, name='procurement_mark_ordered'),
+    path('procurement/<int:pk>/cancel/', views.procurement_cancel, name='procurement_cancel'),
+    path('procurement/<int:pk>/receive-modal/', views.procurement_receive_modal, name='procurement_receive_modal'),
+    path('procurement/<int:pk>/receive/', views.procurement_receive, name='procurement_receive'),
+    path('procurement/<int:pk>/export/', views.procurement_export_pdf, name='procurement_export_pdf'),
+
+    # EXPORTABLES (enterprise report builder — one page + one export endpoint
+    # per data type, generic over apps.tickets.report_registry.REPORT_TYPES).
+    # Deliberately NOT under /reports/ — the Analytics "Reports" sidebar link
+    # active-checks on '/reports/' in request.path, so sharing that prefix
+    # made it light up on every Exportables page too.
+    path('exportables/<slug:report_type>/', views_reports.report_builder, name='report_builder'),
+    path('exportables/<slug:report_type>/download/', views_reports.export_report, name='export_report'),
+    path('exportables/<slug:report_type>/<int:pk>/', views_reports.report_record_detail, name='report_record_detail'),
+    path('exportables/<slug:report_type>/<int:pk>/download/', views_reports.export_report_record, name='export_report_record'),
+
+    # SYSTEM SETTINGS
+    path('settings/', views_settings.system_settings, name='system_settings'),
+    path('settings/<slug:resource>/create/', views_settings.settings_resource_create, name='settings_resource_create'),
+    path('settings/<slug:resource>/<int:pk>/update/', views_settings.settings_resource_update, name='settings_resource_update'),
+    path('settings/<slug:resource>/<int:pk>/delete/', views_settings.settings_resource_delete, name='settings_resource_delete'),
+    path('settings/branding/', views_settings.branding_update, name='branding_update'),
+
+    # MACROS
+    path('macros/manage/', views_macros.macro_management, name='macro_management'),
+    path('macros/create/', views_macros.macro_create, name='macro_create'),
+    path('macros/<int:pk>/update/', views_macros.macro_update, name='macro_update'),
+    path('macros/<int:pk>/delete/', views_macros.macro_delete, name='macro_delete'),
 
     # apps/tickets/urls.py - Add these to urlpatterns
     path('assets/<int:pk>/checkout-modal/', views.asset_checkout_modal, name='asset_checkout_modal'),
@@ -97,5 +136,20 @@ urlpatterns = [
     path('assets/<int:pk>/checkin-modal/', views.asset_checkin_modal, name='asset_checkin_modal'),
     path('assets/<int:pk>/checkin/', views.asset_checkin, name='asset_checkin'),
     path('assets/<int:pk>/checkout-history/', views.asset_checkout_history, name='asset_checkout_history'),
+
+    # MOBILIZATION / DEMOBILIZATION
+    path('mobilizations/', views.mobilizations, name='mobilizations'),
+    path('mobilizations/create-modal/', views.mobilization_create_modal, name='mobilization_create_modal'),
+    path('mobilizations/create/', views.mobilization_create, name='mobilization_create'),
+    path('mobilizations/available-assets/', views.mobilization_available_assets, name='mobilization_available_assets'),
+    path('mobilizations/autopick-assets/', views.mobilization_autopick_assets, name='mobilization_autopick_assets'),
+    path('mobilizations/job-lookup/', views.job_mobilization_lookup, name='job_mobilization_lookup'),
+    path('mobilizations/<int:pk>/', views.mobilization_detail, name='mobilization_detail'),
+    path('mobilizations/items/<int:item_pk>/demobilize-modal/', views.mobilization_item_demobilize_modal, name='mobilization_item_demobilize_modal'),
+    path('mobilizations/items/<int:item_pk>/demobilize/', views.mobilization_item_demobilize, name='mobilization_item_demobilize'),
+    path('mobilizations/<int:pk>/demobilize-all-modal/', views.mobilization_demobilize_all_modal, name='mobilization_demobilize_all_modal'),
+    path('mobilizations/<int:pk>/demobilize-all/', views.mobilization_demobilize_all, name='mobilization_demobilize_all'),
+    path('mobilizations/<int:pk>/extend-date-modal/', views.mobilization_extend_date_modal, name='mobilization_extend_date_modal'),
+    path('mobilizations/<int:pk>/extend-date/', views.mobilization_extend_date, name='mobilization_extend_date'),
 
 ]

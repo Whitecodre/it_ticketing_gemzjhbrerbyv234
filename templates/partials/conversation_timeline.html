@@ -31,7 +31,7 @@
 </div>
 
 {% for comment in comments %}
-    {% if comment.visibility == 'INTERNAL' and request.user.role in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
+    {% if comment.visibility == 'INTERNAL' and active_role_name in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
         <div class="flex justify-center mb-3">
             <div class="max-w-lg rounded-lg px-4 py-2 text-xs border border-warning/20 text-text-primary"
                  style="background-color: rgba(245, 158, 11, 0.06);">

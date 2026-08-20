@@ -1,0 +1,55 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
+            {% lucide "log-in" size=20 %} Demobilize All Assets
+        </h3>
+        <button type="button" onclick="closeMobilizationModal()" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
+            {% lucide "x" size=18 %}
+        </button>
+    </div>
+
+    <div class="mb-4 p-3 rounded-lg border border-border bg-background text-sm">
+        <p class="text-text-secondary text-xs mb-2">
+            One condition/notes applies to every asset below. For a mixed return (different conditions per asset), demobilize those individually instead.
+        </p>
+        <ul class="space-y-1">
+            {% for item in items %}
+            <li class="flex items-center justify-between text-text-primary text-sm">
+                <span>{{ item.asset.name }} <span class="text-text-secondary font-mono text-xs">({{ item.asset.tracking_id }})</span></span>
+                {% if item.asset.is_consumable %}<span class="text-text-secondary text-xs">{{ item.quantity }} unit(s)</span>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <form method="post" action="{% url 'tickets:mobilization_demobilize_all' mobilization.pk %}">
+        {% csrf_token %}
+
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1 text-text-primary">Returned Condition <span class="text-error">*</span></label>
+            <select name="return_condition" required
+                    class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                <option value="">-- Select Condition --</option>
+                {% for value, label in condition_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1 text-text-primary">Notes</label>
+            <textarea name="return_notes" rows="3"
+                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      placeholder="Optional notes about the return..."></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-border">
+            <button type="button" onclick="closeMobilizationModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "log-in" size=16 %} Demobilize All ({{ items|length }})
+            </button>
+        </div>
+    </form>
+</div>

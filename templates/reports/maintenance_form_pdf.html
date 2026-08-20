@@ -1,0 +1,195 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+{% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
+<title>Maintenance Schedule Report — {{ schedule_code }}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
+</head>
+<body>
+
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-6">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"IT Helpdesk" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="4">
+        <span class="font-bold text-lg tracking-wide">MAINTENANCE SCHEDULE REPORT</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">HDG-IT-FRM-090</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1 of 1</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Rev.:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">1</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"jS F Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 1 — SCHEDULE DETAILS (also holds the single-field items:
+       Assigned Personnel and Description) -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 1 &mdash; SCHEDULE DETAILS</div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Schedule Reference No.:</div>
+        <div class="dotted-line w-full">{{ schedule_code }}</div>
+      </div>
+      <div>
+        <span class="cell-label">Status:</span>
+        <span class="ml-2">{{ status_display }}</span>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Title:</div>
+      <div class="mb-2">{{ schedule.title }}</div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Target Department(s):</div>
+        <div class="mb-6">{{ department_display }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Scheduled Date &amp; Time:</div>
+        <div class="mb-6">
+          {{ schedule.scheduled_date|date:"d/m/Y" }}
+          {% if schedule.start_time %}&nbsp;&nbsp;Time: {{ schedule.start_time|time:"H:i" }}{% if schedule.end_time %} – {{ schedule.end_time|time:"H:i" }}{% endif %}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Facility / Location:</div>
+      <div class="mb-6">{{ schedule.facility_location|default:"—" }}</div>
+    </div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Target Asset(s):</div>
+      <div class="mb-6">
+        {% for asset in target_assets %}{{ asset.name }} ({{ asset.tracking_id }}){% if not forloop.last %}, {% endif %}{% empty %}<span class="italic text-gray-400">&mdash;</span>{% endfor %}
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+         <div class="cell-label mb-1">Assigned Personnel:</div>
+        <div class="mb-2">
+          {% for person in assignees %}{{ person.get_full_name|default:person.email }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="italic text-gray-400">Unassigned</span>{% endfor %}
+        </div>
+      </div>
+      <div>
+        {% if vendors %}
+        <div class="cell-label mb-1">Third-Party Vendor(s):</div>
+        <div class="mb-2">
+          {% for vendor in vendors %}{{ vendor.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Description:</div>
+      <div class="mb-2">{{ schedule.description|default:"—"|linebreaksbr }}</div>
+    </div>
+  </div>
+
+  <!-- SECTION 2 — CHECKLIST -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 2 &mdash; CHECKLIST ({{ checklist_progress }}% COMPLETE)</div>
+    <div class="cell">
+      {% for item, done in checklist %}
+      <div class="mb-1"><span class="chk{% if done %} chk-filled{% endif %}"></span>{{ item }}</div>
+      {% empty %}
+      <div class="mb-2 italic text-gray-400">No checklist items.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- SECTION 3 — TIMELINE -->
+  <div class="mb-1">
+    <div class="font-bold text-[13px] mb-1">SECTION 3 &mdash; TIMELINE</div>
+  </div>
+  <table class="grid w-full border-collapse mb-6">
+    <tr>
+      <th class="text-left bg-white font-bold w-1/3">Stage</th>
+      <th class="text-left bg-white font-bold">Timestamp</th>
+    </tr>
+    <tr>
+      <td class="font-bold">Created</td>
+      <td>{{ schedule.created_at|date:"d/m/Y H:i" }}</td>
+    </tr>
+    <tr>
+      <td class="font-bold">Started</td>
+      <td>{% if started_at %}{{ started_at|date:"d/m/Y H:i" }}{% else %}<span class="italic text-gray-400">Not started</span>{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="font-bold">Completed</td>
+      <td>{% if schedule.completed_at %}{{ schedule.completed_at|date:"d/m/Y H:i" }}{% else %}<span class="italic text-gray-400">Not completed</span>{% endif %}</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 4 — OWNER CONFIRMATION -->
+  <div class="section-break-before">
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">
+      {% if department_sections|length > 1 %}SECTION 4 &mdash; OWNER CONFIRMATION BY DEPARTMENT{% else %}SECTION 4 &mdash; OWNER CONFIRMATION{% endif %}
+    </div>
+  </div>
+  {% for section in department_sections %}
+  {% if department_sections|length > 1 %}
+  <div class="mb-1">
+    <div class="font-bold text-[12px] mb-1">{{ section.department_display }}</div>
+  </div>
+  {% endif %}
+  {% if section.confirmations %}
+  <table class="grid w-full border-collapse mb-4">
+    <tr>
+      <th class="text-left bg-white font-bold">Asset</th>
+      <th class="text-left bg-white font-bold">Status</th>
+      <th class="text-left bg-white font-bold">Confirmed By</th>
+      <th class="text-left bg-white font-bold">Confirmed At</th>
+    </tr>
+    {% for c in section.confirmations %}
+    <tr>
+      <td>{{ c.asset.name }} ({{ c.asset.tracking_id }})</td>
+      <td>{{ c.get_status_display }}</td>
+      <td class="{% if not c.confirmed_by %}italic text-gray-400{% endif %}">{{ c.confirmed_by.get_full_name|default:"Pending" }}</td>
+      <td>{% if c.confirmed_at %}{{ c.confirmed_at|date:"d/m/Y H:i" }}{% else %}&nbsp;{% endif %}</td>
+    </tr>
+    {% if c.status == 'DISPUTED' and c.dispute_reason %}
+    <tr><td colspan="4" class="italic">Dispute reason: {{ c.dispute_reason }}</td></tr>
+    {% elif c.notes %}
+    <tr><td colspan="4" class="italic">Notes: {{ c.notes }}</td></tr>
+    {% endif %}
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="mb-4 italic text-gray-400">No target assets in this department.</div>
+  {% endif %}
+  {% empty %}
+  <div class="mb-4 italic text-gray-400">No target assets recorded for this schedule.</div>
+  {% endfor %}
+  </div>
+
+</div>
+
+</body>
+</html>

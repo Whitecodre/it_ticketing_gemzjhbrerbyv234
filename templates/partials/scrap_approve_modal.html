@@ -13,25 +13,24 @@
 
     <form method="post" action="{% url 'tickets:asset_scrap_approve' asset.id %}">
         {% csrf_token %}
-        <input type="hidden" name="action" value="approve">
-        
+
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1 text-text-primary">
                 Comment (optional)
             </label>
-            <textarea name="comment" rows="3" 
+            <textarea name="comment" rows="3"
                       class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                       placeholder="Add any notes about this scrap approval..."></textarea>
         </div>
 
         <div class="flex justify-end gap-2 pt-2">
-            <button type="button" onclick="closeModal()" 
+            <button type="button" onclick="closeModal()"
                     class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
-            <button type="submit" 
+            <button type="submit" name="action" value="approve"
                     class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1">
                 {% lucide "check" size=14 %} Approve
             </button>
-            <button type="submit" formaction="{% url 'tickets:asset_scrap_approve' asset.id %}?action=reject" 
+            <button type="submit" name="action" value="reject"
                     class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1">
                 {% lucide "x" size=14 %} Reject
             </button>

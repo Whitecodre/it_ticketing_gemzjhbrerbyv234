@@ -7,17 +7,10 @@ from django.utils import timezone
 import json
 
 from .models import OrgDraft, OrgApproval, OrgPublished, OrgAuditLog
+from apps.common.permissions import is_admin, can_edit_org
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
-
-
-def is_admin(user):
-    return user.role in ['ADMIN', 'SUPERADMIN']
-
-
-def can_edit_org(user):
-    return user.role in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']
 
 
 @login_required

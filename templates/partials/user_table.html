@@ -24,7 +24,7 @@
                 data-role="{{ user.role }}"
                 data-department="{{ user.department }}"
                 data-is-active="{{ user.is_active|lower }}"
-                data-assigned-roles="{% if user_roles %}{% for role in user_roles %}{{ role.name }}{% if not forloop.last %},{% endif %}{% endfor %}{% else %}{{ user.role }}{% endif %}"
+                data-assigned-roles="{% if user_roles %}{% for role in user_roles %}{% if role.name != 'SUPERADMIN' or active_role_name == 'SUPERADMIN' %}{{ role.name }}{% if not forloop.last %},{% endif %}{% endif %}{% endfor %}{% else %}{{ user.role }}{% endif %}"
                 data-active-role="{% if active_role %}{{ active_role.name }}{% else %}{{ user.role }}{% endif %}">
                 
                 {# ===== USER ===== #}
@@ -59,6 +59,7 @@
                     {% if user_roles %}
                         <div class="flex flex-wrap items-center gap-1.5">
                             {% for role in user_roles %}
+                                {% if role.name != 'SUPERADMIN' or active_role_name == 'SUPERADMIN' %}
                                 <span class="text-xs px-2.5 py-1 rounded-full whitespace-nowrap
                                     {% if role == active_role %}
                                         bg-primary text-white font-medium
@@ -67,6 +68,7 @@
                                     {% endif %}">
                                     {{ role.display_name }}
                                 </span>
+                                {% endif %}
                             {% endfor %}
                         </div>
                     {% else %}
@@ -105,7 +107,7 @@
                 {# ===== ACTIONS ===== #}
                 <td class="py-3 px-4 text-right">
                     <div class="flex items-center justify-end gap-1">
-                        {% if request.user.role == 'ADMIN' and user.role not in 'ADMIN,SUPERADMIN' and user != request.user %}
+                        {% if active_role_name == 'ADMIN' and user.role not in 'ADMIN,SUPERADMIN' and user != request.user %}
                         <button onclick="openImpersonateModal({{ user.pk }}, '{{ user.get_full_name|escapejs }}')" 
                                 class="p-2 rounded-md transition hover:bg-black/5 text-text-secondary hover:text-warning"
                                 title="Login as this user">
@@ -113,7 +115,7 @@
                         </button>
                         {% endif %}
                         
-                        {% if user.role != 'SUPERADMIN' or request.user.role == 'SUPERADMIN' %}
+                        {% if user.role != 'SUPERADMIN' or active_role_name == 'SUPERADMIN' %}
                         <button class="user-action-btn p-2 rounded-md hover:bg-black/5 transition text-text-secondary" 
                                 onclick="window.userActionBtnClick(this)"
                                 data-user-id="{{ user.pk }}"
@@ -197,7 +199,7 @@
     <button class="dropdown-password w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 transition flex items-center gap-3 text-text-primary">
         {% lucide "key" size=16 %} Change Password
     </button>
-    {% if request.user.role == 'ADMIN' %}
+    {% if active_role_name == 'ADMIN' %}
     <hr class="mx-2" style="border-color: var(--color-border);">
     <button class="dropdown-impersonate w-full text-left px-4 py-2.5 text-sm hover:bg-black/5 transition flex items-center gap-3 text-text-primary"
             style="display: none;">
@@ -210,6 +212,9 @@
     document.addEventListener('DOMContentLoaded', function() {
         const dropdown = document.getElementById('globalUserDropdown');
         let activeUserId = null;
+        let activeUserName = '';
+        let activeUserIsActive = false;
+        let dropdownCleanup = null;
 
         if (!dropdown) {
             console.error('globalUserDropdown not found!');
@@ -226,25 +231,14 @@
 
             activeUserId = btn.dataset.userId;
             const isActive = btn.dataset.isActive === 'true';
+            activeUserName = `${btn.dataset.firstName} ${btn.dataset.lastName}`.trim() || btn.dataset.email;
+            activeUserIsActive = isActive;
 
             toggleLabel.textContent = isActive ? 'Deactivate' : 'Activate';
 
-            const rect = btn.getBoundingClientRect();
-            let top = rect.bottom + 6;
-            let left = rect.left + rect.width / 2 - 88;
-
-            if (top + 180 > window.innerHeight) {
-                top = rect.top - 180 - 6;
+            if (window.positionDropdown) {
+                dropdownCleanup = window.positionDropdown(btn, dropdown, { align: 'center' });
             }
-            if (left + 176 > window.innerWidth) {
-                left = window.innerWidth - 186;
-            }
-            if (left < 10) {
-                left = 10;
-            }
-
-            dropdown.style.top = top + 'px';
-            dropdown.style.left = left + 'px';
 
             dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
             dropdown.classList.add('opacity-100', 'scale-100');
@@ -254,6 +248,10 @@
             if (dropdown) {
                 dropdown.classList.remove('opacity-100', 'scale-100');
                 dropdown.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
+            }
+            if (dropdownCleanup) {
+                dropdownCleanup();
+                dropdownCleanup = null;
             }
         }
 
@@ -269,7 +267,15 @@
         });
 
         toggleBtn.addEventListener('click', function() {
-            if (activeUserId) toggleActive(activeUserId);
+            if (!activeUserId) return;
+            const userId = activeUserId;
+            if (activeUserIsActive) {
+                // Deactivating blocks login immediately — confirm first.
+                confirmDeactivateUser(activeUserName, function() { toggleActive(userId); });
+            } else {
+                // Re-activating is the low-risk direction — no confirm needed.
+                toggleActive(userId);
+            }
             closeDropdown();
         });
 

@@ -112,9 +112,10 @@
                     </div>
                 </div>
                 {% if share.is_active %}
-                <form method="post" action="{% url 'documents_display:document_share_revoke' document.slug share.id %}" onsubmit="return confirm('Revoke access for {{ share.display_target|escapejs }}?');">
+                <form method="post" action="{% url 'documents_display:document_share_revoke' document.slug share.id %}" id="revokeShareForm{{ share.id }}">
                     {% csrf_token %}
-                    <button type="submit" class="btn-ghost text-xs text-error flex items-center gap-1">
+                    <button type="button" class="btn-ghost text-xs text-error flex items-center gap-1"
+                            onclick="confirmRevokeAccess('{{ share.display_target|escapejs }}', function() { document.getElementById('revokeShareForm{{ share.id }}').submit(); })">
                         {% lucide "x" size=14 %} Revoke
                     </button>
                 </form>

@@ -6,7 +6,10 @@ DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'testserver']
 
 # Rate limiting settings for development
-RATELIMIT_ENABLED = False
+# NOTE: django-ratelimit's actual setting is RATELIMIT_ENABLE (no trailing
+# "D") — RATELIMIT_ENABLED was a no-op name mismatch, silently inert while
+# the @ratelimit decorator itself was commented out on CustomLoginView.
+RATELIMIT_ENABLE = False
 
 # Channels Layer (Redis)
 CHANNEL_LAYERS = {

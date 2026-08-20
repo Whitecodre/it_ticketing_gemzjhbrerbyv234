@@ -14,28 +14,47 @@
 </head>
 <body>
     <div class="header">
-        <h1>Ticket Resolution Confirmation</h1>
+        <h1>{% if is_asset_request %}Confirm Receipt{% else %}Ticket Resolution Confirmation{% endif %}</h1>
     </div>
     <div class="content">
         <p>Dear {{ requester_name }},</p>
-        
+
+        {% if is_asset_request %}
+        <p>Your request <strong>{{ ticket_number }}</strong> has been fulfilled by the support team.</p>
+
+        <p><strong>Title:</strong> {{ ticket_title }}</p>
+        <p><strong>Fulfilled by:</strong> {{ agent_name }}</p>
+
+        <p>Please confirm you've received the item(s) you requested:</p>
+
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="{{ confirm_url }}" class="button btn-confirm" style="margin-right: 12px;">✅ Yes, I received it</a>
+        </p>
+
+        <p style="text-align: center; margin: 24px 0;">
+            <a href="{{ confirm_url }}" class="button btn-reopen">❌ No, not yet</a>
+        </p>
+
+        <p>If you haven't received it, please provide details after clicking through.</p>
+        {% else %}
         <p>The support team has resolved ticket <strong>{{ ticket_number }}</strong>.</p>
-        
+
         <p><strong>Title:</strong> {{ ticket_title }}</p>
         <p><strong>Agent:</strong> {{ agent_name }}</p>
-        
+
         <p>Please confirm if the issue has been fully resolved:</p>
-        
+
         <p style="text-align: center; margin: 24px 0;">
             <a href="{{ confirm_url }}" class="button btn-confirm" style="margin-right: 12px;">✅ Yes, it's resolved</a>
         </p>
-        
+
         <p style="text-align: center; margin: 24px 0;">
-            <a href="{{ confirm_url }}?action=reopen" class="button btn-reopen">❌ No, still having issues</a>
+            <a href="{{ confirm_url }}" class="button btn-reopen">❌ No, still having issues</a>
         </p>
-        
+
         <p>If the issue is not resolved, please provide details about what's still not working.</p>
-        
+        {% endif %}
+
         <p>Best regards,<br>TicketSwipe Support Team</p>
     </div>
     <div class="footer">

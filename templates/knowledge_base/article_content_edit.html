@@ -1,0 +1,348 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Edit Article{% endblock %}
+{% block page_title_area %}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block extra_head %}
+{{ block.super }}
+<style>
+    #kbEditorMount.kb-editor-content {
+        min-height: 320px;
+        max-height: 65vh;
+        overflow-y: auto;
+        padding: 1rem;
+        outline: none;
+    }
+    #kbToolbar select[data-format-select] {
+        height: 2.25rem;
+        line-height: 1.1;
+    }
+    #kbToolbar { gap: 0.35rem; padding: 0.5rem 0.6rem; }
+    #kbToolbar .toolbar-btn { margin: 0 0.05rem; }
+    #kbEditorMount.kb-editor-content p { margin: 0 0 0.75em; }
+    #kbEditorMount.kb-editor-content ul,
+    #kbEditorMount.kb-editor-content ol { padding-left: 1.5em; margin: 0 0 0.75em; }
+    #kbEditorMount.kb-editor-content blockquote {
+        border-left: 3px solid var(--color-border);
+        padding-left: 0.75em;
+        color: var(--color-text-secondary);
+        margin: 0 0 0.75em;
+    }
+    #kbEditorMount.kb-editor-content pre {
+        background-color: var(--color-background);
+        border: 1px solid var(--color-border);
+        border-radius: 0.375rem;
+        padding: 0.75em;
+        overflow-x: auto;
+        margin: 0 0 0.75em;
+    }
+    #kbEditorMount.kb-editor-content code {
+        background-color: var(--color-background);
+        border-radius: 0.25rem;
+        padding: 0.1em 0.3em;
+        font-size: 0.85em;
+    }
+    #kbEditorMount.kb-editor-content img { max-width: 100%; border-radius: 0.375rem; }
+    #kbEditorMount.kb-editor-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0 0 0.75em;
+    }
+    #kbEditorMount.kb-editor-content th,
+    #kbEditorMount.kb-editor-content td {
+        border: 1px solid var(--color-border);
+        padding: 0.4em 0.6em;
+        text-align: left;
+    }
+    #kbEditorMount.kb-editor-content th { background-color: var(--color-background); }
+    #kbEditorMount.kb-editor-content .kb-callout {
+        border-left: 3px solid var(--color-primary);
+        background-color: color-mix(in srgb, var(--color-primary) 8%, transparent);
+        border-radius: 0.375rem;
+        padding: 0.6em 0.9em;
+        margin: 0 0 0.75em;
+    }
+</style>
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full max-w-5xl mx-auto">
+
+    <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+        <div class="min-w-0">
+            <h2 class="text-base font-semibold text-text-primary truncate" id="articleTitleDisplay">{{ article.title }}</h2>
+            <p class="text-xs text-text-secondary mt-0.5">{{ article.get_status_display }} · {{ article.category.name|default:"Uncategorized" }}</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button type="button" onclick="openEditorGuideModal()" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5 lg:hidden">
+                {% lucide "circle-help" size=14 %} Guide
+            </button>
+            <button type="button" onclick="openEditDetailsModal()" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
+                {% lucide "settings" size=14 %} Edit Details
+            </button>
+            <a href="{% url 'kb:management' %}" class="btn-ghost text-sm px-4 py-2 rounded-lg js-kb-leave-link">Cancel</a>
+        </div>
+    </div>
+
+    <form id="contentForm" method="post">
+        {% csrf_token %}
+        <textarea name="content" id="contentHidden" class="hidden">{{ article.content }}</textarea>
+
+        <div class="dashboard-card p-0 overflow-hidden">
+            <div id="kbToolbar" class="flex items-center gap-1.5 px-3 py-2 border-b flex-wrap" style="border-color: var(--color-border);">
+                <select data-format-select class="text-xs rounded border h-9 px-2 py-1 bg-background border-border text-text-primary">
+                    <option value="p">Paragraph</option>
+                    <option value="h1">Heading 1</option>
+                    <option value="h2">Heading 2</option>
+                    <option value="h3">Heading 3</option>
+                </select>
+                <span class="w-px h-5 bg-border mx-1.5"></span>
+                <button type="button" data-action="bold" title="Bold" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "bold" size=14 %}</button>
+                <button type="button" data-action="italic" title="Italic" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "italic" size=14 %}</button>
+                <span class="w-px h-5 bg-border mx-1.5"></span>
+                <button type="button" data-action="code" title="Inline code" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "code" size=14 %}</button>
+                <button type="button" data-action="codeBlock" title="Code block" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "square-code" size=14 %}</button>
+                <span class="w-px h-5 bg-border mx-1.5"></span>
+                <button type="button" data-action="link" title="Link" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "link" size=14 %}</button>
+                <span class="w-px h-5 bg-border mx-1.5"></span>
+                <button type="button" data-action="alignLeft" title="Align left" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "align-left" size=14 %}</button>
+                <button type="button" data-action="alignCenter" title="Align center" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "align-center" size=14 %}</button>
+                <button type="button" data-action="alignRight" title="Align right" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "align-right" size=14 %}</button>
+                <span class="w-px h-5 bg-border mx-1.5"></span>
+                <button type="button" data-action="bulletList" title="Bullet list" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "list" size=14 %}</button>
+                <button type="button" data-action="orderedList" title="Numbered list" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "list-ordered" size=14 %}</button>
+                <button type="button" data-action="image" title="Image (upload, or drag/drop, or paste)" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "image" size=14 %}</button>
+                <button type="button" data-action="blockquote" title="Quote" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "quote" size=14 %}</button>
+                <button type="button" data-action="table" title="Insert table" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "table" size=14 %}</button>
+                <button type="button" data-action="callout" title="Note callout" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "message-square-warning" size=14 %}</button>
+                <span class="w-px h-5 bg-border mx-1.5"></span>
+                <button type="button" data-action="undo" title="Undo" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "undo-2" size=14 %}</button>
+                <button type="button" data-action="redo" title="Redo" class="toolbar-btn inline-flex items-center justify-center h-8 w-8 rounded text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "redo-2" size=14 %}</button>
+            </div>
+            {# Table controls — only visible while the cursor is inside a table (see renderTableControls in kb_editor_src.js) #}
+            <div id="kbTableControls" class="hidden flex items-center gap-1.5 px-3 py-1.5 border-b bg-background" style="border-color: var(--color-border);">
+                <span class="text-[0.65rem] text-text-secondary mr-1">Table:</span>
+                <button type="button" data-action="addRowAfter" title="Add row below" class="toolbar-btn inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "rows-3" size=12 %} Row</button>
+                <button type="button" data-action="addColumnAfter" title="Add column after" class="toolbar-btn inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-text-secondary hover:bg-black/5 hover:text-text-primary transition">{% lucide "columns-3" size=12 %} Column</button>
+                <span class="w-px h-4 bg-border mx-1"></span>
+                <button type="button" data-action="deleteRow" title="Delete current row" class="toolbar-btn inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-text-secondary hover:bg-black/5 hover:text-error transition">{% lucide "minus" size=12 %} Row</button>
+                <button type="button" data-action="deleteColumn" title="Delete current column" class="toolbar-btn inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-text-secondary hover:bg-black/5 hover:text-error transition">{% lucide "minus" size=12 %} Column</button>
+                <span class="w-px h-4 bg-border mx-1"></span>
+                <button type="button" data-action="deleteTable" title="Delete table" class="toolbar-btn inline-flex items-center gap-1 h-7 px-2 rounded text-xs text-text-secondary hover:bg-black/5 hover:text-error transition">{% lucide "trash-2" size=12 %} Delete table</button>
+            </div>
+            <div class="flex items-start">
+                <div id="kbEditorMount" class="kb-editor-content flex-1 min-w-0"></div>
+                <div class="hidden lg:block w-48 shrink-0 border-l p-3 sticky top-4 self-start" style="border-color: var(--color-border);">
+                    <div class="flex items-center justify-between mb-2">
+                        <p class="text-xs font-semibold text-text-secondary uppercase tracking-wide">Outline</p>
+                        <button type="button" onclick="openEditorGuideModal()" title="How to use this editor"
+                                class="text-text-secondary hover:text-primary transition">
+                            {% lucide "circle-help" size=14 %}
+                        </button>
+                    </div>
+                    <div id="kbOutline"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-4">
+            <a href="{% url 'kb:management' %}" class="btn-ghost text-sm px-4 py-2 rounded-lg js-kb-leave-link">Cancel</a>
+            <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "save" size=16 %} Save
+            </button>
+        </div>
+    </form>
+
+    {# Edit Details modal — same metadata fields as the New Article step 1 #}
+    <div id="editDetailsModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+         onclick="if(event.target===this) closeEditDetailsModal()">
+        <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4" style="background-color: var(--color-surface);">
+            <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--color-border);">
+                <h3 class="text-base font-semibold text-text-primary">Edit Details</h3>
+                <button type="button" onclick="closeEditDetailsModal()" class="btn-ghost btn-icon" aria-label="Close">{% lucide "x" size=18 %}</button>
+            </div>
+            <form id="editDetailsForm" class="px-6 py-5 space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Title</label>
+                    {{ metadata_form.title }}
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Category</label>
+                    {{ metadata_form.category }}
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Visibility</label>
+                    {{ metadata_form.visibility }}
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Tags</label>
+                    {{ metadata_form.tags_input }}
+                </div>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeEditDetailsModal()" class="btn-ghost text-sm px-4 py-2">Cancel</button>
+                    <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save Details</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# Editor Guide modal — a quick how-to instead of crowding the page #}
+    <div id="editorGuideModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+         onclick="if(event.target===this) closeEditorGuideModal()">
+        <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" style="background-color: var(--color-surface);">
+            <div class="flex items-center justify-between px-6 py-4 border-b sticky top-0 bg-surface" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                <h3 class="text-base font-semibold text-text-primary flex items-center gap-2">{% lucide "circle-help" size=18 %} How to Write an Article</h3>
+                <button type="button" onclick="closeEditorGuideModal()" class="btn-ghost btn-icon" aria-label="Close">{% lucide "x" size=18 %}</button>
+            </div>
+            <div class="px-6 py-5 space-y-4 text-sm text-text-primary">
+                <div>
+                    <p class="font-medium mb-1">Structure your article with headings</p>
+                    <p class="text-text-secondary text-xs mb-1">Use the Paragraph/Heading dropdown at the left of the toolbar to turn the current line into a Heading 1, 2, or 3 (or back to a plain Paragraph). Headings aren't just visual — they're what builds the structure:</p>
+                    <ul class="text-text-secondary text-xs list-disc list-inside space-y-0.5">
+                        <li>Once you add two or more headings, an <strong>Outline</strong> appears in the sidebar so you can jump between sections while writing.</li>
+                        <li>Readers get the same structure as a collapsible <strong>table of contents</strong> on the published article page.</li>
+                        <li>Use Heading 1/2 for major sections (Overview, Steps, Troubleshooting) and Heading 3 for sub-points within a section — keeping a consistent order (don't jump from a Heading 1 straight to a Heading 3) makes the outline and table of contents easiest to follow.</li>
+                    </ul>
+                </div>
+                <div>
+                    <p class="font-medium mb-1">Formatting</p>
+                    <p class="text-text-secondary text-xs">Bold, italic, inline code, and code blocks work like any editor. Use the three alignment buttons to left/center/right-align the current paragraph or heading.</p>
+                </div>
+                <div>
+                    <p class="font-medium mb-1">Images</p>
+                    <p class="text-text-secondary text-xs">Click the image button to upload a file, or just drag-and-drop or paste an image straight into the editor — no need to host it elsewhere and paste a URL.</p>
+                </div>
+                <div>
+                    <p class="font-medium mb-1">Tables</p>
+                    <p class="text-text-secondary text-xs mb-1">The table button inserts a 3×3 starting table with a header row. Click inside a cell to type; press Tab to move to the next cell (Tab from the very last cell automatically adds a new row).</p>
+                    <p class="text-text-secondary text-xs">To make a table bigger than 3×3 — or remove a row/column, or delete the whole table — click anywhere inside the table first: a small <strong>Table</strong> toolbar appears just below the main toolbar with Add Row, Add Column, Delete Row, Delete Column, and Delete Table buttons. It only shows up while your cursor is inside a table.</p>
+                </div>
+                <div>
+                    <p class="font-medium mb-1">Note callouts</p>
+                    <p class="text-text-secondary text-xs">The callout button inserts a highlighted "Note" box — good for warnings, prerequisites, or anything that should stand out from the main text.</p>
+                </div>
+                <div>
+                    <p class="font-medium mb-1">Links</p>
+                    <p class="text-text-secondary text-xs">Select some text and click the link button to attach a URL to it. Click it again with no text selected to add/remove a link on your cursor position.</p>
+                </div>
+                <div>
+                    <p class="font-medium mb-1">Saving &amp; unsaved changes</p>
+                    <p class="text-text-secondary text-xs">Click <strong>Save</strong> when you're done — this saves a new version you can always revert to later from Version History. Use <strong>Edit Details</strong> to change the title, category, visibility, or tags without leaving this page. If you try to leave the page with unsaved changes (Cancel, sidebar, browser back/close), you'll get a warning so you don't lose your work by accident.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    // Unsaved-changes warning — set once the editor reports its first real
+    // edit, cleared on an actual Save submit. For navigation we control
+    // in-app (Cancel links, sidebar clicks) this shows the app's own
+    // confirmation modal instead of a browser dialog. Tab close/refresh/
+    // typed URL/browser-back can't be intercepted with a custom modal —
+    // browsers only allow their own generic dialog there (a hard security
+    // restriction, not something CSS/JS can change) — so beforeunload stays
+    // as the unavoidable fallback for just those cases.
+    window.__kbIsDirty = false;
+    window.__kbMarkDirty = function (dirty) { window.__kbIsDirty = dirty; };
+
+    window.addEventListener('beforeunload', function (e) {
+        if (window.__kbIsDirty) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+
+    document.getElementById('contentForm').addEventListener('submit', function () {
+        window.__kbIsDirty = false;
+    });
+
+    function interceptLeaveClick(container) {
+        if (!container) return;
+        container.addEventListener('click', function (e) {
+            const link = e.target.closest('a[href]');
+            if (!link || !window.__kbIsDirty) return;
+            e.preventDefault();
+            confirmDiscardChanges(function () {
+                window.__kbIsDirty = false;
+                window.location.href = link.href;
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        interceptLeaveClick(document.getElementById('sidebarNav'));
+        document.querySelectorAll('.js-kb-leave-link').forEach(function (link) {
+            link.addEventListener('click', function (e) {
+                if (!window.__kbIsDirty) return;
+                e.preventDefault();
+                confirmDiscardChanges(function () {
+                    window.__kbIsDirty = false;
+                    window.location.href = link.href;
+                });
+            });
+        });
+    });
+</script>
+<script type="module">
+    import { mountKbEditor } from "{% static 'js/kb_editor.js' %}";
+
+    mountKbEditor({
+        mountId: 'kbEditorMount',
+        toolbarId: 'kbToolbar',
+        hiddenFieldId: 'contentHidden',
+        outlineId: 'kbOutline',
+        tableControlsId: 'kbTableControls',
+        initialContent: document.getElementById('contentHidden').value,
+        imageUploadUrl: "{% url 'kb:image_upload' %}",
+        csrfToken: document.querySelector('[name=csrfmiddlewaretoken]').value,
+        onDirtyChange: window.__kbMarkDirty,
+    });
+</script>
+<script>
+    function openEditDetailsModal() {
+        document.getElementById('editDetailsModalOverlay').classList.remove('hidden');
+    }
+
+    function closeEditDetailsModal() {
+        document.getElementById('editDetailsModalOverlay').classList.add('hidden');
+    }
+
+    function openEditorGuideModal() {
+        document.getElementById('editorGuideModalOverlay').classList.remove('hidden');
+    }
+
+    function closeEditorGuideModal() {
+        document.getElementById('editorGuideModalOverlay').classList.add('hidden');
+    }
+
+    document.getElementById('editDetailsForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        fetch("{% url 'kb:metadata_update' article.pk %}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': formData.get('csrfmiddlewaretoken') },
+            body: formData,
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+              if (result.ok) {
+                  document.getElementById('articleTitleDisplay').textContent = result.data.title;
+                  closeEditDetailsModal();
+              } else if (typeof showToast === 'function') {
+                  showToast(result.data.error || 'Could not save details', 'error');
+              }
+          });
+    });
+</script>
+{% endblock %}

@@ -236,6 +236,45 @@ function confirmEscalateTicket(ticketId, ticketTitle, escalateTo, onConfirm) {
 }
 
 /**
+ * Confirm Article Archive
+ * @param {string} articleTitle - The article's title
+ * @param {string} formId - id of the (already-rendered) form to submit on confirm
+ */
+function confirmArchiveArticle(articleTitle, formId) {
+    openConfirmationModal({
+        title: 'Archive Article',
+        message: `Are you sure you want to archive "${articleTitle}"?`,
+        detail: 'It will be removed from the Knowledge Base until restored. You can restore it anytime from the Archived tab.',
+        confirmText: 'Yes, archive it',
+        confirmButtonClass: 'btn-danger',
+        icon: 'warning',
+        onConfirm: function() {
+            document.getElementById(formId).submit();
+        }
+    });
+}
+
+/**
+ * Confirm Article Restore
+ * @param {string} articleTitle - The article's title
+ * @param {string} restoreToStatus - Display label of the status it will return to (e.g. "Published")
+ * @param {string} formId - id of the (already-rendered) form to submit on confirm
+ */
+function confirmRestoreArticle(articleTitle, restoreToStatus, formId) {
+    openConfirmationModal({
+        title: 'Restore Article',
+        message: `Are you sure you want to restore "${articleTitle}"?`,
+        detail: `It will go back to ${restoreToStatus}.`,
+        confirmText: 'Yes, restore it',
+        confirmButtonClass: 'btn-success',
+        icon: 'success',
+        onConfirm: function() {
+            document.getElementById(formId).submit();
+        }
+    });
+}
+
+/**
  * Confirm Delete
  * @param {string} itemName - Name of the item being deleted
  * @param {string} itemType - Type of item (e.g., "Ticket", "User", "Asset")
@@ -337,7 +376,9 @@ function confirmStatusChange(status, itemName, onConfirm) {
         'ESCALATED': { text: 'Escalate', class: 'btn-warning', icon: 'danger' },
         'APPROVED': { text: 'Approve', class: 'btn-success', icon: 'success' },
         'REJECTED': { text: 'Reject', class: 'btn-danger', icon: 'danger' },
-        'IN_PROGRESS': { text: 'Start Progress', class: 'btn-primary', icon: 'info' }
+        'IN_PROGRESS': { text: 'Start Progress', class: 'btn-primary', icon: 'info' },
+        'COMPLETED': { text: 'Complete', class: 'btn-success', icon: 'success' },
+        'PUBLISHED': { text: 'Publish', class: 'btn-success', icon: 'success' }
     };
     
     const config = statusMap[status] || { 
@@ -358,6 +399,135 @@ function confirmStatusChange(status, itemName, onConfirm) {
     });
 }
 
+/**
+ * Confirm a Team Lead review decision on a ticket (approve / reject / request changes)
+ * @param {string} action - 'approve' | 'reject' | 'request_changes'
+ * @param {Function} onConfirm - Callback function
+ */
+function confirmReviewDecision(action, onConfirm) {
+    const actionMap = {
+        'approve': { text: 'Approve', class: 'btn-success', icon: 'success', detail: 'This ticket will move forward in the workflow.' },
+        'reject': { text: 'Reject', class: 'btn-danger', icon: 'danger', detail: 'This ticket will be rejected based on your comment.' },
+        'request_changes': { text: 'Request Changes', class: 'btn-warning', icon: 'warning', detail: 'The requester will be asked to revise the ticket based on your comment.' }
+    };
+    const config = actionMap[action] || { text: action, class: 'btn-primary', icon: 'info', detail: '' };
+
+    openConfirmationModal({
+        title: `Confirm ${config.text}`,
+        message: `Are you sure you want to ${config.text.toLowerCase()} this ticket?`,
+        detail: config.detail,
+        confirmText: `Yes, ${config.text.toLowerCase()}`,
+        confirmButtonClass: config.class,
+        icon: config.icon,
+        onConfirm: onConfirm,
+        context: { action }
+    });
+}
+
+/**
+ * Confirm approving a service request
+ * @param {string} itemName - The request's title/identifier
+ * @param {Function} onConfirm - Callback function
+ */
+function confirmApproveRequest(itemName, onConfirm) {
+    openConfirmationModal({
+        title: 'Approve Request',
+        message: `Are you sure you want to approve "${itemName}"?`,
+        detail: 'This request will move forward in the workflow.',
+        confirmText: 'Yes, approve',
+        confirmButtonClass: 'btn-success',
+        icon: 'success',
+        onConfirm: onConfirm,
+        context: { itemName }
+    });
+}
+
+/**
+ * Confirm revoking a document/folder share
+ * @param {string} target - Who the share was granted to
+ * @param {Function} onConfirm - Callback function
+ */
+function confirmRevokeAccess(target, onConfirm) {
+    openConfirmationModal({
+        title: 'Revoke Access',
+        message: `Revoke access for ${target}?`,
+        detail: 'They will immediately lose the ability to view this content.',
+        confirmText: 'Yes, revoke it',
+        confirmButtonClass: 'btn-danger',
+        icon: 'warning',
+        onConfirm: onConfirm
+    });
+}
+
+/**
+ * Generic reject-with-reason confirmation (remote sessions, etc.)
+ * @param {string} title - Modal title
+ * @param {string} message - Modal message
+ * @param {Function} onConfirm - Callback function
+ */
+function confirmReject(title, message, onConfirm) {
+    openConfirmationModal({
+        title: title,
+        message: message,
+        confirmText: 'Yes, reject',
+        confirmButtonClass: 'btn-danger',
+        icon: 'danger',
+        onConfirm: onConfirm
+    });
+}
+
+/**
+ * Generic end-session confirmation (remote sessions)
+ * @param {Function} onConfirm - Callback function
+ */
+function confirmEndSession(onConfirm) {
+    openConfirmationModal({
+        title: 'End Remote Session',
+        message: 'Are you sure you want to end this remote session?',
+        detail: 'The connection will be closed for both parties.',
+        confirmText: 'Yes, end session',
+        confirmButtonClass: 'btn-danger',
+        icon: 'warning',
+        onConfirm: onConfirm
+    });
+}
+
+/**
+ * Confirm leaving a page with unsaved changes (e.g. the KB article editor).
+ * Used for in-app navigation we control (a Cancel link, sidebar clicks) —
+ * the browser's native beforeunload dialog is the only option for tab
+ * close/refresh/back, which can't be replaced with a custom modal.
+ * @param {Function} onConfirm - Callback function, called if the user chooses to discard
+ */
+function confirmDiscardChanges(onConfirm) {
+    openConfirmationModal({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Leave without saving?',
+        detail: 'Anything you\'ve typed since your last Save will be lost.',
+        confirmText: 'Discard changes',
+        confirmButtonClass: 'btn-danger',
+        icon: 'warning',
+        onConfirm: onConfirm
+    });
+}
+
+/**
+ * Confirm renewing a license/subscription asset
+ * @param {string} assetName - The asset name
+ * @param {Function} onConfirm - Callback function
+ */
+function confirmRenewAsset(assetName, onConfirm) {
+    openConfirmationModal({
+        title: 'Mark as Renewed',
+        message: `Confirm "${assetName}" has been renewed?`,
+        detail: 'The next renewal date will advance by this asset\'s renewal interval, and this is logged for audit.',
+        confirmText: 'Yes, mark renewed',
+        confirmButtonClass: 'btn-success',
+        icon: 'success',
+        onConfirm: onConfirm
+    });
+}
+
 // ================================================================
 // EXPOSE GLOBALLY FOR USE IN HTML ONCLICK ATTRIBUTES
 // ================================================================
@@ -366,6 +536,8 @@ window.openConfirmationModal = openConfirmationModal;
 window.closeConfirmationModal = closeConfirmationModal;
 window.executeConfirmedAction = executeConfirmedAction;
 window.confirmLogout = confirmLogout;
+window.confirmArchiveArticle = confirmArchiveArticle;
+window.confirmRestoreArticle = confirmRestoreArticle;
 window.confirmDelete = confirmDelete;
 window.confirmResolveTicket = confirmResolveTicket;
 window.confirmCloseTicket = confirmCloseTicket;
@@ -374,3 +546,10 @@ window.confirmDeactivateUser = confirmDeactivateUser;
 window.confirmAssignAsset = confirmAssignAsset;
 window.confirmBulkAction = confirmBulkAction;
 window.confirmStatusChange = confirmStatusChange;
+window.confirmReviewDecision = confirmReviewDecision;
+window.confirmApproveRequest = confirmApproveRequest;
+window.confirmRenewAsset = confirmRenewAsset;
+window.confirmReject = confirmReject;
+window.confirmEndSession = confirmEndSession;
+window.confirmDiscardChanges = confirmDiscardChanges;
+window.confirmRevokeAccess = confirmRevokeAccess;

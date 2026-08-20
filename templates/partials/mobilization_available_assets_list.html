@@ -1,0 +1,40 @@
+{% load lucide %}
+
+{% if assets %}
+<div class="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+    {% for asset in assets %}
+    <label class="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-black/5 transition">
+        <input type="checkbox" name="asset_ids" value="{{ asset.pk }}" class="rounded border-border text-primary focus:ring-primary">
+        <div class="flex-1 min-w-0">
+            <p class="text-xs font-medium text-text-primary">{{ asset.name }}</p>
+            <p class="text-[0.6rem] text-text-secondary">
+                {{ asset.tracking_id }} · {{ asset.category.name|default:"Uncategorized" }}
+                {% if asset.serial_number %}· SN: {{ asset.serial_number }}{% endif %}
+                {% if asset.location %}· {{ asset.location }}{% endif %}
+                {% if asset.is_consumable %}· {{ asset.quantity_in_stock }} in stock{% endif %}
+            </p>
+        </div>
+        {% if asset.is_consumable %}
+        <input type="number" name="quantity_{{ asset.pk }}" value="1" min="1" max="{{ asset.quantity_in_stock }}"
+               onclick="event.stopPropagation()"
+               class="w-16 rounded-lg border px-2 py-1 text-xs focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+               title="Quantity to mobilize">
+        {% endif %}
+        <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full bg-success/10 text-success">
+            {{ asset.get_status_display }}
+        </span>
+    </label>
+    {% endfor %}
+</div>
+<p class="text-[0.6rem] text-text-secondary mt-2">
+    Showing {{ assets|length }} available assets.
+</p>
+{% else %}
+<div class="text-center py-4 rounded-lg border border-border">
+    <div class="flex justify-center mb-2">
+        {% lucide "hard-drive" size=24 class="text-text-secondary opacity-50" %}
+    </div>
+    <p class="text-sm font-medium text-text-primary">No available assets</p>
+    <p class="text-xs text-text-secondary">Try adjusting your search.</p>
+</div>
+{% endif %}

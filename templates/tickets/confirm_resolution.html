@@ -28,36 +28,46 @@
         </div>
 
         <div class="rounded-lg bg-background p-4 mb-6 border border-border">
+            {% if ticket.is_asset_request %}
             <p class="text-sm text-text-primary">
-                {{ ticket.requester.get_full_name|default:ticket.requester.email }}, 
+                {{ ticket.requester.get_full_name|default:ticket.requester.email }},
+                your request has been fulfilled by the support team.
+            </p>
+            <p class="text-sm text-text-secondary mt-2">
+                Please confirm you've received the item(s) you requested.
+            </p>
+            {% else %}
+            <p class="text-sm text-text-primary">
+                {{ ticket.requester.get_full_name|default:ticket.requester.email }},
                 the support team has marked this ticket as resolved.
             </p>
             <p class="text-sm text-text-secondary mt-2">
                 Please confirm if the issue has been fully resolved.
             </p>
+            {% endif %}
         </div>
 
         <form method="post" id="confirmForm">
             {% csrf_token %}
             <input type="hidden" name="action" id="actionInput" value="">
-            
+
             <div class="mb-4">
                 <label class="block text-sm font-medium mb-1 text-text-primary">
-                    If the issue is still not resolved, please tell us why (optional)
+                    {% if ticket.is_asset_request %}If you haven't received it yet, please tell us why (optional){% else %}If the issue is still not resolved, please tell us why (optional){% endif %}
                 </label>
-                <textarea name="reason" rows="3" 
+                <textarea name="reason" rows="3"
                           class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                          placeholder="What's still not working?"></textarea>
+                          placeholder="{% if ticket.is_asset_request %}What's missing or wrong?{% else %}What's still not working?{% endif %}"></textarea>
             </div>
 
             <div class="flex flex-wrap gap-3">
                 <button type="button" onclick="submitAction('confirm')"
                         class="btn-success text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
-                    {% lucide "check" size=16 %} Yes, it's resolved
+                    {% lucide "check" size=16 %} {% if ticket.is_asset_request %}Yes, I received it{% else %}Yes, it's resolved{% endif %}
                 </button>
                 <button type="button" onclick="submitAction('reopen')"
                         class="btn-danger text-sm px-6 py-2.5 rounded-lg flex items-center gap-2">
-                    {% lucide "alert-circle" size=16 %} No, still having issues
+                    {% lucide "alert-circle" size=16 %} {% if ticket.is_asset_request %}No, not yet{% else %}No, still having issues{% endif %}
                 </button>
                 <a href="{% url 'tickets:detail' ticket.pk %}" 
                    class="btn-ghost text-sm px-4 py-2.5 rounded-lg">

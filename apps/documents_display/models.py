@@ -55,7 +55,11 @@ class DisplayDocumentQuerySet(models.QuerySet):
             Q(editors=user) |
             Q(downloaders=user) |
             Q(department_access__department=user.department) |
-            Q(shares__recipient=user, shares__revoked_at__isnull=True)
+            Q(shares__recipient=user, shares__revoked_at__isnull=True) |
+            Q(
+                folders__shares__recipient=user,
+                folders__shares__revoked_at__isnull=True,
+            ) & (Q(folders__shares__expires_at__isnull=True) | Q(folders__shares__expires_at__gt=timezone.now()))
         ).distinct()
 
 
@@ -173,6 +177,14 @@ class DisplayDocument(models.Model):
             Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now())
         )
 
+    def _active_folder_shares_for(self, user):
+        """Active (non-revoked, non-expired) FolderShare grants for any
+        folder this document belongs to - the folder-share equivalent of
+        _active_shares_for."""
+        return FolderShare.objects.filter(
+            folder__in=self.folders.all(), recipient=user, revoked_at__isnull=True
+        ).filter(Q(expires_at__isnull=True) | Q(expires_at__gt=timezone.now()))
+
     def is_viewable_by(self, user):
         """Check if a user can view (read) this document."""
         if self.is_deleted:
@@ -184,6 +196,8 @@ class DisplayDocument(models.Model):
         if self.editors.filter(pk=user.pk).exists() or self.downloaders.filter(pk=user.pk).exists():
             return True
         if self._active_shares_for(user).exists():
+            return True
+        if self._active_folder_shares_for(user).exists():
             return True
         return self.department_access.filter(department=user.department).exists()
 
@@ -208,6 +222,8 @@ class DisplayDocument(models.Model):
         if self.visibility == self.Visibility.PUBLIC and self.public_can_download:
             return True
         if self._active_shares_for(user).filter(can_download=True).exists():
+            return True
+        if self._active_folder_shares_for(user).filter(can_download=True).exists():
             return True
         return self.department_access.filter(department=user.department, can_download=True).exists()
 
@@ -361,3 +377,118 @@ class DisplayVersion(models.Model):
 
     def __str__(self):
         return f"{self.document.title} - v{self.version_number}"
+
+
+class DocumentFolder(models.Model):
+    """An admin-curated collection of documents, private to its creator
+    (plus Superadmin), used to share several documents at once as a single
+    unit rather than sharing each one individually. Membership is M2M
+    (not a FK on DisplayDocument) so a document can sit in its normal
+    DisplayCategory and also be added to any number of folders without
+    being moved."""
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(unique=True, blank=True)
+    description = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.PROTECT, related_name='document_folders_created'
+    )
+    documents = models.ManyToManyField(DisplayDocument, blank=True, related_name='folders')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            import time
+            self.slug = slugify(self.name) + '-' + str(int(time.time()))
+        super().save(*args, **kwargs)
+
+    def is_manageable_by(self, user):
+        """Private to creator: only the admin who made it, or Superadmin,
+        may view/edit/delete it or manage its documents and shares."""
+        return user.is_superuser or self.created_by_id == user.id
+
+
+class FolderShare(models.Model):
+    """Grants access to every document in a folder at once, to either an
+    in-system user (`recipient`) or an external email address
+    (`external_email`) with no account. Mirrors DocumentShare field-for-
+    field except it has no `can_edit` - folder sharing is a distribution/
+    handoff mechanism (view + optional download of the whole set), not a
+    collaborative-editing grant; editing an individual document still goes
+    through that document's own share/department-access/editor grants."""
+
+    folder = models.ForeignKey(DocumentFolder, on_delete=models.CASCADE, related_name='shares')
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='folder_shares',
+        null=True,
+        blank=True,
+    )
+    external_email = models.EmailField(
+        null=True,
+        blank=True,
+        help_text="For sharing with someone outside the organization - no account required."
+    )
+    shared_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='shared_folders'
+    )
+    can_download = models.BooleanField(default=False)
+    token = models.CharField(max_length=64, unique=True, default=generate_share_token)
+    expires_at = models.DateTimeField(null=True, blank=True, help_text="Optional. Required for external shares.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True, help_text="First time the recipient opened the emailed link")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['folder', 'recipient'],
+                condition=models.Q(recipient__isnull=False),
+                name='uniq_folder_recipient_share',
+            ),
+            models.UniqueConstraint(
+                fields=['folder', 'external_email'],
+                condition=models.Q(external_email__isnull=False),
+                name='uniq_folder_external_email_share',
+            ),
+            models.CheckConstraint(
+                check=(
+                    models.Q(recipient__isnull=False, external_email__isnull=True) |
+                    models.Q(recipient__isnull=True, external_email__isnull=False)
+                ),
+                name='folder_share_exactly_one_target',
+            ),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.folder.name} → {self.display_target}"
+
+    @property
+    def display_target(self):
+        if self.recipient:
+            return self.recipient.get_full_name() or self.recipient.email
+        return self.external_email
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and timezone.now() > self.expires_at
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None and not self.is_expired
+
+    def revoke(self):
+        self.revoked_at = timezone.now()
+        self.save(update_fields=['revoked_at'])

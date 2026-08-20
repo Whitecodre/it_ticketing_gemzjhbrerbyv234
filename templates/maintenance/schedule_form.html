@@ -47,22 +47,26 @@
                           placeholder="Details about the maintenance work...">{{ form.description.value|default:'' }}</textarea>
             </div>
             
-            {# Department #}
+            {# Target Department(s) #}
             <div class="mb-4">
-                <label for="id_department" class="block text-sm font-medium mb-1 text-text-primary">
-                    Department <span class="text-error">*</span>
+                <label class="block text-sm font-medium mb-2 text-text-primary">
+                    Target Department(s) <span class="text-error">*</span>
                 </label>
-                <select name="department" id="id_department" required
-                        class="w-full rounded-lg border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
-                    <option value="">Select Department</option>
-                    {% for value, label in department_choices %}
-                        <option value="{{ value }}" {% if form.department.value == value %}selected{% endif %}>
-                            {{ label }}
-                        </option>
-                    {% endfor %}
-                </select>
+                <div class="rounded-lg border border-border bg-background p-3">
+                    <p class="text-xs text-text-secondary mb-2">A single crew can cover several under-loaded departments in one schedule.</p>
+                    <div id="departmentCheckboxes" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {% for value, label in department_choices %}
+                        <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition">
+                            <input type="checkbox" name="departments" value="{{ value }}"
+                                   class="rounded border-border text-primary focus:ring-primary flex-shrink-0"
+                                   {% if form.departments.value and value in form.departments.value %}checked{% endif %}>
+                            <span class="truncate">{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
-            
+
             {# Date & Time #}
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div>
@@ -129,27 +133,72 @@
                 </div>
             </div>
 
+            {# Target #}
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1 text-text-primary">
+                    Facility / Location
+                </label>
+                <input type="text" name="facility_location" id="id_facility_location"
+                       value="{{ form.facility_location.value|default:'' }}"
+                       class="w-full rounded-lg border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+                       placeholder="e.g., Server Room A, Generator House">
+                <p class="text-xs mt-1 text-text-secondary">For sites/rooms that aren't tracked as assets below.</p>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2 text-text-primary">Target Asset(s)</label>
+                <p class="text-xs text-text-secondary mb-2">Tracked systems/equipment undergoing this maintenance (optional) — narrowed to the selected department(s)' assets.</p>
+                <div id="targetAssetContainer" class="rounded-lg border border-border bg-background p-3 max-h-56 overflow-y-auto"
+                     hx-get="{% url 'maintenance:target_assets_partial' %}"
+                     hx-trigger="load, change from:[name='departments']"
+                     hx-include="[name='departments']"
+                     hx-vals='{"schedule_id": "{{ schedule.pk|default_if_none:"" }}"}'
+                     hx-target="#targetAssetContainer"
+                     hx-swap="innerHTML">
+                    <p class="text-xs text-text-secondary">Select a department to see its assets.</p>
+                </div>
+            </div>
+
+            {# Third-Party Vendor(s) #}
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-2 text-text-primary">Third-Party Vendor(s)</label>
+                <div class="rounded-lg border border-border bg-background p-3">
+                    <p class="text-xs text-text-secondary mb-2">Record-keeping only — a vendor is not an assignee and can't change this schedule's status.</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {% for vendor in vendors %}
+                        <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer hover:bg-black/5 rounded px-2 py-1 transition">
+                            <input type="checkbox" name="vendors" value="{{ vendor.pk }}"
+                                   class="rounded border-border text-primary focus:ring-primary flex-shrink-0"
+                                   {% if form.vendors.value and vendor.pk in form.vendors.value %}checked{% endif %}>
+                            <span class="truncate">{{ vendor.name }}</span>
+                        </label>
+                        {% empty %}
+                        <p class="text-xs text-text-secondary">No vendors configured yet — add one in System Settings.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
             {# Checklist (optional) #}
             <div class="mb-4">
                 <label class="block text-sm font-medium mb-2 text-text-primary">
                     Checklist Items
                 </label>
+                <div id="checklistTemplateContainer" class="rounded-lg border border-border bg-background p-3 mb-2"
+                     hx-get="{% url 'maintenance:checklist_templates_partial' %}"
+                     hx-trigger="load, change from:[name='departments']"
+                     hx-include="[name='departments']"
+                     hx-target="#checklistTemplateContainer"
+                     hx-swap="innerHTML">
+                    <p class="text-xs text-text-secondary">Select a department to see saved checklist items.</p>
+                </div>
+                <p class="text-xs font-medium text-text-secondary mb-1">Other (custom items) — saved for reuse next time</p>
                 <div id="checklistContainer" class="space-y-2">
                     {% for item in checklist_items %}
                     <div class="flex items-center gap-2">
-                        <input type="text" name="checklist_items" value="{{ item }}" 
+                        <input type="text" name="checklist_items" value="{{ item }}"
                             class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
                             placeholder="Task item...">
-                        <button type="button" onclick="this.closest('.flex').remove()"
-                                class="p-1 rounded hover:bg-black/5 text-text-secondary">
-                            {% lucide "x" size=16 %}
-                        </button>
-                    </div>
-                {% empty %}
-                    <div class="flex items-center gap-2">
-                        <input type="text" name="checklist_items" 
-                            class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
-                            placeholder="e.g., Check server logs">
                         <button type="button" onclick="this.closest('.flex').remove()"
                                 class="p-1 rounded hover:bg-black/5 text-text-secondary">
                             {% lucide "x" size=16 %}
@@ -159,7 +208,7 @@
                 </div>
                 <button type="button" onclick="addChecklistItem()"
                         class="mt-2 text-sm font-medium text-primary hover:underline">
-                    + Add item
+                    + Add custom item
                 </button>
             </div>
             

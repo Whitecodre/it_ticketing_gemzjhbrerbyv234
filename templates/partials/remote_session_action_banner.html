@@ -1,0 +1,54 @@
+{% load lucide %}
+{% comment %}
+"Action needed" banner for remote sessions — surfaces Accept/Reject/Start
+directly on the dashboard instead of leaving them reachable only via a
+notification or email link. Included from base_dashboard.html, gated on
+pending_remote_sessions (only populated by the dashboard() view), so it's a
+no-op on every other page in the app.
+{% endcomment %}
+{% if pending_remote_sessions %}
+<div class="mb-4 space-y-2">
+    {% for session in pending_remote_sessions %}
+    <div class="rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3"
+         style="background-color: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface)); border-color: var(--color-primary);">
+        <div class="flex items-center gap-3 min-w-0">
+            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                {% lucide "monitor" size=16 %}
+            </div>
+            <div class="min-w-0">
+                {% if session.requester == request.user %}
+                <p class="text-sm font-medium text-text-primary truncate">
+                    A remote session was requested for ticket {{ session.ticket.number }}
+                </p>
+                <p class="text-xs text-text-secondary">Requested by {{ session.agent.get_full_name|default:session.agent.email }}</p>
+                {% else %}
+                <p class="text-sm font-medium text-text-primary truncate">
+                    {{ session.requester.get_full_name|default:session.requester.email }} accepted your remote session request for ticket {{ session.ticket.number }}
+                </p>
+                <p class="text-xs text-text-secondary">Start the session when ready.</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            {% if session.requester == request.user %}
+            <form method="post" action="{% url 'tickets:remote_session_detail' session.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="ACCEPTED">
+                <button type="submit" class="btn-primary text-xs px-3 py-1.5 rounded">Accept</button>
+            </form>
+            <form method="post" action="{% url 'tickets:remote_session_detail' session.pk %}" id="rejectSessionForm{{ session.pk }}">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="REJECTED">
+                <button type="button" class="btn-danger text-xs px-3 py-1.5 rounded"
+                        onclick="confirmReject('Reject Remote Session', 'Are you sure you want to reject this remote session request?', function() { document.getElementById('rejectSessionForm{{ session.pk }}').submit(); })">Reject</button>
+            </form>
+            {% else %}
+            <a href="{% url 'tickets:remote_session_detail' session.pk %}" class="btn-primary text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                {% lucide "play" size=12 %} Start Session
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

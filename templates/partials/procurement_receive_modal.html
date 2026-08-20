@@ -1,0 +1,37 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
+            {% lucide "package-check" size=20 %} Receive Item
+        </h3>
+        <button type="button" onclick="closeProcurementModal()" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
+            {% lucide "x" size=18 %}
+        </button>
+    </div>
+
+    <div class="mb-4 p-3 rounded-lg border border-border bg-background text-sm">
+        <p class="text-text-primary font-medium">{{ procurement_request.item_name }} x{{ procurement_request.quantity }}</p>
+        <p class="text-text-secondary text-xs">{{ procurement_request.category.name }}{% if procurement_request.vendor %} · from {{ procurement_request.vendor.name }}{% endif %}</p>
+        {% if procurement_request.ticket %}
+        <p class="text-text-secondary text-xs mt-1">For Service Request {{ procurement_request.ticket.number }} — will be auto-fulfilled on receive.</p>
+        {% elif procurement_request.mobilization %}
+        <p class="text-text-secondary text-xs mt-1">For Mobilization — {{ procurement_request.mobilization.destination_display }} — will be added to it on receive.</p>
+        {% endif %}
+    </div>
+
+    <p class="text-xs text-text-secondary mb-4">
+        Confirming this will create {{ procurement_request.quantity }} new inventory item(s) in
+        "{{ procurement_request.category.name }}"{% if procurement_request.category.is_consumable %} (added to stock){% endif %}.
+    </p>
+
+    <form method="post" action="{% url 'tickets:procurement_receive' procurement_request.pk %}">
+        {% csrf_token %}
+        <div class="flex justify-end gap-2 pt-2 border-t border-border">
+            <button type="button" onclick="closeProcurementModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "package-check" size=16 %} Confirm Received
+            </button>
+        </div>
+    </form>
+</div>

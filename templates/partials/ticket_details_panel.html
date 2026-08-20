@@ -56,6 +56,48 @@
         </div>
     </div>
 
+    {% if ticket.is_asset_request %}
+    <hr class="border-border">
+
+    {# ---------- Fulfillment ---------- #}
+    <div>
+        <label class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2 block text-text-secondary">Fulfillment</label>
+        {% if ticket.assigned_asset %}
+        <div class="flex items-center gap-2 text-xs text-text-primary">
+            {% lucide "hard-drive" size=14 class="text-text-secondary" %}
+            <span>{{ ticket.assigned_asset.name }} <span class="font-mono text-text-secondary">({{ ticket.assigned_asset.tracking_id }})</span></span>
+        </div>
+        {% elif ticket.mobilizations.exists %}
+        <div class="space-y-1.5">
+            {% for m in ticket.mobilizations.all %}
+            <div class="flex items-center gap-2 text-xs text-text-primary">
+                {% lucide "ship" size=14 class="text-text-secondary" %}
+                {% if active_role_name in 'ADMIN,SUPERADMIN,AGENT,TEAM_LEAD' %}
+                <a href="{% url 'tickets:mobilization_detail' m.pk %}" class="text-primary hover:underline">{{ m.destination_display }}</a>
+                {% else %}
+                <span>{{ m.destination_display }}</span>
+                {% endif %}
+                <span class="status-chip {% if m.status == 'ACTIVE' %}primary{% else %}success{% endif %} text-[0.6rem]">{{ m.get_status_display }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <span class="text-xs text-text-secondary">Awaiting fulfillment</span>
+        {% endif %}
+
+        {% if ticket.status == 'PENDING_USER' and user == ticket.requester %}
+        <a href="{% url 'tickets:confirm_resolution' ticket.pk %}"
+           class="btn-success text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-3">
+            {% lucide "check-circle" size=13 %} Confirm Received
+        </a>
+        {% elif ticket.resolution_confirmed_at and ticket.status not in 'RESOLVED,CLOSED' %}
+        <p class="text-xs text-text-secondary mt-3 flex items-center gap-1.5">
+            {% lucide "check" size=13 class="text-success" %} Receipt confirmed by {{ ticket.resolution_confirmed_by.get_full_name|default:ticket.resolution_confirmed_by.email }} — awaiting final resolution.
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <hr class="border-border">
 
     {# ---------- Lead Information (collapsible) ---------- #}

@@ -35,25 +35,52 @@
         </div>
     </form>
 
-    {# Category Chips #}
-    <div class="flex flex-wrap gap-2 mb-2">
-        <a href="{% url 'kb:portal' %}" class="filter-chip {% if not selected_category %}active{% endif %}">
-            All Categories
-        </a>
-        {% for cat in categories %}
-        <a href="{% url 'kb:portal' %}?category={{ cat.pk }}{% if query %}&q={{ query }}{% endif %}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}" 
-           class="filter-chip {% if selected_category == cat.pk|stringformat:'s' %}active{% endif %}">
-            {{ cat.name }} ({{ cat.article_count }})
-        </a>
-        {% endfor %}
-    </div>
+    {# Category Sections — top-level cards, shown when browsing (no search query) #}
+    {% if not query %}
+        {% if not selected_category %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {% for cat in top_level_categories %}
+            <a href="{% url 'kb:portal' %}?category={{ cat.pk }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}"
+               class="block rounded-xl border p-4 hover:shadow-md transition-shadow border-border bg-surface">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        {% lucide cat.icon|default:"folder" size=16 %}
+                    </span>
+                    <h3 class="text-sm font-semibold text-text-primary">{{ cat.name }}</h3>
+                </div>
+                {% if cat.description %}<p class="text-xs text-text-secondary line-clamp-2 mb-3">{{ cat.description }}</p>{% endif %}
+                <div class="flex items-center gap-4 text-xs text-text-secondary pt-2 border-t border-border">
+                    <span>Articles<br><span class="text-text-primary font-semibold">{{ cat.article_count }}</span></span>
+                    <span>Sections<br><span class="text-text-primary font-semibold">{{ cat.section_count }}</span></span>
+                </div>
+            </a>
+            {% empty %}
+            <p class="text-sm text-text-secondary col-span-full">No categories configured yet.</p>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="flex flex-wrap items-center gap-2 mb-2">
+            <a href="{% url 'kb:portal' %}" class="text-xs text-primary hover:underline">← All Categories</a>
+            <span class="text-xs text-text-secondary">/</span>
+            <span class="text-sm font-semibold text-text-primary">{{ selected_category.name }}</span>
+        </div>
+        {% if subcategories %}
+        <div class="flex flex-wrap gap-2 mb-4">
+            <a href="{% url 'kb:portal' %}?category={{ selected_category.pk }}" class="filter-chip active">All in {{ selected_category.name }}</a>
+            {% for sub in subcategories %}
+            <a href="{% url 'kb:portal' %}?category={{ sub.pk }}" class="filter-chip">{{ sub.name }} ({{ sub.article_count }})</a>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endif %}
+    {% endif %}
 
     {# Tag Filter Chips #}
     {% if all_tags %}
     <div class="flex flex-wrap items-center gap-2 mb-4 py-2 px-3 rounded-lg border border-border bg-surface">
         <span class="text-xs text-text-secondary font-medium">🏷️ Filter by Tag:</span>
         {% for tag in all_tags %}
-            <a href="{% url 'kb:portal' %}?tag={{ tag.name }}{% if query %}&q={{ query }}{% endif %}{% if selected_category %}&category={{ selected_category }}{% endif %}"
+            <a href="{% url 'kb:portal' %}?tag={{ tag.name }}{% if query %}&q={{ query }}{% endif %}{% if selected_category %}&category={{ selected_category.pk }}{% endif %}"
                class="text-[0.6rem] px-2 py-0.5 rounded-full border transition hover:border-primary {% if selected_tag == tag.name %}border-primary text-primary bg-primary/10{% else %}border-border text-text-secondary{% endif %}">
                 #{{ tag.name }} ({{ tag.count }})
             </a>

@@ -63,13 +63,19 @@
                                 onclick="toggleStatusDropdown()">
                             Status {% lucide "chevron-down" size=14 class="transition-transform duration-200" id="statusChevron" %}
                         </button>
-                        <div id="statusMenu" class="absolute right-0 top-full mt-1 w-40 rounded-md shadow-lg border hidden p-1 bg-surface border-border"
+                        <div id="statusMenu" class="w-40 rounded-md shadow-lg border hidden p-1 bg-surface border-border"
                              style="z-index: 50;">
                             {% for value, label in manual_status_choices %}
-                            <button class="w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
-                                    hx-post="{% url 'tickets:update_status' ticket.pk %}?status={{ value }}"
-                                    hx-swap="none"
-                                    hx-on::after-request="if(event.detail.successful) { showToast('Ticket status updated.', 'success'); setTimeout(() => location.reload(), 650); } else { showToast('Unable to update the ticket status.', 'error'); }">{{ label }}</button>
+                            <button type="button" class="w-full text-left text-xs px-3 py-1.5 rounded hover:bg-black/5"
+                                    onclick="confirmStatusChange('{{ value }}', '{{ ticket.title|escapejs }}', function() {
+                                        fetch('{% url 'tickets:update_status' ticket.pk %}?status={{ value }}', {
+                                            method: 'POST',
+                                            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value }
+                                        }).then(function(resp) {
+                                            if (resp.ok) { showToast('Ticket status updated.', 'success'); setTimeout(() => location.reload(), 650); }
+                                            else { showToast('Unable to update the ticket status.', 'error'); }
+                                        }).catch(function() { showToast('Unable to update the ticket status.', 'error'); });
+                                    })">{{ label }}</button>
                             {% endfor %}
                         </div>
                     </div>
@@ -95,22 +101,40 @@
                 
                 {# Resolve button - only show if not already resolved/closed #}
                 {% if ticket.status not in 'RESOLVED,CLOSED' %}
-                <button class="btn-success text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]"
-                        hx-get="{% url 'tickets:resolve_ticket' ticket.pk %}"
-                        hx-target="#resolveModalContainer"
-                        hx-swap="innerHTML"
-                        hx-trigger="click"
-                        onclick="document.getElementById('resolveModalOverlay').classList.remove('hidden')">
-                    {% lucide "check-circle" size=14 %} Resolve
-                </button>
+                    {% if ticket.is_asset_request and ticket.resolution_confirmed_at %}
+                    {# Requester already confirmed receipt — resolve directly, no modal round-trip. #}
+                    <form method="post" action="{% url 'tickets:resolve_ticket' ticket.pk %}" style="display:inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="confirm">
+                        <button type="submit" class="btn-success text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]">
+                            {% lucide "check-circle" size=14 %} Resolve
+                        </button>
+                    </form>
+                    {% else %}
+                    <button class="btn-success text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]"
+                            hx-get="{% url 'tickets:resolve_ticket' ticket.pk %}"
+                            hx-target="#resolveModalContainer"
+                            hx-swap="innerHTML"
+                            hx-trigger="click"
+                            onclick="document.getElementById('resolveModalOverlay').classList.remove('hidden')">
+                        {% lucide "check-circle" size=14 %} Resolve
+                    </button>
+                    {% endif %}
                 {% endif %}
                 
-                {# Fulfill Request button - only for admins on pending fulfillment tickets #}
-                {% if ticket.status == 'PENDING_FULFILLMENT' and user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
-                <button class="btn-success text-xs flex items-center gap-1 px-3 py-1.5 rounded min-h-[32px]"
-                        onclick="openFulfillModal({{ ticket.pk }})">
-                    {% lucide "check-circle" size=14 %} Fulfill Request
-                </button>
+                {# Fulfill/Mobilize button - only for admins on pending fulfillment tickets #}
+                {% if ticket.status in 'PENDING_FULFILLMENT,PENDING_VENDOR' and active_role_name in 'ADMIN,SUPERADMIN' %}
+                    {% if ticket.is_mobilization_request %}
+                    <button class="btn-success text-xs flex items-center gap-1 px-3 py-1.5 rounded min-h-[32px]"
+                            onclick="openMobilizeModal({{ ticket.pk }})">
+                        {% lucide "ship" size=14 %} Mobilize Assets
+                    </button>
+                    {% else %}
+                    <button class="btn-success text-xs flex items-center gap-1 px-3 py-1.5 rounded min-h-[32px]"
+                            onclick="openFulfillModal({{ ticket.pk }})">
+                        {% lucide "check-circle" size=14 %} Fulfill Request
+                    </button>
+                    {% endif %}
                 {% endif %}
                 
                 <button class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]" onclick="toggleDetailsPanel()">
@@ -120,7 +144,7 @@
                 <button class="btn-ghost text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 rounded min-h-[32px] sm:min-h-[36px]"
                         hx-post="{% url 'tickets:request_remote_session' ticket.pk %}"
                         hx-swap="none"
-                        hx-on::after-request="if(event.detail.successful) { showToast('Remote-support request sent.', 'success'); setTimeout(() => location.reload(), 700); } else { showToast('Remote-support request failed. An active connector may be required.', 'error'); }">
+                        hx-on::after-request="if(event.detail.successful) { showToast('Remote-support request sent.', 'success'); setTimeout(() => location.reload(), 700); } else { let msg = 'Remote-support request failed.'; try { msg = JSON.parse(event.detail.xhr.responseText).error || msg; } catch (e) {} showToast(msg, 'error'); }">
                     {% lucide "monitor" size=14 %} Request Remote Session
                 </button>
                 
@@ -186,12 +210,19 @@
                             </button>
                             {% if is_agent %}
                             <div class="relative">
-                                <button type="button" class="btn-ghost p-1.5 sm:p-1 text-xs element-link min-h-[36px] sm:min-h-[32px] flex items-center justify-center" data-tooltip="Macros"
-                                        onclick="document.getElementById('macroDropdown').classList.toggle('hidden'); htmx.trigger('#loadMacros', 'click')">
-                                    {% lucide "text-cursor-input" size=14 %}
+                                <button type="button" id="macroTriggerBtn" class="btn-ghost p-1.5 sm:p-1 text-xs element-link min-h-[36px] sm:min-h-[32px] flex items-center justify-center" data-tooltip="Macros"
+                                        onclick="toggleMacroDropdown()">
+                                    <span id="macroTriggerIconOpen">{% lucide "text-cursor-input" size=14 %}</span>
+                                    <span id="macroTriggerIconClose" class="hidden">{% lucide "x" size=14 %}</span>
                                 </button>
-                                <div id="macroDropdown" class="absolute bottom-full left-0 mb-1 w-56 rounded-md shadow-lg border hidden bg-surface border-border"
+                                <div id="macroDropdown" class="w-56 rounded-md shadow-lg border hidden bg-surface border-border"
                                     style="z-index: 60;">
+                                    <div class="flex items-center justify-between px-3 py-2 border-b border-border">
+                                        <span class="text-xs font-semibold text-text-primary">Macros</span>
+                                        <button type="button" class="btn-ghost btn-icon" onclick="closeMacroDropdown()" aria-label="Close">
+                                            {% lucide "x" size=14 %}
+                                        </button>
+                                    </div>
                                     <div id="macroDropdownContent"
                                         hx-get="{% url 'tickets:macro_list' %}"
                                         hx-trigger="click from:#loadMacros"
@@ -229,7 +260,7 @@
 
 <!-- Resolve Confirmation Modal -->
 <div id="resolveModalOverlay" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 hidden" onclick="if(event.target===this) closeResolveModal()">
-    <div id="resolveModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+    <div id="resolveModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-xl mx-4 p-6 max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
         <!-- Content loaded via HTMX -->
     </div>
 </div>
@@ -247,6 +278,67 @@
 {{ block.super }}
 <script src="{% static 'js/conversation.js' %}"></script>
 <script>
+    // Outside-click-to-close for this dropdown already lives in
+    // conversation.js (shared with every page that includes it), but the
+    // composer fills the available space so there's often no "outside" to
+    // click — the trigger button itself doubles as the close control,
+    // flipping into an X while the dropdown is open.
+    let macroDropdownCleanup = null;
+
+    function toggleMacroDropdown() {
+        const dropdown = document.getElementById('macroDropdown');
+        if (!dropdown) return;
+        const willOpen = dropdown.classList.contains('hidden');
+        if (willOpen) {
+            dropdown.classList.remove('hidden');
+            document.getElementById('macroTriggerIconOpen').classList.add('hidden');
+            document.getElementById('macroTriggerIconClose').classList.remove('hidden');
+            htmx.trigger('#loadMacros', 'click');
+            const trigger = document.getElementById('macroTriggerBtn');
+            if (trigger && window.positionDropdown) {
+                // This toolbar sits at the bottom of the composer, so the
+                // dropdown has always opened upward; keep that placement,
+                // the helper still clamps it on-screen if space is tight.
+                macroDropdownCleanup = window.positionDropdown(trigger, dropdown, { align: 'left', direction: 'up' });
+            }
+        } else {
+            closeMacroDropdown();
+        }
+    }
+
+    // Same fix as the notification bell: positionDropdown() measures
+    // synchronously right when the dropdown opens, but the macro list loads
+    // asynchronously via htmx.trigger('#loadMacros', ...) above — on the
+    // first open per page, that measurement happens before the real
+    // (usually taller) list has swapped in, so the box gets positioned for
+    // whatever was there before. Recompute once the swap actually lands.
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target && event.detail.target.id === 'macroDropdownContent') {
+            const dropdown = document.getElementById('macroDropdown');
+            const trigger = document.getElementById('macroTriggerBtn');
+            if (dropdown && trigger && !dropdown.classList.contains('hidden')) {
+                if (macroDropdownCleanup) macroDropdownCleanup();
+                macroDropdownCleanup = window.positionDropdown(trigger, dropdown, { align: 'left', direction: 'up' });
+            }
+        }
+    });
+
+    // Shared by the toggle button, the dropdown's own header X, and
+    // conversation.js's outside-click handler so the trigger icon never
+    // gets out of sync with whether the dropdown is actually open.
+    function closeMacroDropdown() {
+        const dropdown = document.getElementById('macroDropdown');
+        if (dropdown) dropdown.classList.add('hidden');
+        const openIcon = document.getElementById('macroTriggerIconOpen');
+        const closeIcon = document.getElementById('macroTriggerIconClose');
+        if (openIcon) openIcon.classList.remove('hidden');
+        if (closeIcon) closeIcon.classList.add('hidden');
+        if (macroDropdownCleanup) {
+            macroDropdownCleanup();
+            macroDropdownCleanup = null;
+        }
+    }
+
     // Only page-specific initialization
     document.addEventListener('DOMContentLoaded', function() {
         // Any page-specific setup here

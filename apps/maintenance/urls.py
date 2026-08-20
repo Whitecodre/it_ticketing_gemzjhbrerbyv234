@@ -12,12 +12,14 @@ urlpatterns = [
     path('<int:pk>/edit/', views.schedule_edit, name='edit'),
     path('calendar/', views.calendar_view, name='calendar'),
     path('calendar/day-events/', views.calendar_day_events, name='calendar_day_events'),
-    
+    path('checklist-templates/', views.checklist_templates_partial, name='checklist_templates_partial'),
+    path('target-assets/', views.target_assets_partial, name='target_assets_partial'),
+
     # Status updates (HTMX)
     path('<int:pk>/status-modal/', views.schedule_status_modal, name='status_modal'),
     path('<int:pk>/update-status/', views.schedule_update_status, name='update_status'),
     
-    # Confirmation (HTMX)
-    path('<int:pk>/confirm-modal/', views.schedule_confirm_modal, name='confirm_modal'),
-    path('<int:pk>/confirm/', views.schedule_confirm, name='confirm'),
+    # Per-asset owner confirmation (HTMX)
+    path('<int:pk>/asset/<int:asset_pk>/confirm-modal/', views.asset_confirm_modal, name='asset_confirm_modal'),
+    path('<int:pk>/asset/<int:asset_pk>/confirm/', views.asset_confirm, name='asset_confirm'),
 ]

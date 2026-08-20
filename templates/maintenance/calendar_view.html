@@ -85,7 +85,7 @@
                         <div class="day-event-item" style="border-left-color: {% if schedule.status == 'SCHEDULED' %}#3B82F6{% elif schedule.status == 'IN_PROGRESS' %}#F59E0B{% elif schedule.status == 'COMPLETED' %}#10B981{% else %}#6B7280{% endif %};">
                             <div class="event-info">
                                 <span class="event-title-text">{{ schedule.title }}</span>
-                                <span class="event-department">{{ schedule.get_department_display }}</span>
+                                <span class="event-department">{{ schedule.departments_display }}</span>
                             </div>
                             <a href="{% url 'maintenance:detail' schedule.pk %}" 
                                class="event-view-link">
@@ -136,30 +136,33 @@
         }
         
         // ✅ CORRECT: Swap only the grid wrapper
+        // htmx.ajax() has no `onAfterSwap` config key — it's silently
+        // ignored. It returns a Promise that resolves once the swap is
+        // done, so that's what drives the follow-up work instead.
         htmx.ajax('GET', `/maintenance/calendar/?month=${currentMonth}&year=${currentYear}`, {
             target: '#calendarGridWrapper',
             swap: 'innerHTML',
-            pushUrl: true,
-            onAfterSwap: function() {
-                updateMonthTitle();
-                restoreSelectedDay();
-            }
+            pushUrl: true
+        }).then(function() {
+            updateMonthTitle();
+            restoreSelectedDay();
         });
     }
-    
+
     function goToToday() {
         const today = new Date();
         const month = today.getMonth() + 1;
         const year = today.getFullYear();
-        
+        currentMonth = month;
+        currentYear = year;
+
         htmx.ajax('GET', `/maintenance/calendar/?month=${month}&year=${year}`, {
             target: '#calendarGridWrapper',
             swap: 'innerHTML',
-            pushUrl: true,
-            onAfterSwap: function() {
-                updateMonthTitle();
-                restoreSelectedDay();
-            }
+            pushUrl: true
+        }).then(function() {
+            updateMonthTitle();
+            restoreSelectedDay();
         });
     }
     

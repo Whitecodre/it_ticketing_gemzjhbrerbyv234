@@ -33,4 +33,18 @@ urlpatterns = [
     # Create
     path('create/', views.document_create, name='document_create'),
     path('bulk-upload/', views.document_bulk_create, name='document_bulk_create'),
+
+    # Folders
+    path('folders/', views.folder_list, name='folder_list'),
+    path('folder/<slug:slug>/', views.folder_detail, name='folder_detail'),
+    path('folder/<slug:slug>/add-documents/', views.folder_add_documents, name='folder_add_documents'),
+    path('folder/<slug:slug>/remove-document/<int:document_id>/', views.folder_remove_document, name='folder_remove_document'),
+    path('folder/<slug:slug>/delete/', views.folder_delete, name='folder_delete'),
+    path('folder/<slug:slug>/share/', views.folder_share, name='folder_share'),
+    path('folder/<slug:slug>/share/<int:share_id>/revoke/', views.folder_share_revoke, name='folder_share_revoke'),
+    path('folder-share/<str:token>/', views.folder_share_open, name='folder_share_open'),
+    path('folder-share/<str:token>/view/', views.folder_shared_view, name='folder_shared_view'),
+    path('folder-share/<str:token>/external/', views.folder_share_external, name='folder_share_external'),
+    path('folder-share/<str:token>/external/document/<int:document_id>/serve/', views.folder_share_external_serve, name='folder_share_external_serve'),
+    path('folder-share/<str:token>/external/document/<int:document_id>/download/', views.folder_share_external_download, name='folder_share_external_download'),
 ]

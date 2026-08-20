@@ -11,33 +11,12 @@ import csv
 import json
 
 from apps.accounts.models import ClientSettings
+from apps.common.permissions import is_admin, can_edit_org, get_sidebar_template
 from .models import SystemOrgConfig, OrgDraft, OrgApproval, OrgPublished, OrgAuditLog
 from .forms import OrgDraftForm
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
-  
-
-def get_sidebar_template(user):
-    """Returns the correct sidebar partial based on user's active role."""
-    mapping = {
-        'END_USER': 'partials/sidebar_end_user.html',
-        'AGENT': 'partials/sidebar_agent.html',
-        'TEAM_LEAD': 'partials/sidebar_team_lead.html',
-        'ADMIN': 'partials/sidebar_admin.html',
-        'SUPERADMIN': 'partials/sidebar_superadmin.html',
-    }
-    active_role = user.get_active_role()
-    role_name = active_role.name if active_role else user.role
-    return mapping.get(role_name, 'partials/sidebar_end_user.html')
-
-
-def is_admin(user):
-    return user.role in ['ADMIN', 'SUPERADMIN']
-
-
-def can_edit_org(user):
-    return user.role in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']
 
 
 # ================================================================

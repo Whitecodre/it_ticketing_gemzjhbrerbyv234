@@ -3,21 +3,20 @@
 from django import forms
 from django.core.exceptions import ValidationError
 from .models import Article
-from .widgets import KBTinyMCEWidget
 from apps.common.models import Category, Tag
 
 
-class ArticleForm(forms.ModelForm):
-    content = forms.CharField(
-        widget=KBTinyMCEWidget(),
-        label="Content",
-        required=True
-    )
-    
+FIELD_CLASS = 'w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'
+
+
+class ArticleMetadataForm(forms.ModelForm):
+    """Step 1 of the article wizard: title/category/visibility/tags only.
+    Content is handled separately by the TipTap-based content step."""
+
     tags_input = forms.CharField(
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2',
+            'class': FIELD_CLASS,
             'placeholder': 'Enter tags separated by commas (e.g., "network, vpn, troubleshooting")',
             'list': 'tag-suggestions',
             'autocomplete': 'off',
@@ -29,25 +28,21 @@ class ArticleForm(forms.ModelForm):
     class Meta:
         model = Article
         # ⚠️ IMPORTANT: tags_input is NOT in fields - it's a custom field
-        fields = ['title', 'category', 'visibility', 'content']
+        fields = ['title', 'category', 'visibility']
         widgets = {
             'title': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2',
+                'class': FIELD_CLASS,
                 'placeholder': 'Enter article title...',
             }),
-            'category': forms.Select(attrs={
-                'class': 'w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2',
-            }),
-            'visibility': forms.Select(attrs={
-                'class': 'w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2',
-            }),
+            'category': forms.Select(attrs={'class': FIELD_CLASS}),
+            'visibility': forms.Select(attrs={'class': FIELD_CLASS}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['category'].queryset = Category.objects.all()
         self.fields['category'].empty_label = "-- Select Category --"
-        
+
         # If editing, pre-populate tags_input with existing tags
         if self.instance and self.instance.pk:
             existing_tags = self.instance.tags.all().values_list('name', flat=True)
@@ -62,49 +57,19 @@ class ArticleForm(forms.ModelForm):
         return tags
 
     def save(self, commit=True):
-        """
-        Save the article, then handle tags separately.
-        This ensures the article exists in the database before setting tags.
-        """
-        # Get the article instance (unsaved)
-        article = super().save(commit=False)
-        
-        # ================================================================
-        # STEP 1: Save the article to the database FIRST
-        # ================================================================
-        if commit:
-            article.save()  # ✅ Article now has an ID
-            # Save many-to-many relationships (if any)
-            self.save_m2m()
-        else:
-            # If commit=False, we still need to handle tags later
-            # But we should still save the article before setting tags
-            # For safety, we'll save it anyway
-            article.save()
-        
-        # ================================================================
-        # STEP 2: Handle tags (article now has an ID)
-        # ================================================================
-        if self.cleaned_data.get('tags_input') is not None:
+        article = super().save(commit=commit)
+        if commit and self.cleaned_data.get('tags_input') is not None:
             tag_names = self.cleaned_data['tags_input']
-            tag_objects = []
-            for name in tag_names:
-                tag, created = Tag.objects.get_or_create(name=name)
-                tag_objects.append(tag)
-            # ✅ Set the tags (article has an ID now)
+            tag_objects = [Tag.objects.get_or_create(name=name)[0] for name in tag_names]
             article.tags.set(tag_objects)
-        
-        # ================================================================
-        # STEP 3: Save again if commit is True (to persist changes)
-        # ================================================================
-        if commit:
-            article.save()
-        
         return article
 
 
 class KBFromTicketForm(forms.Form):
-    """Form for creating a KB article from a ticket (wizard)."""
+    """Metadata-only step for creating a KB article from a ticket — content
+    isn't written here; Save creates a DRAFT article and hands off to the
+    same TipTap editor (kb:edit_content) every other article uses, seeded
+    with a scaffold built from the ticket (see convert_ticket_to_kb)."""
 
     title = forms.CharField(
         max_length=255,
@@ -114,13 +79,17 @@ class KBFromTicketForm(forms.Form):
             'placeholder': 'Enter article title...',
         })
     )
-    
-    content = forms.CharField(
-        widget=KBTinyMCEWidget(),
-        required=True,
-        label="Article Content",
+
+    # Initial = the ticket's own category, but editable — previously this
+    # was silently inherited with no way to change it from this screen.
+    category = forms.ModelChoiceField(
+        queryset=Category.objects.all(),
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2',
+        })
     )
-    
+
     visibility = forms.ChoiceField(
         choices=Article.Visibility.choices,
         required=False,
@@ -139,7 +108,8 @@ class KBFromTicketForm(forms.Form):
     def __init__(self, ticket, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ticket = ticket
-        
+        self.fields['category'].empty_label = '-- Select Category --'
+
         # Populate comment choices
         comments = ticket.comments.filter(visibility='PUBLIC').order_by('created_at')
         choices = []

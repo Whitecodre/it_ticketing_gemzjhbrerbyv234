@@ -1,6 +1,102 @@
 // global.js – Global utility functions (NO ALPINE.JS COMPONENTS)
 
 // ================================================================
+// SHARED DROPDOWN POSITIONING
+// ================================================================
+// Positions a dropdown panel with `position: fixed`, anchored to its
+// trigger element, flipping/aligning to stay inside the viewport, and
+// re-computing on resize/scroll while open. This is the one place the
+// flip/clamp math lives — used by the notification bell, role switcher,
+// status menu, macro menu, export menus, and the per-row table action
+// menus, replacing several copy-pasted versions of the same logic.
+//
+// options:
+//   align: 'right' (default) | 'left' | 'center' — horizontal anchor
+//          relative to the trigger element's own edges/center
+//   direction: 'auto' (default) | 'down' | 'up' — vertical placement;
+//          'auto' opens downward unless there isn't room below and
+//          there's more room above than below
+//   margin: viewport-edge clamp margin in px (default 8)
+//   gap: gap between trigger and dropdown in px (default 6)
+//
+// Returns a cleanup() function that removes the resize/scroll listeners
+// this call attached — call it when the dropdown closes so listeners
+// don't leak.
+function positionDropdown(triggerEl, dropdownEl, options) {
+    options = options || {};
+    const margin = options.margin != null ? options.margin : 8;
+    const gap = options.gap != null ? options.gap : 6;
+    const align = options.align || 'right';
+    const direction = options.direction || 'auto';
+
+    function measure() {
+        // A `hidden` (display:none) element reports zero size. If that's
+        // the state we're in, measure it invisibly-but-rendered first.
+        const wasHidden = dropdownEl.classList.contains('hidden');
+        let prevVisibility, prevDisplay;
+        if (wasHidden) {
+            prevVisibility = dropdownEl.style.visibility;
+            prevDisplay = dropdownEl.style.display;
+            dropdownEl.classList.remove('hidden');
+            dropdownEl.style.visibility = 'hidden';
+            dropdownEl.style.display = 'block';
+        }
+
+        const width = dropdownEl.offsetWidth;
+        const height = dropdownEl.offsetHeight;
+
+        if (wasHidden) {
+            dropdownEl.classList.add('hidden');
+            dropdownEl.style.visibility = prevVisibility;
+            dropdownEl.style.display = prevDisplay;
+        }
+        return { width, height };
+    }
+
+    function compute() {
+        if (!triggerEl || !dropdownEl) return;
+        const triggerRect = triggerEl.getBoundingClientRect();
+        const { width, height } = measure();
+
+        const spaceBelow = window.innerHeight - triggerRect.bottom - gap - margin;
+        const spaceAbove = triggerRect.top - gap - margin;
+        let openUp;
+        if (direction === 'up') openUp = true;
+        else if (direction === 'down') openUp = false;
+        else openUp = height > spaceBelow && spaceAbove > spaceBelow;
+
+        let top = openUp ? triggerRect.top - height - gap : triggerRect.bottom + gap;
+        const maxTop = window.innerHeight - height - margin;
+        top = Math.max(margin, Math.min(top, maxTop));
+
+        let left;
+        if (align === 'left') left = triggerRect.left;
+        else if (align === 'center') left = triggerRect.left + triggerRect.width / 2 - width / 2;
+        else left = triggerRect.right - width;
+        const maxLeft = window.innerWidth - width - margin;
+        left = Math.max(margin, Math.min(left, maxLeft));
+
+        dropdownEl.style.position = 'fixed';
+        dropdownEl.style.top = top + 'px';
+        dropdownEl.style.left = left + 'px';
+        dropdownEl.style.right = 'auto';
+        dropdownEl.style.bottom = 'auto';
+    }
+
+    compute();
+    window.addEventListener('resize', compute);
+    // scroll doesn't bubble, so listen in the capture phase to catch
+    // scrolling on any ancestor container, not just window/document.
+    window.addEventListener('scroll', compute, true);
+
+    return function cleanupPositionDropdown() {
+        window.removeEventListener('resize', compute);
+        window.removeEventListener('scroll', compute, true);
+    };
+}
+window.positionDropdown = positionDropdown;
+
+// ================================================================
 // SIDEBAR STATE - Initialize
 // ================================================================
 
@@ -131,7 +227,7 @@ window.addEventListener('resize', function() {
 })();
 
 // ================================================================
-// SIDEBAR ACCORDION - Single Open, Default Closed (FIXED)
+// SIDEBAR ACCORDION - Single Open On Click, Default All Open
 // ================================================================
 
 let activeSectionId = null;
@@ -262,34 +358,22 @@ function initialiseSidebarAccordion() {
     const freshBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
     const sectionIds = Array.prototype.map.call(freshBtns, function (b) { return b.dataset.section; }).filter(Boolean);
 
-    // Open whichever section contains the current page's active link, so a
-    // visitor lands with their location already visible instead of landing
-    // on an all-collapsed sidebar and having to guess which group to open.
+    // Mark the section containing the current page's active link with the
+    // same "you are here" signal the child link gets, so it stays visually
+    // distinct even though every section starts expanded below.
     const sectionToOpen = findActiveSectionId(sectionIds);
-
-    // Mark the parent category with the same "you are here" signal the
-    // child link gets, so collapsing the section (to browse elsewhere)
-    // doesn't lose the visual trail back to the current page.
     freshBtns.forEach(function(button) {
         button.classList.toggle('has-active-child', button.dataset.section === sectionToOpen);
     });
 
-    // Start all closed, except the section we're about to open below.
+    // Every section starts expanded so badge-bearing links (Remote Sessions,
+    // Manager Review, etc.) are always visible without the user having to
+    // guess which group to open. Clicking a section afterward still collapses
+    // the others (see handleSectionToggle) - only the initial state changed.
     freshBtns.forEach(function(button) {
         const sectionId = button.dataset.section;
-        if (!sectionId || sectionId === sectionToOpen) return;
-
-        const content = document.getElementById(sectionId);
-        if (!content) return;
-
-        content.classList.add('hidden');
-        content.style.maxHeight = '0px';
-        content.style.opacity = '0';
-        content.style.overflow = 'hidden';
-
-        const chevron = button.querySelector('.section-chevron');
-        if (chevron) chevron.style.transform = 'rotate(-90deg)';
-        button.setAttribute('aria-expanded', 'false');
+        if (!sectionId) return;
+        openSection(sectionId);
     });
 
     activeSectionId = null;
@@ -298,11 +382,6 @@ function initialiseSidebarAccordion() {
     freshBtns.forEach(function(button) {
         button.addEventListener('click', handleSectionToggle);
     });
-
-    if (sectionToOpen) {
-        openSection(sectionToOpen);
-        activeSectionId = sectionToOpen;
-    }
 }
 
 // Re-initialize after HTMX swaps that replace the sidebar nav itself (e.g.
@@ -335,6 +414,8 @@ document.addEventListener('DOMContentLoaded', function() {
 // NOTIFICATIONS DROPDOWN - FIXED
 // ================================================================
 
+let notificationDropdownCleanup = null;
+
 function toggleNotificationDropdown() {
     const dropdown = document.getElementById('notificationDropdown');
     const bell = document.getElementById('notificationBell');
@@ -348,9 +429,35 @@ function toggleNotificationDropdown() {
                 swap: 'innerHTML'
             });
         }
+        dropdown.classList.remove('hidden');
+        if (bell) {
+            notificationDropdownCleanup = positionDropdown(bell, dropdown, { align: 'right' });
+        }
+    } else {
+        dropdown.classList.add('hidden');
+        if (notificationDropdownCleanup) {
+            notificationDropdownCleanup();
+            notificationDropdownCleanup = null;
+        }
     }
-    dropdown.classList.toggle('hidden');
 }
+
+// positionDropdown() above measures the dropdown synchronously right when
+// it opens, but the real notification list loads asynchronously via HTMX
+// afterward — on the first open per page (before anything's cached in the
+// DOM), that measurement happens against the short "Loading notifications…"
+// placeholder, so the box gets positioned/sized for that instead of the
+// real (usually much taller) list. Recompute once the swap actually lands.
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target && event.detail.target.id === 'notificationDropdownContent') {
+        const dropdown = document.getElementById('notificationDropdown');
+        const bell = document.getElementById('notificationBell');
+        if (dropdown && bell && !dropdown.classList.contains('hidden')) {
+            if (notificationDropdownCleanup) notificationDropdownCleanup();
+            notificationDropdownCleanup = positionDropdown(bell, dropdown, { align: 'right' });
+        }
+    }
+});
 
 // ================================================================
 // NOTIFICATIONS - Mark Read and Go
@@ -385,6 +492,10 @@ document.addEventListener('click', function(event) {
     const bell = document.getElementById('notificationBell');
     if (dropdown && bell && !bell.contains(event.target) && !dropdown.contains(event.target)) {
         dropdown.classList.add('hidden');
+        if (notificationDropdownCleanup) {
+            notificationDropdownCleanup();
+            notificationDropdownCleanup = null;
+        }
     }
 });
 
@@ -492,6 +603,97 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
+// ================================================================
+// VENDOR-BY-CATEGORY FILTER
+// Narrows an already-rendered vendor <select> to vendors that supply the
+// category picked in a sibling <select> — options are pre-tagged with
+// data-categories="1,3" (comma-separated AssetCategory pks) by the server;
+// a vendor with no data-categories (uncategorized) always stays visible.
+// Used by the "Order from Vendor" procurement form, each mobilization
+// procurement line item, and the asset renewal-vendor picker.
+// ================================================================
+
+function filterVendorSelectByCategory(categorySelect, vendorSelect) {
+    if (!categorySelect || !vendorSelect) return;
+    const categoryId = categorySelect.value;
+    const previousValue = vendorSelect.value;
+    let stillValid = !categoryId;
+
+    Array.from(vendorSelect.options).forEach(function (opt) {
+        if (!opt.value) { opt.hidden = false; return; }
+        const raw = opt.dataset.categories || '';
+        const cats = raw ? raw.split(',') : [];
+        const matches = !categoryId || cats.length === 0 || cats.indexOf(categoryId) !== -1;
+        opt.hidden = !matches;
+        if (matches && opt.value === previousValue) stillValid = true;
+    });
+
+    if (!stillValid) vendorSelect.value = '';
+}
+
+window.filterVendorSelectByCategory = filterVendorSelectByCategory;
+
+// ================================================================
+// MOBILIZE MODAL (mobilization creation for pending-fulfillment tickets
+// flagged is_mobilization_request — same shape as the fulfill modal above,
+// but the fetched partial (mobilization_create_modal.html) has no root
+// backdrop of its own since it's normally swapped into a page-level
+// #modalOverlay/#modalContainer pair, so this wraps it in one here instead
+// of duplicating that overlay markup on every page that can trigger it.
+// Its close button already calls closeMobilizationModal() — same name used
+// by mobilization_detail.html/mobilization_list.html — so it's defined
+// globally here too rather than introducing a second name.
+// ================================================================
+
+function openMobilizeModal(ticketId) {
+    const existing = document.getElementById('mobilizeModal');
+    if (existing) existing.remove();
+
+    document.body.style.overflow = 'hidden';
+
+    fetch(`/tickets/mobilizations/create-modal/?ticket_id=${ticketId}`)
+        .then(response => response.text())
+        .then(html => {
+            const overlay = document.createElement('div');
+            overlay.id = 'mobilizeModal';
+            overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50';
+            overlay.innerHTML = `<div class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">${html}</div>`;
+            document.body.appendChild(overlay);
+
+            if (typeof htmx !== 'undefined') {
+                htmx.process(overlay);
+            }
+
+            overlay.addEventListener('click', function(e) {
+                if (e.target === this) closeMobilizationModal();
+            });
+        })
+        .catch(error => {
+            console.error('Error loading mobilize modal:', error);
+            document.body.style.overflow = '';
+            if (typeof showToast === 'function') {
+                showToast('Error loading mobilization form.', 'error');
+            }
+        });
+}
+
+function closeMobilizationModal() {
+    const modal = document.getElementById('mobilizeModal');
+    if (modal) {
+        modal.remove();
+    }
+    document.body.style.overflow = '';
+}
+
+window.openMobilizeModal = openMobilizeModal;
+window.closeMobilizationModal = closeMobilizationModal;
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeMobilizationModal();
+    }
+});
+
 // Handle data-close-modal buttons using event delegation
 document.addEventListener('click', function(e) {
     const closeBtn = e.target.closest('[data-close-modal]');
@@ -555,10 +757,23 @@ function setTheme(theme) {
 // ROLE DROPDOWN
 // ================================================================
 
+let roleDropdownCleanup = null;
+
 function toggleRoleDropdown() {
     const dropdown = document.getElementById('roleDropdown');
-    if (dropdown) {
-        dropdown.classList.toggle('hidden');
+    if (!dropdown) return;
+    if (dropdown.classList.contains('hidden')) {
+        dropdown.classList.remove('hidden');
+        const trigger = document.querySelector('[onclick="toggleRoleDropdown()"]');
+        if (trigger) {
+            roleDropdownCleanup = positionDropdown(trigger, dropdown, { align: 'right' });
+        }
+    } else {
+        dropdown.classList.add('hidden');
+        if (roleDropdownCleanup) {
+            roleDropdownCleanup();
+            roleDropdownCleanup = null;
+        }
     }
 }
 
@@ -569,6 +784,10 @@ document.addEventListener('click', function(event) {
         const button = event.target.closest('[onclick="toggleRoleDropdown()"]');
         if (!button && !dropdown.contains(event.target)) {
             dropdown.classList.add('hidden');
+            if (roleDropdownCleanup) {
+                roleDropdownCleanup();
+                roleDropdownCleanup = null;
+            }
         }
     }
 });

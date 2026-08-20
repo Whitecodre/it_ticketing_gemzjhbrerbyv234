@@ -1,0 +1,64 @@
+{% extends "base_registration.html" %}
+{% comment %}
+templates/documents_display/folder_share_external.html
+
+Standalone, no-login page listing every document in an externally-shared
+folder. The share token itself is the access — there is no request.user
+here, so this must not extend base_dashboard.html.
+{% endcomment %}
+{% load static %}
+{% load lucide %}
+
+{% block title %}{{ folder.name }} - Shared Folder{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-10">
+    <div class="rounded-xl border shadow-sm overflow-hidden" style="background-color: var(--color-surface); border-color: var(--color-border);">
+        <div class="flex items-center gap-3 px-5 py-4 border-b" style="border-color: var(--color-border);">
+            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                {% lucide "folder" size=16 %}
+            </span>
+            <div class="min-w-0">
+                <p class="text-sm font-semibold truncate" style="color: var(--color-text-primary);">{{ folder.name }}</p>
+                <p class="text-xs" style="color: var(--color-text-secondary);">{{ documents|length }} document(s) shared with you</p>
+            </div>
+        </div>
+
+        <div class="divide-y" style="border-color: var(--color-border);">
+            {% for doc in documents %}
+            <div class="flex items-center gap-3 px-5 py-3">
+                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    {% if doc.file_extension == 'pdf' %}
+                        {% lucide "file-text" size=14 %}
+                    {% elif doc.file_extension in 'png,jpg,jpeg,gif,webp' %}
+                        {% lucide "image" size=14 %}
+                    {% else %}
+                        {% lucide "file" size=14 %}
+                    {% endif %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ doc.title }}</p>
+                    <p class="text-xs" style="color: var(--color-text-secondary);">{{ doc.file_name }} ({{ doc.file_size|filesizeformat }})</p>
+                </div>
+                <a href="{% url 'documents_display:folder_share_external_serve' share.token doc.pk %}{% if not share.can_download %}#toolbar=0&navpanes=0{% endif %}" target="_blank" class="btn-ghost text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 shrink-0">
+                    {% lucide "eye" size=13 %} View
+                </a>
+                {% if share.can_download %}
+                <a href="{% url 'documents_display:folder_share_external_download' share.token doc.pk %}" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1 shrink-0">
+                    {% lucide "download" size=13 %} Download
+                </a>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="px-5 py-8 text-center text-sm" style="color: var(--color-text-secondary);">This folder has no documents yet.</div>
+            {% endfor %}
+        </div>
+
+        {% if share.expires_at %}
+        <div class="px-5 py-2.5 border-t text-xs" style="border-color: var(--color-border); color: var(--color-text-secondary);">
+            This link expires {{ share.expires_at|date:"F d, Y" }}.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

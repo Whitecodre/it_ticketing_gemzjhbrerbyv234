@@ -1,0 +1,213 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Maintenance {{ schedule_code }}{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-start gap-3">
+            <a href="{% url 'tickets:report_builder' report_type=report_type %}" class="btn-ghost btn-icon mt-1" aria-label="Back">
+                {% lucide "arrow-left" size=18 %}
+            </a>
+            <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-base font-semibold text-text-primary">{{ schedule.title }}</h2>
+                    <span class="status-chip {{ schedule.status|lower }} text-xs">{{ status_display }}</span>
+                </div>
+                <p class="text-xs text-text-secondary mt-1 font-mono">{{ schedule_code }}</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=schedule.pk %}?format=pdf" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-type" size=12 %} Export PDF
+            </a>
+            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=schedule.pk %}?format=docx" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                {% lucide "file-down" size=12 %} Export Word
+            </a>
+        </div>
+    </div>
+
+    {# Letterhead #}
+    <div class="dashboard-card p-4 flex items-center gap-4">
+        <div class="h-14 w-24 rounded-lg border flex items-center justify-center flex-shrink-0 bg-white" style="border-color: var(--color-border);">
+            {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" class="max-h-10 max-w-20 object-contain">
+            {% else %}
+                <span class="text-xs font-semibold text-primary">{{ client_settings.company_name }}</span>
+            {% endif %}
+        </div>
+        <div class="flex-1 text-center">
+            <p class="text-sm font-bold text-text-primary tracking-wide">MAINTENANCE SCHEDULE REPORT</p>
+            <p class="text-[0.65rem] text-text-secondary">HDG-IT-FRM-090</p>
+        </div>
+        <div class="w-24 flex-shrink-0"></div>
+    </div>
+
+    {# Section 1 — Schedule Details #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "calendar-clock" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 1 — Schedule Details</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Target Department(s)</span><span class="font-medium text-text-primary">{{ department_display }}</span></div>
+            <div>
+                <span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Scheduled Date</span>
+                <span class="font-medium text-text-primary">
+                    {{ schedule.scheduled_date|date:"M d, Y" }}
+                    {% if schedule.start_time %}at {{ schedule.start_time|time:"g:i A" }}{% if schedule.end_time %} – {{ schedule.end_time|time:"g:i A" }}{% endif %}{% endif %}
+                </span>
+            </div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Facility / Location</span><span class="font-medium text-text-primary">{{ schedule.facility_location|default:"—" }}</span></div>
+            <div class="sm:col-span-2 lg:col-span-3"><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Target Asset(s)</span><span class="font-medium text-text-primary">{% for asset in target_assets %}{{ asset.name }} ({{ asset.tracking_id }}){% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</span></div>
+            {% if vendors %}
+            <div class="sm:col-span-2 lg:col-span-3"><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Third-Party Vendor(s)</span><span class="font-medium text-text-primary">{% for vendor in vendors %}{{ vendor.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# Section 2 — Description #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-text-secondary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent); color: var(--color-text-secondary);">{% lucide "file-text" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 2 — Description</h3>
+        </div>
+        <p class="text-sm whitespace-pre-line leading-relaxed">{{ schedule.description|default:"—" }}</p>
+    </div>
+
+    {# Section 3 — Assigned Personnel #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-info);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-info) 12%, transparent); color: var(--color-info);">{% lucide "users" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 3 — Assigned Personnel</h3>
+        </div>
+        {% if assignees %}
+        <div class="flex flex-wrap gap-1.5">
+            {% for person in assignees %}
+            <span class="text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">
+                {{ person.get_full_name|default:person.email }}
+            </span>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-text-secondary italic">Unassigned</p>
+        {% endif %}
+    </div>
+
+    {# Section 4 — Checklist #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-success);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-success) 12%, transparent); color: var(--color-success);">{% lucide "list-checks" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 4 — Checklist ({{ checklist_progress }}% complete)</h3>
+        </div>
+        {% if checklist %}
+        <ul class="space-y-1.5">
+            {% for item, done in checklist %}
+            <li class="flex items-center gap-2 text-sm" style="color: var(--color-text-primary);">
+                {% if done %}<span class="text-success">✓</span>{% else %}<span class="text-text-secondary">☐</span>{% endif %}
+                {{ item }}
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-sm text-text-secondary italic">No checklist items.</p>
+        {% endif %}
+    </div>
+
+    {# Section 5 — Timeline #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "history" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 5 — Timeline</h3>
+        </div>
+        <table class="w-full text-sm border-collapse">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Stage</th>
+                    <th class="text-left font-semibold text-text-primary py-1.5">Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <td class="py-1.5 pr-3 text-text-secondary">Created</td>
+                    <td class="py-1.5 text-text-primary">{{ schedule.created_at|date:"M d, Y g:i A" }}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid var(--color-border);">
+                    <td class="py-1.5 pr-3 text-text-secondary">Started</td>
+                    <td class="py-1.5 text-text-primary">{{ started_at|date:"M d, Y g:i A"|default:"Not started" }}</td>
+                </tr>
+                <tr>
+                    <td class="py-1.5 pr-3 text-text-secondary">Completed</td>
+                    <td class="py-1.5 text-text-primary">{{ schedule.completed_at|date:"M d, Y g:i A"|default:"Not completed" }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {# Section 6 — Owner Confirmation #}
+    <div class="space-y-4">
+        <div class="flex items-center gap-2 px-1">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "badge-check" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+                {% if department_sections|length > 1 %}Section 6 — Owner Confirmation by Department{% else %}Section 6 — Owner Confirmation{% endif %}
+            </h3>
+        </div>
+        {% for section in department_sections %}
+        <div class="dashboard-card p-5 space-y-3 text-sm">
+            {% if department_sections|length > 1 %}
+            <h4 class="text-sm font-semibold text-text-primary">{{ section.department_display }}</h4>
+            {% endif %}
+            {% if section.confirmations %}
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Asset</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Status</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Confirmed By</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5">Confirmed At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in section.confirmations %}
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <td class="py-1.5 pr-3 text-text-primary">{{ c.asset.name }} ({{ c.asset.tracking_id }})</td>
+                        <td class="py-1.5 pr-3">{% include "maintenance/partials/asset_confirmation_badge.html" with status=c.status %}</td>
+                        <td class="py-1.5 pr-3 text-text-secondary">{{ c.confirmed_by.get_full_name|default:"—" }}</td>
+                        <td class="py-1.5 text-text-secondary">{{ c.confirmed_at|date:"M d, Y g:i A"|default:"—" }}</td>
+                    </tr>
+                    {% if c.status == 'DISPUTED' and c.dispute_reason %}
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <td colspan="4" class="py-1.5 text-error text-xs">Dispute reason: {{ c.dispute_reason }}</td>
+                    </tr>
+                    {% elif c.notes %}
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <td colspan="4" class="py-1.5 text-text-secondary text-xs">Notes: {{ c.notes }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-sm text-text-secondary italic">No target assets in this department.</p>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="dashboard-card p-5">
+            <p class="text-sm text-text-secondary italic">No target assets recorded for this schedule.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+</div>
+{% endblock %}

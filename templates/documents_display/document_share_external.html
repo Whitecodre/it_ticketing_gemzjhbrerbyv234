@@ -35,7 +35,7 @@ role-having user).
         <div style="height: 75vh; background-color: var(--color-background);">
             {% if is_viewable_inline %}
                 {% if file_extension == 'pdf' %}
-                    <embed src="{% url 'documents_display:document_share_external_serve' share.token %}" type="application/pdf" class="w-full h-full border-0">
+                    <embed src="{% url 'documents_display:document_share_external_serve' share.token %}{% if not share.can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
                 {% elif file_extension in 'png,jpg,jpeg,gif,webp' %}
                     <div class="w-full h-full flex items-center justify-center p-4">
                         <img src="{% url 'documents_display:document_share_external_serve' share.token %}" alt="{{ document.title }}" class="max-w-full max-h-full object-contain rounded-lg shadow-sm">
@@ -45,7 +45,7 @@ role-having user).
                 {% endif %}
             {% elif is_office_file %}
                 {% if document.preview_pdf %}
-                    <embed src="{% url 'documents_display:document_share_external_serve' share.token %}?preview=true" type="application/pdf" class="w-full h-full border-0">
+                    <embed src="{% url 'documents_display:document_share_external_serve' share.token %}?preview=true{% if not share.can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
                 {% else %}
                     <div class="flex flex-col items-center justify-center h-full p-4 text-center">
                         <span class="text-6xl mb-4 opacity-30">📄</span>

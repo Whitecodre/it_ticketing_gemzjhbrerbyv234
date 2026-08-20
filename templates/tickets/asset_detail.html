@@ -42,6 +42,15 @@
                         {% else %}neutral{% endif %} text-xs">
                         {{ asset.get_condition_display }}
                     </span>
+                    {% if asset.is_consumable %}
+                    <span class="status-chip info text-xs">{{ asset.quantity_in_stock }} in stock</span>
+                    {% endif %}
+                    {% if asset.is_low_stock %}
+                    <span class="status-chip danger text-xs">⚠️ Low Stock</span>
+                    {% endif %}
+                    {% if asset.is_renewal_due_soon %}
+                    <span class="status-chip {% if asset.next_renewal_date < today %}danger{% else %}warning{% endif %} text-xs">📅 Renews {{ asset.next_renewal_date|date:"M j, Y" }}</span>
+                    {% endif %}
                 </div>
                 <p class="text-sm text-text-secondary">{{ asset.tracking_id }}</p>
                 {% if asset.category %}
@@ -51,11 +60,21 @@
                 {% endif %}
             </div>
             <div class="flex gap-2 flex-wrap">
-                {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
-                <a href="{% url 'tickets:asset_edit_page' asset.pk %}" 
+                {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                <a href="{% url 'tickets:asset_edit_page' asset.pk %}"
                    class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "pencil" size=14 %} Edit
                 </a>
+                {% endif %}
+                {% if asset.is_renewable and active_role_name in 'ADMIN,SUPERADMIN' %}
+                <form method="post" action="{% url 'tickets:asset_mark_renewed' asset.pk %}" id="markRenewedForm" class="inline-flex">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_cost" id="markRenewedCostInput" value="">
+                    <button type="button" class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                            onclick="promptMarkRenewed()">
+                        {% lucide "refresh-cw" size=14 %} Mark as Renewed
+                    </button>
+                </form>
                 {% endif %}
                 {% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' %}
                 <button class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1"
@@ -63,21 +82,17 @@
                     {% lucide "trash-2" size=14 %} Request Scrap
                 </button>
                 {% endif %}
-                {% if asset.status == 'MAINTENANCE' and user.role in 'ADMIN,SUPERADMIN' %}
-                <button class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                {% if asset.status == 'MAINTENANCE' and active_role_name in 'ADMIN,SUPERADMIN' %}
+                {% comment %} <button class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1"
                         onclick="markMaintenanceComplete({{ asset.pk }})">
                     {% lucide "check-circle" size=14 %} Complete Maintenance
-                </button>
+                </button> {% endcomment %}
                 {% endif %}
             </div>
         </div>
 
         <!-- Stats Row -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <div class="text-center p-3 rounded-lg bg-background">
-                <p class="text-2xl font-bold text-primary">${{ current_value|floatformat:2 }}</p>
-                <p class="text-xs text-text-secondary">Current Value</p>
-            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
             <div class="text-center p-3 rounded-lg bg-background">
                 <p class="text-2xl font-bold text-info">{{ asset.days_checked_out }}</p>
                 <p class="text-xs text-text-secondary">Days Checked Out</p>
@@ -108,7 +123,7 @@
                 <button type="button" data-asset-tab="details" class="px-4 py-2 text-sm font-medium border-b-2 transition border-primary text-primary">
                     Details
                 </button>
-                <button type="button" data-asset-tab="history" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
+                {% comment %} <button type="button" data-asset-tab="history" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     History
                 </button>
                 <button type="button" data-asset-tab="maintenance" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
@@ -116,7 +131,7 @@
                 </button>
                 <button type="button" data-asset-tab="checkout" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     Checkout History
-                </button>
+                </button> {% endcomment %}
             </div>
 
             <!-- Tab: Details -->
@@ -130,8 +145,8 @@
                                 <dd class="font-mono text-primary">{{ asset.tracking_id }}</dd>
                             </div>
                             <div class="flex justify-between border-b py-1 border-border">
-                                <dt class="text-text-secondary">Type</dt>
-                                <dd>{{ asset.asset_type|default:"—" }}</dd>
+                                <dt class="text-text-secondary">Category</dt>
+                                <dd>{{ asset.category.name|default:"—" }}</dd>
                             </div>
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Serial Number</dt>
@@ -150,8 +165,8 @@
                                 <dd>{{ asset.location|default:"—" }}</dd>
                             </div>
                             <div class="flex justify-between border-b py-1 border-border">
-                                <dt class="text-text-secondary">Supplier</dt>
-                                <dd>{{ asset.supplier|default:"—" }}</dd>
+                                <dt class="text-text-secondary">Department</dt>
+                                <dd>{{ asset.get_department_display|default:"—" }}</dd>
                             </div>
                         </dl>
                     </div>
@@ -171,24 +186,44 @@
                                 <dd>{{ asset.purchase_date|date:"M d, Y"|default:"—" }}</dd>
                             </div>
                             <div class="flex justify-between border-b py-1 border-border">
-                                <dt class="text-text-secondary">Purchase Price</dt>
-                                <dd>${{ asset.purchase_price|floatformat:2|default:"—" }}</dd>
-                            </div>
-                            <div class="flex justify-between border-b py-1 border-border">
-                                <dt class="text-text-secondary">Current Value</dt>
-                                <dd class="font-semibold">${{ current_value|floatformat:2 }}</dd>
-                            </div>
-                            <div class="flex justify-between border-b py-1 border-border">
-                                <dt class="text-text-secondary">Depreciation (Years)</dt>
-                                <dd>{{ asset.depreciation_years|default:"3" }} years</dd>
-                            </div>
-                            <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Warranty Expiry</dt>
                                 <dd>{{ asset.warranty_expiry|date:"M d, Y"|default:"—" }}</dd>
                             </div>
                         </dl>
                     </div>
                 </div>
+
+                {% if asset.is_renewable %}
+                <div class="pt-4 border-t border-border">
+                    <h4 class="text-sm font-semibold mb-3 text-text-secondary">Renewal</h4>
+                    <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Next Renewal Date</dt>
+                            <dd>{{ asset.next_renewal_date|date:"M d, Y"|default:"—" }}</dd>
+                        </div>
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Renewal Interval</dt>
+                            <dd>{% if asset.renewal_interval_months %}{{ asset.renewal_interval_months }} month(s){% else %}—{% endif %}</dd>
+                        </div>
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Renewal Cost</dt>
+                            <dd>{% if asset.renewal_cost %}{{ asset.renewal_cost }}{% else %}—{% endif %}</dd>
+                        </div>
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Vendor</dt>
+                            <dd>{{ asset.renewal_vendor.name|default:"—" }}</dd>
+                        </div>
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Reference</dt>
+                            <dd>{{ asset.renewal_reference|default:"—" }}</dd>
+                        </div>
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Auto-Renews</dt>
+                            <dd>{% if asset.auto_renews %}Yes{% else %}No{% endif %}</dd>
+                        </div>
+                    </dl>
+                </div>
+                {% endif %}
 
                 {% if asset.notes or asset.condition_notes %}
                 <div class="pt-4 border-t border-border">
@@ -228,8 +263,8 @@
             <div data-asset-panel="maintenance" class="hidden">
                 <div class="flex items-center justify-between mb-4">
                     <h4 class="text-sm font-semibold text-text-secondary">Maintenance Records</h4>
-                    {% if user.role in 'ADMIN,SUPERADMIN' %}
-                    <button onclick="openMaintenanceModal({{ asset.pk }})" 
+                    {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                    <button onclick="openMaintenanceModal({{ asset.pk }})"
                             class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
                         {% lucide "plus" size=12 %} Add Record
                     </button>
@@ -258,28 +293,6 @@
                 </div>
                 {% else %}
                 <p class="text-sm text-text-secondary text-center py-4">No maintenance records.</p>
-                {% endif %}
-                
-                {% if asset.last_maintenance or asset.next_maintenance %}
-                <div class="mt-4 p-3 rounded-lg border border-border bg-background">
-                    <div class="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                            <span class="text-text-secondary">Last Maintenance:</span>
-                            <span class="font-medium text-text-primary">
-                                {{ asset.last_maintenance|date:"M d, Y"|default:"Never" }}
-                            </span>
-                        </div>
-                        <div>
-                            <span class="text-text-secondary">Next Maintenance:</span>
-                            <span class="font-medium text-text-primary">
-                                {{ asset.next_maintenance|date:"M d, Y"|default:"Not scheduled" }}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="mt-2 text-xs text-text-secondary">
-                        Interval: Every {{ asset.maintenance_interval_months }} months
-                    </div>
-                </div>
                 {% endif %}
             </div>
 
@@ -377,6 +390,15 @@
             </div>
         `;
         document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function promptMarkRenewed() {
+        const newCost = prompt('New renewal cost (leave blank to keep the current cost):', '');
+        if (newCost === null) return;
+        document.getElementById('markRenewedCostInput').value = newCost.trim();
+        confirmRenewAsset('{{ asset.name|escapejs }}', function() {
+            document.getElementById('markRenewedForm').submit();
+        });
     }
 
     function openScrapRequestModal(assetId) {

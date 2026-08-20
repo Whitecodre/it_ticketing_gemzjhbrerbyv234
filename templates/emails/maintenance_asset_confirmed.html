@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .header.disputed { background: #DC2626; }
+        .content { padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 8px 8px; }
+        .detail { background: #F8FAFC; padding: 15px; border-radius: 6px; margin: 15px 0; }
+        .button { background: #0D9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; }
+        .footer { margin-top: 20px; font-size: 12px; color: #64748B; }
+    </style>
+</head>
+<body>
+    <div class="header{% if row.status == 'DISPUTED' %} disputed{% endif %}">
+        <h2>{% if row.status == 'DISPUTED' %}⚠️ Maintenance Disputed{% else %}✅ Maintenance Confirmed{% endif %}</h2>
+    </div>
+    <div class="content">
+        <p>Dear {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }},</p>
+        {% if row.status == 'DISPUTED' %}
+        <p>Your maintenance work on <strong>{{ asset.name }}</strong> was <strong>disputed</strong> by {{ confirmed_by }}.</p>
+        {% else %}
+        <p>Your maintenance work on <strong>{{ asset.name }}</strong> has been <strong>confirmed</strong> by {{ confirmed_by }}.</p>
+        {% endif %}
+
+        <div class="detail">
+            <h3>{{ schedule.title }}</h3>
+            <p><strong>Asset:</strong> {{ asset.name }} ({{ asset.tracking_id }})</p>
+            <p><strong>Department:</strong> {{ department }}</p>
+            <p><strong>Date:</strong> {{ date }}</p>
+            {% if row.status == 'DISPUTED' and dispute_reason %}
+            <p><strong>Reason for dispute:</strong></p>
+            <p>{{ dispute_reason }}</p>
+            {% elif notes %}
+            <p><strong>Notes:</strong></p>
+            <p>{{ notes }}</p>
+            {% endif %}
+        </div>
+
+        <a href="{{ detail_url }}" class="button">View Details</a>
+
+        <div class="footer">
+            <p>This is an automated notification from TicketSwipe.</p>
+            <p>Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>

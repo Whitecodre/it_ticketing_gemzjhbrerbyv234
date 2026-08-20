@@ -2,8 +2,8 @@
 <div id="statusModalContainer"></div>
 
 <script>
-function openConfirmModal(scheduleId) {
-    htmx.ajax('GET', `/maintenance/${scheduleId}/confirm-modal/`, {
+function openAssetConfirmModal(scheduleId, assetId) {
+    htmx.ajax('GET', `/maintenance/${scheduleId}/asset/${assetId}/confirm-modal/`, {
         target: '#confirmModalContainer',
         swap: 'innerHTML'
     });

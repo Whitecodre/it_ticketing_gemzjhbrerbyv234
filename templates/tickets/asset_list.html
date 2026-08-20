@@ -30,12 +30,12 @@
                     {% lucide "upload" size=16 %} Export
                     <span class="ml-1">▾</span>
                 </button>
-                <div id="exportDropdown" class="absolute right-0 mt-1 w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border"
-                    <a href="{% url 'tickets:asset_export' %}?format=csv&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
+                <div id="exportDropdown" class="w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border">
+                    <a href="{% url 'tickets:asset_export' %}?format=csv&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
                     class="block px-4 py-2 text-xs hover:bg-black/5 transition">CSV</a>
-                    <a href="{% url 'tickets:asset_export' %}?format=excel&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
+                    <a href="{% url 'tickets:asset_export' %}?format=excel&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
                     class="block px-4 py-2 text-xs hover:bg-black/5 transition">Excel</a>
-                    <a href="{% url 'tickets:asset_export' %}?format=json&q={{ query }}&type={{ selected_type }}&status={{ selected_status }}&location={{ selected_location }}"
+                    <a href="{% url 'tickets:asset_export' %}?format=json&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
                     class="block px-4 py-2 text-xs hover:bg-black/5 transition">JSON</a>
                 </div>
             </div>
@@ -47,7 +47,7 @@
             </button>
             
             <!-- Add Asset -->
-            {% if user.role == 'ADMIN' or user.role == 'SUPERADMIN' %}
+            {% if active_role_name in 'ADMIN,SUPERADMIN' %}
             <a href="{% url 'tickets:asset_create_page' %}" 
             class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                 {% lucide "plus" size=16 %} Add Asset
@@ -70,10 +70,10 @@
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
         </div>
 
-        <select name="filter_type" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            <option value="">All Types</option>
-            {% for value, label in asset_types %}
-            <option value="{{ value }}" {% if selected_type == value %}selected{% endif %}>{{ label }}</option>
+        <select name="filter_category" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+            <option value="{{ cat.pk }}" {% if selected_category == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
             {% endfor %}
         </select>
 
@@ -87,6 +87,18 @@
         <input type="text" name="filter_location" value="{{ selected_location }}"
             placeholder="Filter by location"
             class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+
+        <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
+            <input type="checkbox" name="filter_low_stock" value="1" {% if selected_low_stock %}checked{% endif %}
+                   class="rounded border-border text-primary focus:ring-primary">
+            ⚠️ Low stock only
+        </label>
+
+        <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
+            <input type="checkbox" name="filter_renewal_due" value="1" {% if selected_renewal_due %}checked{% endif %}
+                   class="rounded border-border text-primary focus:ring-primary">
+            📅 Renewal due soon
+        </label>
 
         <button type="reset" class="btn-ghost text-sm"
                 onclick="resetFilters(event)">Reset</button>

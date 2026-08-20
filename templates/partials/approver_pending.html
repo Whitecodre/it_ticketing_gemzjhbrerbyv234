@@ -30,10 +30,11 @@
                     <p class="text-xs mt-2 text-text-primary">{{ ticket.description|truncatechars:200 }}</p>
                 </div>
                 <div class="flex gap-2 shrink-0">
-                    <form method="post" action="{% url 'tickets:approve_ticket' ticket.pk %}" class="inline">
+                    <form method="post" action="{% url 'tickets:approve_ticket' ticket.pk %}" class="inline" id="approveForm{{ ticket.pk }}">
                         {% csrf_token %}
                         <input type="hidden" name="comment" value="">
-                        <button type="submit" class="btn-success text-sm px-4 py-2 rounded">Approve</button>
+                        <button type="button" class="btn-success text-sm px-4 py-2 rounded"
+                                onclick="confirmApproveRequest('{{ ticket.title|escapejs }}', function() { document.getElementById('approveForm{{ ticket.pk }}').submit(); })">Approve</button>
                     </form>
                     <button class="btn-danger text-sm px-4 py-2 rounded" onclick="openRejectModal({{ ticket.pk }})">Reject</button>
                 </div>
