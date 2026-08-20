@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When fixing an issue or implementing a request, use the most token-efficient approach that does not reduce the quality of the outcome. Concretely: read only the files/sections you actually need (targeted Grep/Read over wholesale file reads, especially for the large files like `apps/tickets/views.py` or `apps/tickets/models.py`), avoid re-reading files you just edited, skip exploratory detours once you have enough context to act, and keep explanations/summaries terse. Never cut corners on correctness, testing, or thoroughness to save tokens — efficiency is about cutting wasted steps, not cutting rigor.
 
+When a full test suite run is warranted after a change (not a small targeted test), do not run it yourself in the background. Instead, give the user the exact `python manage.py test ...` command to run in their own terminal, and wait for them to report back the results. A small, targeted test (e.g. a single new test class) to verify an implementation works is still fine to run directly.
+
 ## Project
 
 Django IT service management / helpdesk platform, developed by **Gemz Software** (also referred to as "TicketSwipe" in some templates) as a **white-label, multi-tenant product**. The current pilot client is Hydrodive (a marine/offshore logistics company), but code should stay data-driven and multi-tenant-friendly (via `ClientSettings` and similar per-org config) rather than hardcoding client-specific values, department lists, or branding.
