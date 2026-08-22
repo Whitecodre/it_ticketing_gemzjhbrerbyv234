@@ -273,8 +273,16 @@ function insertMacro(body, visibility) {
         // Appended as its own block rather than replacing outright — picking
         // one macro into an empty composer makes it the only content;
         // picking another afterward stacks it below instead of erasing it.
+        // Macro bodies are plain text (a Textarea field, no rich-text
+        // sanitization on save) — build the block from text nodes/<br>
+        // only, never innerHTML, so a macro can't inject markup/scripts
+        // into every agent's composer that inserts it.
         const block = document.createElement('div');
-        block.innerHTML = body;
+        const lines = body.split('\n');
+        lines.forEach((line, i) => {
+            block.appendChild(document.createTextNode(line));
+            if (i < lines.length - 1) block.appendChild(document.createElement('br'));
+        });
         editor.appendChild(block);
         editor.focus();
         editor.dispatchEvent(new Event('input'));

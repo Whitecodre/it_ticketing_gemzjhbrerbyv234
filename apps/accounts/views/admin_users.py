@@ -105,21 +105,20 @@ def admin_user_create(request):
             if selected_role in it_only_roles and department != 'IT':
                 return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
     
-    # Generate random password
-    import string
-    import secrets
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    password = ''.join(secrets.choice(alphabet) for i in range(12))
-    
-    if not email or not password:
-        return JsonResponse({'error': 'Email and password are required.'}, status=400)
+    if not email:
+        return JsonResponse({'error': 'Email is required.'}, status=400)
 
     if User.objects.filter(email=email).exists():
         return JsonResponse({'error': 'User with this email already exists.'}, status=400)
 
+    # create_user() requires a password that passes the validators (see
+    # UserManager._create_user), but it's discarded immediately below in
+    # favor of an unusable one — no password is ever emailed or persisted.
+    import secrets
+    discard_password = secrets.token_urlsafe(24)
     user = User.objects.create_user(
         email=email,
-        password=password,
+        password=discard_password,
         first_name=first_name,
         last_name=last_name,
         position=position,
@@ -129,6 +128,8 @@ def admin_user_create(request):
         email_verified=True,
         password_changed=False,
     )
+    user.set_unusable_password()
+    user.save(update_fields=['password'])
 
     # Get the primary role object
     primary_role_obj = Role.objects.filter(name=role).first()
@@ -173,17 +174,27 @@ def admin_user_create(request):
         user.role = role
         user.save(update_fields=['active_role', 'active_role_id', 'role'])
 
-    # Send email with credentials
+    # Send email with a one-time "set your password" link (no password is
+    # ever emailed) using the same token mechanism as password reset.
     from apps.common.utils import send_email_via_brevo
     from django.template.loader import render_to_string
     from django.conf import settings
-    
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.http import urlsafe_base64_encode
+    from django.utils.encoding import force_bytes
+    from django.urls import reverse
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    set_password_url = request.build_absolute_uri(
+        reverse('accounts:password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+    )
+
     html_message = render_to_string('emails/user_created.html', {
         'first_name': first_name,
         'last_name': last_name,
         'email': email,
-        'password': password,
-        'login_url': request.build_absolute_uri('/accounts/login/'),
+        'set_password_url': set_password_url,
         'admin_name': request.user.get_full_name() or request.user.email,
     })
     

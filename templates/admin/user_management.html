@@ -197,20 +197,9 @@
             <div class="pt-3 border-t" style="border-color: var(--color-border);">
                 <div class="flex items-center gap-2 mb-3">
                     {% lucide "key" size=14 class="text-primary" %}
-                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Temporary Password</span>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Account Setup</span>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium mb-1 text-text-secondary">Password</label>
-                    <div class="relative">
-                        <input type="text" id="CreatePassword" readonly disabled
-                               class="w-full rounded-lg border py-2 px-3 pr-10 text-sm bg-gray-100 text-gray-500 cursor-not-allowed">
-                        <button type="button" class="absolute inset-y-0 right-2 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
-                                onclick="regenerateCreatePasswordPreview()" title="Generate a new preview">
-                            {% lucide "refresh-cw" size=16 class="h-4 w-4" %}
-                        </button>
-                    </div>
-                    <p class="text-[0.5rem] text-text-secondary mt-1">A secure random password is generated automatically when the account is created — it can’t be edited here. It, along with a login link, will be emailed directly to the user.</p>
-                </div>
+                <p class="text-xs text-text-secondary">No password is set here. The new user will get a one-time "Set Your Password" link by email to choose their own — nothing is generated or sent in plain text.</p>
             </div>
 
             {# Actions #}

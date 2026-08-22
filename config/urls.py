@@ -6,6 +6,7 @@ from django.conf.urls.static import static
 from apps.accounts.views import dashboard
 from apps.common.views import service_worker
 from apps.form_builder.views import form_redirect
+from django.http import HttpResponse
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -19,6 +20,7 @@ urlpatterns = [
     path('organogram/', include('apps.organogram.urls')),
     path('documents_display/', include('apps.documents_display.urls')),
     path('tinymce/', include('tinymce.urls')),
+    path('health/', lambda request: HttpResponse('OK'), name='health'),
 
      # DEPRECATED: Dynamic form redirects removed
     # path('incident/new/', form_redirect, {'slug': 'incident-report'}, name='incident_new'),

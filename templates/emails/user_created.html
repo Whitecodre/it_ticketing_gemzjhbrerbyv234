@@ -16,16 +16,15 @@
     </div>
     <div class="content">
         <p>Dear {{ first_name }} {{ last_name }},</p>
-        <p>An account has been created for you on TicketSwipe by {{ admin_name }}. Here are your login credentials:</p>
+        <p>An account has been created for you on TicketSwipe by {{ admin_name }}. Use the link below to set your password and log in:</p>
 
         <div class="detail">
             <p><strong>Email:</strong> {{ email }}</p>
-            <p><strong>Temporary Password:</strong> {{ password }}</p>
         </div>
 
-        <a href="{{ login_url }}" class="button">Log In</a>
+        <a href="{{ set_password_url }}" class="button">Set Your Password</a>
 
-        <p style="margin-top: 15px;">For security, you'll be asked to change this password the first time you log in.</p>
+        <p style="margin-top: 15px;">This link can only be used once and will expire after a few days. If it expires, use "Forgot password" on the login page to request a new one.</p>
 
         <div class="footer">
             <p>This is an automated notification from TicketSwipe.</p>

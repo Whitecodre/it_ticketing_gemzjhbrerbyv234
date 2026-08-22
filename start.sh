@@ -29,8 +29,8 @@ echo "=== Seeding Service Categories ==="
 python manage.py seed_service_categories
 
 # start.sh
-echo "=== Checking npm version ==="
-npm --version || echo "npm not found"
+# echo "=== Checking npm version ==="
+# npm --version || echo "npm not found"
 
 
 # Optional: create a superuser if it doesn't exist (requires env vars)

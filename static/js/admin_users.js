@@ -5,26 +5,11 @@
 // ================================================================
 
 // --- Create Modal ---
-function generatePasswordPreview() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
-    let pwd = '';
-    for (let i = 0; i < 12; i++) {
-        pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return pwd;
-}
-
-function regenerateCreatePasswordPreview() {
-    const field = document.getElementById('CreatePassword');
-    if (field) field.value = generatePasswordPreview();
-}
-
 function openCreateModal() {
     const modal = document.getElementById('createUserModal');
     if (modal) {
         modal.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
-        regenerateCreatePasswordPreview();
     }
 }
 

@@ -204,7 +204,7 @@ class OrgPublished(models.Model):
     Read-only, visible to all users.
     """
     
-    draft = models.OneToOneField(OrgDraft, on_delete=models.PROTECT, related_name='published_version')
+    draft = models.OneToOneField(OrgDraft, on_delete=models.PROTECT, null=True, blank=True, related_name='published_version')
     structure = models.JSONField(default=dict)
     name = models.CharField(max_length=100)
     description = models.TextField(blank=True)

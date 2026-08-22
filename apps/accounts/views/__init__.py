@@ -1,6 +1,6 @@
 import logging
 from django.contrib import messages
-from django.contrib.auth.views import PasswordResetView
+from django.contrib.auth.views import PasswordResetView, PasswordResetConfirmView
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
@@ -101,6 +101,23 @@ class CustomPasswordResetView(PasswordResetView):
             logger.error(f"Password reset email failed for {to_email}: {result}")
         
         return success
+
+
+class CustomPasswordResetConfirmView(PasswordResetConfirmView):
+    """
+    Password reset confirm view that also marks the user as having
+    changed their password, so accounts created via admin_user_create
+    (which set an unusable password and send this same link) aren't
+    routed into force_password_change right after setting one here.
+    """
+    template_name = 'registration/password_reset_confirm.html'
+    success_url = '/accounts/password-reset-complete/'
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        self.user.password_changed = True
+        self.user.save(update_fields=['password_changed'])
+        return response
 
 
 def validate_email_ajax(request):
