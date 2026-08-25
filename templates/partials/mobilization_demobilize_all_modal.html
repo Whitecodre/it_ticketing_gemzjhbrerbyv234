@@ -24,7 +24,7 @@
         </ul>
     </div>
 
-    <form method="post" action="{% url 'tickets:mobilization_demobilize_all' mobilization.pk %}">
+    <form method="post" action="{% url 'tickets:mobilization_demobilize_all' mobilization.pk %}" data-guard-submit>
         {% csrf_token %}
 
         <div class="mb-4">

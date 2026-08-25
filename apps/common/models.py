@@ -69,6 +69,9 @@ class Notification(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'is_read'], name='notif_recipient_is_read_idx'),
+        ]
 
     def __str__(self):
         return f"Notification for {self.recipient.email}: {self.message[:50]}"

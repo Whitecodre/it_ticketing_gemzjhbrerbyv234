@@ -146,6 +146,39 @@ ALLOWED_MIMES = [
 ]
 MAX_SIZE_MB = 10
 
+# Magic-byte signatures for the MIME types above that have a reliable one.
+# The client-supplied Content-Type header is trivially spoofable (rename a
+# script to .jpg, claim image/jpeg) — this checks what the file actually is.
+# Types with no reliable signature (text/plain) fall through unsniffed.
+_MIME_SIGNATURES = {
+    'image/jpeg': [b'\xff\xd8\xff'],
+    'image/png': [b'\x89PNG\r\n\x1a\n'],
+    'image/gif': [b'GIF87a', b'GIF89a'],
+    'image/webp': [b'RIFF'],  # followed by size(4) + 'WEBP', checked below
+    'application/pdf': [b'%PDF-'],
+    'application/zip': [b'PK\x03\x04', b'PK\x05\x06', b'PK\x07\x08'],
+    # Modern Office formats are zip containers under the hood.
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [b'PK\x03\x04'],
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': [b'PK\x03\x04'],
+    # Legacy Office formats (.doc/.xls) share the same OLE2 container header.
+    'application/msword': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],
+    'application/vnd.ms-excel': [b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'],
+}
+
+
+def sniffed_mime_matches(uploaded_file, claimed_mime):
+    """True if the file's actual bytes are consistent with claimed_mime, or
+    claimed_mime has no known signature to check (e.g. text/plain)."""
+    signatures = _MIME_SIGNATURES.get(claimed_mime)
+    if not signatures:
+        return True
+    header = uploaded_file.read(16)
+    uploaded_file.seek(0)
+    if claimed_mime == 'image/webp':
+        return header.startswith(b'RIFF') and header[8:12] == b'WEBP'
+    return any(header.startswith(sig) for sig in signatures)
+
+
 def save_attachments(ticket, files, author, comment=None):
     """
     Validates and saves uploaded file attachments.
@@ -160,6 +193,8 @@ def save_attachments(ticket, files, author, comment=None):
             continue
         mime = f.content_type.split(';')[0].strip().lower()
         if mime not in ALLOWED_MIMES:
+            continue
+        if not sniffed_mime_matches(f, mime):
             continue
         sha = hashlib.sha256()
         for chunk in f.chunks():
@@ -530,8 +565,8 @@ def unassigned_queue(request):
     # Get all unassigned tickets
     tickets = Ticket.objects.filter(
         assigned_to__isnull=True
-    ).order_by('-created_at')
-    
+    ).select_related('requester', 'category').order_by('-created_at')
+
     # ================================================================
     # 🔥 Filter: Show INCIDENTS + APPROVED SERVICE REQUESTS
     # ================================================================
@@ -539,7 +574,7 @@ def unassigned_queue(request):
         Q(type=Ticket.Type.INCIDENT) |
         (Q(type=Ticket.Type.SERVICE_REQUEST) & Q(status=Ticket.Status.APPROVED))
     )
-    
+
     # Exclude tickets that shouldn't be in the queue
     tickets = tickets.exclude(
         status__in=[
@@ -551,6 +586,9 @@ def unassigned_queue(request):
         ]
     )
 
+    paginator = Paginator(tickets, 20)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
     assignable_agents = User.objects.filter(
         role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
         department='IT',  # ✅ Only IT department
@@ -558,7 +596,7 @@ def unassigned_queue(request):
     ).only('pk', 'first_name', 'last_name', 'email')
 
     context = {
-        'tickets': tickets,
+        'tickets': page_obj,
         'assignable_agents': assignable_agents,
         'status_choices': Ticket.Status.choices,
         'sidebar_template': get_sidebar_template(request.user),
@@ -624,15 +662,24 @@ from django.http import JsonResponse
 
 @login_required
 def claim_ticket(request, pk):
-    ticket = get_object_or_404(Ticket, pk=pk)
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return JsonResponse({
+            'success': False,
+            'message': 'You do not have permission to claim tickets.'
+        }, status=403)
+
     source = request.POST.get('source', 'unassigned')
-    
-    if ticket.assigned_to is None:
-        # Assign ticket to current user
-        ticket.assigned_to = request.user
-        ticket.status = Ticket.Status.ASSIGNED
-        ticket.save()
-        
+
+    with transaction.atomic():
+        ticket = get_object_or_404(Ticket.objects.select_for_update(), pk=pk)
+        claimed = False
+        if ticket.assigned_to is None:
+            ticket.assigned_to = request.user
+            ticket.status = Ticket.Status.ASSIGNED
+            ticket.save()
+            claimed = True
+
+    if claimed:
         # Log the assignment
         TicketActivityLog.objects.create(
             ticket=ticket, action='assigned', actor=request.user,
@@ -666,12 +713,12 @@ def claim_ticket(request, pk):
             
             unassigned_tickets = Ticket.objects.filter(
                 assigned_to__isnull=True
-            ).exclude(
+            ).select_related('requester', 'category').exclude(
                 status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL,
                             Ticket.Status.PENDING_MANAGER_REVIEW, Ticket.Status.PENDING_FULFILLMENT,
                             Ticket.Status.PENDING_VENDOR]
             ).order_by('-created_at')
-            
+
             if source == 'dashboard':
                 unassigned_tickets = unassigned_tickets[:5]
                 return JsonResponse({
@@ -680,6 +727,7 @@ def claim_ticket(request, pk):
                     'unassigned_count': unassigned_tickets.count(),
                 })
             else:
+                unassigned_tickets = unassigned_tickets[:20]
                 return render(request, 'partials/agent_ticket_table.html', {
                     'tickets': unassigned_tickets,
                     'assignable_agents': assignable_agents,
@@ -1810,20 +1858,27 @@ def reports_dashboard(request):
         Asset.objects.filter(status=Asset.Status.SCRAPPED).count(),
     ]
     
+    # Scoped by ticket_filter (department + the page's own date-range
+    # picker) — previously always counted all-time, silently ignoring
+    # whatever range the user had selected while every other card on this
+    # page (SLA, MTTR, Backlog, Open Tickets) did respect it.
     total_asset_requests = Ticket.objects.filter(
+        ticket_filter,
         type=Ticket.Type.SERVICE_REQUEST,
         is_asset_request=True
     ).count()
-    
+
     fulfilled_asset_requests = Ticket.objects.filter(
+        ticket_filter,
         type=Ticket.Type.SERVICE_REQUEST,
         is_asset_request=True,
         fulfilled_at__isnull=False
     ).count()
-    
+
     fulfillment_rate = round((fulfilled_asset_requests / total_asset_requests * 100), 1) if total_asset_requests > 0 else 0
-    
+
     fulfilled_tickets = Ticket.objects.filter(
+        ticket_filter,
         type=Ticket.Type.SERVICE_REQUEST,
         is_asset_request=True,
         fulfilled_at__isnull=False,
@@ -1926,8 +1981,9 @@ def trigger_sla_processing(request):
     try:
         call_command('process_sla')
         return JsonResponse({'status': 'ok', 'message': 'SLA processing triggered successfully.'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception:
+        logger.exception('trigger_sla_processing failed')
+        return JsonResponse({'status': 'error', 'message': 'SLA processing failed. Check server logs for details.'}, status=500)
 
 @login_required
 @user_passes_test(is_admin)
@@ -1939,8 +1995,9 @@ def trigger_cleanup(request):
     try:
         call_command('cleanup_inactive_users')
         return JsonResponse({'status': 'ok', 'message': 'Cleanup triggered successfully.'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception:
+        logger.exception('trigger_cleanup failed')
+        return JsonResponse({'status': 'error', 'message': 'Cleanup failed. Check server logs for details.'}, status=500)
 
 # If you still need an external trigger (e.g., for cron jobs), use a secure token:
 # Option: Use a secure token stored in environment variables
@@ -1970,8 +2027,9 @@ def trigger_sla_processing_external(request):
     try:
         call_command('process_sla')
         return JsonResponse({'status': 'ok'})
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+    except Exception:
+        logger.exception('trigger_sla_processing_external failed')
+        return JsonResponse({'error': 'SLA processing failed. Check server logs for details.'}, status=500)
 
 # ==========================================================================
 # PLACEHOLDER / STATIC PAGES
@@ -2533,6 +2591,15 @@ def asset_attachment_upload(request, pk):
     uploaded = request.FILES.get('file')
     if not uploaded:
         messages.error(request, 'Choose a file to upload.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    if uploaded.size > MAX_SIZE_MB * 1024 * 1024:
+        messages.error(request, f'"{uploaded.name}" is larger than the {MAX_SIZE_MB}MB limit.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    mime = (uploaded.content_type or '').split(';')[0].strip().lower()
+    if mime not in ALLOWED_MIMES or not sniffed_mime_matches(uploaded, mime):
+        messages.error(request, f'"{uploaded.name}" is not an allowed file type.')
         return redirect('tickets:asset_detail', pk=asset.pk)
 
     AssetAttachment.objects.create(
@@ -4474,8 +4541,11 @@ def procurement_list(request):
     if status_filter:
         requests_qs = requests_qs.filter(status=status_filter)
 
+    paginator = Paginator(requests_qs, 25)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
     return render(request, 'tickets/procurement_list.html', {
-        'procurement_requests': requests_qs,
+        'procurement_requests': page_obj,
         'status_choices': AssetProcurementRequest.Status.choices,
         'current_status': status_filter,
         'sidebar_template': get_sidebar_template(request.user),
@@ -5489,29 +5559,34 @@ def mobilization_item_demobilize(request, item_pk):
     if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
-    item = get_object_or_404(MobilizationItem.objects.select_related('asset', 'mobilization'), pk=item_pk)
-    if not item.is_active:
-        messages.error(request, 'This asset has already been demobilized.')
-        return redirect('tickets:mobilization_detail', pk=item.mobilization_id)
-
     return_condition = request.POST.get('return_condition')
     return_notes = request.POST.get('return_notes', '').strip()
 
-    if not return_condition:
-        messages.error(request, 'Please select the returned condition.')
-        return redirect('tickets:mobilization_detail', pk=item.mobilization_id)
+    with transaction.atomic():
+        item = get_object_or_404(
+            MobilizationItem.objects.select_for_update().select_related('asset', 'mobilization'),
+            pk=item_pk
+        )
+        if not item.is_active:
+            messages.error(request, 'This asset has already been demobilized.')
+            return redirect('tickets:mobilization_detail', pk=item.mobilization_id)
 
-    try:
-        return_quantity = int(request.POST.get('return_quantity', item.quantity))
-    except (TypeError, ValueError):
-        return_quantity = item.quantity
+        if not return_condition:
+            messages.error(request, 'Please select the returned condition.')
+            return redirect('tickets:mobilization_detail', pk=item.mobilization_id)
 
-    asset_name = item.asset.name
-    _demobilize_item(item, return_condition, return_notes, request.user, return_quantity=return_quantity)
-    item.mobilization.refresh_status()
+        try:
+            return_quantity = int(request.POST.get('return_quantity', item.quantity))
+        except (TypeError, ValueError):
+            return_quantity = item.quantity
+
+        asset_name = item.asset.name
+        mobilization_id = item.mobilization_id
+        _demobilize_item(item, return_condition, return_notes, request.user, return_quantity=return_quantity)
+        item.mobilization.refresh_status()
 
     messages.success(request, f'Asset "{asset_name}" demobilized and returned to inventory.')
-    return redirect('tickets:mobilization_detail', pk=item.mobilization_id)
+    return redirect('tickets:mobilization_detail', pk=mobilization_id)
 
 
 @login_required

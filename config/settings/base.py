@@ -21,7 +21,7 @@ SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Should be this
 # CSRF settings
 CSRF_COOKIE_HTTPONLY = True  # Prevent JavaScript access to CSRF cookie
 CSRF_COOKIE_SAMESITE = 'Lax'  # CSRF protection
-CSRF_TRUSTED_ORIGINS = ['https://*.yourdomain.com', 'http://localhost:8000']  # Update with your domain
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=['http://localhost:8000'])
 
 # SECURITY WARNING: keep the secret key secret!
 SECRET_KEY = env('SECRET_KEY')

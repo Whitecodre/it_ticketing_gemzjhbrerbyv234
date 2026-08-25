@@ -24,7 +24,7 @@
                 <p class="text-sm text-text-secondary">Review and claim incoming support work.</p>
             </div>
         </div>
-        <span class="status-chip info text-xs">{{ tickets|length }} open</span>
+        <span class="status-chip info text-xs">{{ tickets.paginator.count }} open</span>
     </div>
 
     {# Ticket table - checkboxes visible by default #}
@@ -33,6 +33,30 @@
             {% include "partials/agent_ticket_table.html" with tickets=tickets %}
         </div>
     </div>
+
+    {% if tickets.has_other_pages %}
+    <div class="pagination-bar" style="margin-top: 1rem;">
+        <span class="pagination-summary">
+            Showing <strong>{{ tickets.start_index }}&ndash;{{ tickets.end_index }}</strong> of <strong>{{ tickets.paginator.count }}</strong> tickets
+        </span>
+        <div class="pagination-controls">
+            {% if tickets.has_previous %}
+            <a class="pagination-step" href="?page={{ tickets.previous_page_number }}">
+                {% lucide "chevron-left" size=14 %} Prev
+            </a>
+            {% else %}
+            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
+            {% endif %}
+            {% if tickets.has_next %}
+            <a class="pagination-step" href="?page={{ tickets.next_page_number }}">
+                Next {% lucide "chevron-right" size=14 %}
+            </a>
+            {% else %}
+            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
 

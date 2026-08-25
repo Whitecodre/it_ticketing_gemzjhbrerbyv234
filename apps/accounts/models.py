@@ -323,6 +323,17 @@ class User(AbstractUser):
             except User.DoesNotExist:
                 pass
 
+        if self.manager_id and self.pk:
+            if self.manager_id == self.pk:
+                raise ValueError("A user cannot be their own manager.")
+            seen = {self.pk}
+            current = self.manager
+            while current is not None:
+                if current.pk in seen:
+                    raise ValueError("This manager assignment would create a cycle in the reporting line.")
+                seen.add(current.pk)
+                current = current.manager
+
         self.sync_roles()
 
         if self.role in [self.Role.SUPERADMIN, self.Role.ADMIN, self.Role.TEAM_LEAD, self.Role.AGENT]:
@@ -430,6 +441,16 @@ class ClientSettings(models.Model):
     
     class Meta:
         verbose_name_plural = 'Client Settings'
-    
+
     def __str__(self):
         return f"Client Settings - {self.company_name}"
+
+    def save(self, *args, **kwargs):
+        # Single-tenant today: every call site already reads/writes this via
+        # id=1 (get_or_create(id=1) or .first()), so pin the pk to match —
+        # closes off the one path (a stray .create() bypassing that
+        # convention) that could silently spawn a second row and make
+        # .first() start returning the wrong one. Revisit if/when this model
+        # gains a real per-tenant scope for multi-tenancy.
+        self.pk = 1
+        super().save(*args, **kwargs)

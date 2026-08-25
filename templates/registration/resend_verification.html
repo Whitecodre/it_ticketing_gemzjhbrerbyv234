@@ -14,7 +14,7 @@
         <form method="post" class="space-y-4">
             {% csrf_token %}
             <div>
-                <input type="email" name="email" placeholder="Email address" required
+                <input type="email" name="email" placeholder="Email address" aria-label="Email address" required
                        class="block w-full rounded-lg border py-3 pl-4 pr-4 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
             </div>
             <button type="submit" class="btn-login w-full rounded-lg py-3 text-white font-medium">Send Verification Email</button>

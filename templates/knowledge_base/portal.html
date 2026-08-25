@@ -30,7 +30,7 @@
     <form method="get" class="mb-5 rounded-xl border p-3 bg-surface border-border flex items-center gap-2">
         <div class="relative max-w-xl flex-1">
             {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
-            <input type="text" name="q" value="{{ query }}" placeholder="Search articles…"
+            <input type="text" name="q" value="{{ query }}" placeholder="Search articles…" aria-label="Search knowledge base articles"
                    class="w-full rounded-lg border py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
         </div>
         <button type="submit" class="btn-primary text-sm px-4 py-2.5 rounded-lg shrink-0">Search</button>

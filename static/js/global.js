@@ -860,21 +860,36 @@ document.body.addEventListener('htmx:responseError', function(event) {
 // DOUBLE-SUBMIT PROTECTION
 // ================================================================
 // Disables the submit button on a form's first submit, so a rapid
-// double-click/double-Enter can't fire the request twice.
-function preventDoubleSubmit(form) {
+// double-click/double-Enter can't fire the request twice. Delegated on
+// `document` and checked at submit time (rather than bound per-form on
+// DOMContentLoaded) so it also covers forms that don't exist yet at page
+// load — HTMX-swapped slideovers/modals — with no rebinding step needed.
+document.addEventListener('submit', function(e) {
+    const form = e.target.closest('form[data-guard-submit]');
     if (!form || form.dataset.doubleSubmitGuarded === 'true') return;
     form.dataset.doubleSubmitGuarded = 'true';
-    form.addEventListener('submit', function() {
-        const btn = form.querySelector('button[type="submit"]');
-        if (btn && !btn.disabled) {
-            btn.disabled = true;
-            btn.classList.add('opacity-70');
-        }
-    });
-}
+    const btn = form.querySelector('button[type="submit"]');
+    if (btn && !btn.disabled) {
+        btn.disabled = true;
+        btn.classList.add('opacity-70');
+    }
+});
 
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('form[data-guard-submit]').forEach(preventDoubleSubmit);
+// ================================================================
+// ESCAPE-TO-CLOSE FOR MODAL OVERLAYS
+// ================================================================
+// Every modal overlay in the app already dismisses on a backdrop click via
+// onclick="if(event.target===this) closeXModal()" and shows/hides through
+// the 'hidden' utility class. Escape reuses that exact same close handler
+// (rather than re-implementing each page's close logic here) by dispatching
+// a synthetic click on the overlay itself, so any state/cleanup a page's
+// closeXModal() does still runs.
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('[onclick*="event.target===this"], [onclick*="event.target === this"]').forEach(function(overlay) {
+        if (overlay.classList.contains('hidden')) return;
+        overlay.dispatchEvent(new MouseEvent('click', { bubbles: false, cancelable: true }));
+    });
 });
 
 // ================================================================

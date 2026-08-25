@@ -1,4 +1,5 @@
 {% load lucide %}
+{% load badge_tags %}
 
 <div class="overflow-x-auto">
     <table class="w-full text-sm">
@@ -25,16 +26,10 @@
                 </td>
                 <td class="py-3 px-3 max-w-xs truncate text-text-primary">{{ ticket.title }}</td>
                 <td class="py-3 px-3">
-                    <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
+                    {% status_badge 'ticket_status' ticket.status %}
                 </td>
                 <td class="py-3 px-3">
-                    <span class="priority-chip 
-                        {% if ticket.priority == 'P1' %}critical
-                        {% elif ticket.priority == 'P2' %}high
-                        {% elif ticket.priority == 'P3' %}medium
-                        {% else %}low{% endif %} text-xs">
-                        {{ ticket.get_priority_display }}
-                    </span>
+                    {% status_badge 'ticket_priority' ticket.priority %}
                 </td>
                 <td class="py-3 px-3 text-text-secondary text-xs">{{ ticket.updated_at|timesince }} ago</td>
                 <td class="py-3 px-3 text-right">

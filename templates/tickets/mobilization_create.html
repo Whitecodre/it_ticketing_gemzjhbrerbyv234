@@ -33,7 +33,7 @@
         </div>
     </div>
 
-    <form method="post" action="{% url 'tickets:mobilization_create' %}" id="mobilizationCreateForm">
+    <form method="post" action="{% url 'tickets:mobilization_create' %}" id="mobilizationCreateForm" data-guard-submit>
         {% csrf_token %}
         {% if ticket %}<input type="hidden" name="ticket_id" value="{{ ticket.pk }}">{% endif %}
 

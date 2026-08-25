@@ -29,7 +29,7 @@
     <div class="flex flex-wrap items-center gap-2 mb-3">
         <div class="relative flex-1 min-w-[200px] max-w-sm">
             {% lucide "search" size=15 class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" %}
-            <input type="text" id="escalatedSearch" placeholder="Search ticket #, subject, requester, agent…"
+            <input type="text" id="escalatedSearch" placeholder="Search ticket #, subject, requester, agent…" aria-label="Search escalated tickets"
                    class="w-full rounded-lg border py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                    oninput="filterEscalatedTable()">
         </div>

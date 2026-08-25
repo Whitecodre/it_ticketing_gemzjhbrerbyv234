@@ -1,4 +1,5 @@
 {% load lucide %}
+{% load badge_tags %}
 {% firstof instance_id 'default' as iid %}
 
 <div class="overflow-x-auto">
@@ -42,7 +43,7 @@
                 <td class="py-3 px-2 max-w-xs truncate text-text-primary" data-value="{{ ticket.title|lower }}">{{ ticket.title }}</td>
                 <td class="py-3 text-text-secondary" data-value="{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email|lower }}">{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }}</td>
                 <td class="py-3 text-text-secondary" data-value="{{ ticket.get_status_display }}">
-                    <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
+                    {% status_badge 'ticket_status' ticket.status %}
                 </td>
                 <td class="py-3">
                     <div id="sla-container-{{ ticket.pk }}"
@@ -72,13 +73,7 @@
                     </div>
                 </td>
                 <td class="py-3" data-value="{{ ticket.priority }}">
-                    <span class="priority-chip
-                        {% if ticket.priority == 'P1' %}critical
-                        {% elif ticket.priority == 'P2' %}high
-                        {% elif ticket.priority == 'P3' %}medium
-                        {% else %}low{% endif %} text-xs">
-                        {{ ticket.get_priority_display }}
-                    </span>
+                    {% status_badge 'ticket_priority' ticket.priority %}
                 </td>
                 <td class="py-3 text-text-secondary text-xs" data-value="{{ ticket.updated_at|date:'U' }}">{{ ticket.updated_at|timesince }} ago</td>
                 <td class="py-3 px-3 text-right">

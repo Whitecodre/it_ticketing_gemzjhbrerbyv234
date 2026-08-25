@@ -10,7 +10,7 @@
             {% lucide "user-plus" size=14 %} Assign to me
         </button>
         <div class="text-xs text-text-secondary mb-1">Search agents</div>
-        <input type="text" class="w-full border rounded px-2 py-1 text-xs" placeholder="Type name…">
+        <input type="text" class="w-full border rounded px-2 py-1 text-xs" placeholder="Type name…" aria-label="Search agents to assign">
         <div class="mt-2 max-h-32 overflow-y-auto">
             {% for agent in agents %}
             <button class="w-full text-left text-xs px-2 py-1 hover:bg-black/5 rounded flex items-center gap-2"

@@ -19,7 +19,7 @@
         {% endif %}
     </div>
 
-    <form method="post" action="{% url 'tickets:mobilization_item_demobilize' item.pk %}">
+    <form method="post" action="{% url 'tickets:mobilization_item_demobilize' item.pk %}" data-guard-submit>
         {% csrf_token %}
 
         {% if item.asset.is_consumable %}

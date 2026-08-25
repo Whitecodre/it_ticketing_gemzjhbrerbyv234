@@ -64,7 +64,7 @@
           hx-push-url="true">
         <div class="flex flex-wrap items-center gap-3">
             <div class="relative flex-1 max-w-md">
-                <input type="text" name="q" value="{{ query }}" placeholder="Search by document name..."
+                <input type="text" name="q" value="{{ query }}" placeholder="Search by document name..." aria-label="Search documents by name"
                        class="w-full rounded-lg border py-2 pl-10 pr-8 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
                 <span id="categorySearchSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">

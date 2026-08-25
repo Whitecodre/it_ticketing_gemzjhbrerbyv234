@@ -10,8 +10,8 @@ class CanEditDocument(permissions.BasePermission):
 
 class CanViewDocument(permissions.BasePermission):
     """Check if user can view a document"""
-    
+
     def has_object_permission(self, request, view, obj):
         if obj.is_deleted:
             return False
-        return True
+        return obj.is_viewable_by(request.user)

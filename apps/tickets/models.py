@@ -1897,9 +1897,9 @@ class AssetProcurementRequest(models.Model):
     external_reference = models.CharField(max_length=100, blank=True)
     notes = models.TextField(blank=True)
 
-    # Exactly one of these is normally set — where the received asset(s)
-    # should go. Both nullable rather than DB-constrained: enforced by the
-    # creating views, not the schema.
+    # Where the received asset(s) should go, if anywhere — a standalone
+    # restock request tied to nothing is valid, so both may be null, but
+    # never both set at once (enforced below by a CheckConstraint).
     ticket = models.ForeignKey(
         'Ticket', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='procurement_requests'
@@ -1921,6 +1921,12 @@ class AssetProcurementRequest(models.Model):
 
     class Meta:
         ordering = ['-requested_at']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(ticket__isnull=True) | models.Q(mobilization__isnull=True),
+                name='procurement_request_not_both_ticket_and_mobilization',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.item_name} x{self.quantity} ({self.get_status_display()})"

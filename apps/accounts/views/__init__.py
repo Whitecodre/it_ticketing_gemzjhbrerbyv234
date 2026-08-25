@@ -18,6 +18,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.html import strip_tags
 from django.db.models import F, DurationField, ExpressionWrapper, Count, Q
+from django.core.cache import cache
 from datetime import timedelta, date
 from ..forms import ProfileForm, EmailAuthenticationForm, RegistrationStep1Form, RegistrationStep2Form, ChangePasswordForm, UserSettingsForm
 from ..models import User, UserProfile, Role
@@ -69,6 +70,7 @@ class CustomLoginView(LoginView):
             )
         )
     
+@method_decorator(ratelimit(key='ip', rate='5/15m', method='POST', block=True), name='dispatch')
 class CustomPasswordResetView(PasswordResetView):
     """
     Custom password reset view that uses Brevo API instead of send_mail.
@@ -207,6 +209,108 @@ def force_password_change(request):
         'user': user,
     })
 
+DASHBOARD_ADMIN_KPI_CACHE_KEY = 'dashboard:admin_kpis'
+DASHBOARD_ADMIN_KPI_CACHE_TTL = 60  # seconds — same for every Admin/Superadmin, org-wide, not per-user
+
+
+def _get_admin_dashboard_kpis():
+    """Org-wide ticket/asset KPI aggregates shown on the Admin/Superadmin
+    dashboard. Identical for every admin viewing the page at a given moment,
+    so it's cached rather than recomputed on every single request."""
+    cached = cache.get(DASHBOARD_ADMIN_KPI_CACHE_KEY)
+    if cached is not None:
+        return cached
+
+    total_tickets_month = Ticket.objects.filter(
+        created_at__year=timezone.now().year, created_at__month=timezone.now().month
+    ).count()
+
+    sla_minutes_by_priority = dict(SLA.objects.values_list('priority', 'resolution_minutes'))
+    compliant = 0
+    total = 0
+    for priority, created_at, resolved_at in Ticket.objects.filter(
+        status__in=['RESOLVED', 'CLOSED'], resolved_at__isnull=False
+    ).values_list('priority', 'created_at', 'resolved_at'):
+        resolution_minutes = sla_minutes_by_priority.get(priority)
+        if resolution_minutes is not None:
+            resolution_time = resolved_at - created_at
+            if resolution_time.total_seconds() / 60 <= resolution_minutes:
+                compliant += 1
+        total += 1
+    sla_compliance = round((compliant / total * 100), 1) if total > 0 else 100.0
+
+    pending_fulfillment_count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
+
+    total_assets = Asset.objects.count()
+    # 'ACTIVE' isn't a real Asset.Status value (there's no such status
+    # choice) — this always matched zero rows. "Active" here means
+    # currently in use, matching Asset.is_active's own definition.
+    active_assets = Asset.objects.filter(
+        status__in=[Asset.Status.CHECKED_OUT, Asset.Status.IN_USE, Asset.Status.MOBILIZED]
+    ).count()
+    in_store_assets = Asset.objects.filter(status='IN_STORE').count()
+    maintenance_assets = Asset.objects.filter(status='MAINTENANCE').count()
+    damaged_assets = Asset.objects.filter(status='DAMAGED').count()
+    scrapped_assets = Asset.objects.filter(status='SCRAPPED').count()
+
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    recently_added = Asset.objects.filter(created_at__gte=thirty_days_ago).count()
+    assigned_assets = Asset.objects.filter(assigned_to__isnull=False).count()
+    unassigned_assets = total_assets - assigned_assets
+
+    today = date.today()
+    ninety_days_later = today + timedelta(days=90)
+    # Same 'ACTIVE'-isn't-a-real-status bug as above — was always zero.
+    # A warranty expiring matters for any asset still in service, not
+    # just ones currently checked out, so this excludes end-of-life
+    # statuses (retired/scrapped/lost/stolen/disposed) instead of
+    # narrowing to "in use", matching Asset.is_end_of_life's own set.
+    expiring_warranty = Asset.objects.filter(
+        warranty_expiry__gte=today,
+        warranty_expiry__lte=ninety_days_later,
+    ).exclude(
+        status__in=[Asset.Status.RETIRED, Asset.Status.SCRAPPED, Asset.Status.LOST, Asset.Status.STOLEN, Asset.Status.DISPOSED]
+    ).count()
+
+    approved_requests = Ticket.objects.filter(
+        type=Ticket.Type.SERVICE_REQUEST,
+        status=Ticket.Status.APPROVED
+    ).count()
+
+    fulfilled_this_month = Ticket.objects.filter(
+        type=Ticket.Type.SERVICE_REQUEST,
+        is_asset_request=True,
+        fulfilled_at__month=timezone.now().month
+    ).count()
+
+    kpis = {
+        'total_tickets_month': total_tickets_month,
+        'sla_compliance': sla_compliance,
+        'connectors': list(RemoteConnector.objects.all().order_by('name')),
+        'active_connectors': RemoteConnector.objects.filter(is_active=True).count(),
+        'slas': list(SLA.objects.all().order_by('priority')),
+        'escalation_rules': list(EscalationRule.objects.all().order_by('priority', 'timer_type', 'threshold_percent')),
+        'calendars': list(BusinessCalendar.objects.all()),
+        'recent_audit_logs': list(TicketActivityLog.objects.select_related('ticket', 'actor').order_by('-created_at')[:5]),
+        'role_choices': User.Role.choices,
+        'pending_fulfillment_count': pending_fulfillment_count,
+        'total_assets': total_assets,
+        'active_assets': active_assets,
+        'in_store_assets': in_store_assets,
+        'maintenance_assets': maintenance_assets,
+        'damaged_assets': damaged_assets,
+        'scrapped_assets': scrapped_assets,
+        'recently_added': recently_added,
+        'assigned_assets': assigned_assets,
+        'unassigned_assets': unassigned_assets,
+        'expiring_warranty': expiring_warranty,
+        'approved_requests': approved_requests,
+        'fulfilled_this_month': fulfilled_this_month,
+    }
+    cache.set(DASHBOARD_ADMIN_KPI_CACHE_KEY, kpis, DASHBOARD_ADMIN_KPI_CACHE_TTL)
+    return kpis
+
+
 @login_required
 def dashboard(request):
     user = request.user
@@ -294,56 +398,48 @@ def dashboard(request):
     elif active_role and active_role.name in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] and (active_role.name != 'TEAM_LEAD' or is_it_team_lead):
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
         
-        resolved_tickets = Ticket.objects.filter(
+        resolved_tickets = list(Ticket.objects.filter(
             assigned_to=request.user,
-            status__in=['RESOLVED', 'CLOSED']
-        )
-        total_resolved = resolved_tickets.count()
-        
-        # Average Resolution Time
-        avg_resolution_time = None
+            status__in=['RESOLVED', 'CLOSED'],
+            resolved_at__isnull=False,
+        ).only('id', 'resolved_at', 'assigned_to'))
+        total_resolved = len(resolved_tickets)
+
+        resolved_ticket_ids = [t.id for t in resolved_tickets]
+
+        # Earliest "assigned to me" activity log per ticket, in one query
+        # instead of one query per ticket (was run twice — once for
+        # resolution time, once for response time — hence the merge below).
+        assigned_at_by_ticket = {}
+        for log in TicketActivityLog.objects.filter(
+            ticket_id__in=resolved_ticket_ids,
+            action='assigned',
+            details__to=request.user.get_full_name()
+        ).order_by('ticket_id', 'created_at'):
+            assigned_at_by_ticket.setdefault(log.ticket_id, log.created_at)
+
+        # Earliest public reply by this agent per ticket, in one query.
+        first_reply_at_by_ticket = {}
+        for comment in TicketComment.objects.filter(
+            ticket_id__in=resolved_ticket_ids,
+            author=request.user,
+            visibility='PUBLIC'
+        ).order_by('ticket_id', 'created_at'):
+            first_reply_at_by_ticket.setdefault(comment.ticket_id, comment.created_at)
+
         resolution_times = []
-        for ticket in resolved_tickets:
-            if ticket.resolved_at and ticket.assigned_to == request.user:
-                assigned_log = TicketActivityLog.objects.filter(
-                    ticket=ticket,
-                    action='assigned',
-                    details__to=request.user.get_full_name()
-                ).order_by('created_at').first()
-                
-                if assigned_log:
-                    assigned_at = assigned_log.created_at
-                    resolution_time = (ticket.resolved_at - assigned_at).total_seconds() / 3600
-                    resolution_times.append(resolution_time)
-        
-        if resolution_times:
-            avg_resolution_time = round(sum(resolution_times) / len(resolution_times), 1)
-        
-        # Average Response Time
-        avg_response_time = None
         response_times = []
         for ticket in resolved_tickets:
-            if ticket.resolved_at and ticket.assigned_to == request.user:
-                assigned_log = TicketActivityLog.objects.filter(
-                    ticket=ticket,
-                    action='assigned',
-                    details__to=request.user.get_full_name()
-                ).order_by('created_at').first()
-                
-                if assigned_log:
-                    assigned_at = assigned_log.created_at
-                    first_reply = TicketComment.objects.filter(
-                        ticket=ticket,
-                        author=request.user,
-                        visibility='PUBLIC'
-                    ).order_by('created_at').first()
-                    
-                    if first_reply:
-                        response_time = (first_reply.created_at - assigned_at).total_seconds() / 60
-                        response_times.append(response_time)
-        
-        if response_times:
-            avg_response_time = round(sum(response_times) / len(response_times), 1)
+            assigned_at = assigned_at_by_ticket.get(ticket.id)
+            if not assigned_at:
+                continue
+            resolution_times.append((ticket.resolved_at - assigned_at).total_seconds() / 3600)
+            first_reply_at = first_reply_at_by_ticket.get(ticket.id)
+            if first_reply_at:
+                response_times.append((first_reply_at - assigned_at).total_seconds() / 60)
+
+        avg_resolution_time = round(sum(resolution_times) / len(resolution_times), 1) if resolution_times else None
+        avg_response_time = round(sum(response_times) / len(response_times), 1) if response_times else None
         
         my_open_tickets = Ticket.objects.filter(
             assigned_to=request.user,
@@ -384,78 +480,7 @@ def dashboard(request):
     
     # Admin specific context
     if active_role and active_role.name in ['ADMIN', 'SUPERADMIN']:
-        context['total_tickets_month'] = Ticket.objects.filter(created_at__month=timezone.now().month).count()
-
-        resolved_tickets = Ticket.objects.filter(status__in=['RESOLVED', 'CLOSED'], resolved_at__isnull=False)
-        compliant = 0
-        total = 0
-        for ticket in resolved_tickets:
-            try:
-                sla = SLA.objects.get(priority=ticket.priority)
-                resolution_time = ticket.resolved_at - ticket.created_at
-                if resolution_time.total_seconds() / 60 <= sla.resolution_minutes:
-                    compliant += 1
-            except SLA.DoesNotExist:
-                pass
-            total += 1
-        context['sla_compliance'] = round((compliant / total * 100), 1) if total > 0 else 100.0
-
-        context['connectors'] = RemoteConnector.objects.all().order_by('name')
-        context['active_connectors'] = RemoteConnector.objects.filter(is_active=True).count()
-        context['slas'] = SLA.objects.all().order_by('priority')
-        context['escalation_rules'] = EscalationRule.objects.all().order_by('priority', 'timer_type', 'threshold_percent')
-        context['calendars'] = BusinessCalendar.objects.all()
-        context['recent_audit_logs'] = TicketActivityLog.objects.select_related('ticket', 'actor').order_by('-created_at')[:5]
-        context['role_choices'] = User.Role.choices
-
-        pending_fulfillment_count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
-
-        total_assets = Asset.objects.count()
-        active_assets = Asset.objects.filter(status='ACTIVE').count()
-        in_store_assets = Asset.objects.filter(status='IN_STORE').count()
-        maintenance_assets = Asset.objects.filter(status='MAINTENANCE').count()
-        damaged_assets = Asset.objects.filter(status='DAMAGED').count()
-        scrapped_assets = Asset.objects.filter(status='SCRAPPED').count()
-        
-        thirty_days_ago = timezone.now() - timedelta(days=30)
-        recently_added = Asset.objects.filter(created_at__gte=thirty_days_ago).count()
-        assigned_assets = Asset.objects.filter(assigned_to__isnull=False).count()
-        unassigned_assets = total_assets - assigned_assets
-        
-        today = date.today()
-        ninety_days_later = today + timedelta(days=90)
-        expiring_warranty = Asset.objects.filter(
-            warranty_expiry__gte=today,
-            warranty_expiry__lte=ninety_days_later,
-            status='ACTIVE'
-        ).count()
-        
-        approved_requests = Ticket.objects.filter(
-            type=Ticket.Type.SERVICE_REQUEST,
-            status=Ticket.Status.APPROVED
-        ).count()
-        
-        fulfilled_this_month = Ticket.objects.filter(
-            type=Ticket.Type.SERVICE_REQUEST,
-            is_asset_request=True,
-            fulfilled_at__month=timezone.now().month
-        ).count()
-        
-        context.update({
-            'pending_fulfillment_count': pending_fulfillment_count,
-            'total_assets': total_assets,
-            'active_assets': active_assets,
-            'in_store_assets': in_store_assets,
-            'maintenance_assets': maintenance_assets,
-            'damaged_assets': damaged_assets,
-            'scrapped_assets': scrapped_assets,
-            'recently_added': recently_added,
-            'assigned_assets': assigned_assets,
-            'unassigned_assets': unassigned_assets,
-            'expiring_warranty': expiring_warranty,
-            'approved_requests': approved_requests,
-            'fulfilled_this_month': fulfilled_this_month,
-        })
+        context.update(_get_admin_dashboard_kpis())
     
     # Team Lead specific context
     if active_role and active_role.name == 'TEAM_LEAD':

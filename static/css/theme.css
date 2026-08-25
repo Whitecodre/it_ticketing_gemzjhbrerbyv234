@@ -136,7 +136,11 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus, selec
     box-shadow: 0 0 0 3px rgba(13, 148, 136, .14);
     outline: 0;
 }
-input::placeholder, textarea::placeholder { color: var(--color-text-secondary); opacity: .75; }
+/* No extra opacity dimming here — --color-text-secondary is already a
+   deliberately muted tone with its own AA-passing contrast (~7.6:1 light,
+   ~5.7:1 dark); stacking a further .75 opacity on top of it dropped
+   placeholder text below 4.5:1 in both themes. */
+input::placeholder, textarea::placeholder { color: var(--color-text-secondary); opacity: 1; }
 table { border-collapse: separate; border-spacing: 0; }
 thead th { background: color-mix(in srgb, var(--color-background) 72%, var(--color-surface)); }
 tbody tr { transition: background-color .15s ease, box-shadow .15s ease; }

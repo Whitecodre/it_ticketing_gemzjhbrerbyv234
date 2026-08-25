@@ -26,7 +26,7 @@
         <div class="w-full sm:max-w-sm">
             <div class="relative">
                 {% lucide "search" size=16 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
-                <input type="text" id="searchInput" placeholder="Search by name or email…"
+                <input type="text" id="searchInput" placeholder="Search by name or email…" aria-label="Search users by name or email"
                        class="w-full rounded-lg border py-2 pl-10 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                        hx-get="{% url 'accounts:admin_users' %}"
                        hx-trigger="keyup changed delay:300ms"

@@ -107,6 +107,30 @@
             <p class="empty-state-subtext">Items ordered from vendors for service requests or mobilizations will show up here.</p>
         </div>
         {% endif %}
+
+        {% if procurement_requests.has_other_pages %}
+        <div class="pagination-bar border-t border-border">
+            <span class="pagination-summary">
+                Showing <strong>{{ procurement_requests.start_index }}&ndash;{{ procurement_requests.end_index }}</strong> of <strong>{{ procurement_requests.paginator.count }}</strong> requests
+            </span>
+            <div class="pagination-controls">
+                {% if procurement_requests.has_previous %}
+                <a class="pagination-step" href="?{% if current_status %}status={{ current_status }}&{% endif %}page={{ procurement_requests.previous_page_number }}">
+                    {% lucide "chevron-left" size=14 %} Prev
+                </a>
+                {% else %}
+                <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
+                {% endif %}
+                {% if procurement_requests.has_next %}
+                <a class="pagination-step" href="?{% if current_status %}status={{ current_status }}&{% endif %}page={{ procurement_requests.next_page_number }}">
+                    Next {% lucide "chevron-right" size=14 %}
+                </a>
+                {% else %}
+                <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 
