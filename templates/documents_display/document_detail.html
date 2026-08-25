@@ -3,6 +3,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}{{ document.title }}{% endblock %}
 
@@ -12,11 +13,10 @@
 
 {% block dashboard_content %}
 <div class="max-w-4xl mx-auto">
-    <div class="mb-4 flex items-center gap-3">
-        <a href="{% url 'documents_display:category_detail' document.category.slug %}" class="btn-ghost text-sm flex items-center gap-1">
-            {% lucide "arrow-left" size=16 %} Back to {{ document.category.name }}
-        </a>
-    </div>
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% url 'documents_display:category_detail' document.category.slug as category_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url document.category.name category_url document.title %}
 
     <div class="dashboard-card p-6 shadow-sm">
         <!-- Header -->
@@ -29,10 +29,10 @@
                 </div>
                 <div class="flex flex-wrap gap-3 mt-1 text-xs text-text-secondary">
                     {% if document.document_date %}
-                    <span>📅 {{ document.document_date|date:"M d, Y" }}</span>
+                    <span class="flex items-center gap-1">{% lucide "calendar" size=12 %} {{ document.document_date|date:"M d, Y" }}</span>
                     {% endif %}
-                    <span>📄 {{ document.file_name }}</span>
-                    <span>📦 {{ document.file_size|filesizeformat }}</span>
+                    <span class="flex items-center gap-1">{% lucide "file" size=12 %} {{ document.file_name }}</span>
+                    <span class="flex items-center gap-1">{% lucide "package" size=12 %} {{ document.file_size|filesizeformat }}</span>
                 </div>
             </div>
             <div class="flex gap-2 shrink-0 flex-wrap">
@@ -64,19 +64,19 @@
         <!-- File Info -->
         <div class="rounded-lg border p-4 mb-4" style="border-color: var(--color-border); background-color: var(--color-background);">
             <div class="flex items-center gap-3">
-                <span class="text-3xl">
+                <span class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
                     {% if document.file_extension == 'pdf' %}
-                        📕
+                        {% lucide "file-text" size=18 %}
                     {% elif document.file_extension in 'doc,docx' %}
-                        📘
+                        {% lucide "file-text" size=18 %}
                     {% elif document.file_extension in 'xls,xlsx' %}
-                        📊
+                        {% lucide "file-spreadsheet" size=18 %}
                     {% elif document.file_extension in 'ppt,pptx' %}
-                        📙
+                        {% lucide "presentation" size=18 %}
                     {% elif document.file_extension in 'png,jpg,jpeg,gif,webp' %}
-                        🖼️
+                        {% lucide "image" size=18 %}
                     {% else %}
-                        📄
+                        {% lucide "file" size=18 %}
                     {% endif %}
                 </span>
                 <div>

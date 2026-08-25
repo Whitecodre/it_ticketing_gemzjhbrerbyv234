@@ -58,6 +58,19 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
 
         if not skip_frame_options:
             response['X-Frame-Options'] = 'DENY'
+        elif response.get('X-Frame-Options') is None:
+            # MIDDLEWARE lists django.middleware.clickjacking.XFrameOptionsMiddleware
+            # BEFORE this middleware, which means — since Django runs
+            # process_response in reverse middleware order — that builtin
+            # middleware actually runs AFTER this one on the way out. Simply
+            # leaving the header unset here doesn't mean "no restriction":
+            # XFrameOptionsMiddleware then fills in its own default (DENY)
+            # right afterward, silently undoing every skip_frame_options
+            # case above (PDF previews included) regardless of the reasoning
+            # here. xframe_options_exempt is the actual flag Django's
+            # middleware checks before applying that default — set it
+            # instead of relying on order-dependent header presence.
+            response.xframe_options_exempt = True
 
         return response
     
@@ -95,7 +108,7 @@ class ImpersonationMiddleware(MiddlewareMixin):
                         request.session.pop('impersonate', None)
                         messages.warning(
                             request,
-                            '⚠️ Impersonation session expired after 1 hour.'
+                            'Impersonation session expired after 1 hour.'
                         )
                         return None
                 except (ValueError, TypeError):

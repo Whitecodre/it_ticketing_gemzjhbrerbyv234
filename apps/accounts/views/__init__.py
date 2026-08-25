@@ -276,13 +276,17 @@ def dashboard(request):
     ) if _pending_q is not None else []
 
     if active_role and (active_role.name == 'END_USER' or (active_role.name == 'TEAM_LEAD' and not is_it_team_lead)):
+        # Must match my_ticket_list's OPEN bucket (apps/tickets/views.py) so
+        # the "Open" KPI card's count agrees with what clicking through to
+        # ?status=OPEN actually shows.
+        open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR', 'APPROVED']
         context['open_tickets_count'] = Ticket.objects.filter(
             requester=request.user,
-            status__in=['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
+            status__in=open_statuses
         ).count()
         context['recent_tickets'] = Ticket.objects.filter(requester=request.user).order_by('-created_at')[:5]
         context['all_count'] = Ticket.objects.filter(requester=request.user).count()
-        context['open_count'] = Ticket.objects.filter(requester=request.user, status='NEW').count()
+        context['open_count'] = Ticket.objects.filter(requester=request.user, status__in=open_statuses).count()
         context['in_progress_count'] = Ticket.objects.filter(requester=request.user, status='IN_PROGRESS').count()
         context['resolved_count'] = Ticket.objects.filter(requester=request.user, status='RESOLVED').count()
         context['closed_count'] = Ticket.objects.filter(requester=request.user, status='CLOSED').count()
@@ -405,10 +409,7 @@ def dashboard(request):
         context['role_choices'] = User.Role.choices
 
         pending_fulfillment_count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
-        pending_fulfillment_requests = Ticket.objects.filter(
-            status=Ticket.Status.PENDING_FULFILLMENT
-        ).select_related('requester', 'category').order_by('-created_at')[:10]
-        
+
         total_assets = Asset.objects.count()
         active_assets = Asset.objects.filter(status='ACTIVE').count()
         in_store_assets = Asset.objects.filter(status='IN_STORE').count()
@@ -442,7 +443,6 @@ def dashboard(request):
         
         context.update({
             'pending_fulfillment_count': pending_fulfillment_count,
-            'pending_fulfillment_requests': pending_fulfillment_requests,
             'total_assets': total_assets,
             'active_assets': active_assets,
             'in_store_assets': in_store_assets,
@@ -809,7 +809,6 @@ def profile(request):
     assigned_role_names = list(request.user.roles.values_list('name', flat=True))
 
     active_role = request.user.get_active_role()
-    active_role_name = active_role.name if active_role else request.user.role
 
     available_roles = list(request.user.roles.all().order_by('priority'))
     if not available_roles and active_role:
@@ -819,14 +818,7 @@ def profile(request):
         if highest_role:
             available_roles = [highest_role]
 
-    sidebar_map = {
-        'END_USER': 'partials/sidebar_end_user.html',
-        'AGENT': 'partials/sidebar_agent.html',
-        'TEAM_LEAD': 'partials/sidebar_team_lead.html',
-        'ADMIN': 'partials/sidebar_admin.html',
-        'SUPERADMIN': 'partials/sidebar_superadmin.html',
-    }
-    sidebar_template = sidebar_map.get(active_role_name, 'partials/sidebar_generic.html')
+    sidebar_template = get_sidebar_template(request.user)
 
     return render(request, 'dashboards/profile.html', {
         'form': form,
@@ -836,3 +828,35 @@ def profile(request):
         'available_roles': available_roles,
         'active_role': active_role,
     })
+
+
+@login_required
+def department_users_partial(request):
+    """Return <option> tags for active users in the requested department.
+
+    Used to drive a department-first "assign to a user" picker via HTMX:
+    the caller re-renders this into an existing <select>'s innerHTML each
+    time the paired department <select> changes.
+    """
+    # The paired department <select>'s field name varies by form
+    # (`department` collides with real model fields on some forms, so
+    # those use `assignee_department`/`recipient_department` instead) —
+    # accept whichever one hx-include actually sent.
+    department = (
+        request.GET.get('department')
+        or request.GET.get('assignee_department')
+        or request.GET.get('recipient_department')
+        or ''
+    ).strip()
+    exclude = request.GET.get('exclude', '').strip()
+
+    if department:
+        users = User.objects.filter(department=department, is_active=True).order_by('first_name', 'last_name')
+        if exclude:
+            exclude_ids = [pk for pk in exclude.split(',') if pk.isdigit()]
+            if exclude_ids:
+                users = users.exclude(pk__in=exclude_ids)
+    else:
+        users = User.objects.none()
+
+    return render(request, 'accounts/partials/department_user_options.html', {'users': users})

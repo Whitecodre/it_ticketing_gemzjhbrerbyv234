@@ -12,12 +12,14 @@ from django.utils import timezone
 from .models import Article, ArticleVersion, Category, ArticleFeedback
 from .forms import ArticleMetadataForm, KBFromTicketForm
 from .sanitize import sanitize_html
+from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from apps.tickets.models import Ticket
 from apps.common.models import Tag
 from apps.tickets.views import get_sidebar_template
+from apps.common.permissions import effective_role_name
 
 # Images only, narrower than apps.tickets.views.ALLOWED_MIMES (documents
 # aren't a valid KB article image) — same size cap as ticket attachments.
@@ -39,31 +41,41 @@ ARTICLE_TEMPLATE_SCAFFOLD = (
 def kb_management(request):
     """Agent/TL/Admin view for managing KB articles."""
     user = request.user
-    if user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or user.department != 'IT':
+    if effective_role_name(user) not in ('AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN') or user.department != 'IT':
         return HttpResponseForbidden()
 
-    drafts = Article.objects.filter(author=user, status=Article.Status.DRAFT)
-    pending_review = Article.objects.filter(status=Article.Status.PENDING_REVIEW) if user.role in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] else []
-    published = Article.objects.filter(status=Article.Status.PUBLISHED)
+    query = request.GET.get('q', '').strip()
+
+    drafts_qs = Article.objects.filter(author=user, status=Article.Status.DRAFT).order_by('-updated_at')
+    pending_qs = Article.objects.filter(status=Article.Status.PENDING_REVIEW).order_by('-updated_at') if user.role in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] else Article.objects.none()
+    published_qs = Article.objects.filter(status=Article.Status.PUBLISHED).order_by('-updated_at')
     # Same visibility gate as Pending Review — archiving/restoring is
     # already TEAM_LEAD/ADMIN/SUPERADMIN-only, so only they need to see
     # what's sitting in the archive.
-    archived = Article.objects.filter(status=Article.Status.ARCHIVED) if user.role in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] else []
+    archived_qs = Article.objects.filter(status=Article.Status.ARCHIVED).order_by('-updated_at') if user.role in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] else Article.objects.none()
 
-    # Choose sidebar based on role
-    sidebar_map = {
-        'AGENT': 'partials/sidebar_agent.html',
-        'TEAM_LEAD': 'partials/sidebar_team_lead.html',
-        'ADMIN': 'partials/sidebar_admin.html',
-        'SUPERADMIN': 'partials/sidebar_superadmin.html',  
-    }
-    sidebar_template = sidebar_map.get(user.role, 'partials/sidebar_agent.html')
+    if query:
+        title_or_content = Q(title__icontains=query) | Q(content__icontains=query) | Q(tags__name__icontains=query)
+        drafts_qs = drafts_qs.filter(title_or_content).distinct()
+        pending_qs = pending_qs.filter(title_or_content).distinct()
+        published_qs = published_qs.filter(title_or_content).distinct()
+        archived_qs = archived_qs.filter(title_or_content).distinct()
+
+    # Each tab paginates independently so switching tabs (or paging one)
+    # doesn't reset another — page params are namespaced per tab.
+    drafts = Paginator(drafts_qs, 12).get_page(request.GET.get('drafts_page'))
+    pending_review = Paginator(pending_qs, 12).get_page(request.GET.get('pending_page'))
+    published = Paginator(published_qs, 12).get_page(request.GET.get('published_page'))
+    archived = Paginator(archived_qs, 12).get_page(request.GET.get('archived_page'))
+
+    sidebar_template = get_sidebar_template(user)
 
     context = {
         'drafts': drafts,
         'pending_review': pending_review,
         'published': published,
         'archived': archived,
+        'search_query': query,
         'sidebar_template': sidebar_template,
         'categories': Category.objects.all(),
     }
@@ -77,7 +89,7 @@ def article_create(request):
     visibility/tags (submitted via the metadata modal on the management
     page), then hand off to the content step. AJAX-only — the "New Article"
     button opens the modal client-side rather than navigating here."""
-    if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ('AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN') or request.user.department != 'IT':
         return JsonResponse({'error': 'Forbidden'}, status=403)
 
     form = ArticleMetadataForm(request.POST)
@@ -251,7 +263,7 @@ def article_reject_review(request, pk):
 
     from apps.common.models import Notification
     from apps.common.utils import role_of
-    note = f'📝 "{article.title}" was sent back to draft by {request.user.get_full_name()}.'
+    note = f'"{article.title}" was sent back to draft by {request.user.get_full_name()}.'
     if reason:
         note += f' Reason: {reason}'
     Notification.objects.create(
@@ -327,14 +339,23 @@ def kb_portal(request):
         count=Count('article')
     ).order_by('name')
 
+    # The Article Grid is for browsing/filter RESULTS — only show it once the
+    # user is actually searching, has picked a category, or picked a tag.
+    # Otherwise (bare landing page) `articles` is still every published/public
+    # article in the whole KB, which used to render as stray cards under the
+    # category-folder grid instead of staying hidden until a filter is chosen.
+    show_articles = bool(query or selected_category or tag_name)
+
     context = {
         'articles': articles,
+        'show_articles': show_articles,
         'top_level_categories': top_level_categories,
         'subcategories': subcategories,
         'selected_category': selected_category,
         'all_tags': all_tags,
         'query': query,
         'selected_tag': tag_name,
+        'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'knowledge_base/portal.html', context)
 
@@ -358,6 +379,7 @@ def kb_article_detail(request, slug):
     context = {
         'article': article,
         'user_feedback': user_feedback,
+        'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'knowledge_base/article_detail.html', context)
 
@@ -508,6 +530,31 @@ def kb_suggestions_ajax(request):
     ).order_by('-rank', '-updated_at')[:5]
 
     return render(request, 'partials/kb_suggestions.html', {'articles': articles})
+
+
+@login_required
+def kb_composer_search(request):
+    """HTMX endpoint backing the "Insert KB Article" control in the ticket
+    reply composer (templates/agent/ticket_conversation.html). Scoped to
+    published + public articles only, same as kb_suggestions_ajax — a
+    composer message can be sent publicly, so nothing internal-only should
+    be offered here."""
+    query = request.GET.get('q', '').strip()
+
+    if len(query) < 2:
+        return render(request, 'partials/kb_composer_results.html', {'articles': []})
+
+    from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+    search_query = SearchQuery(query)
+    vector = SearchVector('title', weight='A') + SearchVector('content', weight='B')
+    articles = Article.objects.filter(
+        status=Article.Status.PUBLISHED,
+        visibility='PUBLIC'
+    ).annotate(search=vector, rank=SearchRank(vector, search_query)).filter(
+        search=search_query
+    ).order_by('-rank', '-updated_at')[:8]
+
+    return render(request, 'partials/kb_composer_results.html', {'articles': articles})
 
 
 @login_required

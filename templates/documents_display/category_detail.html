@@ -3,6 +3,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}{{ category.name }}{% endblock %}
 
@@ -12,12 +13,12 @@
 
 {% block dashboard_content %}
 <div class="w-full">
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url category.name %}
     <!-- Header -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div class="flex items-center gap-3">
-            <a href="{% url 'documents_display:dashboard' %}" class="btn-ghost text-sm flex items-center gap-1">
-                {% lucide "arrow-left" size=16 %} Back
-            </a>
             <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
                 {% if category.icon %}
                     {% lucide category.icon size=16 %}
@@ -35,12 +36,12 @@
             <div class="flex items-center gap-1 rounded-lg border p-0.5" style="border-color: var(--color-border); background-color: var(--color-background);">
                 <a href="?view=grid{% if query %}&q={{ query }}{% endif %}{% if page %}&page={{ page }}{% endif %}"
                    class="p-1.5 rounded transition {% if view_mode == 'grid' %}bg-primary text-white{% else %}text-text-secondary hover:text-text-primary{% endif %}"
-                   title="Grid View">
+                   title="Grid View" aria-label="Grid View">
                     {% lucide "grid" size=16 %}
                 </a>
                 <a href="?view=list{% if query %}&q={{ query }}{% endif %}{% if page %}&page={{ page }}{% endif %}"
                    class="p-1.5 rounded transition {% if view_mode == 'list' %}bg-primary text-white{% else %}text-text-secondary hover:text-text-primary{% endif %}"
-                   title="List View">
+                   title="List View" aria-label="List View">
                     {% lucide "list" size=16 %}
                 </a>
             </div>
@@ -54,13 +55,23 @@
     </div>
 
     <!-- Search -->
-    <form method="get" class="mb-4">
+    <form method="get" class="mb-4"
+          hx-get="{% url 'documents_display:category_detail' category.slug %}"
+          hx-trigger="keyup changed delay:400ms from:input, change"
+          hx-target="#categoryDocumentsContainer"
+          hx-swap="innerHTML"
+          hx-indicator="#categorySearchSpinner"
+          hx-push-url="true">
         <div class="flex flex-wrap items-center gap-3">
             <div class="relative flex-1 max-w-md">
                 <input type="text" name="q" value="{{ query }}" placeholder="Search by document name..."
-                       class="w-full rounded-lg border py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                       class="w-full rounded-lg border py-2 pl-10 pr-8 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
                 <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
+                <span id="categorySearchSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
+                    {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
+                </span>
             </div>
+            {# Live-filters as you type; this button stays for JS-disabled/no-op-Enter parity. #}
             <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg">Search</button>
             {% if query %}
             <a href="?{% if view_mode %}view={{ view_mode }}{% endif %}" class="btn-ghost text-sm px-4 py-2">Clear</a>
@@ -68,140 +79,8 @@
         </div>
     </form>
 
-    <!-- ====== GRID VIEW ====== -->
-    {% if view_mode == 'grid' %}
-        {% if documents %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {% for doc in documents %}
-            <a href="{% url 'documents_display:document_detail' doc.slug %}" 
-               class="group block rounded-lg border p-4 hover:shadow-md transition hover:border-primary"
-               style="border-color: var(--color-border); background-color: var(--color-surface);">
-                <div class="flex items-start gap-3">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-                        {% if doc.file_extension == 'pdf' %}
-                            {% lucide "file-text" size=14 %}
-                        {% elif doc.file_extension in 'png,jpg,jpeg,gif,webp' %}
-                            {% lucide "image" size=14 %}
-                        {% elif doc.file_extension in 'doc,docx' %}
-                            {% lucide "file-text" size=14 %}
-                        {% else %}
-                            {% lucide "file" size=14 %}
-                        {% endif %}
-                    </span>
-                    <div class="flex-1 min-w-0">
-                        <h3 class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ doc.title }}</h3>
-                        <p class="text-xs text-text-secondary truncate">{{ doc.file_name }}</p>
-                        <div class="flex items-center gap-2 mt-1 text-[0.6rem] text-text-secondary">
-                            <span>v{{ doc.version }}</span>
-                            <span>•</span>
-                            <span>{{ doc.updated_at|date:"M d, Y" }}</span>
-                            <span>•</span>
-                            <span>{{ doc.file_size|filesizeformat }}</span>
-                        </div>
-                        <!-- Visibility Badge -->
-                        <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full 
-                            {% if doc.visibility == 'PUBLIC' %}bg-success/10 text-success
-                            {% elif doc.visibility == 'DEPARTMENT' %}bg-info/10 text-info
-                            {% else %}bg-warning/10 text-warning{% endif %}">
-                            {{ doc.get_visibility_display }}
-                        </span>
-                    </div>
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="text-center py-12 text-text-secondary">
-            <span class="text-4xl block mb-3">📄</span>
-            <p class="text-sm font-medium">No documents in this category</p>
-            <p class="text-xs">Upload a document to get started.</p>
-        </div>
-        {% endif %}
-
-    <!-- ====== LIST VIEW ====== -->
-    {% else %}
-        {% if documents %}
-        <div class="space-y-3">
-            {% for doc in documents %}
-            <a href="{% url 'documents_display:document_detail' doc.slug %}" 
-            class="block rounded-lg border p-4 hover:shadow-md transition hover:border-primary"
-            style="border-color: var(--color-border); background-color: var(--color-surface);">
-                <div class="flex items-center gap-4">
-                    <span class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-                        {% if doc.file_extension == 'pdf' %}
-                            {% lucide "file-text" size=18 %}
-                        {% elif doc.file_extension in 'png,jpg,jpeg,gif,webp' %}
-                            {% lucide "image" size=18 %}
-                        {% elif doc.file_extension in 'doc,docx' %}
-                            {% lucide "file-text" size=18 %}
-                        {% else %}
-                            {% lucide "file" size=18 %}
-                        {% endif %}
-                    </span>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h3 class="text-sm font-medium" style="color: var(--color-text-primary);">{{ doc.title }}</h3>
-                            <span class="text-xs text-text-secondary">v{{ doc.version }}</span>
-                            <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full 
-                                {% if doc.visibility == 'PUBLIC' %}bg-success/10 text-success
-                                {% elif doc.visibility == 'DEPARTMENT' %}bg-info/10 text-info
-                                {% else %}bg-warning/10 text-warning{% endif %}">
-                                {{ doc.get_visibility_display }}
-                            </span>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
-                            <span>{{ doc.file_name }}</span>
-                            <span>•</span>
-                            <span>{{ doc.file_size|filesizeformat }}</span>
-                            <span>•</span>
-                            <span>{{ doc.updated_at|date:"M d, Y" }}</span>
-                        </div>
-                    </div>
-                    <span class="text-primary">{% lucide "chevron-right" size=16 %}</span>
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="text-center py-12 text-text-secondary">
-            <span class="text-4xl block mb-3">📄</span>
-            <p class="text-sm font-medium">No documents in this category</p>
-            <p class="text-xs">Upload a document to get started.</p>
-        </div>
-        {% endif %}
-    {% endif %}
-
-    <!-- Pagination -->
-    {% if documents.has_other_pages %}
-    <div class="pagination-bar" style="margin-top: 1rem;">
-        <span class="pagination-summary">
-            Showing <strong>{{ documents.start_index }}–{{ documents.end_index }}</strong> of <strong>{{ documents.paginator.count }}</strong> documents
-        </span>
-        <div class="pagination-controls">
-            {% if documents.has_previous %}
-            <a href="?page={{ documents.previous_page_number }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}"
-               class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
-            {% else %}
-            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
-            {% endif %}
-            <div class="pagination-numbers">
-                {% for num in documents.paginator.page_range %}
-                    {% if num == documents.number %}
-                    <span class="pagination-number is-current">{{ num }}</span>
-                    {% elif num > documents.number|add:'-3' and num < documents.number|add:'3' %}
-                    <a href="?page={{ num }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}"
-                       class="pagination-number">{{ num }}</a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            {% if documents.has_next %}
-            <a href="?page={{ documents.next_page_number }}{% if query %}&q={{ query }}{% endif %}{% if view_mode %}&view={{ view_mode }}{% endif %}"
-               class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
-            {% else %}
-            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
-            {% endif %}
-        </div>
+    <div id="categoryDocumentsContainer">
+        {% include "documents_display/partials/category_documents.html" %}
     </div>
-    {% endif %}
 </div>
 {% endblock %}

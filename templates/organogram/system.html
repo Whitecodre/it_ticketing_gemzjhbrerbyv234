@@ -369,21 +369,27 @@
     <!-- Header -->
     <div class="org-header">
         <div class="title-section">
-            <h1>🏢 System Organogram</h1>
+            <h1 class="flex gap-2">{% lucide "building-2" size=20 %} System Organogram</h1>
             <span class="subtitle">Auto-generated from user management • Reporting lines</span>
         </div>
         <div class="actions">
             <!-- Search -->
-            <input type="text" id="orgSearch" name="search"
-                    placeholder="Search employees..."
-                    value="{{ search_query|default:'' }}"
-                    class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
-                    hx-get="{% url 'organogram:system' %}"
-                    hx-trigger="keyup changed delay:500ms"
-                    hx-target="#orgTreeContainer"
-                    hx-swap="innerHTML"
-                    hx-include="closest .actions"
-                    hx-push-url="true">
+            <div class="relative inline-block">
+                <input type="text" id="orgSearch" name="search"
+                        placeholder="Search employees..."
+                        value="{{ search_query|default:'' }}"
+                        class="text-sm rounded-lg border py-1.5 px-3 pr-8 bg-background border-border text-text-primary"
+                        hx-get="{% url 'organogram:system' %}"
+                        hx-trigger="keyup changed delay:500ms"
+                        hx-target="#orgTreeContainer"
+                        hx-swap="innerHTML"
+                        hx-include="closest .actions"
+                        hx-indicator="#orgSearchSpinner"
+                        hx-push-url="true">
+                <span id="orgSearchSpinner" class="htmx-indicator absolute right-2 top-1/2 -translate-y-1/2">
+                    {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
+                </span>
+            </div>
 
             <!-- Department Filter -->
             <select id="departmentFilter" name="department" class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary"
@@ -392,6 +398,7 @@
                     hx-target="#orgTreeContainer"
                     hx-swap="innerHTML"
                     hx-include="closest .actions"
+                    hx-indicator="#orgSearchSpinner"
                     hx-push-url="true">
                 <option value="">All Departments</option>
                 {% for code, label in department_choices %}

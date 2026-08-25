@@ -162,7 +162,9 @@ class KnowledgeBaseViewTests(TestCase):
         self.assertEqual(article.visibility, 'PUBLIC')
 
     def test_kb_portal_loads(self):
-        """Test KB portal loads with published articles."""
+        """Bare portal load (no search/category/tag) shows category cards,
+        not individual articles — the article grid is filter results, not
+        a default listing of everything published."""
         Article.objects.create(
             title='Published Article',
             slug='published-article',
@@ -173,6 +175,22 @@ class KnowledgeBaseViewTests(TestCase):
             visibility='PUBLIC'
         )
         response = self.client.get(reverse('kb:portal'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Published Article')
+        self.assertContains(response, self.category.name)
+
+    def test_kb_portal_shows_articles_for_selected_category(self):
+        """Selecting a category surfaces its articles in the grid."""
+        Article.objects.create(
+            title='Published Article',
+            slug='published-article',
+            content='Published content',
+            author=self.author,
+            category=self.category,
+            status=Article.Status.PUBLISHED,
+            visibility='PUBLIC'
+        )
+        response = self.client.get(reverse('kb:portal'), {'category': self.category.pk})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Published Article')
 

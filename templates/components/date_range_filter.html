@@ -1,0 +1,102 @@
+{% load lucide %}
+{% load badge_tags %}
+{# ================================================================ #}
+{# DATE RANGE FILTER — segmented preset control + a single custom-range #}
+{# button that opens a calendar popover. Everything applies instantly,  #}
+{# no separate Apply step, no "Showing: ..." label (the custom-range    #}
+{# button itself always shows the active range). Usage:                #}
+{#                                                                       #}
+{# {% include "components/date_range_filter.html" with                  #}
+{#    filter_id="reports"                                                #}
+{#    presets="7:Last 7 days,30:Last 30 days,90:Last 90 days"            #}
+{#    start=start_date|date:"Y-m-d" end=end_date|date:"Y-m-d"            #}
+{#    apply_mode="redirect" %}                                           #}
+{#                                                                       #}
+{# apply_mode="htmx" additionally needs start_input_id/end_input_id      #}
+{# matching the two inputs the host form's hx-trigger="change" already   #}
+{# watches. default_start/default_end (optional) control what Reset      #}
+{# clears back to — omitted means "no date filter."                      #}
+{# ================================================================ #}
+{% with fid=filter_id|default:"drf" %}
+{# x-data uses single-quoted HTML-attribute delimiters deliberately: the  #}
+{# presets value below is real JSON (parse_date_presets), which is always #}
+{# double-quoted — embedding double-quoted JSON inside a double-quoted    #}
+{# HTML attribute truncates the attribute at JSON's first '"'. Every JS   #}
+{# string literal in here must therefore use double quotes, not single.  #}
+<div x-data='dateRangeFilter({
+        presets: {{ presets|parse_date_presets|safe }},
+        applyMode: "{{ apply_mode|default:'redirect' }}",
+        startInputId: {% if start_input_id %}"{{ start_input_id }}"{% else %}null{% endif %},
+        endInputId: {% if end_input_id %}"{{ end_input_id }}"{% else %}null{% endif %},
+        redirectStartParam: "{{ redirect_start_param|default:'start_date' }}",
+        redirectEndParam: "{{ redirect_end_param|default:'end_date' }}",
+        start: "{{ start|default:'' }}",
+        end: "{{ end|default:'' }}",
+        activePresetDays: {{ active_preset_days|default:"null" }},
+        defaultStart: "{{ default_start|default:'' }}",
+        defaultEnd: "{{ default_end|default:'' }}",
+        defaultPresetDays: {{ default_preset_days|default:"null" }}
+     })'
+     class="flex flex-wrap items-center gap-2" @keydown.escape.window="closePopover()">
+
+    {# Segmented preset control #}
+    <div class="drf-segmented">
+        <template x-for="preset in presets" :key="preset.days">
+            <button type="button"
+                    class="drf-segment"
+                    :class="activePresetDays === preset.days ? 'drf-segment-active' : ''"
+                    @click="applyPreset(preset.days)"
+                    x-text="preset.label"></button>
+        </template>
+    </div>
+
+    {# Custom range — one button, always reflects the active range #}
+    <div>
+        <button type="button" id="drf-toggle-{{ fid }}" x-ref="toggle" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+                @click="popoverOpen ? closePopover() : openPopover()">
+            {% lucide "calendar" size=13 %}
+            <span x-text="rangeLabel"></span>
+        </button>
+
+        <div x-show="popoverOpen" x-cloak x-transition x-ref="popover"
+             @click.outside="if (!$refs.toggle.contains($event.target)) closePopover()"
+             class="drf-popover"
+             style="border-color: var(--color-border); background-color: var(--color-surface);">
+            <div class="flex items-center justify-between mb-2 px-1">
+                <button type="button" class="btn-ghost btn-icon" @click="prevMonth()" aria-label="Previous month">{% lucide "chevron-left" size=15 %}</button>
+                <div class="flex items-center gap-4">
+                    <span class="text-xs font-semibold text-text-primary" x-text="monthLabel(0)"></span>
+                    <span class="text-xs font-semibold text-text-primary hidden sm:inline" x-text="monthLabel(1)"></span>
+                </div>
+                <button type="button" class="btn-ghost btn-icon" @click="nextMonth()" aria-label="Next month">{% lucide "chevron-right" size=15 %}</button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <template x-for="offset in [0, 1]" :key="offset">
+                    <div :class="offset === 1 ? 'hidden sm:block' : ''">
+                        <div class="grid grid-cols-7 gap-0.5 mb-1">
+                            <template x-for="(wd, wIdx) in ['S','M','T','W','T','F','S']" :key="offset + '-wd-' + wIdx">
+                                <span class="text-[0.6rem] font-medium text-text-secondary text-center" x-text="wd"></span>
+                            </template>
+                        </div>
+                        <div class="grid grid-cols-7 gap-0.5">
+                            <template x-for="(date, idx) in monthDays(offset)" :key="offset + '-' + idx">
+                                <button type="button"
+                                        class="drf-day"
+                                        :class="dayClass(date)"
+                                        :disabled="!date"
+                                        @click="pickDay(date)"
+                                        x-text="date ? date.getDate() : ''"></button>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <p class="text-[0.65rem] text-text-secondary mt-2 px-1" x-text="pickStage === 'start' ? 'Pick a start date' : 'Pick an end date'"></p>
+        </div>
+    </div>
+
+    <button type="button" class="btn-ghost text-xs px-3 py-1.5 rounded-lg flex items-center gap-1" @click="reset()">
+        {% lucide "rotate-ccw" size=13 %} Reset
+    </button>
+</div>
+{% endwith %}

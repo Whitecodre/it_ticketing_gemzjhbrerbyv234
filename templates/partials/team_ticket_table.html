@@ -1,33 +1,33 @@
 {% load lucide %}
 
 <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="w-full text-sm" data-sortable="true">
         <thead>
             <tr class="border-b border-border">
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assignee</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Updated</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="id">ID</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="subject">Subject</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="assignee">Assignee</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="status">Status</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="priority">Priority</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="updated">Updated</th>
                 <th class="text-right py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs w-12">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for ticket in tickets %}
-            <tr class="border-b hover:bg-black/5 transition-colors group border-border">
-                <td class="py-3 px-3">
+            <tr class="border-b hover:bg-black/5 transition-colors group border-border" data-ticket-id="{{ ticket.pk }}">
+                <td class="py-3 px-3" data-value="{{ ticket.number }}">
                     <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                 </td>
-                <td class="py-3 px-3 max-w-xs truncate text-text-primary">{{ ticket.title }}</td>
-                <td class="py-3 px-3 text-text-secondary">
+                <td class="py-3 px-3 max-w-xs truncate text-text-primary" data-value="{{ ticket.title|lower }}">{{ ticket.title }}</td>
+                <td class="py-3 px-3 text-text-secondary" data-value="{{ ticket.assigned_to.get_full_name|default:'Unassigned'|lower }}">
                     {{ ticket.assigned_to.get_full_name|default:"Unassigned" }}
                 </td>
-                <td class="py-3 px-3">
+                <td class="py-3 px-3" data-value="{{ ticket.get_status_display }}">
                     <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
                 </td>
-                <td class="py-3 px-3">
-                    <span class="priority-chip 
+                <td class="py-3 px-3" data-value="{{ ticket.priority }}">
+                    <span class="priority-chip
                         {% if ticket.priority == 'P1' %}critical
                         {% elif ticket.priority == 'P2' %}high
                         {% elif ticket.priority == 'P3' %}medium
@@ -35,7 +35,7 @@
                         {{ ticket.get_priority_display }}
                     </span>
                 </td>
-                <td class="py-3 px-3 text-text-secondary text-xs">{{ ticket.updated_at|timesince }} ago</td>
+                <td class="py-3 px-3 text-text-secondary text-xs" data-value="{{ ticket.updated_at|date:'U' }}">{{ ticket.updated_at|timesince }} ago</td>
                 <td class="py-3 px-3 text-right">
                     <a href="{% url 'tickets:conversation' ticket.pk %}" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition inline-flex" aria-label="View Conversation">
                         {% lucide "message-square" size=16 %}

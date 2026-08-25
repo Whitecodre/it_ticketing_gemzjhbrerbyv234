@@ -27,13 +27,17 @@
             <div class="relative">
                 {% lucide "search" size=16 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
                 <input type="text" id="searchInput" placeholder="Search by name or email…"
-                       class="w-full rounded-lg border py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                       class="w-full rounded-lg border py-2 pl-10 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                        hx-get="{% url 'accounts:admin_users' %}"
                        hx-trigger="keyup changed delay:300ms"
                        hx-target="#userTableContainer"
                        hx-swap="innerHTML"
                        hx-include="#roleFilter,#departmentFilter"
+                       hx-indicator="#userSearchSpinner"
                        name="q">
+                <span id="userSearchSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
+                    {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
+                </span>
             </div>
         </div>
         <button class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1.5"
@@ -69,6 +73,20 @@
         </select>
     </div>
 
+    {# Bulk actions bar — shown once at least one row is selected #}
+    <div id="bulkActionsBar" class="hidden dashboard-card px-4 py-2.5 mb-3 flex items-center justify-between gap-3">
+        <span class="text-sm text-text-primary"><span id="bulkSelectedCount">0</span> selected</span>
+        <div class="flex items-center gap-2">
+            <button class="btn-secondary text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5" onclick="bulkToggleActive(true)">
+                {% lucide "user-check" size=14 %} Activate
+            </button>
+            <button class="btn-danger text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5" onclick="bulkToggleActive(false)">
+                {% lucide "user-x" size=14 %} Deactivate
+            </button>
+            <button class="btn-ghost text-sm px-3 py-1.5" onclick="clearUserSelection()">Clear</button>
+        </div>
+    </div>
+
     {# Table container #}
     <div id="userTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
         {% include "partials/user_table.html" %}
@@ -78,13 +96,12 @@
 {# ================================================================ #}
 {# CREATE USER MODAL - SIMPLIFIED                                 #}
 {# ================================================================ #}
-<div id="createUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
-     onclick="if(event.target===this) closeCreateModal()">
-    <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-xl p-0 mx-4 max-h-[90vh] overflow-y-auto" 
-         style="background-color: var(--color-surface);">
-        
+<div id="createUserSlideoverBackdrop" class="fixed inset-0 z-50 bg-black/50 hidden" onclick="closeCreateModal()"></div>
+<div id="createUserModal" class="fixed top-0 right-0 z-50 h-full w-full max-w-xl bg-surface border-l shadow-2xl overflow-y-auto translate-x-full transition-transform duration-300"
+     style="background-color: var(--color-surface); border-color: var(--color-border);">
+
         {# Header #}
-        <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-surface rounded-t-2xl" 
+        <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-surface"
              style="border-color: var(--color-border); background-color: var(--color-surface);">
             <div class="flex items-center gap-3">
                 <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -95,7 +112,7 @@
                     <p class="text-xs text-text-secondary">Fill in the details below to create a new user account</p>
                 </div>
             </div>
-            <button onclick="closeCreateModal()" class="p-1.5 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary">
+            <button onclick="closeCreateModal()" class="p-1.5 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary" aria-label="Close">
                 {% lucide "x" size=20 %}
             </button>
         </div>
@@ -115,22 +132,26 @@
                         <label class="block text-xs font-medium mb-1 text-text-secondary">First Name <span class="text-error">*</span></label>
                         <input type="text" name="first_name" placeholder="John" required
                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <p class="text-xs text-error mt-1 hidden" data-error-for="first_name"></p>
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1 text-text-secondary">Last Name <span class="text-error">*</span></label>
                         <input type="text" name="last_name" placeholder="Doe" required
                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <p class="text-xs text-error mt-1 hidden" data-error-for="last_name"></p>
                     </div>
                 </div>
                 <div class="mt-3">
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Email Address <span class="text-error">*</span></label>
                     <input type="email" name="email" placeholder="john.doe@company.com" required
                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="email"></p>
                 </div>
                 <div class="mt-3">
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Position / Job Title</label>
                     <input type="text" name="position" placeholder="e.g., Senior Developer, HR Manager"
                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="position"></p>
                 </div>
             </div>
 
@@ -142,12 +163,13 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Department <span class="text-error">*</span></label>
-                    <select name="department" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <select name="department" id="createDepartment" class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
                         <option value="">Select Department</option>
                         {% for value, label in department_choices %}
                             <option value="{{ value }}">{{ label }}</option>
                         {% endfor %}
                     </select>
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="department"></p>
                 </div>
             </div>
 
@@ -158,7 +180,8 @@
                     <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Roles</span>
                     <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Dual Roles</span>
                 </div>
-                
+                <p class="text-[0.65rem] text-text-secondary mb-2">IT-only roles (Agent, Admin, Superadmin) only appear once Department is set to IT.</p>
+
                 {# Primary Role #}
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Primary Role <span class="text-error">*</span></label>
@@ -169,6 +192,7 @@
                             {% endif %}
                         {% endfor %}
                     </select>
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="role"></p>
                     <p class="text-[0.5rem] text-text-secondary mt-1">This is the user's main role. It will be automatically assigned.</p>
                 </div>
 
@@ -210,19 +234,17 @@
                 </button>
             </div>
         </form>
-    </div>
 </div>
 
 {# ================================================================ #}
 {# EDIT USER MODAL - SIMPLIFIED                                   #}
 {# ================================================================ #}
-<div id="editUserModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden" 
-     onclick="if(event.target===this) closeEditModal()">
-    <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-xl p-0 mx-4 max-h-[90vh] overflow-y-auto" 
-         style="background-color: var(--color-surface);">
-        
+<div id="editUserSlideoverBackdrop" class="fixed inset-0 z-50 bg-black/50 hidden" onclick="closeEditModal()"></div>
+<div id="editUserModal" class="fixed top-0 right-0 z-50 h-full w-full max-w-xl bg-surface border-l shadow-2xl overflow-y-auto translate-x-full transition-transform duration-300"
+     style="background-color: var(--color-surface); border-color: var(--color-border);">
+
         {# Header #}
-        <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-surface rounded-t-2xl" 
+        <div class="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b bg-surface"
              style="border-color: var(--color-border); background-color: var(--color-surface);">
             <div class="flex items-center gap-3">
                 <div class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -233,7 +255,7 @@
                     <p class="text-xs text-text-secondary">Update user information and permissions</p>
                 </div>
             </div>
-            <button onclick="closeEditModal()" class="p-1.5 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary">
+            <button onclick="closeEditModal()" class="p-1.5 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary" aria-label="Close">
                 {% lucide "x" size=20 %}
             </button>
         </div>
@@ -259,17 +281,20 @@
                         <label class="block text-xs font-medium mb-1 text-text-secondary">First Name <span class="text-error">*</span></label>
                         <input type="text" name="first_name" id="editFirstName" placeholder="John" required
                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <p class="text-xs text-error mt-1 hidden" data-error-for="first_name"></p>
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1 text-text-secondary">Last Name <span class="text-error">*</span></label>
                         <input type="text" name="last_name" id="editLastName" placeholder="Doe" required
                                class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <p class="text-xs text-error mt-1 hidden" data-error-for="last_name"></p>
                     </div>
                 </div>
                 <div class="mt-3">
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Position / Job Title</label>
                     <input type="text" name="position" id="editPosition" placeholder="e.g., Senior Developer, HR Manager"
                            class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="position"></p>
                 </div>
             </div>
 
@@ -287,6 +312,7 @@
                             <option value="{{ value }}">{{ label }}</option>
                         {% endfor %}
                     </select>
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="department"></p>
                 </div>
             </div>
 
@@ -297,7 +323,8 @@
                     <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Roles</span>
                     <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">Dual Roles</span>
                 </div>
-                
+                <p class="text-[0.65rem] text-text-secondary mb-2">IT-only roles (Agent, Admin, Superadmin) only appear once Department is set to IT.</p>
+
                 {# Primary Role #}
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Primary Role <span class="text-error">*</span></label>
@@ -308,6 +335,7 @@
                             {% endif %}
                         {% endfor %}
                     </select>
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="role"></p>
                     <p class="text-[0.5rem] text-text-secondary mt-1">This is the user's main role. It will be automatically assigned.</p>
                 </div>
 
@@ -355,7 +383,6 @@
                 </button>
             </div>
         </form>
-    </div>
 </div>
 
 {# ================================================================ #}
@@ -374,7 +401,7 @@
                 </div>
                 <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Change Password</h3>
             </div>
-            <button onclick="closePasswordModal()" class="p-1 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary">
+            <button onclick="closePasswordModal()" class="p-1 rounded-lg hover:bg-black/5 transition text-text-secondary hover:text-text-primary" aria-label="Close">
                 {% lucide "x" size=18 %}
             </button>
         </div>
@@ -396,7 +423,11 @@
         <form id="changePasswordForm" class="px-5 py-4 space-y-3">
             {% csrf_token %}
             <input type="hidden" id="passwordUserId">
-            
+
+            <p class="text-xs text-text-secondary bg-background rounded-lg border border-border px-3 py-2">
+                Setting a password here replaces the "set your password" email link sent when this account was created — the user can sign in with whichever they use, and this one takes effect immediately without notifying them.
+            </p>
+
             <div>
                 <label class="block text-xs font-medium mb-1 text-text-secondary">New Password <span class="text-error">*</span></label>
                 <div class="relative">
@@ -408,6 +439,7 @@
                         <span id="pwdNewEyeOffIcon" class="hidden">{% lucide "eye-off" size=14 class="h-3.5 w-3.5" %}</span>
                     </button>
                 </div>
+                <p class="text-xs text-error mt-1 hidden" data-error-for="newPassword"></p>
             </div>
 
             <div>
@@ -421,6 +453,7 @@
                         <span id="pwdConfirmEyeOffIcon" class="hidden">{% lucide "eye-off" size=14 class="h-3.5 w-3.5" %}</span>
                     </button>
                 </div>
+                <p class="text-xs text-error mt-1 hidden" data-error-for="confirmPassword"></p>
             </div>
 
             {# Actions #}
@@ -451,6 +484,7 @@
     window.adminUsersUrl = "{% url 'accounts:admin_users' %}";
     window.adminUserEditUrl = "{% url 'accounts:admin_user_edit' 0 %}";
     window.adminUserToggleUrl = "{% url 'accounts:admin_user_toggle_active' 0 %}";
+    window.adminUserBulkToggleUrl = "{% url 'accounts:admin_user_bulk_toggle_active' %}";
     window.adminUserChangePasswordUrl = "{% url 'accounts:admin_user_change_password' 0 %}";
     // Role checkbox sync (createRolesCheckboxes/editRolesCheckboxes) is wired
     // up by admin_users.js's initRoleCheckboxes(), loaded above.

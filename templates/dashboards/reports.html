@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}Reports & Analytics{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -25,61 +26,14 @@
         </div>
     </div>
 
-    {% if client_settings and client_settings.logo_url %}
-    <div class="flex justify-between items-center mb-4 border-b pb-4 border-border">
-        <div>
-            <h2 class="text-base font-semibold text-text-primary">Reports & Analytics</h2>
-            <p class="text-xs text-text-secondary">Generated {{ now|date:"F d, Y H:i" }}</p>
-        </div>
-        <div>
-            <img src="{{ client_settings.logo_url }}" 
-                alt="{{ client_settings.company_name }} Logo" 
-                style="max-height: 50px; max-width: 150px; object-fit: contain;">
-        </div>
-    </div>
-    {% endif %}
 
     {# ========== DATE RANGE FILTER ========== #}
+    {% with drf_presets="7:Last 7 days,30:Last 30 days,90:Last 90 days" %}
+    {% matching_preset_days start_date|date:"Y-m-d" end_date|date:"Y-m-d" drf_presets as reports_active_preset %}
     <div class="dashboard-card p-4">
-        <div class="flex flex-wrap items-center gap-1.5 mb-3">
-            <button type="button" class="btn-outline text-xs px-3 py-1 rounded-full" onclick="applyPresetRange(7)">Last 7 days</button>
-            <button type="button" class="btn-outline text-xs px-3 py-1 rounded-full" onclick="applyPresetRange(30)">Last 30 days</button>
-            <button type="button" class="btn-outline text-xs px-3 py-1 rounded-full" onclick="applyPresetRange(90)">Last 90 days</button>
-        </div>
-        <div class="flex flex-wrap items-end gap-3">
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Start Date</label>
-                <input type="date" id="startDate" value="{{ start_date|date:'Y-m-d' }}"
-                       class="rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">End Date</label>
-                <input type="date" id="endDate" value="{{ end_date|date:'Y-m-d' }}"
-                       class="rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            </div>
-            <div>
-                <button id="applyDateRange" 
-                        class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1"
-                        onclick="applyDateRange()">
-                    {% lucide "filter" size=14 %} Apply
-                </button>
-            </div>
-            <div>
-                <button id="resetDateRange" 
-                        class="btn-ghost text-sm px-4 py-2 rounded-lg flex items-center gap-1"
-                        onclick="resetDateRange()">
-                    {% lucide "rotate-ccw" size=14 %} Reset
-                </button>
-            </div>
-            <div class="ml-auto text-xs text-text-secondary" id="dateRangeDisplay">
-                {% if start_date and end_date %}
-                    Showing: {{ start_date|date:"M d, Y" }} – {{ end_date|date:"M d, Y" }}
-                {% else %}
-                    Showing: Last 30 days
-                {% endif %}
-            </div>
-        </div>
+        {% include "components/date_range_filter.html" with filter_id="reports" presets=drf_presets start=start_date|date:"Y-m-d" end=end_date|date:"Y-m-d" apply_mode="redirect" active_preset_days=reports_active_preset %}
     </div>
+    {% endwith %}
 
     {# ========== SECTION 1: TICKET KPIs ========== #}
     <div>
@@ -89,7 +43,12 @@
             <span class="text-xs text-text-secondary">({{ date_range_label|default:"Last 30 days" }})</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div class="kpi-card border-l-4" style="border-left-color: var(--color-info);">
+            {# Border color now carries meaning consistently across every card on this #}
+            {# dashboard (Fix 5): neutral = plain count/duration with no good/bad read; #}
+            {# red = a genuine at-risk signal; green = a metric clearly meeting/beating #}
+            {# a target. The value text keeps its own tone (info/warning/etc.) since    #}
+            {# that's just visual variety, not a claim about the number's meaning.      #}
+            <div class="kpi-card border-l-4" style="border-left-color: var(--color-border);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Mean Time to Resolve</p>
                     {% lucide "clock" size=14 class="text-text-secondary" %}
@@ -97,15 +56,18 @@
                 <p class="kpi-value" style="color: var(--color-info);">{{ mttr_minutes }}<span class="text-xs font-normal text-text-secondary"> min</span></p>
                 <p class="kpi-trend up">Average resolution time</p>
             </div>
-            <a href="{% url 'tickets:reports_ticket_list' %}?kpi=backlog" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-error);">
+            {# Red border only once backlog actually crosses the "at risk" threshold — #}
+            {# reuses the same backlog<5 cutoff already used for this file's Performance #}
+            {# Summary bar below, instead of a second, unvetted number. #}
+            <a href="{% url 'tickets:reports_ticket_list' %}?kpi=backlog" class="kpi-card kpi-link border-l-4" style="border-left-color: {% if backlog >= 5 %}var(--color-error){% else %}var(--color-border){% endif %};">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Backlog</p>
                     {% lucide "alert-circle" size=14 class="text-text-secondary" %}
                 </div>
-                <p class="kpi-value" style="color: var(--color-error);">{{ backlog }}<span class="text-xs font-normal text-text-secondary"> tickets</span></p>
-                <p class="kpi-trend down">Older than 7 days</p>
+                <p class="kpi-value" style="color: {% if backlog >= 5 %}var(--color-error){% else %}var(--color-text-primary){% endif %};">{{ backlog }}<span class="text-xs font-normal text-text-secondary"> tickets</span></p>
+                <p class="kpi-trend{% if backlog >= 5 %} attention{% endif %}">{% if backlog >= 5 %}Older than 7 days — at risk{% else %}Older than 7 days{% endif %}</p>
             </a>
-            <a href="{% url 'tickets:reports_ticket_list' %}?kpi=open" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-primary);">
+            <a href="{% url 'tickets:reports_ticket_list' %}?kpi=open" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-border);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Open Tickets</p>
                     {% lucide "inbox" size=14 class="text-text-secondary" %}
@@ -113,7 +75,7 @@
                 <p class="kpi-value" style="color: var(--color-primary);">{{ open_total }}</p>
                 <p class="kpi-trend up">Currently active</p>
             </a>
-            <a href="{% url 'tickets:sla_management' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-warning);">
+            <a href="{% url 'tickets:sla_management' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-border);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">SLA Policies</p>
                     {% lucide "sliders-horizontal" size=14 class="text-text-secondary" %}
@@ -132,38 +94,41 @@
             <span class="text-xs text-text-secondary">({{ total_assets|default:0 }} total assets)</span>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-accent);">
+            <{% if can_view_asset_inventory %}a href="{% url 'tickets:assets' %}"{% else %}div{% endif %} class="kpi-card{% if can_view_asset_inventory %} kpi-link{% endif %} border-l-4" style="border-left-color: var(--color-border);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Asset Requests</p>
                     {% lucide "package" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-accent);">{{ total_asset_requests|default:0 }}</p>
                 <p class="kpi-trend up">Total requests</p>
-            </a>
-            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-success);">
+            </{% if can_view_asset_inventory %}a{% else %}div{% endif %}>
+            <{% if can_view_asset_inventory %}a href="{% url 'tickets:assets' %}"{% else %}div{% endif %} class="kpi-card{% if can_view_asset_inventory %} kpi-link{% endif %} border-l-4" style="border-left-color: var(--color-border);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Fulfilled</p>
                     {% lucide "check-circle" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-success);">{{ fulfilled_asset_requests|default:0 }}</p>
                 <p class="kpi-trend up">Completed</p>
-            </a>
-            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-primary);">
+            </{% if can_view_asset_inventory %}a{% else %}div{% endif %}>
+            {# Fulfillment Rate is the one asset metric with a real target — reuses the #}
+            {# same 95/80% compliance thresholds already used for the SLA chart's colors #}
+            {# below, rather than inventing a separate unvetted cutoff. #}
+            <{% if can_view_asset_inventory %}a href="{% url 'tickets:assets' %}"{% else %}div{% endif %} class="kpi-card{% if can_view_asset_inventory %} kpi-link{% endif %} border-l-4" style="border-left-color: {% if fulfillment_rate >= 95 %}var(--color-success){% elif fulfillment_rate >= 80 %}var(--color-border){% else %}var(--color-error){% endif %};">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Fulfillment Rate</p>
                     {% lucide "percent" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-primary);">{{ fulfillment_rate|default:0 }}%</p>
                 <p class="kpi-trend up">Success rate</p>
-            </a>
-            <a href="{% url 'tickets:assets' %}" class="kpi-card kpi-link border-l-4" style="border-left-color: var(--color-warning);">
+            </{% if can_view_asset_inventory %}a{% else %}div{% endif %}>
+            <{% if can_view_asset_inventory %}a href="{% url 'tickets:assets' %}"{% else %}div{% endif %} class="kpi-card{% if can_view_asset_inventory %} kpi-link{% endif %} border-l-4" style="border-left-color: var(--color-border);">
                 <div class="flex items-center justify-between">
                     <p class="kpi-label">Avg. Fulfillment Time</p>
                     {% lucide "clock" size=14 class="text-text-secondary" %}
                 </div>
                 <p class="kpi-value" style="color: var(--color-warning);">{{ avg_fulfillment_hours|default:0 }}<span class="text-xs font-normal text-text-secondary"> hrs</span></p>
                 <p class="kpi-trend up">From request to fulfillment</p>
-            </a>
+            </{% if can_view_asset_inventory %}a{% else %}div{% endif %}>
         </div>
     </div>
 
@@ -337,6 +302,8 @@
 {% block scripts %}
 {{ block.super }}
 <script src="{% static 'js/chart.min.js' %}"></script>
+<script src="{% static 'js/date_range_filter.js' %}"></script>
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
 <script>
     Chart.defaults.font.size = 10;
     Chart.defaults.plugins.legend.labels.boxWidth = 8;
@@ -386,47 +353,11 @@
         }
     }
 
-    // ================================================================
-    // DATE RANGE FUNCTIONS
-    // ================================================================
-
-    function applyDateRange() {
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
-        
-        if (!startDate || !endDate) {
-            showToast('Please select both start and end dates.', 'warning');
-            return;
-        }
-        
-        if (startDate > endDate) {
-            showToast('Start date cannot be after end date.', 'error');
-            return;
-        }
-        
-        const url = new URL(window.location.href);
-        url.searchParams.set('start_date', startDate);
-        url.searchParams.set('end_date', endDate);
-        window.location.href = url.toString();
-    }
-
-    function resetDateRange() {
-        const url = new URL(window.location.href);
-        url.searchParams.delete('start_date');
-        url.searchParams.delete('end_date');
-        window.location.href = url.toString();
-    }
-
-    function applyPresetRange(days) {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - (days - 1));
-        const toISO = (d) => d.toISOString().slice(0, 10);
-        const url = new URL(window.location.href);
-        url.searchParams.set('start_date', toISO(start));
-        url.searchParams.set('end_date', toISO(end));
-        window.location.href = url.toString();
-    }
+    // Date-range filtering now lives entirely in the shared Alpine
+    // `dateRangeFilter()` component (static/js/date_range_filter.js) via
+    // components/date_range_filter.html, apply_mode="redirect" — it
+    // navigates with start_date/end_date query params itself, matching
+    // what this page's own JS used to do by hand.
 
     // ================================================================
     // CHART INITIALIZATION
@@ -556,21 +487,5 @@
         });
     }
 
-    // Enter key support for date inputs
-    document.addEventListener('DOMContentLoaded', function() {
-        const startDate = document.getElementById('startDate');
-        const endDate = document.getElementById('endDate');
-        
-        if (startDate) {
-            startDate.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') applyDateRange();
-            });
-        }
-        if (endDate) {
-            endDate.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') applyDateRange();
-            });
-        }
-    });
 </script>
 {% endblock %}

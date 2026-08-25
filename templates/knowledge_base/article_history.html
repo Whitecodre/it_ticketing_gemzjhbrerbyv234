@@ -180,8 +180,8 @@
         <a href="{% url 'kb:management' %}" class="btn-ghost text-xs flex items-center gap-1">
             {% lucide "arrow-left" size=14 %} Back
         </a>
-        <h2 class="text-base font-semibold text-text-primary">
-            📜 Version History: {{ article.title }}
+        <h2 class="text-base font-semibold text-text-primary flex items-center gap-2">
+            {% lucide "history" size=18 %} Version History: {{ article.title }}
         </h2>
         <span class="text-xs text-text-secondary ml-auto">{{ versions|length }} versions</span>
     </div>
@@ -230,7 +230,7 @@
     <div class="version-modal">
         <div class="version-modal-header">
             <h3>Version Preview</h3>
-            <button class="close-btn" onclick="closeModal()">✕</button>
+            <button class="close-btn" onclick="closeModal()">{% lucide "x" size=16 %}</button>
         </div>
         <div id="versionModalBody" class="version-modal-body">
             Loading...

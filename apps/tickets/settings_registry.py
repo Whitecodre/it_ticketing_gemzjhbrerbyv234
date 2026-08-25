@@ -31,6 +31,12 @@ class SettingsResource:
     # English pluralization is irregular ("Categories" -> "Category", not
     # "Categorie"), so guessing breaks for every "-ies" label.
     singular_label: str = ''
+    # True for resources where a non-admin can propose a new row inline on
+    # some other form (a new vessel/job number/vendor typed on a
+    # mobilization/service-request/procurement form) — created is_active=
+    # False + proposed_by=<that user>. Drives the pending-approval banner
+    # on this resource's System Settings tab.
+    has_proposals: bool = False
 
     def __post_init__(self):
         if not self.singular_label:
@@ -48,7 +54,6 @@ SETTINGS_RESOURCES = {
             SettingsField('name', 'Name'),
             SettingsField('description', 'Description', 'textarea'),
             SettingsField('field_group', 'Field Group', 'select', choices=ServiceCategory.FieldGroup.choices),
-            SettingsField('icon', 'Icon (lucide name)'),
             SettingsField('order', 'Order', 'number'),
             SettingsField('is_active', 'Active', 'checkbox'),
         ],
@@ -60,6 +65,7 @@ SETTINGS_RESOURCES = {
         singular_label='Vessel',
         icon='anchor',
         model=Vessel,
+        has_proposals=True,
         fields=[
             SettingsField('name', 'Name'),
             SettingsField('imo_number', 'IMO Number'),
@@ -85,6 +91,7 @@ SETTINGS_RESOURCES = {
         singular_label='Job Number',
         icon='briefcase',
         model=JobNumber,
+        has_proposals=True,
         fields=[
             SettingsField('number', 'Job Number'),
             SettingsField('is_active', 'Active', 'checkbox'),
@@ -100,12 +107,10 @@ SETTINGS_RESOURCES = {
         fields=[
             SettingsField('name', 'Name'),
             SettingsField('description', 'Description', 'textarea'),
-            SettingsField('icon', 'Icon (lucide name)'),
-            SettingsField('color', 'Color (hex)'),
             SettingsField('is_consumable', 'Bulk/Consumable Stock (quantity-tracked, not individually)', 'checkbox'),
             SettingsField('is_renewable', 'Renewable (tracks recurring renewal dates & cost)', 'checkbox'),
         ],
-        list_columns=[('name', 'Name'), ('color', 'Color'), ('is_consumable', 'Consumable'), ('is_renewable', 'Renewable')],
+        list_columns=[('name', 'Name'), ('is_consumable', 'Consumable'), ('is_renewable', 'Renewable')],
     ),
     'categories': SettingsResource(
         slug='categories',
@@ -116,7 +121,6 @@ SETTINGS_RESOURCES = {
         fields=[
             SettingsField('name', 'Name'),
             SettingsField('description', 'Description', 'textarea'),
-            SettingsField('icon', 'Icon (lucide name)'),
             SettingsField('parent', 'Parent Category (leave blank for a top-level section)', 'select'),
         ],
         list_columns=[('name', 'Name'), ('parent', 'Parent'), ('description', 'Description')],
@@ -130,10 +134,9 @@ SETTINGS_RESOURCES = {
         fields=[
             SettingsField('department', 'Department', 'select', choices=MaintenanceChecklistTemplate.Department.choices),
             SettingsField('text', 'Item Text'),
-            SettingsField('order', 'Order', 'number'),
             SettingsField('is_active', 'Active', 'checkbox'),
         ],
-        list_columns=[('text', 'Item'), ('department', 'Department'), ('order', 'Order'), ('is_active', 'Active')],
+        list_columns=[('text', 'Item'), ('department', 'Department'), ('is_active', 'Active')],
     ),
     'vendors': SettingsResource(
         slug='vendors',
@@ -141,6 +144,7 @@ SETTINGS_RESOURCES = {
         singular_label='Vendor',
         icon='truck',
         model=Vendor,
+        has_proposals=True,
         fields=[
             SettingsField('name', 'Name'),
             SettingsField('contact_person', 'Contact Person'),

@@ -10,7 +10,6 @@ from apps.tickets.models import (
 )
 from apps.knowledge_base.models import Article, ArticleVersion, ArticleFeedback
 from apps.maintenance.models import MaintenanceSchedule, MaintenanceActivityLog
-from apps.organogram.models import OrgDraft, OrgApproval, OrgPublished, OrgAuditLog
 from apps.accounts.models import ImpersonationLog, ImpersonationToken, ClientSettings
 
 User = get_user_model()
@@ -85,7 +84,6 @@ class Command(BaseCommand):
         self.stdout.write(f'   - Notifications: {Notification.objects.count()}')
         self.stdout.write(f'   - Articles: {Article.objects.count()}')
         self.stdout.write(f'   - Maintenance Schedules: {MaintenanceSchedule.objects.count()}')
-        self.stdout.write(f'   - Org Drafts: {OrgDraft.objects.count()}')
         self.stdout.write(f'   - Impersonation Logs: {ImpersonationLog.objects.count()}')
         self.stdout.write('')
 
@@ -176,13 +174,6 @@ class Command(BaseCommand):
             # 18. Maintenance Schedules (references users)
             MaintenanceSchedule.objects.all().delete()
             self.stdout.write('   ✅ Deleted Maintenance Schedules')
-
-            # 19. Organogram (references users)
-            OrgAuditLog.objects.all().delete()
-            OrgApproval.objects.all().delete()
-            OrgPublished.objects.all().delete()
-            OrgDraft.objects.all().delete()
-            self.stdout.write('   ✅ Deleted Organogram Data')
 
             # 20. Finally, delete users
             users_to_delete.delete()

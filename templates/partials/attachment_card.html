@@ -1,0 +1,30 @@
+{% load lucide %}
+{# Shared attachment-row card. Expects `att` (a tickets.Attachment). Single-line/compact by design — used in lists where several attachments stack vertically. #}
+<div class="flex items-center gap-2 rounded-md border px-2 py-1 border-border bg-surface">
+    <span class="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+        {% if 'image' in att.content_type %}
+            {% lucide "image" size=11 %}
+        {% elif 'pdf' in att.content_type %}
+            {% lucide "file-text" size=11 %}
+        {% elif 'word' in att.content_type or 'document' in att.content_type %}
+            {% lucide "file-text" size=11 %}
+        {% else %}
+            {% lucide "file" size=11 %}
+        {% endif %}
+    </span>
+    <div class="flex-1 min-w-0 flex items-baseline gap-1.5">
+        <span class="text-xs font-medium truncate text-text-primary">{{ att.filename }}</span>
+        <span class="text-[0.6rem] text-text-secondary shrink-0">{{ att.size|filesizeformat }}</span>
+    </div>
+    <button class="btn-ghost p-1 text-text-secondary hover:text-primary transition rounded element-link"
+            hx-get="{% url 'tickets:attachment_preview' att.pk %}"
+            hx-target="#modalContainer"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
+            data-tooltip="Preview">
+        {% lucide "eye" size=13 %}
+    </button>
+    <a href="{% url 'tickets:attachment_download' att.pk %}" class="btn-ghost p-1 text-text-secondary hover:text-primary transition rounded" data-tooltip="Download" download>
+        {% lucide "download" size=13 %}
+    </a>
+</div>

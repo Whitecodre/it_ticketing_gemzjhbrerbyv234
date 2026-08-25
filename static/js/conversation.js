@@ -49,46 +49,6 @@ function closeAttachmentModal() {
 }
 
 // ================================================================
-// STATUS DROPDOWN
-// ================================================================
-let statusDropdownCleanup = null;
-
-function toggleStatusDropdown() {
-    const menu = document.getElementById('statusMenu');
-    const chevron = document.getElementById('statusChevron');
-    const trigger = document.getElementById('statusDropdownBtn');
-    if (!menu || !chevron) return;
-    if (menu.classList.contains('hidden')) {
-        menu.classList.remove('hidden');
-        chevron.classList.add('rotate-180');
-        if (trigger && window.positionDropdown) {
-            statusDropdownCleanup = window.positionDropdown(trigger, menu, { align: 'right' });
-        }
-    } else {
-        menu.classList.add('hidden');
-        chevron.classList.remove('rotate-180');
-        if (statusDropdownCleanup) {
-            statusDropdownCleanup();
-            statusDropdownCleanup = null;
-        }
-    }
-}
-
-document.addEventListener('click', function(event) {
-    const dropdown = document.getElementById('statusDropdown');
-    const menu = document.getElementById('statusMenu');
-    const chevron = document.getElementById('statusChevron');
-    if (dropdown && menu && !dropdown.contains(event.target)) {
-        menu.classList.add('hidden');
-        if (chevron) chevron.classList.remove('rotate-180');
-        if (statusDropdownCleanup) {
-            statusDropdownCleanup();
-            statusDropdownCleanup = null;
-        }
-    }
-});
-
-// ================================================================
 // SCROLL TIMELINE TO BOTTOM
 // ================================================================
 function scrollTimelineToBottom() {
@@ -147,17 +107,34 @@ function setActiveTab(mode) {
     const publicSpan = document.getElementById('tabPublic');
     const internalSpan = document.getElementById('tabInternal');
     if (!publicSpan || !internalSpan) return;
-    
+
+    // The composer's own border color and a plain-language hint mirror
+    // whichever mode is active, so which one you're in is obvious at a
+    // glance — not just a small pill that's easy to miss, especially
+    // since the toggle silently resets to Public on every page load.
+    const editor = document.getElementById('commentEditor');
+    const hint = document.getElementById('visibilityHint');
+
     if (mode === 'public') {
         publicSpan.className = 'px-3 py-1 rounded-full inline-block bg-primary text-white border border-primary';
         internalSpan.className = 'px-3 py-1 rounded-full inline-block bg-background text-text-secondary border border-border';
         const publicRadio = document.querySelector('input[value="PUBLIC"]');
         if (publicRadio) publicRadio.checked = true;
+        if (editor) {
+            editor.style.borderColor = 'var(--color-primary)';
+            editor.dataset.placeholder = 'Write a reply…';
+        }
+        if (hint) hint.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg> Visible to the requester';
     } else {
         internalSpan.className = 'px-3 py-1 rounded-full inline-block bg-primary text-white border border-primary';
         publicSpan.className = 'px-3 py-1 rounded-full inline-block bg-background text-text-secondary border border-border';
         const internalRadio = document.querySelector('input[value="INTERNAL"]');
         if (internalRadio) internalRadio.checked = true;
+        if (editor) {
+            editor.style.borderColor = 'var(--color-warning)';
+            editor.dataset.placeholder = 'Write an internal note…';
+        }
+        if (hint) hint.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> Team only — the requester will not see this';
     }
 }
 
@@ -297,6 +274,33 @@ function insertMacro(body, visibility) {
             const dropdown = document.getElementById('macroDropdown');
             if (dropdown) dropdown.classList.add('hidden');
         }
+    }
+}
+
+// ================================================================
+// INSERT KB ARTICLE
+// ================================================================
+function insertKbArticleLink(title, url) {
+    const editor = document.getElementById('commentEditor');
+    if (!editor) return;
+    // Built from a real <a> element (not innerHTML) so a title containing
+    // markup can't inject anything into the composer — same defensive
+    // approach as insertMacro() above.
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = title;
+    const block = document.createElement('div');
+    block.appendChild(link);
+    editor.appendChild(block);
+    editor.focus();
+    editor.dispatchEvent(new Event('input'));
+    if (window.closeKbInsertDropdown) {
+        window.closeKbInsertDropdown();
+    } else {
+        const dropdown = document.getElementById('kbInsertDropdown');
+        if (dropdown) dropdown.classList.add('hidden');
     }
 }
 

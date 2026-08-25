@@ -1,0 +1,51 @@
+{% load lucide %}
+
+<div class="p-6">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning shrink-0">
+            {% lucide "log-out" size=20 %}
+        </div>
+        <div>
+            <h3 class="text-base font-semibold text-text-primary">Return This Asset</h3>
+            <p class="text-sm text-text-secondary">{{ asset.name }} ({{ asset.tracking_id }})</p>
+        </div>
+    </div>
+
+    <p class="text-sm text-text-secondary mb-4">
+        This tells IT you're relinquishing this asset — they'll arrange pickup and confirm once it's physically back.
+        It stays checked out to you until then.
+    </p>
+
+    <form method="post" action="{% url 'tickets:asset_request_return' asset.pk %}"
+          hx-post="{% url 'tickets:asset_request_return' asset.pk %}"
+          hx-target="#modalContainer"
+          hx-swap="innerHTML"
+          id="assetRequestReturnForm">
+        {% csrf_token %}
+
+        <div class="mb-4">
+            <label for="id_return_reason" class="block text-sm font-medium mb-1 text-text-primary">
+                Reason <span class="text-error">*</span>
+            </label>
+            {{ form.return_reason }}
+            {% if form.return_reason.errors %}<p class="text-xs text-error mt-1">{{ form.return_reason.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label for="id_return_comment" class="block text-sm font-medium mb-1 text-text-primary">
+                Comment <span class="text-text-secondary text-xs font-normal">(optional)</span>
+            </label>
+            {{ form.return_comment }}
+            {% if form.return_comment.errors %}<p class="text-xs text-error mt-1">{{ form.return_comment.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()"
+                    class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit"
+                    class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+                {% lucide "log-out" size=14 %} Request Return
+            </button>
+        </div>
+    </form>
+</div>

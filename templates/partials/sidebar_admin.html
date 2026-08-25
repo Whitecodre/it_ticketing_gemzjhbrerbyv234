@@ -25,7 +25,14 @@
         <a href="{% url 'tickets:unassigned' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/tickets/unassigned/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "inbox" size=16 class="h-4 w-4" %}</span>
+            <span class="shrink-0 relative">
+                {% lucide "inbox" size=16 class="h-4 w-4" %}
+                <div id="unassignedBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:unassigned_pending_count' %}"
+                     hx-trigger="load, every 5s"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
             <span>Unassigned</span>
         </a>
         <a href="{% url 'tickets:assigned_to_me' %}"
@@ -33,6 +40,19 @@
            style="{% if '/tickets/assigned/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "user-check" size=16 class="h-4 w-4" %}</span>
             <span>Assigned to Me</span>
+        </a>
+        <a href="{% url 'tickets:escalated_tickets' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/escalated/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0 relative">
+                {% lucide "alert-triangle" size=16 class="h-4 w-4" %}
+                <div id="escalatedBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:escalated_pending_count' %}"
+                     hx-trigger="load, every 5s"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
+            <span>Escalated</span>
         </a>
     </div>
 </div>
@@ -50,11 +70,17 @@
     </button>
     <div id="support-tools-section"
          class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
+        <a href="{% url 'kb:portal' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if '/kb/' in request.path and not '/kb/manage' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "book-open" size=16 class="h-4 w-4" %}</span>
+            <span>Knowledge Base</span>
+        </a>
         <a href="{% url 'kb:management' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/kb/manage' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "book-open" size=16 class="h-4 w-4" %}</span>
-            <span>Knowledge Base</span>
+            <span class="shrink-0">{% lucide "pencil-line" size=16 class="h-4 w-4" %}</span>
+            <span>Manage Articles</span>
         </a>
         <a href="{% url 'tickets:remote_sessions_list' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
@@ -63,40 +89,82 @@
                 {% lucide "monitor" size=16 class="h-4 w-4" %}
                 <div id="remoteSessionBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:remote_session_pending_count' %}"
-                     hx-trigger="every 5s"
+                     hx-trigger="load, every 5s"
                      hx-swap="innerHTML">
                 </div>
             </span>
             <span>Remote Sessions</span>
         </a>
+    </div>
+</div>
+
+{# ========== SECTION: ASSETS ========== #}
+<div class="mt-2">
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+            data-section="assets-section"
+            style="color: var(--color-text-secondary);">
+        <span class="section-icon">{% lucide "hard-drive" size=16 %}</span>
+        <span>Assets</span>
+        <span class="section-chevron ml-auto transition-transform duration-200">
+            {% lucide "chevron-down" size=14 %}
+        </span>
+    </button>
+    <div id="assets-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
         <a href="{% url 'tickets:assets' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/assets/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+           style="{% if request.resolver_match.url_name == 'assets' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "hard-drive" size=16 class="h-4 w-4" %}</span>
-            <span>Assets</span>
+            <span>Inventory</span>
         </a>
         <a href="{% url 'tickets:my_assets' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/my-assets/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+           style="{% if request.resolver_match.url_name == 'my_assets' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0 relative">
                 {% lucide "laptop" size=16 class="h-4 w-4" %}
                 <div id="myAssetsBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:my_assets_pending_count' %}"
-                     hx-trigger="every 5s"
+                     hx-trigger="load, every 5s"
                      hx-swap="innerHTML">
                 </div>
             </span>
             <span>My Assets</span>
         </a>
+        <a href="{% url 'tickets:pending_asset_fulfillment' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'pending_asset_fulfillment' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0 relative">
+                {% lucide "package" size=16 class="h-4 w-4" %}
+                <div id="pendingFulfillmentBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:pending_asset_fulfillment_count' %}"
+                     hx-trigger="load, every 5s"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
+            <span>Fulfillment</span>
+        </a>
+        <a href="{% url 'tickets:pending_asset_returns' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'pending_asset_returns' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0 relative">
+                {% lucide "log-out" size=16 class="h-4 w-4" %}
+                <div id="pendingReturnsBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:pending_asset_returns_count' %}"
+                     hx-trigger="load, every 5s"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
+            <span>Returns</span>
+        </a>
         <a href="{% url 'tickets:mobilizations' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/mobilizations/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+           style="{% if request.resolver_match.url_name == 'mobilizations' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "ship" size=16 class="h-4 w-4" %}</span>
             <span>Mobilizations</span>
         </a>
         <a href="{% url 'tickets:procurement_list' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/procurement/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+           style="{% if request.resolver_match.url_name == 'procurement_list' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "truck" size=16 class="h-4 w-4" %}</span>
             <span>Procurement</span>
         </a>
@@ -266,7 +334,14 @@
         <a href="{% url 'tickets:system_settings' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/settings/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "settings" size=16 class="h-4 w-4" %}</span>
+            <span class="shrink-0 relative">
+                {% lucide "settings" size=16 class="h-4 w-4" %}
+                <div id="pendingSettingsBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:pending_settings_approvals_count' %}"
+                     hx-trigger="load, every 5s"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
             <span>System Settings</span>
         </a>
         <a href="{% url 'organogram:system' %}"
@@ -275,12 +350,6 @@
             <span class="shrink-0">{% lucide "cpu" size=16 class="h-4 w-4" %}</span>
             <span>System Organogram</span>
         </a>
-        {% comment %} <a href="{% url 'organogram:org_view' %}"
-           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/organogram/organization/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "building-2" size=16 class="h-4 w-4" %}</span>
-            <span>Organization Chart</span>
-        </a> {% endcomment %}
         {% if user.can_manage_display_documents %}
         <a href="{% url 'documents_display:document_create' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"

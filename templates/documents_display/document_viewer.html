@@ -3,6 +3,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}{{ document.title }}{% endblock %}
 
@@ -12,11 +13,11 @@
 
 {% block dashboard_content %}
 <div class="max-w-6xl mx-auto">
-    <div class="mb-4 flex items-center gap-3">
-        <a href="{% url 'documents_display:document_detail' document.slug %}" class="btn-ghost text-sm flex items-center gap-1">
-            {% lucide "arrow-left" size=16 %} Back to Document
-        </a>
-    </div>
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% url 'documents_display:category_detail' document.category.slug as category_url %}
+    {% url 'documents_display:document_detail' document.slug as document_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url document.category.name category_url document.title document_url "Preview" %}
 
     <div class="dashboard-card p-0 overflow-hidden shadow-sm">
         <!-- Viewer Header -->
@@ -49,7 +50,16 @@
                        download - doesn't block Save-As/print-to-PDF, but
                        removes the one-click affordance for users who
                        shouldn't have it. {% endcomment %}
-                    <embed src="{% url 'documents_display:document_serve_file' document.slug %}{% if not can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
+                    <div class="relative w-full h-full">
+                        <embed src="{% url 'documents_display:document_serve_file' document.slug %}{% if not can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
+                        {% if can_download %}
+                        {# A browser/device with no native PDF plugin (some mobile WebViews) renders nothing here with no error we can detect — this stays available either way, not conditional on failure. #}
+                        <a href="{% url 'documents_display:document_download' document.slug %}"
+                           class="absolute bottom-3 right-3 text-xs px-3 py-1.5 rounded-lg shadow-sm bg-surface border border-border text-text-secondary hover:text-primary hover:border-primary transition flex items-center gap-1.5">
+                            {% lucide "download" size=12 %} Trouble viewing this? Download instead
+                        </a>
+                        {% endif %}
+                    </div>
                 {% elif file_extension in 'png,jpg,jpeg,gif,webp' %}
                     <img src="{% url 'documents_display:document_serve_file' document.slug %}" alt="{{ document.title }}" class="max-w-full max-h-full object-contain rounded-lg shadow-sm">
                 {% elif file_extension in 'txt,csv' %}
@@ -60,10 +70,10 @@
                     <embed src="{% url 'documents_display:document_serve_file' document.slug %}?preview=true{% if not can_download %}#toolbar=0&navpanes=0{% endif %}" type="application/pdf" class="w-full h-full border-0">
                 {% else %}
                     <div class="flex flex-col items-center justify-center h-full p-4 text-center">
-                        <span class="text-6xl mb-4 opacity-30">📄</span>
-                        <p class="text-sm font-medium text-text-primary">Preview not available for this file type</p>
+                        <span class="text-6xl mb-4 opacity-30 flex items-center justify-center">{% lucide "loader-circle" size=48 class="animate-spin" %}</span>
+                        <p class="text-sm font-medium text-text-primary">Preview isn't ready yet</p>
+                        <p class="text-xs text-text-secondary mt-1 max-w-xs">This file is still being converted for preview — that usually takes a minute. Refresh shortly, or download it now.</p>
                         {% if can_download %}
-                        <p class="text-xs text-text-secondary mt-1">Please download the file to view its contents.</p>
                         <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg mt-4 flex items-center gap-1.5">
                             {% lucide "download" size=14 %} Download
                         </a>
@@ -74,7 +84,7 @@
                 {% endif %}
             {% else %}
                 <div class="flex flex-col items-center justify-center h-full p-4 text-center">
-                    <span class="text-6xl mb-4 opacity-30">📄</span>
+                    <span class="text-6xl mb-4 opacity-30 flex items-center justify-center">{% lucide "file" size=48 %}</span>
                     <p class="text-sm font-medium text-text-primary">Preview not available for this file type</p>
                     {% if can_download %}
                     <p class="text-xs text-text-secondary mt-1">Please download the file to view its contents.</p>

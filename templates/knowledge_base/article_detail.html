@@ -9,7 +9,7 @@
 {% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
 
 {% block sidebar_nav %}
-    {% include "partials/sidebar_end_user.html" %}
+    {% include sidebar_template %}
 {% endblock %}
 
 {% block dashboard_content %}
@@ -164,11 +164,19 @@
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
             },
             body: new URLSearchParams({'helpful': helpful})
-        }).then(response => response.json())
+        }).then(response => {
+              if (!response.ok) throw new Error('Feedback request failed');
+              return response.json();
+          })
           .then(data => {
               document.getElementById('btnHelpful').classList.add('hidden');
               document.getElementById('btnNotHelpful').classList.add('hidden');
               document.getElementById('feedbackResult').classList.remove('hidden');
+          })
+          .catch(() => {
+              if (typeof showToast === 'function') {
+                  showToast('Could not record your feedback — please try again.', 'error');
+              }
           });
     }
 </script>

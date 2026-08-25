@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils.text import slugify
 from apps.common.storage import raw_file_storage
+from apps.common.permissions import is_admin
 
 User = get_user_model()
 
@@ -48,7 +49,7 @@ class DisplayDocumentQuerySet(models.QuerySet):
     def viewable_by(self, user):
         """Queryset of documents a user may view, filtered at the DB level."""
         qs = self.not_deleted()
-        if user.is_superuser or user.role == User.Role.ADMIN:
+        if user.is_superuser or is_admin(user):
             return qs
         return qs.filter(
             Q(visibility=DisplayDocument.Visibility.PUBLIC) |
@@ -189,7 +190,7 @@ class DisplayDocument(models.Model):
         """Check if a user can view (read) this document."""
         if self.is_deleted:
             return False
-        if user.is_superuser or user.role == User.Role.ADMIN:
+        if user.is_superuser or is_admin(user):
             return True
         if self.visibility == self.Visibility.PUBLIC:
             return True
@@ -203,7 +204,7 @@ class DisplayDocument(models.Model):
 
     def is_editable_by(self, user):
         """Check if user can edit this document (rename, replace file, delete)"""
-        if user.is_superuser or user.role == User.Role.ADMIN:
+        if user.is_superuser or is_admin(user):
             return True
         if self.editors.filter(pk=user.pk).exists():
             return True
@@ -215,7 +216,7 @@ class DisplayDocument(models.Model):
 
     def is_downloadable_by(self, user):
         """Check if user can download this document's file."""
-        if user.is_superuser or user.role == User.Role.ADMIN:
+        if user.is_superuser or is_admin(user):
             return True
         if self.downloaders.filter(pk=user.pk).exists():
             return True

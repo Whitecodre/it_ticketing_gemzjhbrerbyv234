@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}Service Request {{ ticket.number }}{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -13,13 +14,14 @@
 
 {% block dashboard_content %}
 <div class="max-w-4xl mx-auto space-y-5">
+    {% url 'dashboard' as dash_url %}
+    {% url 'tickets:reports' as reports_url %}
+    {% url 'tickets:report_builder' report_type=report_type as list_url %}
+    {% breadcrumbs "Dashboard" dash_url "Reports" reports_url "Service Requests" list_url ticket.number %}
 
     {# Header #}
     <div class="flex items-start justify-between gap-3 flex-wrap">
         <div class="flex items-start gap-3">
-            <a href="{% url 'tickets:report_builder' report_type=report_type %}" class="btn-ghost btn-icon mt-1" aria-label="Back">
-                {% lucide "arrow-left" size=18 %}
-            </a>
             <div>
                 <div class="flex items-center gap-2 flex-wrap">
                     <h2 class="text-base font-semibold text-text-primary">{{ ticket.title }}</h2>

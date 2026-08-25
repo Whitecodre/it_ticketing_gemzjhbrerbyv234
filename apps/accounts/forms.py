@@ -195,3 +195,38 @@ class RegistrationStep2Form(forms.Form):
         if password1 and password2 and password1 != password2:
             raise ValidationError("Passwords do not match.")
         return cleaned_data
+
+
+class AdminUserCreateForm(forms.Form):
+    """admin/user_management.html Create User modal (apps/accounts/views/admin_users.py
+    admin_user_create). Covers only structural validation (required fields,
+    email format/uniqueness) — the cross-field business rules (IT-only
+    role/department gating, Superadmin-grant permission) stay in the view,
+    since they need request.user context and specific 403 vs 400 status
+    codes the view already returns correctly."""
+
+    email = forms.EmailField()
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    position = forms.CharField(max_length=150, required=False)
+    department = forms.ChoiceField(choices=User.DEPARTMENT_CHOICES)
+    role = forms.ChoiceField(choices=User.Role.choices)
+
+    def clean_email(self):
+        email = self.cleaned_data['email']
+        if User.objects.filter(email=email).exists():
+            raise ValidationError('User with this email already exists.')
+        return email
+
+
+class AdminUserEditForm(forms.Form):
+    """admin/user_management.html Edit User modal (admin_user_edit) — same
+    structural-only scope as AdminUserCreateForm above (no email field,
+    since email isn't editable here)."""
+
+    first_name = forms.CharField(max_length=150)
+    last_name = forms.CharField(max_length=150)
+    position = forms.CharField(max_length=150, required=False)
+    department = forms.ChoiceField(choices=User.DEPARTMENT_CHOICES)
+    role = forms.ChoiceField(choices=User.Role.choices)
+    is_active = forms.BooleanField(required=False)

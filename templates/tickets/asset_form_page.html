@@ -57,42 +57,55 @@
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Name *</label>
+                        <label for="id_name" class="block text-sm font-medium mb-1 text-text-primary">Name <span class="text-error">*</span></label>
                         {{ form.name }}
+                        {% if form.name.errors %}<p class="text-xs text-error mt-1">{{ form.name.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Category</label>
+                        <label for="id_category" class="block text-sm font-medium mb-1 text-text-primary">Category</label>
                         {{ form.category }}
+                        {% if form.category.errors %}<p class="text-xs text-error mt-1">{{ form.category.errors.0 }}</p>{% endif %}
                         <div id="category_other_container" class="mt-2 hidden">
                             {{ form.category_other }}
+                            {% if form.category_other.errors %}<p class="text-xs text-error mt-1">{{ form.category_other.errors.0 }}</p>{% endif %}
                             <p class="text-xs text-text-secondary mt-1">Creates a new category, available for future assets too.</p>
                         </div>
                     </div>
                     <div id="quantity_in_stock_container" class="hidden">
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Quantity in Stock</label>
+                        <label for="id_quantity_in_stock" class="block text-sm font-medium mb-1 text-text-primary">Quantity in Stock</label>
                         {{ form.quantity_in_stock }}
+                        {% if form.quantity_in_stock.errors %}<p class="text-xs text-error mt-1">{{ form.quantity_in_stock.errors.0 }}</p>{% endif %}
+                        {% if form.quantity_in_stock.field.disabled %}
+                        <p class="text-xs mt-1 text-text-secondary">{{ form.quantity_in_stock.help_text }}</p>
+                        {% else %}
                         <p class="text-xs mt-1 text-text-secondary">This category is bulk/consumable — tracked by count, not as one unique item.</p>
+                        {% endif %}
                     </div>
                     <div id="low_stock_threshold_container" class="hidden">
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Low Stock Alert Threshold</label>
+                        <label for="id_low_stock_threshold" class="block text-sm font-medium mb-1 text-text-primary">Low Stock Alert Threshold</label>
                         {{ form.low_stock_threshold }}
+                        {% if form.low_stock_threshold.errors %}<p class="text-xs text-error mt-1">{{ form.low_stock_threshold.errors.0 }}</p>{% endif %}
                         <p class="text-xs mt-1 text-text-secondary">Admins get notified when stock drops to or below this. Leave blank to disable.</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Serial Number</label>
+                        <label for="id_serial_number" class="block text-sm font-medium mb-1 text-text-primary">Serial Number</label>
                         {{ form.serial_number }}
+                        {% if form.serial_number.errors %}<p class="text-xs text-error mt-1">{{ form.serial_number.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Model</label>
+                        <label for="id_model" class="block text-sm font-medium mb-1 text-text-primary">Model</label>
                         {{ form.model }}
+                        {% if form.model.errors %}<p class="text-xs text-error mt-1">{{ form.model.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Manufacturer</label>
+                        <label for="id_manufacturer" class="block text-sm font-medium mb-1 text-text-primary">Manufacturer</label>
                         {{ form.manufacturer }}
+                        {% if form.manufacturer.errors %}<p class="text-xs text-error mt-1">{{ form.manufacturer.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Location</label>
+                        <label for="id_location" class="block text-sm font-medium mb-1 text-text-primary">Location</label>
                         {{ form.location }}
+                        {% if form.location.errors %}<p class="text-xs text-error mt-1">{{ form.location.errors.0 }}</p>{% endif %}
                         <datalist id="locationOptions">
                             {% for loc in locations %}
                             <option value="{{ loc }}">
@@ -100,25 +113,38 @@
                         </datalist>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Department</label>
+                        <label for="id_department" class="block text-sm font-medium mb-1 text-text-primary">Department</label>
                         {{ form.department }}
+                        {% if form.department.errors %}<p class="text-xs text-error mt-1">{{ form.department.errors.0 }}</p>{% endif %}
                         <p class="text-xs mt-1 text-text-secondary">The asset's owning department (distinct from "Assigned Department" below).</p>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Status</label>
+                        <label for="id_status" class="block text-sm font-medium mb-1 text-text-primary">Status</label>
                         {{ form.status }}
+                        {% if form.status.errors %}<p class="text-xs text-error mt-1">{{ form.status.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Condition</label>
+                        <label for="id_condition" class="block text-sm font-medium mb-1 text-text-primary">Condition</label>
                         {{ form.condition }}
+                        {% if form.condition.errors %}<p class="text-xs text-error mt-1">{{ form.condition.errors.0 }}</p>{% endif %}
                     </div>
+                    {% if not form.assigned_to.field.disabled %}
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Assigned To</label>
+                        <label for="id_assignee_department" class="block text-sm font-medium mb-1 text-text-primary">Assignee's Department</label>
+                        {{ form.assignee_department }}
+                        <p class="text-xs mt-1 text-text-secondary">Pick a department to narrow the "Assigned To" list below.</p>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <label for="id_assigned_to" class="block text-sm font-medium mb-1 text-text-primary">Assigned To</label>
                         {{ form.assigned_to }}
+                        {% if form.assigned_to.help_text %}<p class="text-xs text-text-secondary mt-1">{{ form.assigned_to.help_text }}</p>{% endif %}
+                        {% if form.assigned_to.errors %}<p class="text-xs text-error mt-1">{{ form.assigned_to.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Assigned Department</label>
+                        <label for="id_assigned_to_department" class="block text-sm font-medium mb-1 text-text-primary">Assigned Department</label>
                         {{ form.assigned_to_department }}
+                        {% if form.assigned_to_department.errors %}<p class="text-xs text-error mt-1">{{ form.assigned_to_department.errors.0 }}</p>{% endif %}
                     </div>
                 </div>
             </div>
@@ -130,25 +156,30 @@
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Purchase Date</label>
+                        <label for="id_purchase_date" class="block text-sm font-medium mb-1 text-text-primary">Purchase Date</label>
                         {{ form.purchase_date }}
+                        {% if form.purchase_date.errors %}<p class="text-xs text-error mt-1">{{ form.purchase_date.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Warranty Duration</label>
+                        <label for="id_warranty_duration_years" class="block text-sm font-medium mb-1 text-text-primary">Warranty Duration</label>
                         {{ form.warranty_duration_years }}
+                        {% if form.warranty_duration_years.errors %}<p class="text-xs text-error mt-1">{{ form.warranty_duration_years.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Warranty Expiry</label>
+                        <label for="id_warranty_expiry" class="block text-sm font-medium mb-1 text-text-primary">Warranty Expiry</label>
                         {{ form.warranty_expiry }}
+                        {% if form.warranty_expiry.errors %}<p class="text-xs text-error mt-1">{{ form.warranty_expiry.errors.0 }}</p>{% endif %}
                         <p class="text-xs text-text-secondary mt-1">Auto-calculated from purchase date and duration.</p>
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Warranty Provider</label>
+                        <label for="id_warranty_provider" class="block text-sm font-medium mb-1 text-text-primary">Warranty Provider</label>
                         {{ form.warranty_provider }}
+                        {% if form.warranty_provider.errors %}<p class="text-xs text-error mt-1">{{ form.warranty_provider.errors.0 }}</p>{% endif %}
                     </div>
                     <div class="md:col-span-3">
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Warranty Notes</label>
+                        <label for="id_warranty_notes" class="block text-sm font-medium mb-1 text-text-primary">Warranty Notes</label>
                         {{ form.warranty_notes }}
+                        {% if form.warranty_notes.errors %}<p class="text-xs text-error mt-1">{{ form.warranty_notes.errors.0 }}</p>{% endif %}
                     </div>
                 </div>
             </div>
@@ -160,28 +191,33 @@
                 </h3>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Next Renewal Date</label>
+                        <label for="id_next_renewal_date" class="block text-sm font-medium mb-1 text-text-primary">Next Renewal Date</label>
                         {{ form.next_renewal_date }}
+                        {% if form.next_renewal_date.errors %}<p class="text-xs text-error mt-1">{{ form.next_renewal_date.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Renewal Interval (months)</label>
+                        <label for="id_renewal_interval_months" class="block text-sm font-medium mb-1 text-text-primary">Renewal Interval (months)</label>
                         {{ form.renewal_interval_months }}
+                        {% if form.renewal_interval_months.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_interval_months.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Renewal Cost</label>
+                        <label for="id_renewal_cost" class="block text-sm font-medium mb-1 text-text-primary">Renewal Cost</label>
                         {{ form.renewal_cost }}
+                        {% if form.renewal_cost.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_cost.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1 text-text-primary">Renewal Vendor</label>
+                        <label for="id_renewal_vendor" class="block text-sm font-medium mb-1 text-text-primary">Renewal Vendor</label>
                         {{ form.renewal_vendor }}
+                        {% if form.renewal_vendor.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_vendor.errors.0 }}</p>{% endif %}
                     </div>
                     <div class="md:col-span-2">
-                        <label class="block text-sm font-medium mb-1 text-text-primary">License/Subscription/Contract Reference</label>
+                        <label for="id_renewal_reference" class="block text-sm font-medium mb-1 text-text-primary">License/Subscription/Contract Reference</label>
                         {{ form.renewal_reference }}
+                        {% if form.renewal_reference.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_reference.errors.0 }}</p>{% endif %}
                     </div>
                     <div class="flex items-center gap-2 mt-6">
                         {{ form.auto_renews }}
-                        <label class="text-sm text-text-primary">Auto-renews (no manual action needed)</label>
+                        <label for="id_auto_renews" class="text-sm text-text-primary">Auto-renews (no manual action needed)</label>
                     </div>
                 </div>
             </div>
@@ -192,12 +228,14 @@
                     {% lucide "file-text" size=14 %} Notes
                 </h3>
                 <div>
-                    <label class="block text-sm font-medium mb-1 text-text-primary">General Notes</label>
+                    <label for="id_notes" class="block text-sm font-medium mb-1 text-text-primary">General Notes</label>
                     {{ form.notes }}
+                    {% if form.notes.errors %}<p class="text-xs text-error mt-1">{{ form.notes.errors.0 }}</p>{% endif %}
                 </div>
                 <div class="mt-3">
-                    <label class="block text-sm font-medium mb-1 text-text-primary">Condition Notes</label>
+                    <label for="id_condition_notes" class="block text-sm font-medium mb-1 text-text-primary">Condition Notes</label>
                     {{ form.condition_notes }}
+                    {% if form.condition_notes.errors %}<p class="text-xs text-error mt-1">{{ form.condition_notes.errors.0 }}</p>{% endif %}
                 </div>
             </div>
 

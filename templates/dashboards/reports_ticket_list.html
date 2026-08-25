@@ -1,5 +1,6 @@
 {% extends "base_dashboard.html" %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}{{ heading }}{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -12,10 +13,10 @@
 
 {% block dashboard_content %}
 <div class="w-full">
+    {% url 'dashboard' as dash_url %}
+    {% url 'tickets:reports' as reports_url %}
+    {% breadcrumbs "Dashboard" dash_url "Reports" reports_url heading %}
     <div class="flex items-center gap-3 mb-4">
-        <a href="{% url 'tickets:reports' %}" class="btn-ghost btn-icon" aria-label="Back to Reports">
-            {% lucide "arrow-left" size=18 %}
-        </a>
         <div>
             <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">{{ heading }}</h2>
             <p class="text-xs text-text-secondary">{{ tickets.paginator.count }} ticket{{ tickets.paginator.count|pluralize }}</p>
@@ -27,7 +28,7 @@
             {% include "partials/ticket_table.html" %}
         {% else %}
             <div class="text-center py-8">
-                <span class="text-3xl block mb-2">✅</span>
+                <span class="block mb-2 flex items-center justify-center">{% lucide "circle-check" size=28 %}</span>
                 <p class="text-text-secondary text-sm">Nothing here right now.</p>
             </div>
         {% endif %}

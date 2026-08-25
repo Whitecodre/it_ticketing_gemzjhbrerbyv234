@@ -51,12 +51,24 @@ def _pdf_link_callback(uri, rel):
     return path if os.path.isfile(path) else uri
 
 
+def _csv_safe(value):
+    """Neutralize spreadsheet formula injection: a string value starting
+    with =, +, -, or @ is interpreted as a live formula by Excel/Sheets
+    when the exported file is later opened by another admin. Leaves
+    non-string values (numbers, None, ...) untouched so exports keep their
+    real type in Excel rather than becoming text."""
+    if isinstance(value, str) and value and value[0] in ('=', '+', '-', '@'):
+        return "'" + value
+    return value
+
+
 def export_csv(rows, columns, title, filename_base, **kwargs):
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base)}.csv"'
     writer = csv.DictWriter(response, fieldnames=columns)
     writer.writeheader()
-    writer.writerows(rows)
+    for row in rows:
+        writer.writerow({key: _csv_safe(value) for key, value in row.items()})
     return response
 
 
@@ -70,7 +82,18 @@ def export_excel(rows, columns, title, filename_base, **kwargs):
         cell.fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
     for row_idx, row_data in enumerate(rows, 2):
         for col_idx, key in enumerate(columns, 1):
-            ws.cell(row=row_idx, column=col_idx, value=row_data.get(key, ''))
+            ws.cell(row=row_idx, column=col_idx, value=_csv_safe(row_data.get(key, '')))
+
+    # Auto-size each column from its header/content length so the sheet is
+    # readable without the user manually resizing every column first.
+    for col_idx, header in enumerate(columns, 1):
+        letter = ws.cell(row=1, column=col_idx).column_letter
+        max_len = len(str(header))
+        for row_data in rows[:500]:
+            value = row_data.get(header, '')
+            max_len = max(max_len, len(str(value)) if value is not None else 0)
+        ws.column_dimensions[letter].width = min(max_len + 2, 50)
+
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base)}.xlsx"'
     wb.save(response)
@@ -161,6 +184,31 @@ def _docx_heading(doc, text):
     for run in heading.runs:
         run.font.color.rgb = PRIMARY_RGB
     return heading
+
+
+def _docx_simple_table(doc, headers, rows, placeholder='To be completed by the IT team'):
+    """Bordered table with a bold header row, matching the "blank form
+    section" tables the paper-form PDFs ship (Systems Affected,
+    Recommendations, etc.) — used so the DOCX has a real table there too
+    instead of a placeholder sentence. `rows` empty renders one italic
+    placeholder row spanning all columns, same as the PDF's blank row."""
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = 'Table Grid'
+    for cell, header in zip(table.rows[0].cells, headers):
+        cell.text = ''
+        run = cell.paragraphs[0].add_run(header)
+        run.bold = True
+    if rows:
+        for row_values in rows:
+            row_cells = table.add_row().cells
+            for cell, value in zip(row_cells, row_values):
+                cell.text = str(value) if value not in (None, '') else ''
+    else:
+        row_cells = table.add_row().cells
+        row_cells[0].merge(row_cells[-1])
+        row_cells[0].paragraphs[0].add_run(placeholder).italic = True
+    doc.add_paragraph()
+    return table
 
 
 def _docx_field(doc, label, value):
@@ -324,6 +372,39 @@ def _docx_report_letterhead(doc, title, generated_at, filter_summary, record_cou
     doc.add_paragraph()
 
 
+def _docx_signoff_table(doc, headers, rows):
+    """Role | Name & Signature | Date table matching the paper form's
+    Sign-off & Approvals table — each row a (role_label, signoff) pair, an
+    uploaded signature embedded as an image in the signature cell when
+    present, else the 'captured digitally' text fallback ('Pending' when
+    nobody has signed off yet)."""
+    table = doc.add_table(rows=1, cols=len(headers))
+    table.style = 'Table Grid'
+    for cell, header in zip(table.rows[0].cells, headers):
+        cell.text = ''
+        run = cell.paragraphs[0].add_run(header)
+        run.bold = True
+    for role_label, signoff in rows:
+        role_cell, sig_cell, date_cell = table.add_row().cells
+        role_cell.paragraphs[0].add_run(role_label).bold = True
+
+        sig_p = sig_cell.paragraphs[0]
+        if not signoff['captured_text']:
+            sig_p.add_run('Pending').italic = True
+        elif signoff['signature_url'] and signoff['user']:
+            src = _docx_image_source(signoff['user'].signature)
+            if src:
+                sig_p.add_run().add_picture(src, height=Inches(0.3))
+            else:
+                sig_p.add_run(signoff['captured_text']).italic = True
+        else:
+            sig_p.add_run(signoff['captured_text']).italic = True
+
+        date_cell.text = signoff['date'].strftime('%Y-%m-%d') if signoff['date'] else ''
+    doc.add_paragraph()
+    return table
+
+
 def _docx_signoff_field(doc, label, signoff):
     """Renders a sign-off line: the user's uploaded signature image when
     available, else the existing 'captured digitally' text fallback."""
@@ -369,7 +450,7 @@ def export_incident_docx(ticket):
     _docx_field(doc, 'Business Impact', ticket.get_business_impact_display() if ticket.business_impact else None)
     _docx_field(doc, 'How Discovered', ctx['how_discovered_display'])
     _docx_field(doc, 'Location / IP / Hostname', ticket.location_hostname)
-    _docx_field(doc, 'System / Service / Asset Affected', 'Not collected digitally — fill by hand')
+    _docx_field(doc, 'System / Service / Asset Affected', ticket.location_hostname)
 
     _docx_heading(doc, 'Section 2 — Reporter Information')
     _docx_field(doc, 'Reported By', ticket.requester.get_full_name() or ticket.requester.email)
@@ -387,11 +468,17 @@ def export_incident_docx(ticket):
     _docx_field(doc, 'Root Cause Category', ', '.join(ctx['root_cause_category_display']) or None)
     _docx_field(doc, 'Detailed Root Cause / Contributing Factors', ctx['resolution_root_cause'])
 
+    _docx_heading(doc, 'Section 4 — Systems / Users Affected')
+    _docx_simple_table(doc, ['System / Application / Device', 'No. of Users / Devices Impacted', 'Nature of Impact'], [])
+
     _docx_heading(doc, 'Section 6 — Resolution & Corrective Actions')
+    resolved = ticket.status in ('RESOLVED', 'CLOSED')
+    _docx_field(doc, 'Resolution Status', 'Fully Resolved' if resolved else 'Pending / Escalated')
+    _docx_field(doc, 'Date & Time of Resolution', ticket.resolution_confirmed_at.strftime('%Y-%m-%d %H:%M') if ticket.resolution_confirmed_at else 'Pending')
     _docx_field(doc, 'Steps Taken to Resolve the Incident', ctx['resolution_steps'])
 
-    _docx_heading(doc, 'Sections 4, 7 — Systems Affected, Recommendations')
-    doc.add_paragraph('To be completed by the IT team — blank, fill by hand.').runs[0].italic = True
+    _docx_heading(doc, 'Section 7 — Recommendations & Preventive Actions')
+    _docx_simple_table(doc, ['Recommended Action', 'Responsible Person', 'Target Date', 'Status'], [])
 
     _docx_heading(doc, 'Section 8 — Communication & Distribution')
     _docx_field(doc, 'Report Communicated To', 'IT Manager')
@@ -413,9 +500,11 @@ def export_incident_docx(ticket):
         doc.add_paragraph('No attachments.').runs[0].italic = True
 
     _docx_heading(doc, 'Section 10 — Sign-off & Approvals')
-    _docx_signoff_field(doc, 'Prepared By (Reporter)', ctx['prepared_by_signoff'])
-    _docx_signoff_field(doc, 'Confirmed Resolved By', ctx['confirmed_resolved_signoff'])
-    _docx_signoff_field(doc, 'Reviewed & Approved By (IT Manager / Head of IT)', ctx['it_manager_signoff'])
+    _docx_signoff_table(doc, ['Role', 'Name & Signature', 'Date'], [
+        ('Prepared By (Reporter)', ctx['prepared_by_signoff']),
+        ('Reviewed & Approved By (IT Manager / Head of IT)', ctx['it_manager_signoff']),
+        ('Confirmed Resolved By', ctx['confirmed_resolved_signoff']),
+    ])
 
     buf = BytesIO()
     doc.save(buf)
@@ -479,19 +568,6 @@ def export_service_request_docx(ticket):
 
     _docx_signoff_field(doc, "Requester's Signature", ctx['requester_feedback_signoff'])
     _docx_signoff_field(doc, 'IT Manager Signature', ctx['it_manager_signoff'])
-
-    doc.add_paragraph()
-    for line in (
-        'The IT department receives and processes service requests and work orders daily.',
-        'Our overall goal is to schedule and complete these services on time. A requester is expected to '
-        'complete the service request form and return it to the IT officer for action.',
-        'Thank you for your cooperation.',
-    ):
-        footer_p = doc.add_paragraph()
-        footer_run = footer_p.add_run(line)
-        footer_run.italic = True
-        footer_run.font.size = Pt(8)
-        footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     buf = BytesIO()
     doc.save(buf)

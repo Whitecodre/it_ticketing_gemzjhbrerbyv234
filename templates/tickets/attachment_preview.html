@@ -15,33 +15,56 @@
     <div class="border-t pt-4 border-border">
         {% if preview_type == 'image' %}
             <div class="flex items-center justify-center bg-background rounded-lg p-4">
-                <img src="{{ file_url }}" alt="{{ attachment.filename }}" 
+                <img src="{{ file_url }}" alt="{{ attachment.filename }}"
                      class="max-w-full max-h-[70vh] object-contain rounded-lg shadow-sm">
             </div>
 
-        {% elif preview_type == 'pdf' or preview_type == 'office' %}
+        {% elif preview_type == 'pdf' %}
+            {# Native browser PDF rendering — Office attachments land here #}
+            {# too, converted to PDF server-side via LibreOffice. #}
+            {# toolbar=0/navpanes=0 hide Chrome's built-in PDF viewer chrome — #}
+            {# it duplicated this modal's own filename header and download button. #}
             <div class="bg-background rounded-lg p-2" style="height: 70vh;">
-                <iframe src="{{ embed_url }}" 
+                <iframe src="{{ embed_url }}#toolbar=0&navpanes=0"
                         class="w-full h-full rounded-lg border-0"
                         allowfullscreen>
                 </iframe>
             </div>
-            <p class="text-xs text-text-secondary mt-2 flex items-center gap-1">
-                {% lucide "info" size=14 %} 
-                Powered by Google Docs Viewer. 
-                <a href="{{ file_url }}" target="_blank" class="text-primary hover:underline">Download instead</a>
-            </p>
+
+        {% elif preview_type == 'video' %}
+            <div class="flex items-center justify-center bg-background rounded-lg p-4">
+                <video src="{{ embed_url }}" controls class="max-w-full max-h-[70vh] rounded-lg">
+                    Your browser doesn't support video playback.
+                </video>
+            </div>
+
+        {% elif preview_type == 'audio' %}
+            <div class="flex items-center justify-center bg-background rounded-lg p-8">
+                <audio src="{{ embed_url }}" controls class="w-full max-w-md">
+                    Your browser doesn't support audio playback.
+                </audio>
+            </div>
 
         {% elif preview_type == 'text' %}
             <div class="bg-background rounded-lg p-4 overflow-auto" style="max-height: 65vh;">
                 <pre class="text-sm font-mono whitespace-pre-wrap text-text-primary">{{ text_content }}</pre>
             </div>
 
+        {% elif preview_type == 'conversion_failed' %}
+            <div class="text-center py-12">
+                <div class="mb-3 flex items-center justify-center">{% lucide "file-x" size=40 %}</div>
+                <p class="text-text-secondary text-sm">Couldn't generate a preview for this document.</p>
+                <a href="{% url 'tickets:attachment_download' attachment.pk %}"
+                   class="btn-primary inline-flex items-center gap-1 mt-3 text-sm px-4 py-2 rounded-lg">
+                    {% lucide "download" size=14 %} Download
+                </a>
+            </div>
+
         {% else %}
             <div class="text-center py-12">
-                <div class="text-4xl mb-3">📄</div>
+                <div class="mb-3 flex items-center justify-center">{% lucide "file" size=40 %}</div>
                 <p class="text-text-secondary text-sm">Preview not available for this file type.</p>
-                <a href="{% url 'tickets:attachment_download' attachment.pk %}" 
+                <a href="{% url 'tickets:attachment_download' attachment.pk %}"
                    class="btn-primary inline-flex items-center gap-1 mt-3 text-sm px-4 py-2 rounded-lg">
                     {% lucide "download" size=14 %} Download
                 </a>

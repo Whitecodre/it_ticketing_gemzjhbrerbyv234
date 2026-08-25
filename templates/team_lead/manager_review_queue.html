@@ -12,20 +12,8 @@
 {% endblock %}
 
 {% block dashboard_content %}
-<!-- Messages -->
-{% if messages %}
-<div class="message-container mb-4 space-y-2">
-    {% for message in messages %}
-    <div class="message p-4 rounded-lg 
-        {% if message.tags == 'success' %}bg-success/10 text-success border border-success/30
-        {% elif message.tags == 'error' %}bg-error/10 text-error border border-error/30
-        {% elif message.tags == 'warning' %}bg-warning/10 text-warning border border-warning/30
-        {% else %}bg-info/10 text-info border border-info/30{% endif %}">
-        {{ message }}
-    </div>
-    {% endfor %}
-</div>
-{% endif %}
+{# Django messages already surface as toasts app-wide (see the bridge in
+   base_dashboard.html) — no page-local banner needed here. #}
 <div class="w-full">
     <div class="flex items-center gap-3 mb-4">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning shrink-0">
@@ -85,27 +73,11 @@
     {% else %}
     <div class="dashboard-card text-center py-12">
         <div class="flex flex-col items-center">
-            <span class="text-4xl block mb-3">✅</span>
+            <span class="block mb-3 flex items-center justify-center">{% lucide "circle-check" size=36 %}</span>
             <p class="text-text-secondary text-sm">No service requests pending your review.</p>
-            <p class="text-text-secondary text-xs">All caught up! 🎉</p>
+            <p class="text-text-secondary text-xs flex items-center justify-center gap-1">All caught up! {% lucide "party-popper" size=12 %}</p>
         </div>
     </div>
     {% endif %}
 </div>
-
-<script>
-    // Auto-dismiss messages after 5 seconds
-    document.addEventListener('DOMContentLoaded', function() {
-        const messages = document.querySelectorAll('.message-container .message');
-        messages.forEach(function(msg) {
-            setTimeout(function() {
-                msg.style.transition = 'opacity 0.5s ease';
-                msg.style.opacity = '0';
-                setTimeout(function() {
-                    msg.remove();
-                }, 500);
-            }, 5000);
-        });
-    });
-</script>
 {% endblock %}

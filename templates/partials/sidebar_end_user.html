@@ -17,7 +17,7 @@
         {% lucide "laptop" size=18 class="h-5 w-5" %}
         <div id="myAssetsBadge" class="absolute -top-1 -right-1"
              hx-get="{% url 'tickets:my_assets_pending_count' %}"
-             hx-trigger="every 5s"
+             hx-trigger="load, every 5s"
              hx-swap="innerHTML">
         </div>
     </span>
@@ -54,21 +54,9 @@
         <div class="sidebar-subgroup-label px-3 pt-3 pb-1 text-[0.6rem] font-semibold uppercase tracking-wider" style="color: var(--color-text-secondary); opacity: 0.7;">My Tickets</div>
         <a href="{% url 'tickets:my_list' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if '/tickets/my/' in request.path and not request.GET.base and not request.GET.status %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+           style="{% if '/tickets/my/' in request.path %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
             <span class="shrink-0">{% lucide "inbox" size=16 class="h-4 w-4" %}</span>
-            <span>All Tickets</span>
-        </a>
-        <a href="{% url 'tickets:my_list' %}?base=OPEN&status=OPEN"
-           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if request.GET.base == 'OPEN' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "circle-alert" size=16 class="h-4 w-4" %}</span>
-            <span>Open Tickets</span>
-        </a>
-        <a href="{% url 'tickets:my_list' %}?base=CLOSED&status=CLOSED"
-           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
-           style="{% if request.GET.base == 'CLOSED' %}background-color: var(--color-primary); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "circle-check" size=16 class="h-4 w-4" %}</span>
-            <span>Closed Tickets</span>
+            <span>My Tickets</span>
         </a>
     </div>
 </div>
@@ -115,7 +103,7 @@
                 {% lucide "monitor" size=16 class="h-4 w-4" %}
                 <div id="remoteSessionBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:remote_session_pending_count' %}"
-                     hx-trigger="every 5s"
+                     hx-trigger="load, every 5s"
                      hx-swap="innerHTML">
                 </div>
             </span>

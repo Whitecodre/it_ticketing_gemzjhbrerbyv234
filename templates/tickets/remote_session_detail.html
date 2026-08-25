@@ -30,6 +30,24 @@ heading aligned with the card instead of sitting flush against the sidebar.
             <span class="text-xs text-text-secondary">{{ session.connector.name }}</span>
         </div>
 
+        {# ----- Ticket/requester/agent summary — the card list already shows this, the detail page previously didn't ----- #}
+        <div class="border rounded-lg p-3 border-border bg-background">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+                <p class="text-sm font-medium text-text-primary">{{ session.ticket.title }}</p>
+                <span class="priority-chip
+                    {% if session.ticket.priority == 'P1' %}critical
+                    {% elif session.ticket.priority == 'P2' %}high
+                    {% elif session.ticket.priority == 'P3' %}medium
+                    {% else %}low{% endif %} text-xs shrink-0">
+                    {{ session.ticket.get_priority_display }}
+                </span>
+            </div>
+            <div class="flex flex-col gap-1 mt-2 text-xs text-text-secondary">
+                <span class="flex items-center gap-1">{% lucide "user" size=12 %}<span>Requester:</span> {{ session.requester.get_full_name|default:session.requester.email }}</span>
+                <span class="flex items-center gap-1">{% lucide "user-check" size=12 %}<span>Agent:</span> {{ session.agent.get_full_name|default:session.agent.email }}</span>
+            </div>
+        </div>
+
         {# ----- REQUESTER: ACCEPT / REJECT when status = REQUESTED ----- #}
         {% if role == 'requester' and session.status == 'REQUESTED' %}
             <div class="bg-primary/10 p-4 rounded-lg" id="acceptRejectPrompt">

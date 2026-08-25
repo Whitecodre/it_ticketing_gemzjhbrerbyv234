@@ -1,6 +1,7 @@
 # apps/documents_display/forms.py
 
 from django import forms
+from django.urls import reverse_lazy
 from .models import DisplayDocument, DisplayCategory, DocumentFolder
 from apps.accounts.models import User
 
@@ -8,6 +9,16 @@ from apps.accounts.models import User
 CHECKBOX_ATTRS = {'class': 'rounded border-border text-primary focus:ring-primary'}
 SELECT_ATTRS = {
     'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+}
+# Shared HTMX wiring for the "pick a department, then narrow the recipient
+# list" pattern (see accounts:department_users_partial). `hx-target` is set
+# per-field to the actual target <select>'s id.
+DEPARTMENT_FILTER_ATTRS = {
+    'hx-get': reverse_lazy('accounts:department_users_partial'),
+    'hx-target': '#id_recipient',
+    'hx-trigger': 'change',
+    'hx-include': 'this',
+    'hx-swap': 'innerHTML',
 }
 
 
@@ -154,6 +165,12 @@ class ShareDocumentForm(forms.Form):
     shares (preserves prior behavior) but required for external ones, since
     a no-login link with no expiry is a materially bigger risk than one
     tied to a real account."""
+    recipient_department = forms.ChoiceField(
+        required=False,
+        label='Department',
+        widget=forms.Select(attrs={**SELECT_ATTRS, **DEPARTMENT_FILTER_ATTRS}),
+        help_text="Pick a department to narrow the recipient list below."
+    )
     recipient = forms.ModelChoiceField(
         queryset=User.objects.filter(is_active=True).order_by('department', 'first_name', 'last_name'),
         required=False,
@@ -178,6 +195,12 @@ class ShareDocumentForm(forms.Form):
         }),
         help_text="Optional for internal shares. Required for external email shares."
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['recipient_department'].choices = [('', 'Select department...')] + list(User.DEPARTMENT_CHOICES)
+        if not self.is_bound:
+            self.fields['recipient'].queryset = self.fields['recipient'].queryset.none()
 
     def clean(self):
         cleaned = super().clean()
@@ -212,6 +235,12 @@ class ShareFolderForm(forms.Form):
     (`recipient`) or a raw external email address with no account
     (`external_email`) - mirrors ShareDocumentForm minus can_edit, since
     folder sharing only ever grants view/download of its documents."""
+    recipient_department = forms.ChoiceField(
+        required=False,
+        label='Department',
+        widget=forms.Select(attrs={**SELECT_ATTRS, **DEPARTMENT_FILTER_ATTRS}),
+        help_text="Pick a department to narrow the recipient list below."
+    )
     recipient = forms.ModelChoiceField(
         queryset=User.objects.filter(is_active=True).order_by('department', 'first_name', 'last_name'),
         required=False,
@@ -235,6 +264,12 @@ class ShareFolderForm(forms.Form):
         }),
         help_text="Optional for internal shares. Required for external email shares."
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['recipient_department'].choices = [('', 'Select department...')] + list(User.DEPARTMENT_CHOICES)
+        if not self.is_bound:
+            self.fields['recipient'].queryset = self.fields['recipient'].queryset.none()
 
     def clean(self):
         cleaned = super().clean()

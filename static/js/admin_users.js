@@ -1,22 +1,104 @@
 // admin_users.js – Admin User Management
 
 // ================================================================
+// PER-FIELD SERVER ERRORS (Create/Edit User forms)
+// ================================================================
+// Backed by AdminUserCreateForm/AdminUserEditForm (apps/accounts/forms.py)
+// — the view returns {"errors": {field: [msg, ...]}} on a 400, matched here
+// against <p data-error-for="field"> placeholders next to each input.
+
+function clearFieldErrors(form) {
+    form.querySelectorAll('[data-error-for]').forEach(function(el) {
+        el.textContent = '';
+        el.classList.add('hidden');
+    });
+}
+
+function showFieldErrors(form, errors) {
+    Object.keys(errors).forEach(function(field) {
+        const el = form.querySelector('[data-error-for="' + field + '"]');
+        if (el) {
+            el.textContent = errors[field][0];
+            el.classList.remove('hidden');
+        }
+    });
+}
+
+// ================================================================
+// ROLE VISIBILITY BY DEPARTMENT (progressive disclosure)
+// ================================================================
+// AGENT/ADMIN/SUPERADMIN can only be assigned to IT department users
+// (enforced server-side in apps/accounts/views/admin_users.py) — TEAM_LEAD
+// is deliberately excluded, it's allowed in any department. Hide those
+// role options entirely until Department = IT is chosen, rather than
+// letting the user pick an invalid combination and find out on submit.
+const IT_ONLY_ROLES = ['AGENT', 'ADMIN', 'SUPERADMIN'];
+
+function updateRoleVisibilityForDepartment(deptSelectId, primaryRoleSelectId, checkboxContainerId) {
+    const deptSelect = document.getElementById(deptSelectId);
+    const primarySelect = document.getElementById(primaryRoleSelectId);
+    if (!deptSelect || !primarySelect) return;
+    const isIT = deptSelect.value === 'IT';
+
+    let primaryNeedsReset = false;
+    Array.from(primarySelect.options).forEach(opt => {
+        const restricted = IT_ONLY_ROLES.includes(opt.value);
+        opt.hidden = restricted && !isIT;
+        opt.disabled = restricted && !isIT;
+        if (restricted && !isIT && opt.selected) primaryNeedsReset = true;
+    });
+    if (primaryNeedsReset) {
+        const fallback = Array.from(primarySelect.options).find(o => !IT_ONLY_ROLES.includes(o.value));
+        if (fallback) primarySelect.value = fallback.value;
+    }
+
+    const checkboxContainer = document.getElementById(checkboxContainerId);
+    if (checkboxContainer) {
+        checkboxContainer.querySelectorAll('.additional-role-checkbox').forEach(cb => {
+            const restricted = IT_ONLY_ROLES.includes(cb.dataset.roleName);
+            const wrapper = cb.closest('.role-checkbox');
+            if (restricted && !isIT) {
+                if (wrapper) wrapper.classList.add('hidden');
+                cb.checked = false;
+            } else if (wrapper) {
+                wrapper.classList.remove('hidden');
+            }
+        });
+    }
+
+    // Re-sync the primary-role-duplicate-checkbox exclusivity now that
+    // visibility (and possibly the primary role itself) may have changed.
+    updateRoleCheckboxes(checkboxContainerId, primaryRoleSelectId);
+}
+
+// ================================================================
 // MODAL FUNCTIONS
 // ================================================================
 
-// --- Create Modal ---
+// --- Create Slideover ---
+// Create/Edit User have 4 sections and 7-8 fields each — too much for a
+// centered modal, so they're a right-side slideover (translate-x-full to
+// translate-x-0) with a separate backdrop, same visual language as the
+// app-wide ticket slideover (#ticketSlideover in base_dashboard.html).
 function openCreateModal() {
     const modal = document.getElementById('createUserModal');
+    const backdrop = document.getElementById('createUserSlideoverBackdrop');
     if (modal) {
-        modal.classList.remove('hidden');
+        modal.classList.remove('translate-x-full');
+        modal.classList.add('translate-x-0');
+        if (backdrop) backdrop.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
+        updateRoleVisibilityForDepartment('createDepartment', 'createPrimaryRole', 'createRolesCheckboxes');
     }
 }
 
 function closeCreateModal() {
     const modal = document.getElementById('createUserModal');
+    const backdrop = document.getElementById('createUserSlideoverBackdrop');
     if (modal) {
-        modal.classList.add('hidden');
+        modal.classList.add('translate-x-full');
+        modal.classList.remove('translate-x-0');
+        if (backdrop) backdrop.classList.add('hidden');
         document.body.style.overflow = '';
         const form = document.getElementById('createUserForm');
         if (form) form.reset();
@@ -25,7 +107,7 @@ function closeCreateModal() {
 
 // --- Edit Modal ---
 function openEditModal(userId) {
-    const row = document.querySelector(`tr[data-user-id="${userId}"]`);
+    const row = document.querySelector(`.user-row[data-user-id="${userId}"]`);
     if (!row) return;
     
     document.getElementById('editUserId').value = userId;
@@ -50,27 +132,35 @@ function openEditModal(userId) {
         checkbox.checked = assignedRoles.includes(checkbox.value);
     });
 
-    // Update checkbox states based on primary role
-    updateRoleCheckboxes('editRolesCheckboxes', 'editPrimaryRole');
-    
+    // Update checkbox states based on primary role, and hide IT-only role
+    // options if this user isn't in IT (must run after department/role are
+    // set above, since it reads the just-populated department value).
+    updateRoleVisibilityForDepartment('editDepartment', 'editPrimaryRole', 'editRolesCheckboxes');
+
     const modal = document.getElementById('editUserModal');
+    const backdrop = document.getElementById('editUserSlideoverBackdrop');
     if (modal) {
-        modal.classList.remove('hidden');
+        modal.classList.remove('translate-x-full');
+        modal.classList.add('translate-x-0');
+        if (backdrop) backdrop.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
     }
 }
 
-function closeEditModal() { 
+function closeEditModal() {
     const modal = document.getElementById('editUserModal');
+    const backdrop = document.getElementById('editUserSlideoverBackdrop');
     if (modal) {
-        modal.classList.add('hidden');
+        modal.classList.add('translate-x-full');
+        modal.classList.remove('translate-x-0');
+        if (backdrop) backdrop.classList.add('hidden');
         document.body.style.overflow = '';
     }
 }
 
 // --- Password Modal ---
 function openPasswordModal(userId) {
-    var row = document.querySelector('tr[data-user-id="' + userId + '"]');
+    var row = document.querySelector('.user-row[data-user-id="' + userId + '"]');
     if (!row) return;
 
     document.getElementById('passwordUserId').value = userId;
@@ -261,6 +351,21 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize role checkboxes for edit modal
     initRoleCheckboxes('editRolesCheckboxes', 'editPrimaryRole');
 
+    // Hide IT-only role options until Department = IT is chosen.
+    const createDept = document.getElementById('createDepartment');
+    if (createDept) {
+        createDept.addEventListener('change', function() {
+            updateRoleVisibilityForDepartment('createDepartment', 'createPrimaryRole', 'createRolesCheckboxes');
+        });
+        updateRoleVisibilityForDepartment('createDepartment', 'createPrimaryRole', 'createRolesCheckboxes');
+    }
+    const editDept = document.getElementById('editDepartment');
+    if (editDept) {
+        editDept.addEventListener('change', function() {
+            updateRoleVisibilityForDepartment('editDepartment', 'editPrimaryRole', 'editRolesCheckboxes');
+        });
+    }
+
     // --- Create User Form ---
     const createForm = document.getElementById('createUserForm');
     if (createForm) {
@@ -269,6 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const form = this;
             const submitBtn = form.querySelector('button[type="submit"]');
             if (submitBtn) submitBtn.disabled = true;
+            clearFieldErrors(form);
             const formData = new FormData(form);
             form.querySelectorAll('input[name="selected_roles"]').forEach(checkbox => {
                 if (checkbox.checked) formData.append('selected_roles', checkbox.value);
@@ -286,6 +392,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (typeof showToast === 'function') {
                             showToast('User created successfully');
                         }
+                    } else if (data.errors) {
+                        showFieldErrors(form, data.errors);
                     } else {
                         if (typeof showToast === 'function') {
                             showToast(data.error || 'Error creating user', 'error');
@@ -311,6 +419,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             const submitBtn = editForm.querySelector('button[type="submit"]');
             if (submitBtn) submitBtn.disabled = true;
+            clearFieldErrors(editForm);
             const userId = document.getElementById('editUserId').value;
             const formData = new FormData();
             formData.append('first_name', document.getElementById('editFirstName').value);
@@ -334,6 +443,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (typeof showToast === 'function') {
                             showToast('User details updated');
                         }
+                    } else if (data.errors) {
+                        showFieldErrors(editForm, data.errors);
                     } else {
                         if (typeof showToast === 'function') {
                             showToast(data.error || 'Error updating user', 'error');
@@ -357,20 +468,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (changePwdForm) {
         changePwdForm.addEventListener('submit', function(e) {
             e.preventDefault();
+            clearFieldErrors(changePwdForm);
             var userId = document.getElementById('passwordUserId').value;
             var password = document.getElementById('newPassword').value;
             var confirm = document.getElementById('confirmPassword').value;
 
-            if (password !== confirm) {
-                if (typeof showToast === 'function') {
-                    showToast('Passwords do not match.', 'error');
-                }
+            if (password.length < 8) {
+                showFieldErrors(changePwdForm, { newPassword: ['Password must be at least 8 characters.'] });
                 return;
             }
-            if (password.length < 8) {
-                if (typeof showToast === 'function') {
-                    showToast('Password must be at least 8 characters.', 'error');
-                }
+            if (password !== confirm) {
+                showFieldErrors(changePwdForm, { confirmPassword: ['Passwords do not match.'] });
                 return;
             }
 
@@ -460,6 +568,90 @@ function refreshTable() {
     const url = window.adminUsersUrl + '?' + params.toString();
     htmx.ajax('GET', url, { target: '#userTableContainer', swap: 'innerHTML' });
 }
+
+// ================================================================
+// BULK ACTIONS (Activate / Deactivate)
+// ================================================================
+// Checkboxes live inside the htmx-swapped #userTableContainer partial, so
+// selection state is recomputed from the DOM on every change rather than
+// tracked in JS — that way it stays correct across search/filter/pagination
+// swaps without needing to re-wire listeners after each one.
+
+function onUserCheckboxChange() {
+    const checked = document.querySelectorAll('.user-select-checkbox:checked');
+    const bar = document.getElementById('bulkActionsBar');
+    const countEl = document.getElementById('bulkSelectedCount');
+    if (!bar) return;
+    if (checked.length > 0) {
+        bar.classList.remove('hidden');
+        if (countEl) countEl.textContent = checked.length;
+    } else {
+        bar.classList.add('hidden');
+    }
+    const selectAll = document.getElementById('selectAllUsers');
+    const allBoxes = document.querySelectorAll('.user-select-checkbox');
+    if (selectAll) {
+        selectAll.checked = allBoxes.length > 0 && checked.length === allBoxes.length;
+    }
+}
+
+function toggleSelectAllUsers(headerCheckbox) {
+    document.querySelectorAll('.user-select-checkbox').forEach(function(box) {
+        box.checked = headerCheckbox.checked;
+    });
+    onUserCheckboxChange();
+}
+
+function clearUserSelection() {
+    document.querySelectorAll('.user-select-checkbox').forEach(function(box) { box.checked = false; });
+    const selectAll = document.getElementById('selectAllUsers');
+    if (selectAll) selectAll.checked = false;
+    onUserCheckboxChange();
+}
+
+function bulkToggleActive(setActive) {
+    const ids = Array.from(document.querySelectorAll('.user-select-checkbox:checked')).map(function(box) { return box.value; });
+    if (ids.length === 0) return;
+
+    confirmBulkAction(setActive ? 'activate' : 'deactivate', ids.length, function() {
+        const body = new URLSearchParams();
+        ids.forEach(function(id) { body.append('user_ids', id); });
+        body.append('set_active', setActive ? 'true' : 'false');
+
+        fetch(window.adminUserBulkToggleUrl, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body.toString(),
+        }).then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    refreshTable();
+                    let msg = `${data.updated} user(s) ${setActive ? 'activated' : 'deactivated'}.`;
+                    if (data.skipped) msg += ` ${data.skipped} skipped (self or protected accounts).`;
+                    if (typeof showToast === 'function') showToast(msg, data.updated ? 'success' : 'warning');
+                } else if (typeof showToast === 'function') {
+                    showToast(data.error || 'Error updating users', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Bulk toggle active error:', error);
+                if (typeof showToast === 'function') showToast('Network error. Please try again.', 'error');
+            });
+    });
+}
+
+// Selection is tied to specific DOM checkboxes, so any table refresh
+// (search/filter/pagination) invalidates it — reset the bar rather than
+// let it reference rows that no longer exist.
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target && evt.detail.target.id === 'userTableContainer') {
+        const bar = document.getElementById('bulkActionsBar');
+        if (bar) bar.classList.add('hidden');
+    }
+});
 
 // ================================================================
 // IMPERSONATE SUBMIT HANDLER

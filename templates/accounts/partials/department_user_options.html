@@ -1,0 +1,8 @@
+{% if users %}
+<option value="">Select a user...</option>
+{% for u in users %}
+<option value="{{ u.pk }}">{{ u.get_full_name }}</option>
+{% endfor %}
+{% else %}
+<option value="">Select a department first</option>
+{% endif %}

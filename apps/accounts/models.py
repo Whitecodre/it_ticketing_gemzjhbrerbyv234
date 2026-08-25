@@ -138,18 +138,28 @@ class User(AbstractUser):
     # apps/accounts/models.py - Add to User class
 
     def is_it_staff(self):
-        """Check if user is in IT department and has a support role."""
+        """Check if user is in IT department and has a support role.
+        Active-role aware (mirrors apps.common.permissions.effective_role_name, inlined here to
+        avoid a models -> views-layer circular import) so a role-switched user is judged by their
+        current active role, not a possibly-stale legacy `role` field."""
         if self.department != 'IT':
             return False
-        return self.role in [self.Role.AGENT, self.Role.TEAM_LEAD, self.Role.ADMIN, self.Role.SUPERADMIN]
+        active_role = self.get_active_role()
+        role_name = active_role.name if active_role else self.role
+        return role_name in [self.Role.AGENT, self.Role.TEAM_LEAD, self.Role.ADMIN, self.Role.SUPERADMIN]
 
     def can_work_on_tickets(self):
         """Check if user can work on tickets (IT department + support role)."""
         return self.is_it_staff()
 
     def can_manage_display_documents(self):
-        """Admin role or superuser: only these may create/edit/delete display documents & categories."""
-        return self.is_superuser or self.role == self.Role.ADMIN
+        """Admin role or superuser: only these may create/edit/delete display documents & categories.
+        Active-role aware (mirrors apps.common.permissions.effective_role_name, inlined here to
+        avoid a models -> views-layer circular import) so a role-switched user is judged by their
+        current active role, not a possibly-stale legacy `role` field."""
+        active_role = self.get_active_role()
+        role_name = active_role.name if active_role else self.role
+        return self.is_superuser or role_name == self.Role.ADMIN
 
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     signature = models.ImageField(upload_to='signatures/', blank=True, null=True)
@@ -411,6 +421,10 @@ class ClientSettings(models.Model):
     """Client company settings - logo, name, etc."""
     company_name = models.CharField(max_length=200, default='My Company')
     logo = models.ImageField(upload_to='client_logos/', blank=True, null=True)
+    # White-label currency symbol shown wherever the app renders a cost
+    # (renewal cost, maintenance cost, etc.) — was previously hardcoded as
+    # "$" in templates, which is wrong for any non-USD client.
+    currency_symbol = models.CharField(max_length=5, default='$')
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     

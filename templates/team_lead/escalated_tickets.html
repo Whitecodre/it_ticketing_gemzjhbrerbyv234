@@ -26,9 +26,25 @@
     </div>
 
     {% if tickets %}
+    <div class="flex flex-wrap items-center gap-2 mb-3">
+        <div class="relative flex-1 min-w-[200px] max-w-sm">
+            {% lucide "search" size=15 class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" %}
+            <input type="text" id="escalatedSearch" placeholder="Search ticket #, subject, requester, agent…"
+                   class="w-full rounded-lg border py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                   oninput="filterEscalatedTable()">
+        </div>
+        <select id="escalatedPriorityFilter" class="text-sm rounded-lg border py-1.5 px-3 bg-background border-border text-text-primary" onchange="filterEscalatedTable()">
+            <option value="">All Priorities</option>
+            <option value="P1">P1 - Critical</option>
+            <option value="P2">P2 - High</option>
+            <option value="P3">P3 - Medium</option>
+            <option value="P4">P4 - Low</option>
+        </select>
+        <span id="escalatedFilterCount" class="text-xs text-text-secondary"></span>
+    </div>
     <div class="dashboard-card p-0 overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm" id="escalatedTable">
                 <thead>
                     <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
@@ -42,7 +58,9 @@
                 </thead>
                 <tbody>
                     {% for ticket in tickets %}
-                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border escalated-row"
+                        data-search="{{ ticket.number|lower }} {{ ticket.title|lower }} {{ ticket.requester.get_full_name|lower }} {{ ticket.assigned_to.get_full_name|default:''|lower }}"
+                        data-priority="{{ ticket.priority }}">
                         <td class="py-3 px-4">
                             <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                         </td>
@@ -79,7 +97,7 @@
     </div>
     {% else %}
     <div class="dashboard-card text-center py-12">
-        <p class="text-text-secondary">No escalated tickets. Great job! 🎉</p>
+        <p class="text-text-secondary flex items-center justify-center gap-1">No escalated tickets. Great job! {% lucide "party-popper" size=14 %}</p>
     </div>
     {% endif %}
 </div>
@@ -91,47 +109,10 @@
             <h3 class="text-base font-semibold text-text-primary">Reassign Escalated Ticket</h3>
             <button onclick="closeReassignModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
-        <form method="post" id="reassignForm">
+        <form method="post" id="reassignForm" hx-target="#reassignFormFields" hx-swap="outerHTML">
             {% csrf_token %}
             <input type="hidden" name="ticket_id" id="reassignTicketId">
-            <div class="space-y-4">
-                <div>
-                    <label for="reassignAgent" class="block text-sm font-medium mb-1 text-text-primary">Assign to Agent</label>
-                    <select id="reassignAgent" name="agent_id" required
-                            class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                        <option value="">Select an agent</option>
-                        {% for agent in assignable_agents %}
-                        <option value="{{ agent.pk }}">
-                            {{ agent.get_full_name }}
-                            {% if agent.pk in agent_workload %}
-                                ({{ agent_workload|get_item:agent.pk }} open tickets)
-                            {% endif %}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label for="reassignReason" class="block text-sm font-medium mb-1 text-text-primary">Reason (optional)</label>
-                    <select id="reassignReason" onchange="fillComment('reassignComment', this.value)" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                        <option value="">Select a predefined reason…</option>
-                        {% for reason in reassign_reasons %}
-                        <option value="{{ reason.body }}">{{ reason.title }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label for="reassignComment" class="block text-sm font-medium mb-1 text-text-primary">Comment <span class="text-error">*</span></label>
-                    <textarea id="reassignComment" name="comment" rows="3" required
-                              class="w-full rounded-lg border p-3 text-sm resize-none focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                              placeholder="Explain the reason for reassigning…"></textarea>
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closeReassignModal()" class="btn-ghost text-sm">Cancel</button>
-                    <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1">
-                        {% lucide "user-check" size=14 %} Reassign
-                    </button>
-                </div>
-            </div>
+            {% include 'partials/escalated_reassign_form_fields.html' with form=reassign_form %}
         </form>
     </div>
 </div>
@@ -143,32 +124,10 @@
             <h3 class="text-base font-semibold text-text-primary">Return Ticket to Pool</h3>
             <button onclick="closeReturnModal()" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
         </div>
-        <form method="post" id="returnForm">
+        <form method="post" id="returnForm" hx-target="#returnFormFields" hx-swap="outerHTML">
             {% csrf_token %}
             <input type="hidden" name="ticket_id" id="returnTicketId">
-            <div class="space-y-4">
-                <div>
-                    <label for="returnReason" class="block text-sm font-medium mb-1 text-text-primary">Reason (optional)</label>
-                    <select id="returnReason" onchange="fillComment('returnComment', this.value)" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                        <option value="">Select a predefined reason…</option>
-                        {% for reason in return_reasons %}
-                        <option value="{{ reason.body }}">{{ reason.title }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label for="returnComment" class="block text-sm font-medium mb-1 text-text-primary">Comment <span class="text-error">*</span></label>
-                    <textarea id="returnComment" name="comment" rows="3" required
-                              class="w-full rounded-lg border p-3 text-sm resize-none focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                              placeholder="Explain why this ticket is being returned to the pool…"></textarea>
-                </div>
-                <div class="flex justify-end gap-2 pt-2">
-                    <button type="button" onclick="closeReturnModal()" class="btn-ghost text-sm">Cancel</button>
-                    <button type="submit" class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1">
-                        {% lucide "corner-up-left" size=14 %} Return to Pool
-                    </button>
-                </div>
-            </div>
+            {% include 'partials/escalated_return_form_fields.html' with form=return_form %}
         </form>
     </div>
 </div>
@@ -186,8 +145,12 @@
 
     // ----- Reassign Modal -----
     function openReassignModal(ticketId) {
+        const url = "{% url 'tickets:reassign_escalated' 0 %}".replace('0', ticketId);
         document.getElementById('reassignTicketId').value = ticketId;
-        document.getElementById('reassignForm').action = "{% url 'tickets:reassign_escalated' 0 %}".replace('0', ticketId);
+        const form = document.getElementById('reassignForm');
+        form.action = url;
+        form.setAttribute('hx-post', url);
+        htmx.process(form);
         document.getElementById('reassignModal').classList.remove('hidden');
         // Clear previous values
         document.getElementById('reassignAgent').value = '';
@@ -200,14 +163,32 @@
 
     // ----- Return Modal -----
     function openReturnModal(ticketId) {
+        const url = "{% url 'tickets:return_escalated_to_pool' 0 %}".replace('0', ticketId);
         document.getElementById('returnTicketId').value = ticketId;
-        document.getElementById('returnForm').action = "{% url 'tickets:return_escalated_to_pool' 0 %}".replace('0', ticketId);
+        const form = document.getElementById('returnForm');
+        form.action = url;
+        form.setAttribute('hx-post', url);
+        htmx.process(form);
         document.getElementById('returnModal').classList.remove('hidden');
         document.getElementById('returnReason').value = '';
         document.getElementById('returnComment').value = '';
     }
     function closeReturnModal() {
         document.getElementById('returnModal').classList.add('hidden');
+    }
+
+    function confirmReturnToPool() {
+        const form = document.getElementById('returnForm');
+        if (!form.reportValidity()) return;
+        openConfirmationModal({
+            title: 'Return Ticket to Pool',
+            message: 'Unassign this ticket and send it back to the unassigned queue?',
+            detail: 'Any agent may pick it up next — this does not notify the current assignee\'s work as complete.',
+            confirmText: 'Yes, return it',
+            confirmButtonClass: 'btn-danger',
+            icon: 'danger',
+            onConfirm: function() { form.requestSubmit(); }
+        });
     }
 
     // Close modals on Escape key
@@ -217,5 +198,26 @@
             closeReturnModal();
         }
     });
+
+    // Client-side filter — this queue is inherently small (escalated
+    // tickets only), so a server round-trip isn't needed to keep it
+    // searchable as it grows.
+    function filterEscalatedTable() {
+        const query = document.getElementById('escalatedSearch').value.trim().toLowerCase();
+        const priority = document.getElementById('escalatedPriorityFilter').value;
+        const rows = document.querySelectorAll('#escalatedTable .escalated-row');
+        let visibleCount = 0;
+        rows.forEach(function(row) {
+            const matchesQuery = !query || row.dataset.search.includes(query);
+            const matchesPriority = !priority || row.dataset.priority === priority;
+            const show = matchesQuery && matchesPriority;
+            row.classList.toggle('hidden', !show);
+            if (show) visibleCount++;
+        });
+        const countEl = document.getElementById('escalatedFilterCount');
+        if (countEl) {
+            countEl.textContent = (query || priority) ? `${visibleCount} of ${rows.length} shown` : '';
+        }
+    }
 </script>
 {% endblock %}

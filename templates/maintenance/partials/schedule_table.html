@@ -82,7 +82,7 @@
                         {% if schedule.status == 'COMPLETED' %}
                             {% if schedule.confirmed_by %}
                                 <div class="flex items-center gap-1">
-                                    <span class="text-success">✓</span>
+                                    <span class="text-success">{% lucide "check" size=12 %}</span>
                                     <span class="text-xs" style="color: var(--color-text-secondary);">
                                         {{ schedule.confirmed_by.get_full_name|default:schedule.confirmed_by.email }}
                                     </span>
@@ -181,7 +181,7 @@
     
     {% else %}
     <div class="py-12 text-center">
-        <div class="text-4xl mb-3 opacity-50">📋</div>
+        <div class="mb-3 opacity-50 flex items-center justify-center">{% lucide "clipboard-list" size=40 %}</div>
         <p class="text-sm" style="color: var(--color-text-secondary);">
             No maintenance schedules found.
         </p>

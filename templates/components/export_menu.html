@@ -1,0 +1,96 @@
+{% load lucide %}
+{% load badge_tags %}
+{# ================================================================ #}
+{# EXPORT MENU — single "Export ▾" dropdown, parameterized by format #}
+{# list + endpoint. Adding a new export format elsewhere is then a   #}
+{# one-line addition to the `formats` list passed in, not a new      #}
+{# button. Usage:                                                    #}
+{#                                                                    #}
+{# {% include "components/export_menu.html" with                     #}
+{#    menu_id="report"                                                #}
+{#    export_url=export_base_url                                      #}
+{#    extra_qs=querystring                                             #}
+{#    formats=export_formats %}                                        #}
+{#                                                                    #}
+{# `formats` is a compact string: "csv:CSV:file-spreadsheet,excel:Excel:  #}
+{# file-spreadsheet,json:JSON:file-code" (format:Label:icon, comma-       #}
+{# separated) — adding a new export format elsewhere is then a one-line  #}
+{# edit to this string at the call site. `menu_id` must be unique per    #}
+{# instance on a page (lets multiple export menus coexist). If a bulk-   #}
+{# select component on the same page needs to scope exports to selected  #}
+{# rows, it calls window.updateExportMenuLinks_<menu_id>(ids).           #}
+{# ================================================================ #}
+{% with mid=menu_id|default:"export" parsed_formats=formats|parse_export_formats %}
+<div class="relative" id="exportMenu-{{ mid }}">
+    <button type="button" id="exportMenuBtn-{{ mid }}"
+            class="{{ button_class|default:'btn-outline' }} text-sm px-4 py-2 rounded-lg flex items-center gap-2"
+            onclick="toggleExportMenu_{{ mid }}(); event.stopPropagation();">
+        {% lucide "upload" size=16 %} {{ button_label|default:"Export" }}
+        {% lucide "chevron-down" size=14 class="ml-1" %}
+    </button>
+</div>
+{# Positioned via window.positionDropdown (static/js/global.js) — same fixed + #}
+{# opacity/scale-transition pattern as the asset inventory Actions dropdown,   #}
+{# so it repositions itself instead of clipping/misaligning near table edges. #}
+<div id="exportMenuPanel-{{ mid }}"
+     class="fixed rounded-lg shadow-lg border z-[9999] py-1 w-40 bg-surface border-border
+            opacity-0 scale-95 pointer-events-none transition-all duration-150 ease-out"
+     style="transform-origin: top right;">
+    {% for fmt in parsed_formats %}
+    <a id="exportMenuLink-{{ mid }}-{{ fmt.format }}"
+       data-base-href="{{ export_url }}?format={{ fmt.format }}{% if extra_qs %}&{{ extra_qs }}{% endif %}"
+       href="{{ export_url }}?format={{ fmt.format }}{% if extra_qs %}&{{ extra_qs }}{% endif %}"
+       class="flex items-center gap-2 px-4 py-2 text-xs hover:bg-black/5 transition text-text-primary">
+        {% lucide fmt.icon|default:"file" size=13 %} {{ fmt.label }}
+    </a>
+    {% endfor %}
+</div>
+<script>
+(function() {
+    var btn = document.getElementById('exportMenuBtn-{{ mid }}');
+    var panel = document.getElementById('exportMenuPanel-{{ mid }}');
+    if (!btn || !panel || btn.dataset.exportMenuBound) return;
+    btn.dataset.exportMenuBound = '1';
+
+    var cleanup = null;
+
+    function isOpen() { return panel.classList.contains('opacity-100'); }
+
+    function close() {
+        panel.classList.remove('opacity-100', 'scale-100');
+        panel.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
+        if (cleanup) { cleanup(); cleanup = null; }
+    }
+
+    function open() {
+        if (window.positionDropdown) {
+            cleanup = window.positionDropdown(btn, panel, { align: 'right' });
+        }
+        panel.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
+        panel.classList.add('opacity-100', 'scale-100');
+    }
+
+    window['toggleExportMenu_{{ mid }}'] = function() {
+        if (isOpen()) close(); else open();
+    };
+
+    document.addEventListener('click', function(e) {
+        if (isOpen() && !btn.contains(e.target) && !panel.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && isOpen()) close();
+    });
+
+    // Exposed so a bulk-select component on the same page can rescope
+    // each format link to only the selected rows.
+    window['updateExportMenuLinks_{{ mid }}'] = function(ids) {
+        panel.querySelectorAll('a[id^="exportMenuLink-{{ mid }}-"]').forEach(function(link) {
+            var base = link.dataset.baseHref;
+            link.href = (ids && ids.length)
+                ? base + ids.map(function(id) { return '&ids=' + encodeURIComponent(id); }).join('')
+                : base;
+        });
+    };
+})();
+</script>
+{% endwith %}

@@ -1,0 +1,22 @@
+{% load lucide %}
+    {% comment %} Compact inline attachment chip for chat bubbles (conversation_timeline.html).
+   Expects `att` (a tickets.Attachment) and optional `on_primary` (True when the
+   surrounding bubble has a solid --color-primary background, i.e. the current
+   user's own sent messages) so text/background stay legible either way. {% endcomment %}
+<div class="mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.7rem]
+    {% if on_primary %}bg-white/15{% else %}bg-black/5{% endif %}">
+    <a href="{% url 'tickets:attachment_download' att.pk %}"
+       class="flex items-center gap-1 hover:underline transition {% if on_primary %}text-white{% else %}text-text-secondary{% endif %}">
+        {% lucide "paperclip" size=11 %}
+        <span class="truncate max-w-[10rem]">{{ att.filename }}</span>
+        <span class="opacity-70">({{ att.size|filesizeformat }})</span>
+    </a>
+    <button class="p-0.5 rounded-full transition element-link {% if on_primary %}text-white/70 hover:text-white{% else %}text-text-secondary hover:text-primary{% endif %}"
+            hx-get="{% url 'tickets:attachment_preview' att.pk %}"
+            hx-target="#modalContainer"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
+            data-tooltip="Preview" aria-label="Preview {{ att.filename }}">
+        {% lucide "eye" size=11 %}
+    </button>
+</div>

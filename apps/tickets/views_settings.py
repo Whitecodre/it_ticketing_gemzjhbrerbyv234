@@ -59,9 +59,13 @@ def system_settings(request):
 
     resources_ctx = []
     for slug, config in SETTINGS_RESOURCES.items():
+        pending = []
+        if config.has_proposals:
+            pending = list(config.model.objects.filter(is_active=False, proposed_by__isnull=False))
         resources_ctx.append({
             'config': config,
             'rows': config.model.objects.all(),
+            'pending': pending,
         })
 
     context = {
@@ -135,6 +139,40 @@ def settings_resource_delete(request, resource, pk):
 
 @login_required
 @require_POST
+def settings_resource_activate(request, resource, pk):
+    """Approve a row a non-admin proposed inline elsewhere (a new vessel/
+    job number/vendor typed on a mobilization/service-request/procurement
+    form) — the one-click shortcut for the same thing Edit + checking
+    "Active" + Save already does, surfaced from the pending-approval
+    banner on this resource's System Settings tab."""
+    if not _is_admin(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+
+    config = _get_resource_or_404(resource)
+    obj = get_object_or_404(config.model, pk=pk)
+    if not hasattr(obj, 'is_active'):
+        return JsonResponse({'error': 'This resource has no active state.'}, status=400)
+
+    obj.is_active = True
+    obj.save(update_fields=['is_active'])
+
+    proposer = getattr(obj, 'proposed_by', None)
+    if proposer:
+        from apps.common.models import Notification
+        from apps.common.utils import role_of
+        label = getattr(obj, 'name', None) or getattr(obj, 'number', None) or str(obj)
+        Notification.objects.create(
+            recipient=proposer,
+            role=role_of(proposer),
+            message=f'"{label}" ({config.singular_label}) you proposed has been approved and is now active.',
+            url='/tickets/settings/',
+        )
+
+    return JsonResponse({'status': 'ok'})
+
+
+@login_required
+@require_POST
 def branding_update(request):
     if not _is_admin(request.user):
         return HttpResponse(status=403)
@@ -145,6 +183,10 @@ def branding_update(request):
     company_name = request.POST.get('company_name', '').strip()
     if company_name:
         client_settings.company_name = company_name
+
+    currency_symbol = request.POST.get('currency_symbol', '').strip()
+    if currency_symbol:
+        client_settings.currency_symbol = currency_symbol
 
     if 'logo' in request.FILES:
         logo = request.FILES['logo']

@@ -2,7 +2,7 @@
 {% firstof instance_id 'default' as iid %}
 
 <div class="overflow-x-auto">
-    <table class="w-full text-sm" id="ticketTable-{{ iid }}">
+    <table class="w-full text-sm" id="ticketTable-{{ iid }}" data-sortable="true">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
                 {# Only show checkbox column if tickets are unassigned #}
@@ -11,13 +11,13 @@
                     <input type="checkbox" id="selectAll-{{ iid }}" class="rounded" onchange="handleSelectAll_{{ iid }}(this)">
                 </th>
                 {% endif %}
-                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">ID</th>
-                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
-                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
-                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="id">ID</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="subject">Subject</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="requester">Requester</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="status">Status</th>
                 <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">SLA</th>
-                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
-                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs">Updated</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="priority">Priority</th>
+                <th class="text-left py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs" data-sort-key="updated">Updated</th>
                 <th class="text-right py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-12">Actions</th>
             </tr>
         </thead>
@@ -34,14 +34,14 @@
                     <input type="checkbox" value="{{ ticket.pk }}" class="ticket-checkbox ticket-checkbox-{{ iid }} rounded" onchange="handleCheckboxChange_{{ iid }}(this)">
                 </td>
                 {% endif %}
-                <td class="py-3">
+                <td class="py-3" data-value="{{ ticket.number }}">
                     <div class="flex items-center gap-2">
                         <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                     </div>
                 </td>
-                <td class="py-3 px-2 max-w-xs truncate text-text-primary">{{ ticket.title }}</td>
-                <td class="py-3 text-text-secondary">{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }}</td>
-                <td class="py-3 text-text-secondary">
+                <td class="py-3 px-2 max-w-xs truncate text-text-primary" data-value="{{ ticket.title|lower }}">{{ ticket.title }}</td>
+                <td class="py-3 text-text-secondary" data-value="{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email|lower }}">{{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }}</td>
+                <td class="py-3 text-text-secondary" data-value="{{ ticket.get_status_display }}">
                     <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
                 </td>
                 <td class="py-3">
@@ -71,7 +71,7 @@
                         {% endwith %}
                     </div>
                 </td>
-                <td class="py-3">
+                <td class="py-3" data-value="{{ ticket.priority }}">
                     <span class="priority-chip
                         {% if ticket.priority == 'P1' %}critical
                         {% elif ticket.priority == 'P2' %}high
@@ -80,7 +80,7 @@
                         {{ ticket.get_priority_display }}
                     </span>
                 </td>
-                <td class="py-3 text-text-secondary text-xs">{{ ticket.updated_at|timesince }} ago</td>
+                <td class="py-3 text-text-secondary text-xs" data-value="{{ ticket.updated_at|date:'U' }}">{{ ticket.updated_at|timesince }} ago</td>
                 <td class="py-3 px-3 text-right">
                     <button class="ticket-action-btn-{{ iid }} btn-ghost p-1.5 rounded-full hover:bg-black/5 transition"
                             data-ticket-id="{{ ticket.pk }}"
@@ -99,7 +99,7 @@
                 <td colspan="{% if not hide_checkboxes %}9{% else %}8{% endif %}" class="text-center py-4">
                     <div class="flex flex-col items-center gap-0.5">
                         <p class="text-text-secondary text-sm">No tickets here.</p>
-                        <p class="text-text-secondary text-xs">Great job! 🎉</p>
+                        <p class="text-text-secondary text-xs flex items-center gap-1">{% lucide "party-popper" size=12 %} Great job!</p>
                     </div>
                 </td>
             </tr>
@@ -288,7 +288,7 @@
                 isProcessing = false;
 
                 if (claimed > 0) {
-                    var msg = '✅ Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!';
+                    var msg = 'Successfully claimed ' + claimed + ' ticket' + (claimed > 1 ? 's' : '') + '!';
                     if (typeof showToast === 'function') {
                         showToast(msg, 'success');
                     }
@@ -314,7 +314,7 @@
                     }
 
                     if (failed > 0 && typeof showToast === 'function') {
-                        showToast('⚠️ ' + failed + ' ticket' + (failed > 1 ? 's' : '') + ' could not be claimed.', 'warning');
+                        showToast(failed + ' ticket' + (failed > 1 ? 's' : '') + ' could not be claimed.', 'warning');
                     }
                 } else if (typeof showToast === 'function') {
                     showToast('Failed to claim tickets. Please try again.', 'error');
@@ -415,18 +415,50 @@
     var claimBtn = dropdown.querySelector('.dropdown-claim');
     var conversationBtn = dropdown.querySelector('.dropdown-conversation');
 
-    var activeButton = null;
     var activeData = {};
-    var dropdownCleanup = null;
+
+    // Shared toggle-to-close/positioning behavior (static/js/global.js) —
+    // the same helper the asset inventory table's Actions dropdown uses.
+    // Created via retry, not here at parse time: this inline <script> runs
+    // as soon as it's parsed, which is *before* global.js — loaded near the
+    // end of base_dashboard.html — has executed. Lazily creating it inside
+    // the click handler instead doesn't work either: createActionDropdown()
+    // registers its own document click listener, and adding that listener
+    // mid-dispatch of the very click event that's triggering creation lets
+    // it also fire for that same event, closing the dropdown immediately
+    // after opening it. A single setTimeout(fn, 0) isn't reliable either —
+    // the browser can yield to the event loop while *fetching* the blocking
+    // global.js <script src>, letting an already-queued timer fire before
+    // that script's body has actually run — so this retries every 20ms
+    // until the helper is really there.
+    var actionDropdown = null;
+    var actionDropdownOptions = {
+        align: 'right',
+        onOpen: function(btn) {
+            var dataset = btn.dataset;
+            activeData = {
+                slideoverUrl: dataset.slideoverUrl || null,
+                claimUrl: dataset.claimUrl || null,
+                conversationUrl: dataset.conversationUrl || null,
+                isAssigned: dataset.isAssigned === 'true',
+                ticketId: dataset.ticketId || null,
+                ticketNumber: dataset.ticketNumber || null,
+            };
+
+            if (claimBtn) claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
+            if (viewBtn) viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
+        },
+    };
+    (function initTicketActionDropdown() {
+        if (typeof window.createActionDropdown === 'function') {
+            actionDropdown = window.createActionDropdown(dropdown, actionDropdownOptions);
+        } else {
+            setTimeout(initTicketActionDropdown, 20);
+        }
+    })();
 
     function closeDropdown() {
-        dropdown.classList.remove('opacity-100', 'scale-100');
-        dropdown.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
-        activeButton = null;
-        if (dropdownCleanup) {
-            dropdownCleanup();
-            dropdownCleanup = null;
-        }
+        if (actionDropdown) actionDropdown.close();
     }
 
     window.loadTicketSlideoverFromDropdown = window.loadTicketSlideoverFromDropdown || function(url) {
@@ -437,36 +469,12 @@
         }, 120);
     };
 
-    function ticketActionBtnClick(btn) {
-        closeDropdown();
-
-        var dataset = btn.dataset;
-        activeButton = btn;
-        activeData = {
-            slideoverUrl: dataset.slideoverUrl || null,
-            claimUrl: dataset.claimUrl || null,
-            conversationUrl: dataset.conversationUrl || null,
-            isAssigned: dataset.isAssigned === 'true',
-            ticketId: dataset.ticketId || null,
-            ticketNumber: dataset.ticketNumber || null,
-        };
-
-        if (claimBtn) claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
-        if (viewBtn) viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
-
-        if (window.positionDropdown) {
-            dropdownCleanup = window.positionDropdown(btn, dropdown, { align: 'center' });
-        }
-        dropdown.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
-        dropdown.classList.add('opacity-100', 'scale-100');
-    }
-
     document.addEventListener('click', function(e) {
         var btn = e.target.closest('.ticket-action-btn-' + instanceId);
         if (btn) {
             e.preventDefault();
             e.stopPropagation();
-            ticketActionBtnClick(btn);
+            if (actionDropdown) actionDropdown.toggle(btn);
         }
     });
 
@@ -515,7 +523,7 @@
             claimBtn.style.pointerEvents = 'none';
 
             if (typeof showToast === 'function') {
-                showToast('⏳ Claiming ticket...', 'info');
+                showToast('Claiming ticket...', 'info');
             }
 
             fetch(activeData.claimUrl, {
@@ -530,9 +538,26 @@
             .then(function(data) {
                 if (data.success) {
                     if (typeof showToast === 'function') {
-                        showToast(data.message || '✅ Ticket claimed successfully!', 'success');
+                        showToast(data.message || 'Ticket claimed successfully!', 'success');
                     }
-                    setTimeout(function() { window.location.reload(); }, 800);
+                    // Update in place (fade + remove the row) instead of a full
+                    // page reload, matching doBulkClaimTickets above — so the
+                    // dropdown/table stay interactive right away.
+                    var claimedRow = tableBody && activeData.ticketId
+                        ? tableBody.querySelector('.ticket-row[data-ticket-id="' + activeData.ticketId + '"]')
+                        : null;
+                    if (claimedRow) {
+                        claimedRow.style.opacity = '0.3';
+                        claimedRow.style.transition = 'opacity 0.3s ease';
+                        setTimeout(function() {
+                            claimedRow.remove();
+                            if (tableBody.querySelectorAll('.ticket-row').length === 0) {
+                                location.reload();
+                            }
+                        }, 300);
+                    } else {
+                        window.location.reload();
+                    }
                 } else {
                     if (typeof showToast === 'function') {
                         showToast(data.message || 'Failed to claim ticket.', 'error');
@@ -562,14 +587,6 @@
         });
     }
 
-    document.addEventListener('click', function(e) {
-        if (!dropdown.contains(e.target) && !e.target.closest('.ticket-action-btn-' + instanceId)) {
-            closeDropdown();
-        }
-    });
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeDropdown();
-    });
+    // Outside-click/Escape-to-close are already wired by createActionDropdown above.
 })();
 </script>

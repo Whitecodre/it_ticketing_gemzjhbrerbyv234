@@ -49,7 +49,7 @@
                     {% lucide "bell" size=18 class="h-4.5 w-4.5" %}
                     <div id="notificationBadgeContainer"
                         hx-get="{% url 'notifications:unread_count' %}"
-                        hx-trigger="every 30s"
+                        hx-trigger="load, every 30s"
                         hx-swap="innerHTML">
                         {% include "partials/notification_badge.html" with count=0 %}
                     </div>
@@ -114,7 +114,7 @@
                                 {{ role.display_name }}
                             </span>
                             {% if active_role_name == role.name %}
-                            <span class="text-xs text-primary">✓</span>
+                            <span class="text-xs text-primary">{% lucide "check" size=12 %}</span>
                             {% endif %}
                         </button>
                     </form>
@@ -320,6 +320,8 @@
 <script src="{% static 'js/global.js' %}"></script>
 <script src="{% static 'js/keyboard_shortcuts.js' %}"></script>
 <script src="{% static 'js/confirmation-modal.js' %}"></script>
+<script src="{% static 'js/dashboard_table_sort.js' %}"></script>
+<script src="{% static 'js/dashboard_freshness.js' %}"></script>
 
 {# Initialize vanilla JS components #}
 <script>
@@ -327,12 +329,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // ================================================================
     // 1. THEME
     // ================================================================
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    // A first-time visitor has no saved preference yet — fall back to
+    // their OS-level dark-mode setting instead of always defaulting to
+    // light (matches the logic already used on the registration pages).
+    const savedTheme = localStorage.getItem('theme') ||
+        (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     if (typeof setTheme === 'function') {
         setTheme(savedTheme);
     }
     
-    // Theme radio click handlers
+    // Theme radio click handlers (mouse) + change handlers (keyboard —
+    // Tab to focus the now-focusable radio input, Space/arrow keys to
+    // pick one, which fires a native `change` the click handler alone
+    // wouldn't catch).
     document.querySelectorAll('.theme-radio[data-theme]').forEach(function(label) {
         label.addEventListener('click', function(e) {
             e.preventDefault();
@@ -340,6 +349,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 setTheme(this.dataset.theme);
             }
         });
+        const radio = label.querySelector('input[type="radio"]');
+        if (radio) {
+            radio.addEventListener('change', function() {
+                if (typeof setTheme === 'function') {
+                    setTheme(label.dataset.theme);
+                }
+            });
+        }
     });
 
     // ================================================================

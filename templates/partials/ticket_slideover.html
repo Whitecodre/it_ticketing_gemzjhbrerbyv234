@@ -104,13 +104,9 @@
                     Sent by {{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }} (User)
                     <span class="text-text-secondary text-[0.6rem] ml-1">({{ user_attachments|length }})</span>
                 </button>
-                <div class="hidden mt-2 space-y-1">
+                <div class="hidden mt-2 space-y-1.5 pl-5">
                     {% for att in user_attachments %}
-                    <div class="flex items-center gap-2 text-xs pl-5">
-                        <span class="text-text-secondary">📎</span>
-                        <a href="{% url 'tickets:attachment_download' att.pk %}" class="text-primary hover:underline truncate">{{ att.filename }}</a>
-                        <span class="text-text-secondary text-[0.6rem]">({{ att.size|filesizeformat }})</span>
-                    </div>
+                    {% include "partials/attachment_card.html" with att=att %}
                     {% endfor %}
                 </div>
             </div>
@@ -125,13 +121,9 @@
                     Sent by Support Team
                     <span class="text-text-secondary text-[0.6rem] ml-1">({{ agent_attachments|length }})</span>
                 </button>
-                <div class="hidden mt-2 space-y-1">
+                <div class="hidden mt-2 space-y-1.5 pl-5">
                     {% for att in agent_attachments %}
-                    <div class="flex items-center gap-2 text-xs pl-5">
-                        <span class="text-text-secondary">📎</span>
-                        <a href="{% url 'tickets:attachment_download' att.pk %}" class="text-primary hover:underline truncate">{{ att.filename }}</a>
-                        <span class="text-text-secondary text-[0.6rem]">({{ att.size|filesizeformat }})</span>
-                    </div>
+                    {% include "partials/attachment_card.html" with att=att %}
                     {% endfor %}
                 </div>
             </div>
@@ -217,7 +209,7 @@
             
             // Show loading toast
             if (typeof showToast === 'function') {
-                showToast('⏳ Claiming ticket...', 'info');
+                showToast('Claiming ticket...', 'info');
             }
             
             fetch(claimUrl, {
@@ -237,7 +229,7 @@
                 
                 if (data.success) {
                     if (typeof showToast === 'function') {
-                        showToast(data.message || '✅ Ticket claimed successfully!', 'success');
+                        showToast(data.message || 'Ticket claimed successfully!', 'success');
                     }
                     
                     // RELOAD THE PAGE

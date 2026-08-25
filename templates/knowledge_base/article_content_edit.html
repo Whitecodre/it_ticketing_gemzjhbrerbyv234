@@ -172,18 +172,22 @@
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Title</label>
                     {{ metadata_form.title }}
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="title"></p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Category</label>
                     {{ metadata_form.category }}
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="category"></p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Visibility</label>
                     {{ metadata_form.visibility }}
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="visibility"></p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Tags</label>
                     {{ metadata_form.tags_input }}
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="tags_input"></p>
                 </div>
                 <div class="flex items-center justify-end gap-2 pt-2">
                     <button type="button" onclick="closeEditDetailsModal()" class="btn-ghost text-sm px-4 py-2">Cancel</button>
@@ -327,8 +331,16 @@
         document.getElementById('editorGuideModalOverlay').classList.add('hidden');
     }
 
+    function clearEditDetailsErrors() {
+        document.querySelectorAll('#editDetailsForm [data-error-for]').forEach(function (el) {
+            el.textContent = '';
+            el.classList.add('hidden');
+        });
+    }
+
     document.getElementById('editDetailsForm').addEventListener('submit', function (e) {
         e.preventDefault();
+        clearEditDetailsErrors();
         const formData = new FormData(this);
         fetch("{% url 'kb:metadata_update' article.pk %}", {
             method: 'POST',
@@ -339,6 +351,14 @@
               if (result.ok) {
                   document.getElementById('articleTitleDisplay').textContent = result.data.title;
                   closeEditDetailsModal();
+              } else if (result.data.errors) {
+                  Object.keys(result.data.errors).forEach(function (field) {
+                      const el = document.querySelector('#editDetailsForm [data-error-for="' + field + '"]');
+                      if (el) {
+                          el.textContent = result.data.errors[field][0];
+                          el.classList.remove('hidden');
+                      }
+                  });
               } else if (typeof showToast === 'function') {
                   showToast(result.data.error || 'Could not save details', 'error');
               }

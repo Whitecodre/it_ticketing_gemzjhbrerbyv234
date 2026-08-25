@@ -56,13 +56,6 @@ def is_superadmin(user):
     return effective_role_name(user) == 'SUPERADMIN'
 
 
-def can_edit_org(user):
-    role_name = effective_role_name(user)
-    if role_name == 'TEAM_LEAD':
-        return user.department == 'IT'
-    return role_name in ('ADMIN', 'SUPERADMIN')
-
-
 def is_support_staff(user):
     """IT department plus a staff-level active role (Agent/Team Lead/Admin/Superadmin)."""
     return user.department == 'IT' and effective_role_name(user) in (

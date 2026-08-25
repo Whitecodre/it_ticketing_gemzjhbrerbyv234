@@ -21,6 +21,7 @@ urlpatterns = [
 
     # NEW: KB suggestions for ticket creation
     path('suggestions/', views.kb_suggestions_ajax, name='suggestions'),
+    path('composer-search/', views.kb_composer_search, name='composer_search'),
 
     # Version history & revert
     path('<int:pk>/history/', views.article_history, name='history'),

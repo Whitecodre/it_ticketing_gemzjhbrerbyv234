@@ -24,32 +24,26 @@
             <div>
                 <div class="flex items-center gap-3 flex-wrap">
                     <h1 class="text-xl font-bold text-text-primary">{{ asset.name }}</h1>
-                    <span class="status-chip 
-                        {% if asset.status == 'IN_STORE' or asset.status == 'READY' %}success
-                        {% elif asset.status == 'CHECKED_OUT' or asset.status == 'IN_USE' %}primary
-                        {% elif asset.status == 'MAINTENANCE' or asset.status == 'REPAIR' %}warning
-                        {% elif asset.status == 'RETIRED' or asset.status == 'SCRAPPED' %}neutral
-                        {% elif asset.status == 'LOST' or asset.status == 'STOLEN' %}danger
-                        {% else %}info{% endif %} text-xs">
-                        {{ asset.get_status_display }}
+                    <span class="status-chip status-chip-{{ asset.status_display.color }} text-xs">
+                        {{ asset.status_display.label }}
                     </span>
-                    <span class="status-chip 
-                        {% if asset.condition == 'EXCELLENT' %}success
-                        {% elif asset.condition == 'GOOD' %}info
-                        {% elif asset.condition == 'FAIR' %}warning
-                        {% elif asset.condition == 'POOR' %}danger
-                        {% elif asset.condition == 'DAMAGED' %}danger
-                        {% else %}neutral{% endif %} text-xs">
+                    <span class="status-chip
+                        {% if asset.condition == 'EXCELLENT' %}status-chip-success
+                        {% elif asset.condition == 'GOOD' %}status-chip-info
+                        {% elif asset.condition == 'FAIR' %}status-chip-warning
+                        {% elif asset.condition == 'POOR' %}status-chip-danger
+                        {% elif asset.condition == 'DAMAGED' %}status-chip-danger
+                        {% else %}status-chip-neutral{% endif %} text-xs">
                         {{ asset.get_condition_display }}
                     </span>
                     {% if asset.is_consumable %}
-                    <span class="status-chip info text-xs">{{ asset.quantity_in_stock }} in stock</span>
+                    <span class="status-chip status-chip-info text-xs">{{ asset.quantity_in_stock }} in stock</span>
                     {% endif %}
                     {% if asset.is_low_stock %}
-                    <span class="status-chip danger text-xs">⚠️ Low Stock</span>
+                    <span class="status-chip status-chip-danger text-xs flex items-center gap-0.5">{% lucide "triangle-alert" size=11 %} Low Stock</span>
                     {% endif %}
                     {% if asset.is_renewal_due_soon %}
-                    <span class="status-chip {% if asset.next_renewal_date < today %}danger{% else %}warning{% endif %} text-xs">📅 Renews {{ asset.next_renewal_date|date:"M j, Y" }}</span>
+                    <span class="status-chip {% if asset.next_renewal_date < today %}status-chip-danger{% else %}status-chip-warning{% endif %} text-xs flex items-center gap-0.5">{% lucide "calendar" size=11 %} Renews {{ asset.next_renewal_date|date:"M j, Y" }}</span>
                     {% endif %}
                 </div>
                 <p class="text-sm text-text-secondary">{{ asset.tracking_id }}</p>
@@ -65,6 +59,18 @@
                    class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "pencil" size=14 %} Edit
                 </a>
+                {% endif %}
+                {% if asset.is_consumable and active_role_name in 'ADMIN,SUPERADMIN' %}
+                <button class="btn-ghost text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                        onclick="openAdjustStockModal()">
+                    {% lucide "package" size=14 %} Adjust Stock
+                </button>
+                {% endif %}
+                {% if asset.is_consumable and asset.is_low_stock and active_role_name in 'ADMIN,SUPERADMIN' %}
+                <button class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                        onclick="openReorderModal()">
+                    {% lucide "shopping-cart" size=14 %} Reorder
+                </button>
                 {% endif %}
                 {% if asset.is_renewable and active_role_name in 'ADMIN,SUPERADMIN' %}
                 <form method="post" action="{% url 'tickets:asset_mark_renewed' asset.pk %}" id="markRenewedForm" class="inline-flex">
@@ -99,9 +105,9 @@
             </div>
             <div class="text-center p-3 rounded-lg bg-background">
                 <p class="text-2xl font-bold {% if asset.warranty_status == 'VALID' %}text-success{% elif asset.warranty_status == 'EXPIRING_SOON' %}text-warning{% elif asset.warranty_status == 'EXPIRED' %}text-danger{% else %}text-text-secondary{% endif %}">
-                    {% if asset.warranty_status == 'VALID' %}✓
-                    {% elif asset.warranty_status == 'EXPIRING_SOON' %}⚠
-                    {% elif asset.warranty_status == 'EXPIRED' %}✗
+                    {% if asset.warranty_status == 'VALID' %}{% lucide "check" size=20 %}
+                    {% elif asset.warranty_status == 'EXPIRING_SOON' %}{% lucide "triangle-alert" size=20 %}
+                    {% elif asset.warranty_status == 'EXPIRED' %}{% lucide "x" size=20 %}
                     {% else %}?{% endif %}
                 </p>
                 <p class="text-xs text-text-secondary">
@@ -207,7 +213,7 @@
                         </div>
                         <div class="flex justify-between border-b py-1 border-border">
                             <dt class="text-text-secondary">Renewal Cost</dt>
-                            <dd>{% if asset.renewal_cost %}{{ asset.renewal_cost }}{% else %}—{% endif %}</dd>
+                            <dd>{% if asset.renewal_cost %}{{ client_settings.currency_symbol }}{{ asset.renewal_cost }}{% else %}—{% endif %}</dd>
                         </div>
                         <div class="flex justify-between border-b py-1 border-border">
                             <dt class="text-text-secondary">Vendor</dt>
@@ -223,6 +229,23 @@
                         </div>
                     </dl>
                 </div>
+
+                {% if renewal_logs %}
+                <div class="pt-4 border-t border-border">
+                    <h4 class="text-sm font-semibold mb-3 text-text-secondary">Renewal History</h4>
+                    <div class="space-y-1">
+                        {% for log in renewal_logs %}
+                        <div class="flex justify-between text-sm py-1 border-b border-border">
+                            <span class="text-text-secondary">
+                                Renewed until {{ log.details.renewed_until|default:"—" }}
+                                {% if log.details.cost %} — {{ client_settings.currency_symbol }}{{ log.details.cost }}{% endif %}
+                            </span>
+                            <span class="text-text-secondary text-xs">{{ log.created_at|date:"M d, Y" }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
                 {% endif %}
 
                 {% if asset.notes or asset.condition_notes %}
@@ -238,6 +261,45 @@
                     {% endif %}
                 </div>
                 {% endif %}
+
+                <div class="pt-4 border-t border-border">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-sm font-semibold text-text-secondary">Attachments</h4>
+                        {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                        <form method="post" action="{% url 'tickets:asset_attachment_upload' asset.pk %}" enctype="multipart/form-data" class="inline-flex items-center gap-2">
+                            {% csrf_token %}
+                            <input type="file" name="file" required
+                                   class="text-xs text-text-secondary file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:bg-primary/10 file:text-primary">
+                            <button type="submit" class="btn-ghost text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                {% lucide "upload" size=12 %} Upload
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    {% if attachments %}
+                    <div class="space-y-1">
+                        {% for att in attachments %}
+                        <div class="flex items-center justify-between text-sm py-1.5 border-b border-border">
+                            <a href="{{ att.file.url }}" target="_blank" rel="noopener" class="flex items-center gap-1.5 text-text-primary hover:text-primary hover:underline truncate">
+                                {% lucide "paperclip" size=12 %} {{ att.filename }}
+                                <span class="text-xs text-text-secondary">({{ att.size|filesizeformat }})</span>
+                            </a>
+                            {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                            <form method="post" action="{% url 'tickets:asset_attachment_delete' att.pk %}" id="deleteAttachmentForm{{ att.pk }}" class="inline">
+                                {% csrf_token %}
+                                <button type="button" class="btn-ghost text-xs px-2 py-1 rounded-lg text-error"
+                                        onclick="confirmDelete('{{ att.filename|escapejs }}', 'Attachment', function() { document.getElementById('deleteAttachmentForm{{ att.pk }}').submit(); })">
+                                    {% lucide "trash-2" size=12 %}
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="text-xs text-text-secondary">No files attached — e.g. a license agreement, invoice, or contract.</p>
+                    {% endif %}
+                </div>
             </div>
 
             <!-- Tab: History -->
@@ -283,7 +345,7 @@
                         </div>
                         <p class="text-sm text-text-secondary mt-1">{{ log.description|truncatechars:100 }}</p>
                         {% if log.cost %}
-                        <p class="text-xs text-text-secondary mt-1">Cost: ${{ log.cost|floatformat:2 }}</p>
+                        <p class="text-xs text-text-secondary mt-1">Cost: {{ client_settings.currency_symbol }}{{ log.cost|floatformat:2 }}</p>
                         {% endif %}
                         {% if log.next_maintenance_date %}
                         <p class="text-xs text-text-secondary mt-1">Next Maintenance: {{ log.next_maintenance_date|date:"M d, Y" }}</p>
@@ -416,6 +478,67 @@
                     <div class="flex justify-end gap-2">
                         <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
                         <button type="submit" class="btn-danger text-sm">Submit Scrap Request</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function openAdjustStockModal() {
+        const modal = document.getElementById('modalContainer');
+        const actionUrl = "{% url 'tickets:asset_adjust_stock' asset.pk %}";
+        const currentQty = {{ asset.quantity_in_stock|default:0 }};
+        modal.innerHTML = `
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-4">Adjust Stock</h3>
+                <p class="text-sm text-text-secondary mb-4">Current quantity: <strong>${currentQty}</strong></p>
+                <form method="post" action="${actionUrl}">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">New quantity</label>
+                        <input type="number" name="new_quantity" min="0" value="${currentQty}" required class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Reason for adjustment</label>
+                        <textarea name="reason" rows="3" required placeholder="e.g. stocktake correction, breakage found in storage" class="w-full rounded-lg border p-2 text-sm"></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
+                        <button type="submit" class="btn-primary text-sm">Save Adjustment</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function openReorderModal() {
+        const modal = document.getElementById('modalContainer');
+        const actionUrl = "{% url 'tickets:procurement_reorder_create' asset.pk %}";
+        const defaultQty = {{ asset.low_stock_threshold|default:1 }};
+        modal.innerHTML = `
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-4">Reorder "{{ asset.name|escapejs }}"</h3>
+                <form method="post" action="${actionUrl}">
+                    {% csrf_token %}
+                    <input type="hidden" name="item_name" value="{{ asset.name|escapejs }}">
+                    <input type="hidden" name="category" value="{{ asset.category_id|default:'' }}">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Quantity</label>
+                        <input type="number" name="quantity" min="1" value="${defaultQty}" required class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Vendor (optional)</label>
+                        <input type="text" name="new_vendor_name" placeholder="Vendor name" class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Expected arrival date (optional)</label>
+                        <input type="date" name="expected_arrival_date" class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
+                        <button type="submit" class="btn-primary text-sm">Record as On Order</button>
                     </div>
                 </form>
             </div>

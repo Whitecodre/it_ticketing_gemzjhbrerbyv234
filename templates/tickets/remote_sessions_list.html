@@ -19,100 +19,37 @@
         <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Remote Sessions</h2>
     </div>
 
-    {# Grid of remote session cards #}
-    {% if sessions %}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {% for session in sessions %}
-        <div class="dashboard-card p-4 hover:shadow-md transition">
-            <div class="flex items-start justify-between gap-2 mb-2">
-                <div class="flex items-center gap-2">
-                    <span class="font-mono text-xs text-primary">{{ session.ticket.number }}</span>
-                    <span class="status-chip 
-                        {% if session.status == 'REQUESTED' %}open
-                        {% elif session.status == 'ACCEPTED' %}in-progress
-                        {% elif session.status == 'STARTED' %}in-progress
-                        {% elif session.status == 'ENDED' %}resolved
-                        {% elif session.status == 'REJECTED' %}escalated
-                        {% endif %} text-xs shrink-0">
-                        {{ session.get_status_display }}
-                    </span>
-                </div>
-                <span class="text-xs text-text-secondary">{{ session.connector.name }}</span>
-            </div>
-            <p class="text-sm font-medium text-text-primary truncate">{{ session.ticket.title }}</p>
-            <div class="flex items-center gap-3 mt-2 text-xs text-text-secondary">
-                <span class="flex items-center gap-1">{% lucide "user" size=12 %}{{ session.requester.get_full_name|default:session.requester.email }}</span>
-                <span class="flex items-center gap-1">{% lucide "user-check" size=12 %}{{ session.agent.get_full_name|default:session.agent.email }}</span>
-            </div>
-            <div class="flex items-center justify-between mt-3 pt-3 border-t" style="border-color: var(--color-border);">
-                <span class="text-xs text-text-secondary">{{ session.created_at|date:"M d, Y H:i" }}</span>
-                <div class="flex items-center gap-1.5">
-                    {% comment %}
-                    Accept/Reject and Start used to only be reachable by opening
-                    "View" — surfaced here too so the common case doesn't need
-                    the extra click. "View" always stays for the full record
-                    (instructions, timestamps, history).
-                    {% endcomment %}
-                    {% if session.status == 'REQUESTED' and session.requester == request.user %}
-                    <form method="post" action="{% url 'tickets:remote_session_detail' session.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="status" value="ACCEPTED">
-                        <button type="submit" class="btn-primary text-xs px-2.5 py-1.5 rounded">Accept</button>
-                    </form>
-                    <form method="post" action="{% url 'tickets:remote_session_detail' session.pk %}">
-                        {% csrf_token %}
-                        <input type="hidden" name="status" value="REJECTED">
-                        <button type="submit" class="btn-danger text-xs px-2.5 py-1.5 rounded">Reject</button>
-                    </form>
-                    {% elif session.status == 'ACCEPTED' and session.agent == request.user %}
-                    <a href="{% url 'tickets:remote_session_detail' session.pk %}" class="btn-primary text-xs flex items-center gap-1 px-2.5 py-1.5 rounded">
-                        {% lucide "play" size=12 %} Start
-                    </a>
-                    {% endif %}
-                    <a href="{% url 'tickets:remote_session_detail' session.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "eye" size=14 %} View
-                    </a>
-                </div>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div class="text-center py-12">
-        <span class="text-4xl block mb-2">🖥️</span>
-        <p class="text-text-secondary text-sm">No remote sessions found.</p>
-        <p class="text-text-secondary text-xs">Remote sessions you initiate will appear here.</p>
-    </div>
-    {% endif %}
-
-    {# Pagination #}
-    {% if sessions.has_other_pages %}
-    <div class="pagination-bar" style="margin-top: 1rem;">
-        <span class="pagination-summary">
-            Showing <strong>{{ sessions.start_index }}–{{ sessions.end_index }}</strong> of <strong>{{ sessions.paginator.count }}</strong> sessions
-        </span>
-        <div class="pagination-controls">
-            {% if sessions.has_previous %}
-            <a href="?page={{ sessions.previous_page_number }}" class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
-            {% else %}
-            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
-            {% endif %}
-            <div class="pagination-numbers">
-                {% for num in sessions.paginator.page_range %}
-                    {% if num == sessions.number %}
-                    <span class="pagination-number is-current">{{ num }}</span>
-                    {% elif num > sessions.number|add:'-3' and num < sessions.number|add:'3' %}
-                    <a href="?page={{ num }}" class="pagination-number">{{ num }}</a>
-                    {% endif %}
-                {% endfor %}
-            </div>
-            {% if sessions.has_next %}
-            <a href="?page={{ sessions.next_page_number }}" class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
-            {% else %}
-            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
+    {% include 'partials/remote_sessions_grid.html' %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    function confirmRemoteSessionAction(action, ticketNumber, formId) {
+        const isAccept = action === 'accept';
+        openConfirmationModal({
+            title: isAccept ? 'Accept Remote Session' : 'Reject Remote Session',
+            message: isAccept
+                ? `Accept the remote session request for ticket ${ticketNumber}?`
+                : `Reject the remote session request for ticket ${ticketNumber}?`,
+            detail: isAccept
+                ? 'The requesting agent will be notified they can start the session.'
+                : 'The requesting agent will be notified this request was declined.',
+            confirmText: isAccept ? 'Yes, accept' : 'Yes, reject',
+            confirmButtonClass: isAccept ? 'btn-primary' : 'btn-danger',
+            icon: isAccept ? 'question' : 'danger',
+            onConfirm: function() {
+                const form = document.getElementById(formId);
+                if (!form) return;
+                const btn = form.querySelector('button[type="button"]');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.classList.add('opacity-70');
+                }
+                form.submit();
+            }
+        });
+    }
+</script>
 {% endblock %}

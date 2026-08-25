@@ -22,26 +22,45 @@
         </button>
     </div>
 
+    {# Search — filters all tabs by title, content, and tags #}
+    <form method="get" class="mb-4" id="kbSearchForm">
+        <input type="hidden" name="tab" id="kbSearchTabInput" value="">
+        {% comment %} <div class="relative max-w-xl flex-1">
+            {% lucide "search" size=16 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
+            <input type="search" name="q" value="{{ search_query }}" placeholder="Search articles by title, content, or tag..."
+                   class="w-full rounded-lg border py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        </div> {% endcomment %}
+         <div class="relative max-w-xl flex-1">
+            {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
+            <input type="search" name="q" value="{{ search_query }}" placeholder="Search articles by title, content, or tag..."
+                   class="w-full rounded-lg border py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        </div>
+    </form>
+
     {# Tabs #}
     <div class="flex border-b mb-6 border-border">
         <button class="tab-btn is-active px-5 py-2.5 text-sm font-medium transition"
                 data-tab="drafts">
             My Drafts
+            {% if drafts.paginator.count %}<span class="ml-1 text-xs text-text-secondary">({{ drafts.paginator.count }})</span>{% endif %}
         </button>
         {% if active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
         <button class="tab-btn px-5 py-2.5 text-sm font-medium transition"
                 data-tab="pending">
             Pending Review
+            {% if pending_review.paginator.count %}<span class="ml-1 text-xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">{{ pending_review.paginator.count }}</span>{% endif %}
         </button>
         {% endif %}
         <button class="tab-btn px-5 py-2.5 text-sm font-medium transition"
                 data-tab="published">
             Published
+            {% if published.paginator.count %}<span class="ml-1 text-xs text-text-secondary">({{ published.paginator.count }})</span>{% endif %}
         </button>
         {% if active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
         <button class="tab-btn px-5 py-2.5 text-sm font-medium transition"
                 data-tab="archived">
             Archived
+            {% if archived.paginator.count %}<span class="ml-1 text-xs text-text-secondary">({{ archived.paginator.count }})</span>{% endif %}
         </button>
         {% endif %}
     </div>
@@ -87,11 +106,18 @@
             </div>
             {% endfor %}
         </div>
+        {% include "partials/kb_pagination.html" with page_obj=drafts page_param="drafts_page" tab="drafts" %}
         {% else %}
         <div class="empty-state">
+            {% if search_query %}
+            {% lucide "search-x" size=40 %}
+            <p class="empty-state-title">No drafts match "{{ search_query }}"</p>
+            <p class="empty-state-subtext">Try a different search term.</p>
+            {% else %}
             {% lucide "file-text" size=40 %}
             <p class="empty-state-title">No drafts yet</p>
             <p class="empty-state-subtext">Create your first article to get started.</p>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -145,11 +171,18 @@
             </div>
             {% endfor %}
         </div>
+        {% include "partials/kb_pagination.html" with page_obj=pending_review page_param="pending_page" tab="pending" %}
         {% else %}
         <div class="empty-state">
+            {% if search_query %}
+            {% lucide "search-x" size=40 %}
+            <p class="empty-state-title">No pending articles match "{{ search_query }}"</p>
+            <p class="empty-state-subtext">Try a different search term.</p>
+            {% else %}
             {% lucide "check-circle" size=40 %}
             <p class="empty-state-title">No articles pending review</p>
             <p class="empty-state-subtext">Great job! All articles have been reviewed.</p>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -203,11 +236,18 @@
             </div>
             {% endfor %}
         </div>
+        {% include "partials/kb_pagination.html" with page_obj=published page_param="published_page" tab="published" %}
         {% else %}
         <div class="empty-state">
+            {% if search_query %}
+            {% lucide "search-x" size=40 %}
+            <p class="empty-state-title">No published articles match "{{ search_query }}"</p>
+            <p class="empty-state-subtext">Try a different search term.</p>
+            {% else %}
             {% lucide "library" size=40 %}
             <p class="empty-state-title">No published articles</p>
             <p class="empty-state-subtext">Articles you publish will appear here.</p>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -245,11 +285,18 @@
             </div>
             {% endfor %}
         </div>
+        {% include "partials/kb_pagination.html" with page_obj=archived page_param="archived_page" tab="archived" %}
         {% else %}
         <div class="empty-state">
+            {% if search_query %}
+            {% lucide "search-x" size=40 %}
+            <p class="empty-state-title">No archived articles match "{{ search_query }}"</p>
+            <p class="empty-state-subtext">Try a different search term.</p>
+            {% else %}
             {% lucide "archive" size=40 %}
             <p class="empty-state-title">No archived articles</p>
             <p class="empty-state-subtext">Articles you archive will appear here, and can be restored anytime.</p>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -356,15 +403,40 @@
 
     function submitSendBack() {
         if (!sendBackFormId) return;
-        const form = document.getElementById(sendBackFormId);
-        form.querySelector('input[name="reason"]').value = document.getElementById('sendBackReasonInput').value;
-        form.submit();
+        const reason = document.getElementById('sendBackReasonInput').value.trim();
+        const doSubmit = function() {
+            const form = document.getElementById(sendBackFormId);
+            form.querySelector('input[name="reason"]').value = reason;
+            form.submit();
+        };
+        // Reason stays optional (some sends-back are self-explanatory), but
+        // a blank one leaves the author with nothing to act on — nudge
+        // rather than silently letting it through.
+        if (!reason && typeof openConfirmationModal === 'function') {
+            openConfirmationModal({
+                title: 'Send back with no notes?',
+                message: 'The author will only see that this was sent back, with no explanation of what to fix.',
+                confirmText: 'Send back anyway',
+                cancelText: 'Add notes first',
+                confirmButtonClass: 'btn-danger',
+                icon: 'warning',
+                onConfirm: doSubmit
+            });
+        } else {
+            doSubmit();
+        }
     }
 
-    // Tab switching with persistence
-    const activeTab = sessionStorage.getItem('kbActiveTab') || 'drafts';
+    // Tab switching — the URL is the source of truth (so Pending Review,
+    // the one tab that represents actual work, can be bookmarked/shared/
+    // opened in a fresh tab), sessionStorage is just a same-tab fallback
+    // for plain "Knowledge Base" nav clicks that carry no ?tab= at all.
+    const urlTab = new URLSearchParams(window.location.search).get('tab');
+    const activeTab = (urlTab && document.querySelector(`.tab-btn[data-tab="${urlTab}"]`))
+        ? urlTab
+        : (sessionStorage.getItem('kbActiveTab') || 'drafts');
 
-    function activateTab(tabId) {
+    function activateTab(tabId, updateUrl) {
         // Update UI
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.remove('is-active');
@@ -376,16 +448,23 @@
         document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
         document.getElementById(`tab-${tabId}`).classList.remove('hidden');
         sessionStorage.setItem('kbActiveTab', tabId);
+        if (updateUrl) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', tabId);
+            history.replaceState(null, '', url);
+        }
+        const tabInput = document.getElementById('kbSearchTabInput');
+        if (tabInput) tabInput.value = tabId;
     }
 
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
-            activateTab(this.dataset.tab);
+            activateTab(this.dataset.tab, true);
         });
     });
 
-    // Restore saved tab on page load
-    activateTab(activeTab);
+    // Restore tab on page load (URL param, then sessionStorage, then default)
+    activateTab(activeTab, true);
 
     // New Article modal (wizard step 1)
     function openNewArticleModal() {

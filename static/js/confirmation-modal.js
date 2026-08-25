@@ -378,7 +378,8 @@ function confirmStatusChange(status, itemName, onConfirm) {
         'REJECTED': { text: 'Reject', class: 'btn-danger', icon: 'danger' },
         'IN_PROGRESS': { text: 'Start Progress', class: 'btn-primary', icon: 'info' },
         'COMPLETED': { text: 'Complete', class: 'btn-success', icon: 'success' },
-        'PUBLISHED': { text: 'Publish', class: 'btn-success', icon: 'success' }
+        'PUBLISHED': { text: 'Publish', class: 'btn-success', icon: 'success' },
+        'CANCELLED': { text: 'Cancel', class: 'btn-danger', icon: 'warning' }
     };
     
     const config = statusMap[status] || { 

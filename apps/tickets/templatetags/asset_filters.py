@@ -1,6 +1,7 @@
 from django import template
 from django.utils import timezone
 from datetime import timedelta
+import lucide
 
 register = template.Library()
 
@@ -8,13 +9,13 @@ register = template.Library()
 def format_assignment_history(asset):
     """Formats the assignment history as HTML for the tooltip."""
     history = asset.get_assignment_history()
-    
+
     if not history:
         return '<div class="reassign-tooltip-content"><div class="text-xs text-text-secondary">No assignment history</div></div>'
-    
+
     html = '<div class="reassign-tooltip-content">'
     html += '<div class="font-semibold text-xs mb-2 flex items-center gap-2" style="color: var(--color-text-primary);">'
-    html += '<span>🔄 Reassign Trail</span>'
+    html += f'<span class="flex items-center gap-1">{lucide._render_icon("history", 14)} Reassign Trail</span>'
     html += f'<span class="text-[0.55rem] text-text-secondary font-normal">({len(history)} entries)</span>'
     html += '</div>'
     html += '<div class="space-y-1.5 max-h-48 overflow-y-auto pr-1">'

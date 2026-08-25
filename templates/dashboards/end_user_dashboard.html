@@ -11,9 +11,9 @@
 <div class="w-full">
 
     {# Welcome Banner – modern gradient with avatar #}
-    <div class="welcome-banner mb-6 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl">
+    <div class="welcome-banner mb-6 p-5 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-3 sm:gap-4 rounded-xl">
         <div class="flex items-center gap-4">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white text-lg font-bold">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 text-white text-lg font-bold">
                 {{ user.first_name|default:user.email|slice:":1"|upper }}
             </div>
             <div>
@@ -21,9 +21,9 @@
                 <p class="text-sm opacity-90 mt-0.5">Here's a summary of your tickets and requests</p>
             </div>
         </div>
-        <div class="text-left sm:text-right">
-            <p class="text-4xl font-bold">{{ open_tickets_count }}</p>
-            <p class="text-xs opacity-80">open ticket(s)</p>
+        <div class="flex items-baseline gap-2 sm:block sm:text-right">
+            <p class="text-3xl sm:text-4xl font-bold leading-none">{{ open_tickets_count }}</p>
+            <p class="text-xs opacity-80 sm:mt-1">open ticket(s)</p>
         </div>
     </div>
 

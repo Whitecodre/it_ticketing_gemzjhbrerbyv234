@@ -1,0 +1,479 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Mobilize Assets{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block main_content_class %} pt-4 px-4 sm:px-5 md:px-6 pb-0 md:pb-0{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full max-w-6xl mx-auto pb-8">
+    <div class="flex items-center gap-3 mb-6">
+        <a href="{% if ticket %}{% url 'tickets:conversation' ticket.pk %}{% else %}{% url 'tickets:mobilizations' %}{% endif %}"
+           class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
+            {% lucide "arrow-left" size=18 %}
+        </a>
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {% lucide "package-plus" size=19 %}
+        </span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">Mobilize Assets</h2>
+            {% if ticket %}
+            <p class="text-sm text-text-secondary">For request {{ ticket.number }} — {{ ticket.title }}</p>
+            {% else %}
+            <p class="text-sm text-text-secondary">Send assets out to a vessel or dive system.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'tickets:mobilization_create' %}" id="mobilizationCreateForm">
+        {% csrf_token %}
+        {% if ticket %}<input type="hidden" name="ticket_id" value="{{ ticket.pk }}">{% endif %}
+
+        {% if form.non_field_errors %}
+        <p class="text-sm text-error mb-3">{{ form.non_field_errors.0 }}</p>
+        {% endif %}
+
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {# LEFT COLUMN (~40%) — fields that don't need much horizontal room #}
+            <div class="lg:col-span-2">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Job Number</label>
+                        {{ form.job_number }}
+                        {% if form.job_number.errors %}<p class="text-xs text-error mt-1">{{ form.job_number.errors.0 }}</p>{% endif %}
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Expected Return Date</label>
+                        {{ form.expected_return_date }}
+                        {% if form.expected_return_date.errors %}<p class="text-xs text-error mt-1">{{ form.expected_return_date.errors.0 }}</p>{% endif %}
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Vessel(s)</label>
+                    <div id="vesselCombo" class="relative" data-placeholder="Search vessels…" data-empty-placeholder="No vessels configured">
+                        <div class="combo-source hidden">
+                            {% for checkbox in form.vessels %}
+                            <span class="combo-source-option">{{ checkbox.tag }}<span class="combo-source-label">{{ checkbox.choice_label }}</span></span>
+                            {% endfor %}
+                        </div>
+                        <div class="combo-chips flex flex-wrap gap-1.5 mb-1.5 hidden"></div>
+                        <div class="relative">
+                            <input type="text" class="combo-input w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" autocomplete="off">
+                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=13 %}</span>
+                        </div>
+                        <div class="combo-panel hidden"></div>
+                    </div>
+                    {% if form.vessels.errors %}<p class="text-xs text-error mt-1">{{ form.vessels.errors.0 }}</p>{% endif %}
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Dive System(s)</label>
+                    <div id="diveSystemCombo" class="relative" data-placeholder="Search dive systems…" data-empty-placeholder="No dive systems configured">
+                        <div class="combo-source hidden">
+                            {% for checkbox in form.dive_systems %}
+                            <span class="combo-source-option">{{ checkbox.tag }}<span class="combo-source-label">{{ checkbox.choice_label }}</span></span>
+                            {% endfor %}
+                        </div>
+                        <div class="combo-chips flex flex-wrap gap-1.5 mb-1.5 hidden"></div>
+                        <div class="relative">
+                            <input type="text" class="combo-input w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" autocomplete="off">
+                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=13 %}</span>
+                        </div>
+                        <div class="combo-panel hidden"></div>
+                    </div>
+                    {% if form.dive_systems.errors %}<p class="text-xs text-error mt-1">{{ form.dive_systems.errors.0 }}</p>{% endif %}
+                </div>
+
+                {# Third-Party Vessel(s) — collapsed behind a link until needed #}
+                <div class="mb-4">
+                    <button type="button" id="thirdPartyVesselLink"
+                            onclick="document.getElementById('thirdPartyVesselSection').classList.remove('hidden'); this.classList.add('hidden');"
+                            class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1">
+                        {% lucide "plus" size=13 %} Add a vessel not listed
+                    </button>
+                    <div id="thirdPartyVesselSection" class="hidden mt-2 rounded-lg border border-border p-3">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-sm font-medium text-text-primary">Third-Party Vessel(s)</span>
+                            <button type="button" onclick="resetThirdPartyVessels()" class="text-xs text-text-secondary hover:text-error">Remove</button>
+                        </div>
+                        <p class="text-xs text-text-secondary mb-2">
+                            Proposing a vessel here adds it immediately to this mobilization. It's saved for reuse once an Admin approves it in System Settings → Vessels.
+                        </p>
+                        <div id="thirdPartyVesselContainer" class="space-y-2">
+                            <div class="flex items-center gap-2">
+                                <input type="text" name="third_party_vessels"
+                                       class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+                                       placeholder="e.g., MV Client Vessel">
+                                <button type="button" onclick="this.closest('.flex').remove()"
+                                        class="p-1 rounded hover:bg-black/5 text-text-secondary">
+                                    {% lucide "x" size=16 %}
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" onclick="addThirdPartyVesselRow()"
+                                class="mt-2 text-sm font-medium text-primary hover:underline">
+                            + Add another third-party vessel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-4 pt-4 border-t border-border">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Notes</label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}<p class="text-xs text-error mt-1">{{ form.notes.errors.0 }}</p>{% endif %}
+                </div>
+
+                {# Quick Add by Quantity — auto-picks N available assets of the same category; results land in the Assets to Mobilize card on the right. Collapsed behind a link, same pattern as "+ Add a vessel not listed" above — except it starts pre-expanded when the page arrives with a prefilled category/quantity from a service request, since that's directly actionable. #}
+                <div class="mb-4 pt-4 border-t border-border">
+                    <button type="button" id="quickAddLink"
+                            onclick="document.getElementById('quickAddSection').classList.remove('hidden'); this.classList.add('hidden');"
+                            class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1{% if prefill_category or prefill_quantity %} hidden{% endif %}">
+                        {% lucide "plus" size=13 %} Quick add by quantity
+                    </button>
+                    <div id="quickAddSection" class="{% if not prefill_category and not prefill_quantity %}hidden {% endif %}rounded-lg border border-border p-3">
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="text-sm font-medium text-text-primary">Quick Add by Quantity</span>
+                            <button type="button" onclick="document.getElementById('quickAddSection').classList.add('hidden'); document.getElementById('quickAddLink').classList.remove('hidden');" class="text-xs text-text-secondary hover:text-error">Hide</button>
+                        </div>
+                        <p class="text-xs text-text-secondary mb-2">Need several of the same kind? Pick a category and count instead of checking units one by one.</p>
+                        <div class="flex items-center gap-2">
+                            <select id="autopickCategory" class="flex-1 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                                <option value="">-- Select category --</option>
+                                {% for cat in trackable_categories %}
+                                <option value="{{ cat.pk }}" {% if prefill_category and cat.pk == prefill_category.pk %}selected{% endif %}>{{ cat.full_name }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="number" id="autopickQuantity" min="1" value="{{ prefill_quantity|default:1 }}"
+                                   class="w-20 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                            <button type="button" onclick="autopickAssets()" class="btn-outline text-xs px-3 py-2 rounded-lg whitespace-nowrap">
+                                + Add
+                            </button>
+                        </div>
+                        {% if prefill_category or prefill_quantity %}
+                        <p class="text-xs text-primary mt-2">
+                            Prefilled from the request: {{ prefill_quantity|default:"—" }}{% if prefill_category %} × {{ prefill_category.name }}{% endif %} — review and click "+ Add" to pick the assets.
+                        </p>
+                        {% endif %}
+                        <p id="autopickMessage" class="text-xs text-warning mt-2 hidden"></p>
+                    </div>
+                </div>
+
+                {# Vendor Request line items — for items not currently in stock #}
+                <div class="mb-2 pt-4 border-t border-border">
+                    <label class="flex items-center gap-2 text-sm font-medium text-text-primary cursor-pointer">
+                        <input type="checkbox" id="procurementToggle"
+                               class="rounded border-border text-primary focus:ring-primary"
+                               onchange="document.getElementById('procurementSection').classList.toggle('hidden', !this.checked)">
+                        Also request item(s) not currently in stock, from a vendor
+                    </label>
+                    <div id="procurementSection" class="hidden mt-3">
+                        <p class="text-xs text-text-secondary mb-2">
+                            Recorded against this mobilization — once received, it's automatically added as mobilized.
+                        </p>
+                        <div id="procurementContainer" class="space-y-2">
+                            {% include "partials/procurement_mobilization_row.html" %}
+                        </div>
+                        <button type="button" onclick="addProcurementRow()"
+                                class="mt-2 text-sm font-medium text-primary hover:underline">
+                            + Add another item
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {# RIGHT COLUMN (~60%) — Assets to Mobilize: the most space- and scroll-hungry section. Collapsed by default so the form doesn't overwhelm on first load; Quick Add above still works independently of this being open. #}
+            <div class="lg:col-span-3">
+                <div class="rounded-lg border border-border p-3">
+                    <button type="button" id="assetsToMobilizeToggle"
+                            onclick="document.getElementById('assetsToMobilizeBody').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')"
+                            class="flex items-center gap-1 text-sm font-medium w-full text-left cursor-pointer text-text-primary">
+                        {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
+                        Available Assets for Mobilization
+                    </button>
+                    <div id="assetsToMobilizeBody" class="hidden mt-2">
+                        <div class="relative mb-3">
+                            <input type="text" id="mobilizationAssetSearch"
+                                   name="search"
+                                   class="w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                                   placeholder="Search assets by name, tracking ID, serial..."
+                                   hx-get="{% url 'tickets:mobilization_available_assets' %}"
+                                   hx-trigger="keyup changed delay:300ms, load"
+                                   hx-target="#mobilizationAssetListContainer"
+                                   hx-swap="innerHTML">
+                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">
+                                {% lucide "search" size=14 %}
+                            </span>
+                        </div>
+
+                        {# Selected via Quick Add — visually distinct rows, see .quick-add-highlighted #}
+                        <div id="autopickedAssetsContainer" class="mb-2 space-y-1"></div>
+
+                        <div id="mobilizationAssetListContainer">
+                            {% include "partials/mobilization_available_assets_list.html" with assets=None %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    {# Spacer so the fixed footer below never covers the last form field while scrolled to the bottom. #}
+    <div style="height: 76px;"></div>
+</div>
+
+{# Fixed footer — pinned to the actual viewport bottom (not just <main>'s own #}
+{# scroll box) and spanning the full page width, so it reads as a persistent  #}
+{# action bar rather than a card that scrolls with the content. #}
+<div class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface"
+     style="box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);">
+    <div class="max-w-6xl mx-auto px-4 sm:px-5 md:px-6 py-4 flex items-center justify-between gap-3">
+        <span id="mobilizationSelectedCount" class="text-sm text-text-secondary">0 assets selected</span>
+        <div class="flex items-center gap-2">
+            <a href="{% if ticket %}{% url 'tickets:conversation' ticket.pk %}{% else %}{% url 'tickets:mobilizations' %}{% endif %}"
+               class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</a>
+            <button type="submit" form="mobilizationCreateForm" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "package-plus" size=16 %} Mobilize
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+const MOBILIZATION_X_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+const MOBILIZATION_X_ICON_SVG_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+
+function addThirdPartyVesselRow() {
+    const container = document.getElementById('thirdPartyVesselContainer');
+    const div = document.createElement('div');
+    div.className = 'flex items-center gap-2';
+    div.innerHTML = `
+        <input type="text" name="third_party_vessels"
+               class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+               placeholder="e.g., MV Client Vessel">
+        <button type="button" onclick="this.closest('.flex').remove()"
+                class="p-1 rounded hover:bg-black/5 text-text-secondary">
+            ${MOBILIZATION_X_ICON_SVG}
+        </button>
+    `;
+    container.appendChild(div);
+}
+
+function resetThirdPartyVessels() {
+    const container = document.getElementById('thirdPartyVesselContainer');
+    container.innerHTML = `
+        <div class="flex items-center gap-2">
+            <input type="text" name="third_party_vessels"
+                   class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+                   placeholder="e.g., MV Client Vessel">
+            <button type="button" onclick="this.closest('.flex').remove()"
+                    class="p-1 rounded hover:bg-black/5 text-text-secondary">
+                ${MOBILIZATION_X_ICON_SVG}
+            </button>
+        </div>
+    `;
+    document.getElementById('thirdPartyVesselSection').classList.add('hidden');
+    document.getElementById('thirdPartyVesselLink').classList.remove('hidden');
+}
+
+function addProcurementRow() {
+    const container = document.getElementById('procurementContainer');
+    const template = container.querySelector('.procurement-row');
+    if (!template) return;
+    const row = template.cloneNode(true);
+    row.querySelectorAll('input').forEach(function(input) {
+        if (input.type === 'number') { input.value = 1; }
+        else { input.value = ''; }
+    });
+    row.querySelectorAll('select').forEach(function(select) { select.selectedIndex = 0; });
+    container.appendChild(row);
+}
+
+// ================================================================
+// VESSEL(S) / DIVE SYSTEM(S) — searchable combobox + removable chips
+// over the real (visually hidden) checkboxes django renders for
+// form.vessels / form.dive_systems, so form submission needs no view
+// changes — only their checked state is driven from here.
+// ================================================================
+function initComboboxMultiSelect(rootId) {
+    const root = document.getElementById(rootId);
+    if (!root) return;
+
+    const options = Array.from(root.querySelectorAll('.combo-source-option')).map(function(wrap) {
+        const cb = wrap.querySelector('input[type="checkbox"]');
+        const label = wrap.querySelector('.combo-source-label').textContent.trim();
+        return { id: cb.value, label: label, el: cb };
+    });
+
+    const input = root.querySelector('.combo-input');
+    const panel = root.querySelector('.combo-panel');
+    const chipsContainer = root.querySelector('.combo-chips');
+
+    input.placeholder = options.length
+        ? (root.dataset.placeholder || 'Search…')
+        : (root.dataset.emptyPlaceholder || 'None configured');
+    input.disabled = options.length === 0;
+
+    function renderChips() {
+        chipsContainer.innerHTML = '';
+        const chosen = options.filter(function(o) { return o.el.checked; });
+        chosen.forEach(function(o) {
+            const chip = document.createElement('span');
+            chip.className = 'combo-chip';
+            const label = document.createElement('span');
+            label.textContent = o.label;
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'combo-chip-remove';
+            removeBtn.setAttribute('aria-label', 'Remove ' + o.label);
+            removeBtn.innerHTML = MOBILIZATION_X_ICON_SVG_SM;
+            removeBtn.addEventListener('click', function() {
+                o.el.checked = false;
+                renderChips();
+                renderPanel();
+            });
+            chip.appendChild(label);
+            chip.appendChild(removeBtn);
+            chipsContainer.appendChild(chip);
+        });
+        chipsContainer.classList.toggle('hidden', chosen.length === 0);
+    }
+
+    function renderPanel() {
+        const q = input.value.trim().toLowerCase();
+        panel.innerHTML = '';
+        const matches = options.filter(function(o) {
+            if (o.el.checked) return false;
+            if (!q) return true;
+            return o.label.toLowerCase().indexOf(q) !== -1;
+        });
+        matches.forEach(function(o) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'combo-option';
+            btn.textContent = o.label;
+            btn.addEventListener('click', function() {
+                o.el.checked = true;
+                input.value = '';
+                renderChips();
+                renderPanel();
+                input.focus();
+            });
+            panel.appendChild(btn);
+        });
+        if (matches.length === 0 && q) {
+            const empty = document.createElement('p');
+            empty.className = 'text-xs text-text-secondary px-2 py-1.5';
+            empty.textContent = 'No matches.';
+            panel.appendChild(empty);
+        }
+        panel.classList.toggle('hidden', matches.length === 0);
+    }
+
+    input.addEventListener('focus', function() { renderPanel(); });
+    input.addEventListener('input', renderPanel);
+    document.addEventListener('click', function(e) {
+        if (!root.contains(e.target)) panel.classList.add('hidden');
+    });
+
+    renderChips();
+}
+
+initComboboxMultiSelect('vesselCombo');
+initComboboxMultiSelect('diveSystemCombo');
+
+// ================================================================
+// STICKY FOOTER — running selection count
+// ================================================================
+function updateMobilizationSelectionCount() {
+    const form = document.getElementById('mobilizationCreateForm');
+    const countEl = document.getElementById('mobilizationSelectedCount');
+    if (!form || !countEl) return;
+    const n = form.querySelectorAll('input[name="asset_ids"]:checked').length;
+    countEl.textContent = n === 1 ? '1 asset selected' : n + ' assets selected';
+}
+
+(function() {
+    const form = document.getElementById('mobilizationCreateForm');
+    if (form) {
+        form.addEventListener('change', function(e) {
+            if (e.target && e.target.name === 'asset_ids') updateMobilizationSelectionCount();
+        });
+    }
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.target && e.target.id === 'mobilizationAssetListContainer') {
+            updateMobilizationSelectionCount();
+        }
+    });
+    updateMobilizationSelectionCount();
+})();
+
+const autopickedAssetIds = new Set();
+
+function autopickAssets() {
+    const categorySelect = document.getElementById('autopickCategory');
+    const quantityInput = document.getElementById('autopickQuantity');
+    const messageEl = document.getElementById('autopickMessage');
+    const categoryId = categorySelect.value;
+    const quantity = parseInt(quantityInput.value, 10) || 0;
+
+    messageEl.classList.add('hidden');
+
+    if (!categoryId || quantity < 1) {
+        messageEl.textContent = 'Select a category and a quantity of at least 1.';
+        messageEl.classList.remove('hidden');
+        return;
+    }
+
+    const url = `{% url 'tickets:mobilization_autopick_assets' %}?category_id=${encodeURIComponent(categoryId)}&quantity=${encodeURIComponent(quantity)}`;
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(response => response.json())
+        .then(data => {
+            const assets = (data.assets || []).filter(a => !autopickedAssetIds.has(a.id));
+            if (assets.length === 0) {
+                messageEl.textContent = 'No available assets found in that category.';
+                messageEl.classList.remove('hidden');
+                return;
+            }
+            if (assets.length < quantity) {
+                messageEl.textContent = `Only ${assets.length} available — added what could be found.`;
+                messageEl.classList.remove('hidden');
+            }
+            const container = document.getElementById('autopickedAssetsContainer');
+            assets.forEach(function(asset) {
+                autopickedAssetIds.add(asset.id);
+                const row = document.createElement('label');
+                row.className = 'flex items-center gap-2 p-2 rounded-lg border text-sm quick-add-highlighted';
+                row.innerHTML = `
+                    <input type="checkbox" name="asset_ids" value="${asset.id}" checked class="rounded border-border text-primary focus:ring-primary">
+                    <span class="flex-1 text-text-primary">${asset.name} <span class="text-text-secondary text-xs">(${asset.tracking_id})</span></span>
+                    <span class="text-[0.55rem] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">Auto-added</span>
+                    <button type="button" class="p-1 rounded hover:bg-black/5 text-text-secondary" onclick="event.preventDefault(); autopickedAssetIds.delete(${asset.id}); this.closest('label').remove(); updateMobilizationSelectionCount();">
+                        ${MOBILIZATION_X_ICON_SVG_SM}
+                    </button>
+                `;
+                row.querySelector('input[type="checkbox"]').addEventListener('change', function(e) {
+                    row.classList.toggle('quick-add-highlighted', e.target.checked);
+                });
+                container.appendChild(row);
+            });
+            updateMobilizationSelectionCount();
+        })
+        .catch(function() {
+            messageEl.textContent = 'Could not fetch assets — please try again.';
+            messageEl.classList.remove('hidden');
+        });
+}
+</script>
+{% endblock %}

@@ -142,6 +142,28 @@ thead th { background: color-mix(in srgb, var(--color-background) 72%, var(--col
 tbody tr { transition: background-color .15s ease, box-shadow .15s ease; }
 tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, transparent); }
 
+/* Pinned (sticky) first/last columns on wide admin tables — real classes
+   rather than an inline background-color, so they can (a) match the same
+   thead th color-mix as every other header cell instead of overriding it
+   with a flat color, and (b) still pick up the row hover tint, which an
+   inline style on the cell would otherwise block from showing through. */
+.sticky-col-th { background: color-mix(in srgb, var(--color-background) 72%, var(--color-surface)); }
+.sticky-col-td { background-color: var(--color-surface); }
+/* Matches Tailwind's hover:bg-black/5 on the row (used by asset-row/
+   user-row), not the tbody tr:hover rule above — that rule never actually
+   wins on those rows since hover:bg-black/5's class+pseudo-class selector
+   outranks tbody tr:hover's type+type+pseudo-class one. Mixing in the
+   primary accent color here (instead of black) previously gave the pinned
+   columns a visibly different-hued hover tint than the rest of the row. */
+tbody tr:hover .sticky-col-td { background-color: color-mix(in srgb, black 5%, var(--color-surface)); }
+
+/* Edge shadow on the outer pinned column at each side (the last left-pinned
+   cell, the first right-pinned "Actions" cell) — without this, scrolled
+   columns sliding underneath the opaque pinned background have no visual
+   seam, so it reads as broken/overlapping instead of intentionally pinned. */
+.sticky-col-edge-right { box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.18); }
+.sticky-col-edge-left { box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.18); }
+
 @media (max-width: 767px) {
     html { font-size: 100%; }
     .dashboard-card, .kpi-card { border-radius: .75rem; }
@@ -240,7 +262,23 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
         color: var(--color-text-secondary);
     }
     .theme-radio input {
-        display: none;
+        /* Visually hidden but still focusable/operable by keyboard — a
+           plain display:none removes it from the tab order entirely, so a
+           keyboard-only user would otherwise have no way to reach or
+           switch this control at all. */
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+    .theme-radio:focus-within {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
     }
     .theme-radio.active {
         background: var(--color-primary);
@@ -255,7 +293,7 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
        a long role name (e.g. "Support Team") next to the hamburger, bell
        and theme toggle can push the row wide enough to clip. Truncate
        instead of letting it overflow. */
-    @media (max-width: 420px) {
+    @media (max-width: 480px) {
         .role-switcher-label {
             display: inline-block;
             max-width: 4.5rem;
@@ -263,6 +301,17 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
             text-overflow: ellipsis;
             white-space: nowrap;
             vertical-align: middle;
+        }
+    }
+
+    /* Below ~380px the topbar (hamburger + brand + bell + role switcher +
+       theme toggle) has no room left even for a truncated label — the
+       switcher stays a real, tappable control (unlike the single-role
+       badge, which is purely informational and can just hide), it just
+       drops to icon-only so it doesn't force the row to clip or wrap. */
+    @media (max-width: 380px) {
+        .role-switcher-label {
+            display: none;
         }
     }
 
@@ -390,9 +439,45 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     font-size: 0.75rem;
     font-weight: 600;
     margin-top: 0.5rem;
+    color: var(--color-text-secondary);
 }
-.kpi-trend.up { color: var(--color-success); }
-.kpi-trend.down { color: var(--color-error); }
+/* .up/.down implied a real period-over-period comparison that none of
+   these captions actually compute — they're just static subtext under a
+   count. .attention is for the one case that's a genuine severity flag
+   (e.g. SLA breaches), not a claimed trend. */
+.kpi-trend.attention { color: var(--color-error); }
+
+/* ========== ACTION LOADING STATE (idempotency + spinner) ==========
+   Applied automatically by static/js/idempotent_actions.js to whatever
+   element triggered an HTMX request or a form submit, so every button in
+   the app gets double-submit protection and a visible spinner without each
+   template having to opt in individually. Pure CSS overlay (no innerHTML
+   swapping) so it's safe on any button regardless of its internal markup —
+   icon-only, text, whatever. */
+.is-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.65;
+    cursor: default;
+}
+.is-loading > * { visibility: hidden; }
+.is-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin: -7px 0 0 -7px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: idempotent-spin 0.6s linear infinite;
+    visibility: visible;
+}
+@keyframes idempotent-spin {
+    to { transform: rotate(360deg); }
+}
 
 /* ========== STATUS CHIPS ========== */
 
@@ -518,6 +603,15 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     color: var(--color-text-secondary);
 }
 
+/* Primary/brand-tone states (assigned/triaged/in-progress-style) — used by
+   the status_badge component's text-matching fallback (badge_tags.py) for
+   places that only have an already-rendered display string, not the raw
+   status code. */
+.status-chip-primary {
+    background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+    color: var(--color-primary);
+}
+
 /* Priority Chips — a separate class from .status-chip, so it never picks
    up the dot indicator; bold/uppercase text carries the emphasis instead,
    matching the gallery's .pchip. */
@@ -549,6 +643,113 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
 .priority-chip.low {
     background-color: color-mix(in oklch, var(--color-success) 12%, transparent);
     color: var(--color-success);
+}
+
+/* ================================================================
+   SCROLL-SHADOW AFFORDANCE — a table wrapped in an .overflow-x-auto
+   container that still has more columns off-screen gets a soft edge
+   fade, so truncated content reads as "scroll for more" rather than
+   "cut off." Wrap the scroll container in `.table-scroll-shell` and
+   toggle `.has-scroll-left`/`.has-scroll-right` from JS based on
+   scrollLeft/scrollWidth (see static/js/scroll_shadow.js). ================================================================ */
+.table-scroll-shell {
+    position: relative;
+}
+.table-scroll-shell::before,
+.table-scroll-shell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28px;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.table-scroll-shell::before {
+    left: 0;
+    background: linear-gradient(to right, var(--color-surface), transparent);
+}
+.table-scroll-shell::after {
+    right: 0;
+    background: linear-gradient(to left, var(--color-surface), transparent);
+}
+.table-scroll-shell.has-scroll-left::before,
+.table-scroll-shell.has-scroll-right::after {
+    opacity: 1;
+}
+
+/* ================================================================
+   DATE RANGE FILTER — components/date_range_filter.html. Segmented
+   preset control (one pill container, connected buttons, no gaps) +
+   calendar popover for a custom range.
+   ================================================================ */
+.drf-segmented {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+    background-color: var(--color-background);
+}
+.drf-segment {
+    padding: 6px 14px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: transparent;
+    border: none;
+    border-right: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+    white-space: nowrap;
+}
+.drf-segment:last-child { border-right: none; }
+.drf-segment:hover { background-color: color-mix(in oklch, var(--color-primary) 8%, transparent); }
+.drf-segment-active {
+    background-color: var(--color-primary);
+    color: white;
+    font-weight: 600;
+}
+.drf-segment-active:hover { background-color: var(--color-primary); }
+
+.drf-popover {
+    /* position/top/left are set inline by window.positionDropdown()
+       (static/js/global.js) as position:fixed — not plain CSS absolute —
+       because this popover is often nested inside a .dashboard-card,
+       which has its own `overflow-x: auto` rule elsewhere in this file;
+       an absolutely-positioned popover would get silently clipped by
+       that ancestor's overflow instead of floating above the page. */
+    z-index: 9999;
+    width: min(90vw, 420px);
+    padding: 12px;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+.drf-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    border-radius: 9999px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.drf-day:hover:not(:disabled) { background-color: color-mix(in oklch, var(--color-primary) 12%, transparent); }
+.drf-day:disabled { cursor: default; }
+.drf-day-selected {
+    background-color: var(--color-primary) !important;
+    color: white !important;
+    font-weight: 600;
+}
+.drf-day-in-range {
+    background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
 }
 
 /* SLA Progress Bar */
@@ -1204,6 +1405,138 @@ tbody tr:hover { background-color: color-mix(in srgb, var(--color-primary) 5%, t
     display: inline-flex;
     opacity: 0.6;
     margin-left: auto;
+}
+
+/* ========== PENDING-ACTION BADGES (blinking) ==========
+   Applies only to notification/count badges signaling something needs
+   attention — sidebar item counts, the propagated parent-section badge
+   below, the notification bell count. Never applied to the status/
+   condition pills used in tables (Mobilized, In Store, priority levels,
+   etc.) — those stay static. Central class so every instance animates
+   consistently instead of being styled per call-site. */
+@keyframes badge-pending-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+.badge-pending {
+    animation: badge-pending-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .badge-pending {
+        animation: none;
+    }
+}
+
+/* Parent-section aggregate badge (sidebar accordion badge propagation) —
+   sits inline in the section header, just before the chevron, and is only
+   shown while the section is collapsed and at least one child link inside
+   it has a pending badge (see updateParentBadgeVisibility in global.js). */
+.sidebar-section-badge {
+    /* No `display` here on purpose — it must lose to the `.hidden`
+       utility class JS toggles when a section has no pending badges.
+       Both are single-class selectors, so whichever rule comes later in
+       the stylesheet wins a specificity tie; scoping `display` to
+       :not(.hidden) below sidesteps that fight entirely instead of
+       relying on load order. */
+    align-items: center;
+    justify-content: center;
+    min-width: 1.125rem;
+    height: 1.125rem;
+    padding: 0 0.3rem;
+    border-radius: 9999px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: white;
+    background-color: var(--color-error);
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.sidebar-section-badge:not(.hidden) {
+    display: inline-flex;
+}
+
+.sidebar-section-toggle .sidebar-section-badge + .section-chevron {
+    margin-left: 0.375rem;
+}
+
+/* ========== MOBILIZE ASSETS SLIDEOVER — combobox + chips, quick-add ========== */
+
+/* Vessel(s) / Dive System(s) searchable combobox + removable chips
+   (templates/partials/mobilization_create_modal.html) */
+.combo-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.3rem 0.2rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    background-color: color-mix(in oklch, var(--color-primary) 10%, transparent);
+    color: var(--color-primary);
+    border: 1px solid color-mix(in oklch, var(--color-primary) 25%, transparent);
+}
+
+.combo-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    color: inherit;
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.combo-chip-remove:hover {
+    opacity: 1;
+    background-color: color-mix(in oklch, var(--color-primary) 15%, transparent);
+}
+
+.combo-panel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.25rem);
+    z-index: 40;
+    max-height: 10rem;
+    overflow-y: auto;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    background-color: var(--color-surface);
+    box-shadow: var(--shadow-lg);
+    padding: 0.25rem;
+}
+
+.combo-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    color: var(--color-text-primary);
+    background: transparent;
+    transition: background-color 0.15s ease;
+}
+
+.combo-option:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+:root.dark .combo-option:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Distinct background for asset rows auto-selected by "Quick Add by
+   Quantity", so it's visually obvious which rows were auto-picked versus
+   manually checked. Cleared (not removed) if the row is manually
+   unchecked; removed entirely if the quick-add entry itself is deleted. */
+.quick-add-highlighted {
+    background-color: color-mix(in oklch, var(--color-primary) 10%, transparent) !important;
+    border-color: var(--color-primary) !important;
 }
 
 /* Expanded section header reads slightly stronger than its collapsed siblings */
@@ -3332,4 +3665,13 @@ tr.ticket-row.selected {
     background-color: var(--color-primary);
     color: white;
     border-color: var(--color-primary);
+}
+/* Ticket reply composer placeholder — #commentEditor is a contenteditable
+   div (needed for rich formatting), which has no native placeholder
+   attribute like a textarea; fake one so an empty box doesn't leave a
+   first-time user with no hint of what to type. */
+#commentEditor:empty:before {
+    content: attr(data-placeholder);
+    color: var(--color-text-secondary);
+    pointer-events: none;
 }

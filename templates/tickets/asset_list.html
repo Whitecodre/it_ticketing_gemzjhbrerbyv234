@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}Asset Management{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -12,6 +13,8 @@
 {% endblock %}
 
 {% block dashboard_content %}
+{% url 'tickets:export_report' 'assets' as asset_export_url %}
+{% build_qs q=query category=selected_category status=selected_status location=selected_location filter_low_stock=selected_low_stock filter_renewal_due=selected_renewal_due as asset_export_qs %}
 <div class="w-full">
     <!-- Header with Import, Add, Export buttons -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -24,22 +27,8 @@
         </div>
         <div class="flex flex-wrap gap-2">
             <!-- Export Dropdown -->
-            <div class="relative">
-                <button class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2"
-                        onclick="toggleExportDropdown()">
-                    {% lucide "upload" size=16 %} Export
-                    <span class="ml-1">▾</span>
-                </button>
-                <div id="exportDropdown" class="w-36 rounded-md shadow-lg border hidden z-[9999] bg-surface border-border">
-                    <a href="{% url 'tickets:asset_export' %}?format=csv&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
-                    class="block px-4 py-2 text-xs hover:bg-black/5 transition">CSV</a>
-                    <a href="{% url 'tickets:asset_export' %}?format=excel&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
-                    class="block px-4 py-2 text-xs hover:bg-black/5 transition">Excel</a>
-                    <a href="{% url 'tickets:asset_export' %}?format=json&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
-                    class="block px-4 py-2 text-xs hover:bg-black/5 transition">JSON</a>
-                </div>
-            </div>
-            
+            {% include "components/export_menu.html" with menu_id="asset" export_url=asset_export_url extra_qs=asset_export_qs formats="csv:CSV:file-spreadsheet,excel:Excel:file-spreadsheet,json:JSON:file-code,pdf:PDF:file-type,docx:Word:file-down" %}
+
             <!-- Import Button -->
             <button class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2"
                     onclick="document.getElementById('importModal').classList.remove('hidden')">
@@ -61,13 +50,17 @@
         hx-get="{% url 'tickets:assets' %}"
         hx-target="#assetTableContainer"
         hx-swap="innerHTML"
+        hx-indicator="#assetFilterSpinner"
         hx-trigger="change, keyup delay:300ms from:input">
-        
+
         <div class="relative flex-1 min-w-[200px]">
             <input type="text" name="filter_q" value="{{ query }}"
                 placeholder="Search by name, tracking ID, serial..."
-                class="w-full rounded-lg border py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                class="w-full rounded-lg border py-2 pl-10 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
+            <span id="assetFilterSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
+                {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
+            </span>
         </div>
 
         <select name="filter_category" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
@@ -91,13 +84,13 @@
         <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
             <input type="checkbox" name="filter_low_stock" value="1" {% if selected_low_stock %}checked{% endif %}
                    class="rounded border-border text-primary focus:ring-primary">
-            ⚠️ Low stock only
+            {% lucide "triangle-alert" size=14 %} Low stock only
         </label>
 
         <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
             <input type="checkbox" name="filter_renewal_due" value="1" {% if selected_renewal_due %}checked{% endif %}
                    class="rounded border-border text-primary focus:ring-primary">
-            📅 Renewal due soon
+            {% lucide "calendar" size=14 %} Renewal due soon
         </label>
 
         <button type="reset" class="btn-ghost text-sm"
@@ -148,7 +141,7 @@
                         <li><strong>Status</strong> – ACTIVE, IN_STORE, MAINTENANCE, DAMAGED, SCRAPPED</li>
                     </ul>
                     <p class="mt-2">
-                        <a href="{% url 'tickets:asset_export' %}?format=csv" class="text-primary hover:underline">Download sample CSV</a>
+                        <a href="{% url 'tickets:export_report' 'assets' %}?format=csv" class="text-primary hover:underline">Download sample CSV</a>
                     </p>
                 </div>
                 <div class="flex justify-end gap-2 pt-2">
@@ -174,6 +167,9 @@
 {% block scripts %}
 {{ block.super }}
 <script src="{% static 'js/asset_management.js' %}"></script>
+<script src="{% static 'js/bulk_select.js' %}"></script>
+<script src="{% static 'js/scroll_shadow.js' %}"></script>
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         if (typeof initAssetManagement === 'function') {

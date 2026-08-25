@@ -43,6 +43,30 @@
     {# Resource tabs #}
     {% for r in resources %}
     <div class="settings-tab-panel {% if not forloop.first %}hidden{% endif %}" id="tab-{{ r.config.slug }}">
+        {% if r.pending %}
+        <div class="mb-4 space-y-2">
+            {% for item in r.pending %}
+            <div class="rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3"
+                 style="background-color: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface)); border-color: var(--color-warning);">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
+                        {% lucide "clock" size=16 %}
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-sm font-medium text-text-primary">
+                            "{{ item|settings_cell:r.config.list_columns.0.0 }}" was proposed by {{ item.proposed_by.get_full_name|default:item.proposed_by.email }}
+                        </p>
+                        <p class="text-xs text-text-secondary">Not yet active — confirm it's valid before approving.</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded shrink-0"
+                        onclick="activateSettingsRow('{{ r.config.slug }}', {{ item.pk }})">
+                    {% lucide "check" size=12 %} Activate
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         <div class="dashboard-card p-0 overflow-hidden">
             <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--color-border);">
                 <h3 class="text-sm font-semibold text-text-primary">{{ r.config.label }}</h3>
@@ -67,7 +91,7 @@
                             data-pk="{{ row.pk }}"
                             {% for f in r.config.fields %}data-{{ f.name }}="{{ row|getattr:f.name }}" {% endfor %}>
                             {% for col_attr, col_label in r.config.list_columns %}
-                            <td class="py-2.5 px-4 text-text-primary">{{ row|getattr:col_attr }}</td>
+                            <td class="py-2.5 px-4 text-text-primary">{{ row|settings_cell:col_attr }}</td>
                             {% endfor %}
                             <td class="py-2.5 px-4 text-right">
                                 <button type="button" class="btn-ghost btn-icon" onclick="openSettingsModal('{{ r.config.slug }}', this.closest('tr'))" aria-label="Edit">
@@ -98,6 +122,12 @@
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Company Name</label>
                     <input type="text" name="company_name" value="{{ client_settings_obj.company_name }}"
                            class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Currency Symbol</label>
+                    <input type="text" name="currency_symbol" value="{{ client_settings_obj.currency_symbol }}" maxlength="5"
+                           class="block w-24 rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                    <p class="text-xs text-text-secondary mt-1">Shown wherever the app displays a cost (renewal cost, maintenance cost, etc).</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Logo</label>
@@ -290,6 +320,23 @@
               }
           });
     });
+
+    function activateSettingsRow(resource, pk) {
+        const label = SETTINGS_SINGULAR_LABELS[resource] || 'Item';
+        fetch(`/tickets/settings/${resource}/${pk}/activate/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+              if (result.ok) {
+                  queueSettingsToast(`${label} activated.`, 'success');
+                  sessionStorage.setItem(SETTINGS_TAB_KEY, resource);
+                  window.location.reload();
+              } else if (typeof showToast === 'function') {
+                  showToast(result.data.error || 'Could not activate', 'error');
+              }
+          });
+    }
 
     function deleteSettingsRow(resource, pk) {
         const label = SETTINGS_SINGULAR_LABELS[resource] || 'Item';

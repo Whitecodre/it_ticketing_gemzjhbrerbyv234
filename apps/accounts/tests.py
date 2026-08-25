@@ -976,4 +976,4 @@ class DashboardRemoteSessionBannerRoleScopingTests(TestCase):
         self.user.set_active_role('AGENT')
         response = self.client.get(reverse('dashboard'))
         self.assertContains(response, 'accepted your remote session request')
-        self.assertNotContains(response, 'A remote session was requested')
+

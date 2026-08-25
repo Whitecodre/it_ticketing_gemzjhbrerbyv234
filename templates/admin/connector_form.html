@@ -31,28 +31,25 @@
 
             {# Active toggle #}
             <div class="flex items-center gap-3 p-3 rounded-lg border border-border bg-background/50">
-                <input type="checkbox" name="is_active" id="is_active" {% if connector.is_active %}checked{% endif %}
-                       class="h-4 w-4 rounded border-border text-primary focus:ring-primary">
-                <label for="is_active" class="text-sm font-medium text-text-primary cursor-pointer">Enable this connector</label>
+                {{ form.is_active }}
+                <label for="id_is_active" class="text-sm font-medium text-text-primary cursor-pointer">Enable this connector</label>
             </div>
 
             {# Instructions for Requester #}
             <div>
-                <label for="instructions_for_requester" class="block text-sm font-medium mb-1 text-text-primary">
+                <label for="id_instructions_for_requester" class="block text-sm font-medium mb-1 text-text-primary">
                     Instructions for Requester <span class="text-text-secondary font-normal">(end user)</span>
                 </label>
-                <textarea name="instructions_for_requester" id="instructions_for_requester" rows="5"
-                          class="block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2 font-mono">{{ connector.instructions_for_requester }}</textarea>
+                {{ form.instructions_for_requester }}
                 <p class="text-xs text-text-secondary mt-1">These instructions will be shown to the requester when they accept a remote session.</p>
             </div>
 
             {# Instructions for Agent #}
             <div>
-                <label for="instructions_for_agent" class="block text-sm font-medium mb-1 text-text-primary">
+                <label for="id_instructions_for_agent" class="block text-sm font-medium mb-1 text-text-primary">
                     Instructions for Agent
                 </label>
-                <textarea name="instructions_for_agent" id="instructions_for_agent" rows="5"
-                          class="block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2 font-mono">{{ connector.instructions_for_agent }}</textarea>
+                {{ form.instructions_for_agent }}
                 <p class="text-xs text-text-secondary mt-1">These instructions will be shown to the agent when they start a remote session.</p>
             </div>
 

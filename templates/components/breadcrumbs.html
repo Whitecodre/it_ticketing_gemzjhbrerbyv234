@@ -1,0 +1,21 @@
+{% comment %}
+BREADCRUMBS — replaces a bare back-arrow with a full ancestry trail, for
+pages whose real navigation depth is 3+ levels (a single back-arrow can't
+show the user how deep they are). Formalizes the one-off pattern already
+used in templates/knowledge_base/article_detail.html.
+
+Rendered via the {% breadcrumbs %} inclusion tag in
+apps/tickets/templatetags/badge_tags.py — pass label,url pairs; a trailing
+unpaired label (odd arg count) is the current page and renders as plain
+text instead of a link.
+{% endcomment %}
+<nav class="text-xs text-text-secondary mb-4 flex flex-wrap items-center gap-1" aria-label="Breadcrumb">
+    {% for item in items %}
+        {% if not forloop.first %}<span>›</span>{% endif %}
+        {% if item.url and not forloop.last %}
+        <a href="{{ item.url }}" class="hover:text-primary hover:underline">{{ item.label }}</a>
+        {% else %}
+        <span class="text-text-primary">{{ item.label }}</span>
+        {% endif %}
+    {% endfor %}
+</nav>

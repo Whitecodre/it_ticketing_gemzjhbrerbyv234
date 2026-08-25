@@ -97,6 +97,75 @@ function positionDropdown(triggerEl, dropdownEl, options) {
 window.positionDropdown = positionDropdown;
 
 // ================================================================
+// SHARED ACTION DROPDOWN — one instance per table, opened/closed/
+// repositioned per row via a single trigger button, so every "kebab"
+// Actions-column dropdown (asset inventory, ticket tables, user table,
+// ...) shares the exact same toggle-to-close and positioning behavior
+// instead of each table hand-rolling a slightly different copy.
+//
+// Usage: call once per dropdown element to get back { toggle, close,
+// isOpen }, then have each row's trigger button call toggle(btn) —
+// toggle() closes the dropdown if it's already open for that same
+// button (true toggle behavior), otherwise repositions/opens it for
+// the new button via positionDropdown(). onOpen(btn) runs right before
+// opening — populate the dropdown's content (labels, hrefs, per-row
+// data) from btn.dataset there.
+//
+// options:
+//   align: passed straight through to positionDropdown (default 'right')
+//   onOpen(btn): called before the dropdown opens for a given trigger
+//   onClose(): called whenever the dropdown closes, for any reason
+// ================================================================
+function createActionDropdown(dropdownEl, options) {
+    options = options || {};
+    const align = options.align || 'right';
+    let activeBtn = null;
+    let cleanup = null;
+
+    function isOpen() {
+        return dropdownEl.classList.contains('opacity-100');
+    }
+
+    function close() {
+        dropdownEl.classList.remove('opacity-100', 'scale-100');
+        dropdownEl.classList.add('pointer-events-none', 'opacity-0', 'scale-95');
+        activeBtn = null;
+        if (cleanup) { cleanup(); cleanup = null; }
+        if (options.onClose) options.onClose();
+    }
+
+    function toggle(btn) {
+        const reopening = activeBtn === btn && isOpen();
+        close();
+        if (reopening) return false;
+        activeBtn = btn;
+        if (options.onOpen) options.onOpen(btn);
+        if (window.positionDropdown) {
+            cleanup = window.positionDropdown(btn, dropdownEl, { align: align });
+        }
+        dropdownEl.classList.remove('pointer-events-none', 'opacity-0', 'scale-95');
+        dropdownEl.classList.add('opacity-100', 'scale-100');
+        return true;
+    }
+
+    // Identity-based, not selector-based: activeBtn is already updated
+    // by toggle() before this bubbles up here (inline onclick and
+    // document-delegated trigger handlers both run before/at this
+    // point), so this works regardless of the trigger's class name or
+    // how its click handler is wired.
+    document.addEventListener('click', function(e) {
+        if (activeBtn && (e.target === activeBtn || activeBtn.contains(e.target))) return;
+        if (!dropdownEl.contains(e.target)) close();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') close();
+    });
+
+    return { toggle: toggle, close: close, isOpen: isOpen };
+}
+window.createActionDropdown = createActionDropdown;
+
+// ================================================================
 // SIDEBAR STATE - Initialize
 // ================================================================
 
@@ -227,44 +296,57 @@ window.addEventListener('resize', function() {
 })();
 
 // ================================================================
-// SIDEBAR ACCORDION - Single Open On Click, Default All Open
+// SIDEBAR ACCORDION - Single Open, Closed By Default Except Active
 // ================================================================
 
 let activeSectionId = null;
 
-function closeAllSections(exceptSectionId = null) {
+function closeAllSections(exceptSectionId = null, instant = false) {
     const toggleBtns = document.querySelectorAll('.sidebar-section-toggle[data-section]');
     toggleBtns.forEach(function(button) {
         const sectionId = button.dataset.section;
         if (sectionId === exceptSectionId) return;
         if (!sectionId) return;
-        
+
         const content = document.getElementById(sectionId);
         if (!content) return;
-        
-        content.style.maxHeight = '0px';
-        content.style.opacity = '0';
-        content.style.overflow = 'hidden';
-        
-        if (content._sidebarCloseTimer) {
-            clearTimeout(content._sidebarCloseTimer);
+
+        if (instant) {
+            // Skip the animation entirely on first paint so a fresh page
+            // load doesn't flash every section open before collapsing them.
+            content.style.transition = 'none';
+            content.style.maxHeight = '0px';
+            content.style.opacity = '0';
+            content.style.overflow = 'hidden';
+            content.classList.add('hidden');
+            void content.offsetHeight;
+            content.style.transition = '';
+        } else {
+            content.style.maxHeight = '0px';
+            content.style.opacity = '0';
+            content.style.overflow = 'hidden';
+
+            if (content._sidebarCloseTimer) {
+                clearTimeout(content._sidebarCloseTimer);
+            }
+
+            content._sidebarCloseTimer = setTimeout(function() {
+                content.classList.add('hidden');
+                content._sidebarCloseTimer = null;
+            }, 300);
         }
 
-        content._sidebarCloseTimer = setTimeout(function() {
-            content.classList.add('hidden');
-            content._sidebarCloseTimer = null;
-        }, 300);
-        
         const chevron = button.querySelector('.section-chevron');
         if (chevron) chevron.style.transform = 'rotate(-90deg)';
         button.setAttribute('aria-expanded', 'false');
+        updateParentBadgeVisibility(button);
     });
 }
 
-function openSection(sectionId) {
+function openSection(sectionId, instant = false) {
     const content = document.getElementById(sectionId);
     if (!content) return;
-    
+
     const button = document.querySelector(`.sidebar-section-toggle[data-section="${sectionId}"]`);
     if (!button) return;
 
@@ -274,24 +356,100 @@ function openSection(sectionId) {
         clearTimeout(content._sidebarCloseTimer);
         content._sidebarCloseTimer = null;
     }
-    
+
     content.classList.remove('hidden');
+
+    if (instant) content.style.transition = 'none';
+
     content.style.maxHeight = '0px';
     content.style.opacity = '0';
     content.style.overflow = 'hidden';
-    
+
     // Force reflow
     void content.offsetHeight;
-    
+
     const fullHeight = content.scrollHeight + 'px';
     content.style.maxHeight = fullHeight;
     content.style.opacity = '1';
     content.style.overflow = '';
-    
+
+    if (instant) {
+        void content.offsetHeight;
+        content.style.transition = '';
+    }
+
     const chevron = button.querySelector('.section-chevron');
     if (chevron) chevron.style.transform = 'rotate(0deg)';
     button.setAttribute('aria-expanded', 'true');
+    updateParentBadgeVisibility(button);
 }
+
+// ================================================================
+// SIDEBAR BADGE PROPAGATION
+// ================================================================
+// Sums the pending-count badges (.badge-pending, excluding the parent
+// badge itself) inside a collapsed section and shows the total on that
+// section's header, so a user browsing elsewhere still sees "something
+// here needs attention" without expanding the group. Hidden again while
+// the section is open — the child badges are visible directly then,
+// which reads cleaner than showing the same count twice.
+function getOrCreateSectionBadge(button) {
+    let badge = button.querySelector('.sidebar-section-badge');
+    if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'sidebar-section-badge badge-pending hidden';
+        const chevron = button.querySelector('.section-chevron');
+        if (chevron) {
+            button.insertBefore(badge, chevron);
+        } else {
+            button.appendChild(badge);
+        }
+    }
+    return badge;
+}
+
+function sumSectionBadgeCount(content) {
+    let total = 0;
+    content.querySelectorAll('.badge-pending').forEach(function(el) {
+        if (el.classList.contains('sidebar-section-badge')) return;
+        const n = parseInt((el.textContent || '').trim(), 10);
+        if (!isNaN(n)) total += n;
+    });
+    return total;
+}
+
+function updateParentBadgeVisibility(button) {
+    const sectionId = button.dataset.section;
+    if (!sectionId) return;
+    const content = document.getElementById(sectionId);
+    if (!content) return;
+
+    const total = sumSectionBadgeCount(content);
+    const badge = getOrCreateSectionBadge(button);
+    const isExpanded = button.getAttribute('aria-expanded') === 'true';
+
+    if (total > 0 && !isExpanded) {
+        badge.textContent = total > 99 ? '99+' : String(total);
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
+}
+
+function refreshSidebarBadges() {
+    document.querySelectorAll('.sidebar-section-toggle[data-section]').forEach(function(button) {
+        updateParentBadgeVisibility(button);
+    });
+}
+
+// Child badges (Remote Sessions, My Assets, Manager Review, ...) refresh
+// on their own independent HTMX polling intervals — recompute the
+// relevant parent's aggregate whenever any of them swaps in new content.
+document.addEventListener('htmx:afterSwap', function(event) {
+    if (event.target.closest && event.target.closest('.section-content')) {
+        refreshSidebarBadges();
+    }
+});
 
 function handleSectionToggle(e) {
     // Stop event from bubbling up
@@ -359,29 +517,30 @@ function initialiseSidebarAccordion() {
     const sectionIds = Array.prototype.map.call(freshBtns, function (b) { return b.dataset.section; }).filter(Boolean);
 
     // Mark the section containing the current page's active link with the
-    // same "you are here" signal the child link gets, so it stays visually
-    // distinct even though every section starts expanded below.
+    // same "you are here" signal the child link gets.
     const sectionToOpen = findActiveSectionId(sectionIds);
     freshBtns.forEach(function(button) {
         button.classList.toggle('has-active-child', button.dataset.section === sectionToOpen);
     });
 
-    // Every section starts expanded so badge-bearing links (Remote Sessions,
-    // Manager Review, etc.) are always visible without the user having to
-    // guess which group to open. Clicking a section afterward still collapses
-    // the others (see handleSectionToggle) - only the initial state changed.
-    freshBtns.forEach(function(button) {
-        const sectionId = button.dataset.section;
-        if (!sectionId) return;
-        openSection(sectionId);
-    });
-
-    activeSectionId = null;
+    // Every section starts closed except the one containing the current
+    // page, so the user can see where they are without hunting for it.
+    // `instant: true` skips the open/close animation on this first pass so
+    // a fresh page load doesn't flash every section open before collapsing
+    // them. Clicking a section afterward still closes the others (see
+    // handleSectionToggle) - only the initial state changed.
+    closeAllSections(sectionToOpen, true);
+    if (sectionToOpen) {
+        openSection(sectionToOpen, true);
+    }
+    activeSectionId = sectionToOpen;
 
     // Add fresh event listeners
     freshBtns.forEach(function(button) {
         button.addEventListener('click', handleSectionToggle);
     });
+
+    refreshSidebarBadges();
 }
 
 // Re-initialize after HTMX swaps that replace the sidebar nav itself (e.g.
@@ -634,59 +793,22 @@ function filterVendorSelectByCategory(categorySelect, vendorSelect) {
 window.filterVendorSelectByCategory = filterVendorSelectByCategory;
 
 // ================================================================
-// MOBILIZE MODAL (mobilization creation for pending-fulfillment tickets
-// flagged is_mobilization_request — same shape as the fulfill modal above,
-// but the fetched partial (mobilization_create_modal.html) has no root
-// backdrop of its own since it's normally swapped into a page-level
-// #modalOverlay/#modalContainer pair, so this wraps it in one here instead
-// of duplicating that overlay markup on every page that can trigger it.
-// Its close button already calls closeMobilizationModal() — same name used
-// by mobilization_detail.html/mobilization_list.html — so it's defined
-// globally here too rather than introducing a second name.
+// MOBILIZE ASSETS — navigates to its own page (tickets/mobilization_create.html)
+// rather than opening in the slideover. The form is too long/multi-section
+// for a slideover to do well; every call site still calls this same
+// function name with the same (optional) ticketId argument, so nothing
+// else had to change at the call sites themselves.
 // ================================================================
 
-function openMobilizeModal(ticketId) {
-    const existing = document.getElementById('mobilizeModal');
-    if (existing) existing.remove();
-
-    document.body.style.overflow = 'hidden';
-
-    fetch(`/tickets/mobilizations/create-modal/?ticket_id=${ticketId}`)
-        .then(response => response.text())
-        .then(html => {
-            const overlay = document.createElement('div');
-            overlay.id = 'mobilizeModal';
-            overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/50';
-            overlay.innerHTML = `<div class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">${html}</div>`;
-            document.body.appendChild(overlay);
-
-            if (typeof htmx !== 'undefined') {
-                htmx.process(overlay);
-            }
-
-            overlay.addEventListener('click', function(e) {
-                if (e.target === this) closeMobilizationModal();
-            });
-        })
-        .catch(error => {
-            console.error('Error loading mobilize modal:', error);
-            document.body.style.overflow = '';
-            if (typeof showToast === 'function') {
-                showToast('Error loading mobilization form.', 'error');
-            }
-        });
+function openMobilizationCreateModal(ticketId) {
+    window.location.href = ticketId
+        ? `/tickets/mobilizations/new/?ticket_id=${ticketId}`
+        : '/tickets/mobilizations/new/';
 }
 
-function closeMobilizationModal() {
-    const modal = document.getElementById('mobilizeModal');
-    if (modal) {
-        modal.remove();
-    }
-    document.body.style.overflow = '';
-}
-
-window.openMobilizeModal = openMobilizeModal;
-window.closeMobilizationModal = closeMobilizationModal;
+window.openMobilizeModal = openMobilizationCreateModal;
+window.openMobilizationCreateModal = openMobilizationCreateModal;
+window.closeMobilizationModal = closeSlideover;
 
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
@@ -712,6 +834,26 @@ document.body.addEventListener('htmx:configRequest', function(event) {
     if (tokenElem) {
         event.detail.headers['X-CSRFToken'] = tokenElem.value;
     }
+});
+
+// ================================================================
+// HTMX ERROR RESPONSES -> TOAST
+// ================================================================
+// HTMX doesn't swap non-2xx responses by default, so a failed hx-post
+// (e.g. an empty comment, a rejected form) otherwise looks like nothing
+// happened at all. Fall back to a toast wherever nothing more specific
+// already handles htmx:responseError on a given element.
+document.body.addEventListener('htmx:responseError', function(event) {
+    if (typeof showToast !== 'function') return;
+    const xhr = event.detail.xhr;
+    const raw = (xhr && xhr.responseText || '').trim();
+    // Plain-text error bodies (the common case) are shown as-is; a few
+    // older endpoints still return an HTML fragment with a 4xx status
+    // (meant to be swapped in, back when this had no fallback) — showing
+    // those tags-and-all in a toast would look broken, so fall back to a
+    // generic message for anything that looks like markup instead.
+    const message = raw && !raw.startsWith('<') ? raw : 'Something went wrong. Please try again.';
+    showToast(message, 'error');
 });
 
 // ================================================================
@@ -796,7 +938,14 @@ document.addEventListener('click', function(event) {
 // TOAST NOTIFICATIONS
 // ================================================================
 
-function showToast(message, type = 'info', duration = 5000) {
+// Errors tend to carry longer, more important text than a short "Saved"
+// confirmation — give them more time on screen by default instead of the
+// same fixed window for every toast type. Callers that pass an explicit
+// duration still get exactly that.
+const TOAST_DEFAULT_DURATION_BY_TYPE = { error: 8000, warning: 7000, success: 4000, info: 5000 };
+
+function showToast(message, type = 'info', duration) {
+    if (duration === undefined) duration = TOAST_DEFAULT_DURATION_BY_TYPE[type] || 5000;
     createFallbackToast(message, type, duration);
 }
 

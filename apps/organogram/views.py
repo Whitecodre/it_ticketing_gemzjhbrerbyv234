@@ -1,19 +1,12 @@
 # apps/organogram/views.py
-from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
 from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
-from django.views.decorators.http import require_GET
+from django.http import HttpResponse
 from django.utils import timezone
-from django.urls import reverse
-import csv
-import json
 
-from apps.accounts.models import ClientSettings
-from apps.common.permissions import is_admin, can_edit_org, get_sidebar_template
-from .models import SystemOrgConfig, OrgDraft, OrgApproval, OrgPublished, OrgAuditLog
-from .forms import OrgDraftForm
+from apps.common.permissions import get_sidebar_template, effective_role_name
+from .models import SystemOrgConfig
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -123,6 +116,8 @@ def get_department_colors():
 @login_required
 def system_org(request):
     """System organogram view - role tiers auto-generated from users, with department/search filters."""
+    if effective_role_name(request.user) not in ('TEAM_LEAD', 'ADMIN', 'SUPERADMIN'):
+        return HttpResponse(status=403)
 
     user = request.user
     qs, department, search_query = get_system_org_queryset(request)
@@ -183,86 +178,3 @@ def system_org_print(request):
         'embed': request.GET.get('embed') == '1',
     }
     return render(request, 'organogram/system_print.html', context)
-
-
-# ================================================================
-# ORGANIZATION ORGANOGRAM (Customizable)
-# ================================================================
-
-@login_required
-def org_list(request):
-    """Deprecated - Organization chart editing has been moved to DCC."""
-    messages.warning(request, 'Organization chart editing is now handled by DCC.')
-    return redirect('dashboard')
-
-
-@login_required
-def org_builder(request):
-    """Deprecated - Organization chart editing has been moved to DCC."""
-    messages.warning(request, 'Organization chart editing is now handled by DCC.')
-    return redirect('dashboard')
-
-
-@login_required
-def org_preview(request, pk):
-    """Preview organization organogram before publishing."""
-    
-    draft = get_object_or_404(OrgDraft, pk=pk)
-    
-    context = {
-        'draft': draft,
-        'sidebar_template': get_sidebar_template(request.user),
-    }
-    return render(request, 'organogram/organization/preview.html', context)
-
-
-@login_required
-def org_view(request):
-    """View the DCC-provided organization chart."""
-    
-    # Get the latest published version (from DCC upload)
-    published = OrgPublished.objects.first()
-    
-    # Alternatively, if DCC provides via JSON file:
-    # structure = load_dcc_structure()  # custom function
-    
-    context = {
-        'published': published,
-        'has_published': published is not None,
-        'is_dcc_provided': True,
-        'last_updated': published.published_at if published else None,
-        'sidebar_template': get_sidebar_template(request.user),
-    }
-    return render(request, 'organogram/organization/view.html', context)
-
-
-@login_required
-def org_approvals(request):
-    """Deprecated - Organization chart editing has been moved to DCC."""
-    messages.warning(request, 'Organization chart editing is now handled by DCC.')
-    return redirect('dashboard')
-
-
-@login_required
-def org_publish_history(request):
-    """Deprecated - Organization chart editing has been moved to DCC."""
-    messages.warning(request, 'Organization chart editing is now handled by DCC.')
-    return redirect('dashboard')
-
-# apps/organogram/views.py - Add at the end
-
-@login_required
-def api_pending_count(request):
-    """Return the count of pending approvals for the current admin."""
-    
-    if not is_admin(request.user):
-        return HttpResponse('0')
-    
-    pending_count = OrgDraft.objects.filter(
-        status=OrgDraft.Status.PENDING
-    ).exclude(
-        org_approval_records__user=request.user,
-        org_approval_records__approved=True
-    ).count()
-    
-    return HttpResponse(str(pending_count))

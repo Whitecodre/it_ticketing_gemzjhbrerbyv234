@@ -380,8 +380,18 @@ class Ticket(models.Model):
         return f"{self.number} - {self.title}"
 
     def save(self, *args, **kwargs):
-        # Compute priority based on impact x urgency
-        if not self.priority:
+        # Compute priority based on impact x urgency. Recomputes not just on
+        # first save but whenever impact/urgency have changed since the last
+        # save — otherwise correcting a ticket's impact/urgency post-creation
+        # (e.g. via /admin/) leaves priority, and the SLA due dates derived
+        # from it, silently stale.
+        recompute_priority = not self.priority
+        if self.pk and not recompute_priority:
+            old = Ticket.objects.filter(pk=self.pk).values('impact', 'urgency').first()
+            if old and (old['impact'] != self.impact or old['urgency'] != self.urgency):
+                recompute_priority = True
+
+        if recompute_priority:
             impact_score = {
                 self.Impact.INDIVIDUAL: 1,
                 self.Impact.DEPARTMENT: 2,
@@ -455,6 +465,12 @@ class Attachment(models.Model):
     content_type = models.CharField(max_length=100, blank=True)
     size = models.PositiveIntegerField(default=0)
     hash = models.CharField(max_length=64, blank=True)
+    # Cached LibreOffice-converted PDF for Office attachments (doc/docx/xls/
+    # xlsx/ppt/pptx) so the preview modal can embed it natively instead of
+    # depending on Google Docs Viewer, which can't reach a local/private
+    # file URL at all and is unreliable generally. Generated lazily on first
+    # preview request — see apps/tickets/views.py's attachment_preview.
+    preview_pdf = models.FileField(upload_to='attachments/previews/%Y/%m/%d/', storage=raw_file_storage(), blank=True, null=True)
 
     def __str__(self):
         return self.filename
@@ -525,6 +541,64 @@ class SLA(models.Model):
     @property
     def resolution_hours(self):
         return round(self.resolution_minutes / 60, 1)
+
+
+def add_business_minutes(start, minutes, business_calendar):
+    """Advance `start` by `minutes` of business time per `business_calendar`
+    (workdays/work_start/work_end/holidays), rolling over to the next open
+    workday once a day's window is used up.
+
+    Falls back to naive calendar-time addition — used by apply_sla() when an
+    SLA has no calendar attached, or the calendar itself is unusable (no
+    workdays selected, or work_end <= work_start) — rather than looping
+    forever trying to find a business window that doesn't exist.
+    """
+    if business_calendar is None:
+        return start + datetime.timedelta(minutes=minutes)
+
+    try:
+        workdays = {int(d) for d in business_calendar.workdays}
+    except (TypeError, ValueError):
+        workdays = set()
+    holidays = set(business_calendar.holidays or [])
+    work_start = business_calendar.work_start
+    work_end = business_calendar.work_end
+
+    daily_window_minutes = (
+        datetime.datetime.combine(datetime.date.min, work_end)
+        - datetime.datetime.combine(datetime.date.min, work_start)
+    ).total_seconds() / 60
+    if not workdays or daily_window_minutes <= 0:
+        return start + datetime.timedelta(minutes=minutes)
+
+    current = timezone.localtime(start)
+
+    def is_business_day(dt):
+        return dt.weekday() in workdays and dt.date().isoformat() not in holidays
+
+    def at_time(dt, t):
+        return dt.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+
+    # Snap forward to the start of the next open business window.
+    while not is_business_day(current) or current.time() >= work_end:
+        current = at_time(current + datetime.timedelta(days=1), work_start)
+    if current.time() < work_start:
+        current = at_time(current, work_start)
+
+    remaining = minutes
+    while remaining > 0:
+        window_close = at_time(current, work_end)
+        available = (window_close - current).total_seconds() / 60
+        if remaining <= available:
+            current = current + datetime.timedelta(minutes=remaining)
+            remaining = 0
+        else:
+            remaining -= available
+            current = at_time(current + datetime.timedelta(days=1), work_start)
+            while not is_business_day(current):
+                current = at_time(current + datetime.timedelta(days=1), work_start)
+
+    return current
 
 
 class EscalationRule(models.Model):
@@ -658,6 +732,27 @@ def _add_months(start_date, months):
 # ASSET MODEL (UPDATED)
 # ==========================================================================
 
+def _notify_it_admins(message, url):
+    """Shared by every asset-custody step that needs to reach 'the admins'
+    (checkout acceptance/dispute, return request/cancel, low-stock alerts).
+    Narrows via the legacy `role` field or the roles M2M (either can lag
+    right after account creation), then resolves each candidate's true
+    active role in Python — a raw role__in=[...] filter misses/wrongly-
+    includes admins whose active role has diverged from the legacy field."""
+    from django.db.models import Q
+    from apps.common.models import Notification
+    from apps.common.utils import role_of
+    from apps.common.permissions import effective_role_name
+
+    candidates = User.objects.filter(
+        Q(role__in=['ADMIN', 'SUPERADMIN']) | Q(roles__name__in=['ADMIN', 'SUPERADMIN']),
+        is_active=True,
+    ).distinct()
+    for recipient in candidates:
+        if effective_role_name(recipient) in ('ADMIN', 'SUPERADMIN'):
+            Notification.objects.create(recipient=recipient, role=role_of(recipient), message=message, url=url)
+
+
 class Asset(models.Model):
     # ================================================================
     # LOCATIONS
@@ -784,6 +879,11 @@ class Asset(models.Model):
     renewal_reminder_90d_sent = models.BooleanField(default=False)
     renewal_reminder_30d_sent = models.BooleanField(default=False)
     renewal_reminder_7d_sent = models.BooleanField(default=False)
+    # Date of the last "this renewal is overdue" nag — unlike the 90/30/7d
+    # flags above (one-shot per cycle), overdue nagging repeats every 7
+    # days until the renewal is actually actioned, so this stores *when*
+    # rather than *whether*.
+    renewal_reminder_overdue_last_sent = models.DateField(null=True, blank=True)
 
     # ================================================================
     # PURCHASE / WARRANTY
@@ -821,7 +921,7 @@ class Asset(models.Model):
     # ================================================================
     # STATUS & WORKFLOW (Enhanced)
     # ================================================================
-    status = models.CharField(max_length=20, default=Status.IN_STORE)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.IN_STORE)
     status_updated_at = models.DateTimeField(null=True, blank=True)
     status_updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -949,6 +1049,250 @@ class Asset(models.Model):
         return self.status in [self.Status.IN_STORE, self.Status.READY] and self.checked_out_to_id is None
 
     @property
+    def is_available_for_assignment(self):
+        """Single source of truth for 'can this asset be handed to someone
+        new' — via checkout, ticket fulfillment, or reassignment. Unlike
+        is_available (checked_out_to only), this also requires assigned_to
+        to be clear, since checkout/fulfillment/reassign used to mutate
+        checked_out_to and assigned_to independently and could disagree
+        about who currently has the asset. Individually-tracked assets only
+        — consumables are stock-count SKUs, not something one person 'has'."""
+        if self.is_consumable:
+            return False
+        return (
+            self.status in [self.Status.IN_STORE, self.Status.READY]
+            and self.checked_out_to_id is None
+            and self.assigned_to_id is None
+        )
+
+    @property
+    def can_reassign(self):
+        """Reassign only makes sense when someone actually has the asset —
+        gating it on 'status is IN_STORE/READY' too (like is_available_for_
+        assignment does) would let Reassign silently double as a second
+        Checkout for an asset nobody holds, which defeats the point of the
+        two being separate actions."""
+        if self.is_consumable:
+            return False
+        return self.checked_out_to_id is not None or self.assigned_to_id is not None
+
+    @property
+    def pending_scrap_requested_by(self):
+        """The user who filed the currently-pending scrap request, or None.
+        Valid exactly when status == DAMAGED, since that's the only status
+        SCRAP_REQUESTED ever produces (checkin's condition-based DAMAGED/
+        UNUSABLE routes to MAINTENANCE, not DAMAGED) — so the most recent
+        SCRAP_REQUESTED log's actor is reliably the pending request's
+        requester. Used for the scrap-approval self-approval guard."""
+        if self.status != self.Status.DAMAGED:
+            return None
+        last_request = self.logs.filter(action=AssetLog.Action.SCRAP_REQUESTED).order_by('-created_at').first()
+        return last_request.actor if last_request else None
+
+    @property
+    def assignment_blocked_reason(self):
+        """Human-readable reason is_available_for_assignment is False, or
+        None if it's actually available. Shared by assign_to()'s ValueError
+        and the checkout-modal pre-check, so the two never drift apart."""
+        if self.is_available_for_assignment:
+            return None
+        if self.is_consumable:
+            return 'it is a consumable/stock item'
+        if self.status not in [self.Status.IN_STORE, self.Status.READY]:
+            # `status` has no choices= at the field level (a pre-existing
+            # looseness elsewhere on this model), so there's no Django-
+            # generated get_status_display() — use the model's own
+            # status_display property instead.
+            return f'it is currently {self.status_display["label"]}'
+        return 'it is already assigned to someone'
+
+    def assign_to(self, user, actor, expected_return_date=None, notes='', previous_holder_name=None):
+        """Hand this asset to `user`. The single place that sets
+        checked_out_to/assigned_to/status/AssetCheckoutHistory/AssetLog
+        together — used by checkout, ticket fulfillment, and reassignment,
+        so those three paths can no longer independently disagree about
+        who currently has the asset (or hand out something that's damaged,
+        retired, scrapped, or already assigned to someone else). Raises
+        ValueError if the asset isn't available. `previous_holder_name`
+        is purely for the AssetLog's 'from' field (get_reassignment_count()/
+        get_assignment_history() key off it) — pass it from a reassign flow
+        that knows who had the asset before release(); omit it for a plain
+        checkout/fulfillment of an asset that had no prior holder."""
+        reason = self.assignment_blocked_reason
+        if reason:
+            raise ValueError(f'"{self.name}" cannot be assigned — {reason}.')
+
+        now = timezone.now()
+        self.checked_out_to = user
+        self.checked_out_at = now
+        self.returned_at = None
+        self.returned_by = None
+        self.assigned_to = user
+        self.status = self.Status.CHECKED_OUT
+        self.status_updated_at = now
+        self.status_updated_by = actor
+        if expected_return_date:
+            self.expected_return_date = expected_return_date
+        self.save()
+
+        AssetCheckoutHistory.objects.create(
+            asset=self, checked_out_by=actor, checked_out_to=user,
+            checked_out_at=now, expected_return_date=self.expected_return_date,
+            notes=notes,
+        )
+        log_details = {'to': user.get_full_name(), 'notes': notes}
+        if previous_holder_name is not None:
+            log_details['from'] = previous_holder_name
+        AssetLog.objects.create(
+            asset=self, action=AssetLog.Action.ASSIGNED, actor=actor,
+            details=log_details,
+        )
+
+        # Every handover notifies the recipient to confirm receipt — the
+        # open AssetCheckoutHistory row's acknowledged_at stays null until
+        # they Accept (or gets disputed_at instead if they Dispute).
+        from apps.common.models import Notification
+        from apps.common.utils import role_of
+        Notification.objects.create(
+            recipient=user, role=role_of(user),
+            message=f'"{self.name}" ({self.tracking_id}) has been checked out to you — please confirm you received it.',
+            url='/tickets/my-assets/',
+        )
+
+    def release(self, actor, return_reason=None, return_comment='', return_condition=''):
+        """Take this asset back from whoever currently has it. The single
+        place that clears checked_out_to/assigned_to, closes the open
+        AssetCheckoutHistory row, and writes AssetLog — used by check-in and
+        by reassignment away from a current holder. Status is decided from
+        BOTH return_condition (DAMAGED/UNUSABLE -> MAINTENANCE) and
+        return_reason (LOST/STOLEN -> that exact terminal status) — a lost
+        or stolen asset no longer silently re-enters the available pool via
+        a default/blank condition. Any other reason falls back to IN_STORE;
+        reasons implying disposal/scrap intentionally do NOT bypass the
+        separate scrap-approval workflow (asset_scrap_request/approve)."""
+        previous_holder = self.checked_out_to or self.assigned_to
+        now = timezone.now()
+
+        self.return_reason = return_reason or self.return_reason
+        self.return_comment = return_comment
+        self.return_condition = return_condition
+        self.returned_at = now
+        self.checked_out_to = None
+        self.assigned_to = None
+
+        condition_upper = (return_condition or '').upper()
+        if condition_upper in [self.Condition.DAMAGED, self.Condition.UNUSABLE]:
+            self.status = self.Status.MAINTENANCE
+        elif return_reason == self.ReturnReason.LOST:
+            self.status = self.Status.LOST
+        elif return_reason == self.ReturnReason.STOLEN:
+            self.status = self.Status.STOLEN
+        else:
+            self.status = self.Status.IN_STORE
+        self.status_updated_at = now
+        self.status_updated_by = actor
+        self.save()
+
+        open_history = self.checkout_history.filter(checked_in_at__isnull=True).first()
+        if open_history:
+            open_history.checked_in_by = actor
+            open_history.checked_in_at = now
+            open_history.return_reason = return_reason
+            open_history.return_comment = return_comment
+            open_history.return_condition = return_condition
+            open_history.save()
+
+        AssetLog.objects.create(
+            asset=self, action=AssetLog.Action.UNASSIGNED, actor=actor,
+            details={
+                'from': previous_holder.get_full_name() if previous_holder else 'Unassigned',
+                'reason': self.get_return_reason_display() if self.return_reason else '',
+                'condition': return_condition,
+                'comment': return_comment,
+            },
+        )
+        return previous_holder
+
+    def _open_checkout_history(self):
+        """The currently-open AssetCheckoutHistory row (checked_in_at is
+        null), if any — the row every custody sub-state (acknowledged,
+        disputed, return-requested) lives on."""
+        return self.checkout_history.filter(checked_in_at__isnull=True).order_by('-checked_out_at').first()
+
+    def acknowledge_checkout(self, actor):
+        """The recipient confirms they actually received this asset (from
+        a checkout or a reassignment handover). Raises ValueError if there's
+        no open checkout for them to confirm."""
+        history = self._open_checkout_history()
+        if not history or history.checked_out_to_id != actor.id:
+            raise ValueError('You have no pending checkout to confirm for this asset.')
+        if history.acknowledged_at:
+            raise ValueError('This checkout has already been confirmed.')
+        history.acknowledged_at = timezone.now()
+        history.acknowledged_by = actor
+        history.save(update_fields=['acknowledged_at', 'acknowledged_by'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} confirmed receipt of "{self.name}" ({self.tracking_id}).',
+            f'/tickets/assets/{self.pk}/detail/',
+        )
+
+    def dispute_checkout(self, actor, reason=''):
+        """The recipient says they did NOT actually receive this asset.
+        Does not auto-revert custody — an admin resolves it manually via
+        Reassign/Check-in once they've sorted out what actually happened."""
+        history = self._open_checkout_history()
+        if not history or history.checked_out_to_id != actor.id:
+            raise ValueError('You have no pending checkout to dispute for this asset.')
+        if history.acknowledged_at:
+            raise ValueError('This checkout has already been confirmed.')
+        history.disputed_at = timezone.now()
+        history.dispute_reason = reason
+        history.save(update_fields=['disputed_at', 'dispute_reason'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} disputes receiving "{self.name}" ({self.tracking_id})'
+            f'{": " + reason if reason else ""} — needs manual review.',
+            f'/tickets/assets/{self.pk}/detail/',
+        )
+
+    def request_return(self, actor, reason, comment=''):
+        """Holder self-initiates a return — does NOT change checked_out_to/
+        assigned_to/status yet (the asset is still physically theirs until
+        an admin retrieves it and confirms via release()). Just flags the
+        open AssetCheckoutHistory row and notifies admins to arrange
+        pickup. release()'s caller pre-fills from these fields but the
+        admin's own return_condition assessment at confirm time is what
+        actually decides the post-return status."""
+        history = self._open_checkout_history()
+        if not history or history.checked_out_to_id != actor.id:
+            raise ValueError('You have no checked-out asset to return.')
+        if history.return_requested_at:
+            raise ValueError('A return has already been requested for this asset.')
+        history.return_requested_at = timezone.now()
+        history.return_requested_reason = reason
+        history.return_requested_comment = comment
+        history.save(update_fields=['return_requested_at', 'return_requested_reason', 'return_requested_comment'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} requested to return "{self.name}" ({self.tracking_id}).',
+            '/tickets/assets/pending-returns/',
+        )
+
+    def cancel_return_request(self, actor):
+        """Withdraw a self-initiated return request before an admin has
+        confirmed it — the escape hatch for 'I clicked that by mistake' or
+        'actually I'll keep it a bit longer'."""
+        history = self._open_checkout_history()
+        if not history or history.checked_out_to_id != actor.id or not history.return_requested_at:
+            raise ValueError('There is no pending return request for this asset.')
+        history.return_requested_at = None
+        history.return_requested_reason = None
+        history.return_requested_comment = ''
+        history.save(update_fields=['return_requested_at', 'return_requested_reason', 'return_requested_comment'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} cancelled their return request for "{self.name}" ({self.tracking_id}).',
+            f'/tickets/assets/{self.pk}/detail/',
+        )
+
+    @property
     def is_active(self):
         """Check if asset is actively in use."""
         return self.status in [self.Status.CHECKED_OUT, self.Status.IN_USE, self.Status.MOBILIZED]
@@ -974,29 +1318,77 @@ class Asset(models.Model):
         if not self.is_consumable or self.low_stock_threshold is None:
             return
 
+        from django.db.models import Q
         from apps.common.models import Notification
-        from apps.common.utils import role_of
+        from apps.common.utils import role_of, notify_recipients_by_email
+        from apps.common.permissions import effective_role_name
         from apps.accounts.models import User
 
         if self.quantity_in_stock <= self.low_stock_threshold:
             if not self.low_stock_notified:
-                recipients = User.objects.filter(role__in=[User.Role.ADMIN, User.Role.SUPERADMIN], is_active=True)
+                # Narrow via the legacy field or the roles M2M (either can
+                # lag right after account creation), then resolve each
+                # candidate's true active role in Python — a raw
+                # role__in=[...] filter misses/wrongly-includes admins
+                # whose active role has diverged from the legacy field.
+                candidates = User.objects.filter(
+                    Q(role__in=['ADMIN', 'SUPERADMIN']) | Q(roles__name__in=['ADMIN', 'SUPERADMIN']),
+                    is_active=True,
+                ).distinct()
+                recipients = [u for u in candidates if effective_role_name(u) in ('ADMIN', 'SUPERADMIN')]
+                message = (
+                    f'Stock for "{self.name}" is low: {self.quantity_in_stock} left '
+                    f'(threshold {self.low_stock_threshold}).'
+                )
+                url = f'/tickets/assets/{self.pk}/detail/'
                 for recipient in recipients:
                     Notification.objects.create(
                         recipient=recipient,
                         role=role_of(recipient),
-                        message=(
-                            f'⚠️ Stock for "{self.name}" is low: {self.quantity_in_stock} left '
-                            f'(threshold {self.low_stock_threshold}).'
-                        ),
-                        url=f'/tickets/assets/{self.pk}/detail/',
+                        message=message,
+                        url=url,
                         type=Notification.Type.GENERAL,
                     )
+                # Email is a supplementary channel alongside the in-app/push
+                # Notification above — push requires a subscribed device,
+                # so a stock-out can otherwise go unnoticed until someone
+                # next opens the app.
+                notify_recipients_by_email(recipients, f'Low stock: {self.name}', message, url)
                 self.low_stock_notified = True
                 self.save(update_fields=['low_stock_notified'])
         elif self.low_stock_notified:
             self.low_stock_notified = False
             self.save(update_fields=['low_stock_notified'])
+
+    def adjust_stock(self, new_quantity, reason, actor):
+        """Audited correction of quantity_in_stock for a consumable —
+        the single place a manual stock correction (stocktake, shrinkage,
+        breakage found in storage) should go through, instead of silently
+        overwriting the number via the general Edit Asset form. Records
+        the old/new quantity and the reason on an AssetLog entry, and
+        re-checks the low-stock alert like every other quantity-changing
+        action does."""
+        if not self.is_consumable:
+            raise ValueError('Stock can only be adjusted for consumable assets.')
+        new_quantity = max(0, int(new_quantity))
+        old_quantity = self.quantity_in_stock
+        if new_quantity == old_quantity:
+            return
+        self.quantity_in_stock = new_quantity
+        self.save(update_fields=['quantity_in_stock'])
+        self.refresh_low_stock_alert()
+
+        AssetLog.objects.create(
+            asset=self,
+            action=AssetLog.Action.STOCK_ADJUSTED,
+            actor=actor,
+            details={
+                'old_quantity': old_quantity,
+                'new_quantity': new_quantity,
+                'delta': new_quantity - old_quantity,
+                'reason': reason,
+            },
+        )
 
     @property
     def is_renewable(self):
@@ -1030,9 +1422,11 @@ class Asset(models.Model):
         self.renewal_reminder_90d_sent = False
         self.renewal_reminder_30d_sent = False
         self.renewal_reminder_7d_sent = False
+        self.renewal_reminder_overdue_last_sent = None
         self.save(update_fields=[
             'next_renewal_date', 'renewal_cost',
             'renewal_reminder_90d_sent', 'renewal_reminder_30d_sent', 'renewal_reminder_7d_sent',
+            'renewal_reminder_overdue_last_sent',
         ])
 
         AssetLog.objects.create(
@@ -1097,7 +1491,11 @@ class Asset(models.Model):
     
     @property
     def status_display(self):
-        """Get status with color indicator for UI."""
+        """Get status with color indicator for UI. `color` values must match
+        one of the real `.status-chip-{color}` CSS classes in theme.css
+        (success/warning/info/danger/neutral/accent) — there is no
+        'primary' variant, unlike some other status-chip usages in this
+        app."""
         colors = {
             'REQUESTED': 'info',
             'APPROVED': 'info',
@@ -1106,8 +1504,8 @@ class Asset(models.Model):
             'IN_STORE': 'success',
             'READY': 'success',
             'CHECKED_OUT': 'warning',
-            'IN_USE': 'primary',
-            'MOBILIZED': 'primary',
+            'IN_USE': 'accent',
+            'MOBILIZED': 'accent',
             'MAINTENANCE': 'warning',
             'REPAIR': 'danger',
             'RETURNED': 'success',
@@ -1117,8 +1515,13 @@ class Asset(models.Model):
             'STOLEN': 'danger',
             'DISPOSED': 'neutral',
         }
+        # `status` has no choices= at the field level, so Django never
+        # generates get_status_display() for it — resolve the label from
+        # the Status enum's own choices instead. (This property was
+        # previously unused anywhere, which is how that AttributeError
+        # went unnoticed.)
         return {
-            'label': self.get_status_display(),
+            'label': dict(self.Status.choices).get(self.status, self.status),
             'color': colors.get(self.status, 'neutral')
         }
 
@@ -1283,14 +1686,41 @@ class AssetCheckoutHistory(models.Model):
         blank=True
     )
     notes = models.TextField(blank=True)
-    
+
+    # ================================================================
+    # TWO-STEP CONFIRMATION — the recipient confirms they actually got the
+    # asset (acknowledged_at) or says they didn't (disputed_at); the holder
+    # can self-initiate a return (return_requested_at) which the admin then
+    # confirms via checked_in_at/checked_in_by above. All null = the plain
+    # "just checked out, nothing pending" state.
+    # ================================================================
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='asset_checkouts_acknowledged'
+    )
+    disputed_at = models.DateTimeField(null=True, blank=True)
+    dispute_reason = models.TextField(blank=True)
+
+    return_requested_at = models.DateTimeField(null=True, blank=True)
+    return_requested_reason = models.CharField(
+        max_length=20,
+        choices=Asset.ReturnReason.choices,
+        null=True,
+        blank=True
+    )
+    return_requested_comment = models.TextField(blank=True)
+
     class Meta:
         ordering = ['-checked_out_at']
         verbose_name_plural = "Asset Checkout History"
-    
+
     def __str__(self):
         return f"{self.asset.name} → {self.checked_out_to.get_full_name()} ({self.checked_out_at.date()})"
-    
+
     @property
     def is_active(self):
         return self.checked_in_at is None
@@ -1555,6 +1985,7 @@ class AssetLog(models.Model):
         MOBILIZED = 'MOBILIZED', 'Mobilized'
         DEMOBILIZED = 'DEMOBILIZED', 'Demobilized'
         RENEWED = 'RENEWED', 'Renewed'
+        STOCK_ADJUSTED = 'STOCK_ADJUSTED', 'Stock Adjusted'
 
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='logs')
     action = models.CharField(max_length=20, choices=Action.choices)
@@ -1567,6 +1998,27 @@ class AssetLog(models.Model):
 
     def __str__(self):
         return f"{self.action} on {self.asset.tracking_id} by {self.actor}"
+
+
+class AssetAttachment(models.Model):
+    """Optional file attached to an asset — license agreements, renewal
+    invoices, signed contracts, etc. Entirely free-form: nothing requires
+    an asset to have one, and it isn't restricted to renewable assets.
+    Mirrors Attachment (the ticket-attachment model) but simpler — plain
+    download only, no LibreOffice preview conversion."""
+    asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to='asset_attachments/%Y/%m/%d/', storage=raw_file_storage())
+    filename = models.CharField(max_length=255)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    content_type = models.CharField(max_length=100, blank=True)
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return self.filename
 
 
 class RemoteConnector(models.Model):
@@ -1612,3 +2064,19 @@ class RemoteSession(models.Model):
 
     def __str__(self):
         return f"Remote session for ticket {self.ticket.number} ({self.status})"
+
+    @property
+    def duration_display(self):
+        """Elapsed time for a STARTED session (started_at to now), or the
+        total for an ENDED one (started_at to ended_at) — used on the
+        session card/detail so an active session's length is visible
+        without opening the full record."""
+        if not self.started_at:
+            return None
+        end = self.ended_at or timezone.now()
+        total_seconds = int((end - self.started_at).total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes = remainder // 60
+        if hours:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"

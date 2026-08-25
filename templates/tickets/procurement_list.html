@@ -91,7 +91,7 @@
                             <form method="post" action="{% url 'tickets:procurement_cancel' pr.pk %}" class="inline" id="cancelProcurementForm{{ pr.pk }}">
                                 {% csrf_token %}
                                 <button type="button" class="btn-ghost text-xs px-2 py-1.5 rounded text-error"
-                                        onclick="confirmDelete('{{ pr.item_name|escapejs }}', 'Procurement Request', function() { document.getElementById('cancelProcurementForm{{ pr.pk }}').submit(); })">Cancel</button>
+                                        onclick="confirmStatusChange('CANCELLED', '{{ pr.item_name|escapejs }}', function() { document.getElementById('cancelProcurementForm{{ pr.pk }}').submit(); })">Cancel</button>
                             </form>
                             {% endif %}
                         </td>

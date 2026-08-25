@@ -8,24 +8,10 @@
         </div>
         <div>{{ ticket.description|linebreaksbr|safe }}</div>
         {% for att in initial_attachments %}
-        <div class="mt-1 text-xs flex items-center gap-2">
-            <a href="{% url 'tickets:attachment_download' att.pk %}"
-               class="flex items-center gap-1 underline hover:opacity-80 transition text-text-secondary">
-                {% lucide "paperclip" size=12 %}
-                {{ att.filename }} ({{ att.size|filesizeformat }})
-            </a>
-            <button class="btn-attachment p-0.5 text-text-secondary hover:text-primary transition rounded-sm element-link"
-                    hx-get="{% url 'tickets:attachment_preview' att.pk %}"
-                    hx-target="#modalContainer"
-                    hx-swap="innerHTML"
-                    onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
-                    data-tooltip="Preview">
-                {% lucide "eye" size=10 %}
-            </button>
-        </div>
+        {% include "partials/attachment_chip.html" with att=att %}
         {% endfor %}
         <div class="text-[0.6rem] mt-1 opacity-60">
-            {{ ticket.created_at|date:"h:i A" }}
+            {{ ticket.created_at|date:"M j, g:i A" }}
         </div>
     </div>
 </div>
@@ -37,24 +23,10 @@
                  style="background-color: rgba(245, 158, 11, 0.06);">
                 <span class="font-semibold text-warning">Internal Note</span> — {{ comment.body|safe }}
                 {% for attachment in comment.attachment_set.all %}
-                    <div class="mt-1 text-xs flex items-center gap-2">
-                        <a href="{% url 'tickets:attachment_download' attachment.pk %}"
-                           class="flex items-center gap-1 underline hover:opacity-80 transition text-text-secondary">
-                            {% lucide "paperclip" size=12 %}
-                            {{ attachment.filename }} ({{ attachment.size|filesizeformat }})
-                        </a>
-                        <button class="btn-ghost p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
-                                hx-get="{% url 'tickets:attachment_preview' attachment.pk %}"
-                                hx-target="#modalContainer"
-                                hx-swap="innerHTML"
-                                onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
-                                data-tooltip="Preview">
-                            {% lucide "eye" size=14 %}
-                        </button>
-                    </div>
+                    {% include "partials/attachment_chip.html" with att=attachment %}
                 {% endfor %}
                 <div class="text-[0.6rem] mt-1 text-text-secondary">
-                    {{ comment.author.get_full_name_with_role }} · {{ comment.created_at|date:"h:i A" }}
+                    {{ comment.author.get_full_name_with_role }} · {{ comment.created_at|date:"M j, g:i A" }}
                 </div>
             </div>
         </div>
@@ -71,24 +43,14 @@
                 </div>
                 <div>{{ comment.body|safe }}</div>
                 {% for attachment in comment.attachment_set.all %}
-                    <div class="mt-1 text-xs flex items-center gap-2">
-                        <a href="{% url 'tickets:attachment_download' attachment.pk %}"
-                           class="flex items-center gap-1 underline hover:opacity-80 transition {% if comment.author == request.user %}text-white{% else %}text-text-secondary{% endif %}">
-                            {% lucide "paperclip" size=12 %}
-                            {{ attachment.filename }} ({{ attachment.size|filesizeformat }})
-                        </a>
-                        <button class="btn-ghost p-0.5 {% if comment.author == request.user %}text-white/70 hover:text-white{% else %}text-text-secondary hover:text-primary{% endif %} transition rounded element-link"
-                                hx-get="{% url 'tickets:attachment_preview' attachment.pk %}"
-                                hx-target="#modalContainer"
-                                hx-swap="innerHTML"
-                                onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
-                                data-tooltip="Preview">
-                            {% lucide "eye" size=14 %}
-                        </button>
-                    </div>
+                    {% if comment.author == request.user %}
+                        {% include "partials/attachment_chip.html" with att=attachment on_primary=True %}
+                    {% else %}
+                        {% include "partials/attachment_chip.html" with att=attachment on_primary=False %}
+                    {% endif %}
                 {% endfor %}
                 <div class="text-[0.6rem] mt-1 opacity-60">
-                    {{ comment.created_at|date:"h:i A" }}
+                    {{ comment.created_at|date:"M j, g:i A" }}
                 </div>
             </div>
         </div>

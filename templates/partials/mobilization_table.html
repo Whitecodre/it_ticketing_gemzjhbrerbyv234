@@ -32,7 +32,7 @@
                     <a href="{% url 'tickets:mobilization_detail' mobilization.pk %}"
                        class="p-1.5 rounded transition hover:bg-black/5 inline-flex"
                        style="color: var(--color-text-secondary);"
-                       title="View Details">
+                       title="View Details" aria-label="View Details for {{ mobilization.destination_display }}">
                         {% lucide "eye" size=15 %}
                     </a>
                 </td>
@@ -41,7 +41,7 @@
             <tr>
                 <td colspan="6" class="text-center py-12 text-text-secondary">
                     <div class="flex flex-col items-center gap-2">
-                        <span class="text-4xl opacity-30">🚢</span>
+                        <span class="opacity-30 flex items-center justify-center">{% lucide "ship" size=36 %}</span>
                         <p class="text-sm font-medium">No mobilizations found</p>
                         <p class="text-xs">Try adjusting your filters or mobilize some assets.</p>
                     </div>

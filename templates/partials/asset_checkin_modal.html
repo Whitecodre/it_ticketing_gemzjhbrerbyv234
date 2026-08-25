@@ -1,75 +1,62 @@
 {% load lucide %}
 
-<div id="checkinModal" class="modal-overlay">
-    <div class="modal-content" onclick="event.stopPropagation()">
-        <div class="modal-header">
-            <h3 class="modal-title">{% lucide "log-in" size=18 %} Check In Asset</h3>
-            <button class="modal-close" onclick="closeModal('checkinModal')">×</button>
+<div class="p-6">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success shrink-0">
+            {% lucide "log-in" size=20 %}
         </div>
-        
-        <form method="post" 
-              action="{% url 'tickets:asset_checkin' asset.pk %}"
-              class="modal-body">
-            {% csrf_token %}
-            
-            <div class="asset-summary">
-                <p><strong>{{ asset.name }}</strong></p>
-                <p class="text-sm text-text-secondary">{{ asset.tracking_id }}</p>
-                <p class="text-sm text-text-secondary">
-                    Checked out to: <strong>{{ asset.checked_out_to.get_full_name|default:asset.checked_out_to.email }}</strong>
-                </p>
-                <p class="text-sm text-text-secondary">
-                    Checked out: {{ asset.checked_out_at|date:"M d, Y H:i" }}
-                </p>
-                {% if asset.expected_return_date %}
-                <p class="text-sm text-text-secondary">
-                    Expected return: {{ asset.expected_return_date|date:"M d, Y" }}
-                </p>
-                {% endif %}
-            </div>
-            
-            <div class="form-group">
-                <label for="return_reason" class="form-label">Return Reason <span class="text-error">*</span></label>
-                <select name="return_reason" id="return_reason" required class="form-select">
-                    <option value="">Select a reason...</option>
-                    {% for value, label in return_reasons %}
-                        <option value="{{ value }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="return_condition" class="form-label">Condition</label>
-                <select name="return_condition" id="return_condition" class="form-select">
-                    <option value="">Select condition...</option>
-                    <option value="Good">Good</option>
-                    <option value="Fair">Fair</option>
-                    <option value="Poor">Poor</option>
-                    <option value="Damaged">Damaged</option>
-                    <option value="Unusable">Unusable</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="return_comment" class="form-label">Comment</label>
-                <textarea name="return_comment" id="return_comment" rows="2" class="form-textarea" placeholder="Any additional information about the return..."></textarea>
-            </div>
-            
-            <div class="modal-footer">
-                <button type="button" class="btn-ghost" onclick="closeModal('checkinModal')">Cancel</button>
-                <button type="submit" class="btn-success">
-                    {% lucide "log-in" size=16 %}
-                    Check In
-                </button>
-            </div>
-        </form>
+        <div>
+            <h3 class="text-base font-semibold text-text-primary">Check In Asset</h3>
+            <p class="text-sm text-text-secondary">{{ asset.name }} ({{ asset.tracking_id }})</p>
+        </div>
     </div>
-</div>
 
-<script>
-    document.getElementById('checkinModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeModal('checkinModal');
-        }
-    });
-</script>
+    <div class="rounded-lg bg-background p-3 border border-border text-sm text-text-secondary mb-4 space-y-0.5">
+        <p>Checked out to: <strong class="text-text-primary">{{ asset.checked_out_to.get_full_name|default:asset.checked_out_to.email }}</strong></p>
+        <p>Checked out: {{ asset.checked_out_at|date:"M d, Y H:i" }}</p>
+        {% if asset.expected_return_date %}
+        <p>Expected return: {{ asset.expected_return_date|date:"M d, Y" }}</p>
+        {% endif %}
+    </div>
+
+    <form method="post" action="{% url 'tickets:asset_checkin' asset.pk %}"
+          hx-post="{% url 'tickets:asset_checkin' asset.pk %}"
+          hx-target="#modalContainer"
+          hx-swap="innerHTML"
+          id="assetCheckinForm">
+        {% csrf_token %}
+
+        <div class="mb-4">
+            <label for="id_return_reason" class="block text-sm font-medium mb-1 text-text-primary">
+                Return Reason <span class="text-error">*</span>
+            </label>
+            {{ form.return_reason }}
+            {% if form.return_reason.errors %}<p class="text-xs text-error mt-1">{{ form.return_reason.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label for="id_return_condition" class="block text-sm font-medium mb-1 text-text-primary">
+                Condition <span class="text-text-secondary text-xs font-normal">(optional)</span>
+            </label>
+            {{ form.return_condition }}
+            {% if form.return_condition.errors %}<p class="text-xs text-error mt-1">{{ form.return_condition.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="mb-4">
+            <label for="id_return_comment" class="block text-sm font-medium mb-1 text-text-primary">
+                Comment <span class="text-text-secondary text-xs font-normal">(optional)</span>
+            </label>
+            {{ form.return_comment }}
+            {% if form.return_comment.errors %}<p class="text-xs text-error mt-1">{{ form.return_comment.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="closeModal()"
+                    class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
+            <button type="submit"
+                    class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+                {% lucide "log-in" size=14 %} Check In
+            </button>
+        </div>
+    </form>
+</div>

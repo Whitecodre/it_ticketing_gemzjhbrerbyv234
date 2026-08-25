@@ -1,20 +1,47 @@
 {% load lucide %}
 {% load ticket_filters %}
+{% load badge_tags %}
 
 {% if rows %}
-<div id="reportBulkSelectionBar" class="hidden items-center justify-between gap-3 px-4 py-2 bg-primary/5 border-b text-sm" style="border-color: var(--color-border);">
-    <span><strong id="reportSelectedCount">0</strong> selected</span>
-    <button type="button" class="btn-ghost text-xs px-2 py-1 rounded-lg" onclick="clearReportSelection()">Clear selection</button>
+{# Shared bulk-select behavior (static/js/bulk_select.js) — the same Alpine  #}
+{# component used by partials/asset_table.html, instead of this page's own  #}
+{# hand-rolled selection JS. x-effect keeps the Export menu's links scoped  #}
+{# to the checked rows (falls back to the full filtered set when none are   #}
+{# checked), and naturally resets whenever HTMX swaps this partial in for a #}
+{# new filter/page, since that mounts a brand new bulkSelect() instance.    #}
+<div x-data="bulkSelect()"
+     x-effect="typeof updateExportMenuLinks_report === 'function' && updateExportMenuLinks_report(selected)">
+<div x-show="count > 0" x-cloak x-transition
+     class="flex items-center justify-between gap-3 px-4 py-2 bg-primary/5 border-b text-sm" style="border-color: var(--color-border);">
+    <span><strong x-text="count"></strong> selected</span>
+    <button type="button" class="btn-ghost text-xs px-2 py-1 rounded-lg" @click="clear()">Clear selection</button>
 </div>
-<div class="overflow-x-auto">
+
+{# Secondary-column toggle (Fix 4b) — lower-priority columns (How Discovered, #}
+{# Location, etc. — see is_secondary_report_column) collapse behind this on   #}
+{# narrow viewports so the primary columns never need a horizontal scroll.    #}
+<div x-data="{ showAll: false }">
+{% if columns|any_secondary_columns %}
+<div class="md:hidden flex justify-end px-4 pt-2">
+    <button type="button" class="btn-ghost text-xs px-2 py-1 rounded-lg flex items-center gap-1" @click="showAll = !showAll">
+        <span x-text="showAll ? 'Hide extra columns' : 'Show more columns'"></span>
+        {% lucide "chevron-down" size=12 %}
+    </button>
+</div>
+{% endif %}
+<div class="overflow-x-auto table-scroll-shell">
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
                 <th class="py-3 px-4 w-8">
-                    <input type="checkbox" id="reportSelectAll" class="rounded border-border text-primary focus:ring-primary" onchange="toggleReportSelectAll(this)">
+                    <input type="checkbox" id="reportSelectAll" class="rounded border-border text-primary focus:ring-primary"
+                           :checked="allSelected" @change="toggleAll($event.target.checked)"
+                           aria-label="Select all records">
                 </th>
                 {% for col in columns %}
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap">{{ col }}</th>
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap
+                    {% if col|is_secondary_report_column %}hidden md:table-cell{% endif %}"
+                    {% if col|is_secondary_report_column %}x-show="showAll" x-cloak{% endif %}>{{ col }}</th>
                 {% endfor %}
                 <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap">View</th>
             </tr>
@@ -23,11 +50,29 @@
             {% for row in rows %}
             <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
                 <td class="py-3 px-4">
-                    <input type="checkbox" class="report-row-checkbox rounded border-border text-primary focus:ring-primary"
-                           value="{{ row|get_item:'_pk' }}" onchange="updateReportSelection()">
+                    <input type="checkbox" class="bulk-row-checkbox rounded border-border text-primary focus:ring-primary"
+                           value="{{ row|get_item:'_pk' }}"
+                           :checked="selected.includes('{{ row|get_item:'_pk' }}')"
+                           @change="toggleRow('{{ row|get_item:'_pk' }}', $event.target.checked)">
                 </td>
                 {% for col in columns %}
-                <td class="py-3 px-4 text-text-primary whitespace-nowrap">{{ row|get_item:col|default:"—" }}</td>
+                {% with val=row|get_item:col %}
+                <td class="py-3 px-4 text-text-primary whitespace-nowrap
+                    {% if col|is_secondary_report_column %}hidden md:table-cell{% endif %}"
+                    {% if col|is_secondary_report_column %}x-show="showAll" x-cloak{% endif %}>
+                    {% if col == 'Status' %}
+                        {% status_badge 'text' val %}
+                    {% elif col == 'Priority' or col == 'Urgency' %}
+                        {% status_badge 'text' val %}
+                    {% elif val %}
+                        {{ val }}
+                    {% elif col == 'Assigned To' %}
+                        <span class="text-text-secondary opacity-60">Unassigned</span>
+                    {% else %}
+                        <span class="text-text-secondary opacity-40">—</span>
+                    {% endif %}
+                </td>
+                {% endwith %}
                 {% endfor %}
                 <td class="py-3 px-4 text-right">
                     <a href="{% url 'tickets:report_record_detail' report_type=report_type pk=row|get_item:'_pk' %}"
@@ -39,6 +84,8 @@
             {% endfor %}
         </tbody>
     </table>
+</div>
+</div>
 </div>
 
 {% if page_obj.has_other_pages %}

@@ -118,7 +118,7 @@ heading aligned with the card instead of sitting flush against the sidebar.
                                 <span style="color: var(--color-text-secondary);">•</span>
                                 {{ item }}
                                 {% if schedule.status == 'COMPLETED' and item in schedule.completed_checklist %}
-                                    <span class="text-success text-xs">✓</span>
+                                    <span class="text-success text-xs">{% lucide "check" size=12 %}</span>
                                 {% endif %}
                             </li>
                             {% endfor %}
@@ -337,10 +337,10 @@ heading aligned with the card instead of sitting flush against the sidebar.
                 <div class="space-y-1.5 text-sm" style="color: var(--color-text-secondary);">
                     <div class="flex items-center gap-2">
                         {% if schedule.email_sent %}
-                            <span class="text-success">✓</span>
+                            <span class="text-success">{% lucide "check" size=14 %}</span>
                             <span>Email sent to manager</span>
                         {% else %}
-                            <span class="text-warning">⏳</span>
+                            <span class="text-warning">{% lucide "clock" size=14 %}</span>
                             <span>Email pending</span>
                         {% endif %}
                     </div>

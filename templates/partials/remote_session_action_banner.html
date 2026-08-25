@@ -17,12 +17,12 @@ no-op on every other page in the app.
             </div>
             <div class="min-w-0">
                 {% if session.requester == request.user %}
-                <p class="text-sm font-medium text-text-primary truncate">
+                <p class="text-sm font-medium text-text-primary">
                     A remote session was requested for ticket {{ session.ticket.number }}
                 </p>
                 <p class="text-xs text-text-secondary">Requested by {{ session.agent.get_full_name|default:session.agent.email }}</p>
                 {% else %}
-                <p class="text-sm font-medium text-text-primary truncate">
+                <p class="text-sm font-medium text-text-primary">
                     {{ session.requester.get_full_name|default:session.requester.email }} accepted your remote session request for ticket {{ session.ticket.number }}
                 </p>
                 <p class="text-xs text-text-secondary">Start the session when ready.</p>

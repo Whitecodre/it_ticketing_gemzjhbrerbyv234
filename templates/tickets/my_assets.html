@@ -35,6 +35,69 @@
                 <span class="status-chip status-chip-neutral">{{ entry.asset.get_status_display }}</span>
             </div>
 
+            {% with history=entry.open_history %}
+            {% if history and not history.acknowledged_at and not history.disputed_at %}
+            <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border);">
+                <div class="rounded-lg border p-3" style="background-color: color-mix(in srgb, var(--color-info) 6%, var(--color-surface)); border-color: var(--color-info);">
+                    <p class="text-sm font-medium text-text-primary flex items-center gap-2">
+                        {% lucide "hand" size=14 class="text-info" %} Awaiting your confirmation
+                    </p>
+                    <p class="text-xs text-text-secondary mt-0.5">
+                        Checked out to you {{ history.checked_out_at|date:"M d, Y" }} — please confirm you received it.
+                    </p>
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        <form method="post" action="{% url 'tickets:asset_checkout_accept' entry.asset.pk %}" id="acceptForm{{ entry.asset.pk }}">
+                            {% csrf_token %}
+                            <button type="button"
+                                    onclick="openConfirmationModal({title:'Confirm Receipt', message:'Confirm you received &quot;{{ entry.asset.name|escapejs }}&quot;?', confirmText:'Yes, I have it', confirmButtonClass:'btn-success', icon:'success', onConfirm:function(){document.getElementById('acceptForm{{ entry.asset.pk }}').submit();}})"
+                                    class="btn-success text-xs px-3 py-1.5 rounded">
+                                {% lucide "check" size=12 class="inline -mt-0.5" %} I received this
+                            </button>
+                        </form>
+                        <button type="button" onclick="document.getElementById('disputeForm{{ entry.asset.pk }}').classList.toggle('hidden')"
+                                class="btn-ghost text-xs px-3 py-1.5 rounded text-error">
+                            I didn't receive this
+                        </button>
+                    </div>
+                    <form method="post" action="{% url 'tickets:asset_checkout_dispute' entry.asset.pk %}"
+                          id="disputeForm{{ entry.asset.pk }}" class="hidden mt-2 space-y-2">
+                        {% csrf_token %}
+                        <textarea name="reason" rows="2" placeholder="What happened?"
+                                  class="w-full text-sm rounded-lg border p-2 bg-background border-border text-text-primary"></textarea>
+                        <button type="submit" class="btn-danger text-xs px-3 py-1.5 rounded">Submit Dispute</button>
+                    </form>
+                </div>
+            </div>
+            {% elif history and history.disputed_at %}
+            <div class="mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="rounded-lg border p-3 flex items-center gap-2" style="background-color: color-mix(in srgb, var(--color-error) 6%, var(--color-surface)); border-color: var(--color-error);">
+                    {% lucide "alert-triangle" size=14 class="text-error shrink-0" %}
+                    <p class="text-sm text-text-primary">You disputed receiving this on {{ history.disputed_at|date:"M d, Y" }} — pending admin review.</p>
+                </div>
+            </div>
+            {% elif history and history.return_requested_at %}
+            <div class="mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                <div class="rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3" style="background-color: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface)); border-color: var(--color-warning);">
+                    <div class="flex items-center gap-2 min-w-0">
+                        {% lucide "log-out" size=14 class="text-warning shrink-0" %}
+                        <p class="text-sm text-text-primary">Return requested {{ history.return_requested_at|date:"M d, Y" }} — pending pickup.</p>
+                    </div>
+                    <form method="post" action="{% url 'tickets:asset_cancel_return_request' entry.asset.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-ghost text-xs px-3 py-1.5 rounded shrink-0">Cancel Return Request</button>
+                    </form>
+                </div>
+            </div>
+            {% elif history %}
+            <div class="mt-3 pt-3 border-t" style="border-color: var(--color-border);">
+                <button type="button" onclick="openAssetReturnRequestModal({{ entry.asset.pk }})"
+                        class="btn-ghost text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                    {% lucide "log-out" size=12 %} Relinquish this asset
+                </button>
+            </div>
+            {% endif %}
+            {% endwith %}
+
             {% if entry.pending_confirmations %}
             <div class="mt-3 pt-3 border-t space-y-2" style="border-color: var(--color-border);">
                 {% for row in entry.pending_confirmations %}
@@ -80,7 +143,41 @@
 </div>
 
 {% include "maintenance/partials/status_modals.html" %}
+
+<!-- Modal Overlay for Relinquish — same container asset_list.html/asset_detail.html
+     use (closeModal() etc. come from asset_management.js, loaded below). This
+     page had neither the container nor the script before, so the Relinquish
+     button silently did nothing (openAssetReturnRequestModal's own
+     `if (!overlay || !container) return;` guard swallowed the click). -->
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
+    </div>
+</div>
+
+<script src="{% static 'js/asset_management.js' %}"></script>
 <script>
+    const assetRequestReturnModalUrlTemplate = "{% url 'tickets:asset_request_return_modal' 0 %}";
+
+    function openAssetReturnRequestModal(assetId) {
+        const url = assetRequestReturnModalUrlTemplate.replace('/0/', '/' + assetId + '/');
+        const overlay = document.getElementById('modalOverlay');
+        const container = document.getElementById('modalContainer');
+        if (!overlay || !container) return;
+
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
     // A notification/email link can deep-link straight into the confirm
     // modal (?schedule=<pk>&asset=<pk>) instead of sending the asset owner
     // to the IT-internal maintenance detail page — this page is the

@@ -3,6 +3,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}{{ folder.name }}{% endblock %}
 
@@ -12,11 +13,12 @@
 
 {% block dashboard_content %}
 <div class="w-full">
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% url 'documents_display:folder_list' as folders_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url "My Folders" folders_url folder.name %}
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <div class="flex items-center gap-3">
-            <a href="{% url 'documents_display:folder_list' %}" class="btn-ghost text-sm flex items-center gap-1">
-                {% lucide "arrow-left" size=16 %} Back
-            </a>
             <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
                 {% lucide "folder" size=16 %}
             </span>

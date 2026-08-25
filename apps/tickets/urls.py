@@ -16,12 +16,12 @@ urlpatterns = [
     path('my/', views.my_ticket_list, name='my_list'),
     path('<int:pk>/', views.ticket_detail, name='detail'),
     path('unassigned/', views.unassigned_queue, name='unassigned'),
+    path('unassigned/pending-count/', views.unassigned_pending_count, name='unassigned_pending_count'),
     path('assigned/', views.assigned_to_me, name='assigned_to_me'),
     path('claim/<int:pk>/', views.claim_ticket, name='claim_ticket'),
     path('<int:pk>/slideover/', views.agent_ticket_detail, name='slideover'),
     path('<int:pk>/conversation/', views.agent_ticket_conversation, name='conversation'),
     path('<int:pk>/comment-conversation/', views.add_comment_conversation, name='add_comment_conversation'),
-    path('<int:pk>/update-status/', views.update_status, name='update_status'),
     path('<int:pk>/details-panel/', views.ticket_details_panel, name='details_panel'),
     path('<int:pk>/edit-subject/', views.edit_subject, name='edit_subject'),
     path('<int:pk>/assign-popover/', views.assign_popover, name='assign_popover'),
@@ -37,6 +37,7 @@ urlpatterns = [
     path('admin/resolved-requests/', views.resolved_service_requests, name='resolved_service_requests'),
     path('attachment/<int:pk>/preview/', views.attachment_preview, name='attachment_preview'),
     path('attachment/<int:pk>/', views.attachment_download, name='attachment_download'),
+    path('requester/<int:pk>/profile-modal/', views.requester_profile_modal, name='requester_profile_modal'),
     # Resolution Confirmation & Feedback
     path('<int:pk>/resolve/', views.resolve_ticket, name='resolve_ticket'),
     path('<int:pk>/approve-incident-report/', views.approve_incident_report, name='approve_incident_report'),
@@ -55,6 +56,9 @@ urlpatterns = [
     path('assets/<int:pk>/reassign-modal/', views.asset_reassign_modal, name='asset_reassign_modal'),
     path('assets/<int:pk>/detail/', views.asset_detail, name='asset_detail'),
     path('assets/<int:pk>/mark-renewed/', views.asset_mark_renewed, name='asset_mark_renewed'),
+    path('assets/<int:pk>/adjust-stock/', views.asset_adjust_stock, name='asset_adjust_stock'),
+    path('assets/<int:pk>/attachments/upload/', views.asset_attachment_upload, name='asset_attachment_upload'),
+    path('assets/attachments/<int:pk>/delete/', views.asset_attachment_delete, name='asset_attachment_delete'),
     path('assets/<int:pk>/scrap-request/', views.asset_scrap_request, name='asset_scrap_request'),
     path('assets/<int:pk>/scrap-request-modal/', views.scrap_request_modal, name='scrap_request_modal'),
     path('assets/<int:pk>/scrap-approve/', views.asset_scrap_approve, name='asset_scrap_approve'),
@@ -65,6 +69,7 @@ urlpatterns = [
     path('remote-sessions/pending-count/', views.remote_session_pending_count, name='remote_session_pending_count'),
     path('remote-sessions/', views.remote_sessions_list, name='remote_sessions_list'),
     path('escalated/', views.escalated_tickets, name='escalated_tickets'),
+    path('escalated/pending-count/', views.escalated_pending_count, name='escalated_pending_count'),
     path('escalated/<int:pk>/reassign/', views.reassign_escalated, name='reassign_escalated'),
     path('escalated/<int:pk>/reassign-modal/', views.escalated_reassign_modal, name='escalated_reassign_modal'),
     path('escalated/<int:pk>/return-to-pool/', views.return_escalated_to_pool, name='return_escalated_to_pool'),
@@ -80,7 +85,13 @@ urlpatterns = [
     # External trigger (optional - for cron jobs)
     # path('sla/trigger-external/', views.trigger_sla_processing_external, name='trigger_sla_external'),
     path('calendar/create/', views.calendar_create, name='calendar_create'),
+    path('calendar/add-modal/', views.calendar_add_modal, name='calendar_add_modal'),
+    path('calendar/<int:pk>/edit-modal/', views.calendar_edit_modal, name='calendar_edit_modal'),
+    path('calendar/<int:pk>/edit/', views.calendar_edit, name='calendar_edit'),
     path('rule/create/', views.rule_create, name='rule_create'),
+    path('rule/add-modal/', views.rule_add_modal, name='rule_add_modal'),
+    path('rule/<int:pk>/edit-modal/', views.rule_edit_modal, name='rule_edit_modal'),
+    path('rule/<int:pk>/edit/', views.rule_edit, name='rule_edit'),
     path('rule/<int:pk>/delete/', views.rule_delete, name='rule_delete'),
     path('calendar/<int:pk>/delete/', views.calendar_delete, name='calendar_delete'),
 
@@ -89,11 +100,12 @@ urlpatterns = [
     path('manager/review/<int:pk>/', views.manager_review_ticket, name='manager_review_ticket'),
     path('manager/review/count/', views.manager_review_count, name='manager_review_count'),
 
-    # ASSET EXPORT AND IMPORT
-    path('assets/export/', views.asset_export, name='asset_export'),
+    # ASSET IMPORT
     path('assets/import/', views.asset_import, name='asset_import'),
     
     # ASSET FULFILLMENT
+    path('assets/pending-fulfillment/', views.pending_asset_fulfillment_list, name='pending_asset_fulfillment'),
+    path('assets/pending-fulfillment-count/', views.pending_asset_fulfillment_count, name='pending_asset_fulfillment_count'),
     path('assets/fulfill/<int:pk>/', views.fulfill_asset_request, name='fulfill_asset_request'),
     path('assets/available/', views.available_assets_for_fulfillment, name='available_assets_for_fulfillment'),
     path('assets/fulfill-modal/<int:pk>/', views.fulfill_asset_modal, name='fulfill_asset_modal'),
@@ -101,6 +113,7 @@ urlpatterns = [
     # VENDOR PROCUREMENT (assets not yet in inventory)
     path('procurement/', views.procurement_list, name='procurement_list'),
     path('procurement/ticket/<int:pk>/request/', views.procurement_request_create, name='procurement_request_create'),
+    path('procurement/reorder/<int:asset_pk>/', views.procurement_reorder_create, name='procurement_reorder_create'),
     path('procurement/<int:pk>/mark-ordered/', views.procurement_mark_ordered, name='procurement_mark_ordered'),
     path('procurement/<int:pk>/cancel/', views.procurement_cancel, name='procurement_cancel'),
     path('procurement/<int:pk>/receive-modal/', views.procurement_receive_modal, name='procurement_receive_modal'),
@@ -122,6 +135,8 @@ urlpatterns = [
     path('settings/<slug:resource>/create/', views_settings.settings_resource_create, name='settings_resource_create'),
     path('settings/<slug:resource>/<int:pk>/update/', views_settings.settings_resource_update, name='settings_resource_update'),
     path('settings/<slug:resource>/<int:pk>/delete/', views_settings.settings_resource_delete, name='settings_resource_delete'),
+    path('settings/<slug:resource>/<int:pk>/activate/', views_settings.settings_resource_activate, name='settings_resource_activate'),
+    path('settings/pending-count/', views.pending_settings_approvals_count, name='pending_settings_approvals_count'),
     path('settings/branding/', views_settings.branding_update, name='branding_update'),
 
     # MACROS
@@ -129,6 +144,7 @@ urlpatterns = [
     path('macros/create/', views_macros.macro_create, name='macro_create'),
     path('macros/<int:pk>/update/', views_macros.macro_update, name='macro_update'),
     path('macros/<int:pk>/delete/', views_macros.macro_delete, name='macro_delete'),
+    path('macros/bulk-delete/', views_macros.macro_bulk_delete, name='macro_bulk_delete'),
 
     # apps/tickets/urls.py - Add these to urlpatterns
     path('assets/<int:pk>/checkout-modal/', views.asset_checkout_modal, name='asset_checkout_modal'),
@@ -137,9 +153,18 @@ urlpatterns = [
     path('assets/<int:pk>/checkin/', views.asset_checkin, name='asset_checkin'),
     path('assets/<int:pk>/checkout-history/', views.asset_checkout_history, name='asset_checkout_history'),
 
+    # ASSET CUSTODY TWO-STEP CONFIRMATION (My Assets side)
+    path('assets/<int:pk>/checkout/accept/', views.asset_checkout_accept, name='asset_checkout_accept'),
+    path('assets/<int:pk>/checkout/dispute/', views.asset_checkout_dispute, name='asset_checkout_dispute'),
+    path('assets/<int:pk>/request-return-modal/', views.asset_request_return_modal, name='asset_request_return_modal'),
+    path('assets/<int:pk>/request-return/', views.asset_request_return, name='asset_request_return'),
+    path('assets/<int:pk>/cancel-return-request/', views.asset_cancel_return_request, name='asset_cancel_return_request'),
+    path('assets/pending-returns/', views.pending_asset_returns_list, name='pending_asset_returns'),
+    path('assets/pending-returns-count/', views.pending_asset_returns_count, name='pending_asset_returns_count'),
+
     # MOBILIZATION / DEMOBILIZATION
     path('mobilizations/', views.mobilizations, name='mobilizations'),
-    path('mobilizations/create-modal/', views.mobilization_create_modal, name='mobilization_create_modal'),
+    path('mobilizations/new/', views.mobilization_create_page, name='mobilization_create_page'),
     path('mobilizations/create/', views.mobilization_create, name='mobilization_create'),
     path('mobilizations/available-assets/', views.mobilization_available_assets, name='mobilization_available_assets'),
     path('mobilizations/autopick-assets/', views.mobilization_autopick_assets, name='mobilization_autopick_assets'),

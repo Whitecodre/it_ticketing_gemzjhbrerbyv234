@@ -1,0 +1,14 @@
+{# ================================================================ #}
+{# STATUS BADGE — one colored dot/pill + one label. Never paired with a  #}
+{# repeated caption of the same word underneath; pass `secondary` for   #}
+{# genuinely useful context instead (e.g. "since 3 days ago").          #}
+{# Rendered via the {% status_badge %} inclusion tag in                 #}
+{# apps/tickets/templatetags/badge_tags.py — that tag is the single     #}
+{# place status/condition/priority/urgency map to a color.              #}
+{# ================================================================ #}
+<div class="inline-flex flex-col gap-0.5">
+    <span class="{{ css_class }} text-xs w-fit">{{ label }}</span>
+    {% if secondary %}
+    <span class="text-[0.6rem] text-text-secondary">{{ secondary }}</span>
+    {% endif %}
+</div>

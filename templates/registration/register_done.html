@@ -16,7 +16,7 @@
         
         {% if email_error %}
         <div class="bg-warning/10 p-4 rounded-lg border border-warning/30 text-left">
-            <p class="text-sm text-warning font-semibold">⚠️ Email delivery issue</p>
+            <p class="text-sm text-warning font-semibold flex items-center gap-1">{% lucide "triangle-alert" size=14 %} Email delivery issue</p>
             <p class="text-xs text-text-secondary mt-1">
                 We could not send the verification email. You can try the 
                 <a href="{% url 'accounts:resend_verification' %}" class="text-primary underline">resend verification</a> page, or contact support.
@@ -30,7 +30,7 @@
         {% elif show_dev_link  %}
         <!-- Show link in development (DEBUG=True) even when email works -->
         <div class="mt-4 p-3 bg-gray-100 rounded border border-gray-300 text-xs text-left">
-            <p><strong>🔧 Development link (email sent, but shown for convenience):</strong></p>
+            <p><strong class="flex items-center gap-1">{% lucide "wrench" size=13 %} Development link (email sent, but shown for convenience):</strong></p>
             <a href="{{ verification_link }}" class="text-primary underline break-all">{{ verification_link }}</a>
         </div>
         {% endif %}

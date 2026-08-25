@@ -20,6 +20,9 @@
         const data = {};
         const formData = new FormData(form);
         for (const [key, value] of formData.entries()) {
+            if (key === 'csrfmiddlewaretoken') {
+                continue; // never persist/restore — the page's live token is always the valid one
+            }
             const field = form.elements.namedItem(key);
             if (field && ((field.type === 'file') || (field.length !== undefined && field[0] && field[0].type === 'file'))) {
                 continue; // file inputs can't be restored programmatically
@@ -36,6 +39,7 @@
 
     function restoreForm(form, data) {
         Object.keys(data).forEach(function (key) {
+            if (key === 'csrfmiddlewaretoken') return; // defense in depth for drafts saved before this fix
             const field = form.elements.namedItem(key);
             if (!field) return;
             const value = data[key];

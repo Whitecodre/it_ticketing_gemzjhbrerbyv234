@@ -21,10 +21,10 @@ from apps.common.permissions import effective_role_name
 logger = logging.getLogger(__name__)
 
 
-def is_admin(user):
-    """Check if user is an Admin (can impersonate). Deliberately ADMIN-only —
-    unlike apps.common.permissions.is_admin, SUPERADMIN does not qualify here
-    (impersonation is reserved for client-side Admins, not the vendor role)."""
+def can_impersonate(user):
+    """Deliberately ADMIN-only — unlike apps.common.permissions.is_admin,
+    SUPERADMIN does not qualify here (impersonation is reserved for
+    client-side Admins, not the vendor role)."""
     return effective_role_name(user) == 'ADMIN'
 
 
@@ -54,7 +54,7 @@ def impersonate_start(request, user_id):
         }, status=401)
     
     # Check if user is admin
-    if not is_admin(request.user):
+    if not can_impersonate(request.user):
         return JsonResponse({
             'success': False,
             'message': 'You must be an Admin to impersonate.'
@@ -126,7 +126,7 @@ def impersonate_start(request, user_id):
     Notification.objects.create(
         recipient=target_user,
         role=role_of(target_user),
-        message=f"⚠️ {request.user.get_full_name()} has logged in as you for: {reason}",
+        message=f"{request.user.get_full_name()} has logged in as you for: {reason}",
         url=reverse('dashboard'),
         type=Notification.Type.GENERAL
     )
@@ -287,7 +287,7 @@ def impersonate_stop(request):
     request.session.pop('impersonate', None)
     request.session.save()
     
-    messages.success(request, f"✅ Returned to your account as {original_user.get_full_name()}.")
+    messages.success(request, f"Returned to your account as {original_user.get_full_name()}.")
     return redirect('dashboard')
 
 

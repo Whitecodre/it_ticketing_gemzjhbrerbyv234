@@ -1,7 +1,7 @@
 {% load lucide %}
 
 {% if assets %}
-<div class="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
+<div class="max-h-96 overflow-y-auto space-y-1 rounded-lg border border-border p-2">
     {% for asset in assets %}
     <label class="flex items-center gap-2 p-2 rounded-lg cursor-pointer hover:bg-black/5 transition">
         <input type="checkbox" name="asset_ids" value="{{ asset.pk }}" class="rounded border-border text-primary focus:ring-primary">

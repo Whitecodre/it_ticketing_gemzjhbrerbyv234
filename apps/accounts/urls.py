@@ -3,7 +3,8 @@ from django.contrib.auth import views as auth_views
 from django.http import HttpResponseNotFound
 from . import views
 from .views.admin_users import (
-    admin_user_list, admin_user_create, admin_user_edit, admin_user_toggle_active, admin_user_change_password, client_logo_upload
+    admin_user_list, admin_user_create, admin_user_edit, admin_user_toggle_active,
+    admin_user_bulk_toggle_active, admin_user_change_password, client_logo_upload
 )
 from .views.impersonate import impersonate_start, impersonate_stop, impersonation_banner, impersonate_modal, impersonate_token
 from .views.role_switch import switch_role, get_current_role
@@ -45,6 +46,7 @@ urlpatterns = [
     path('admin/users/create/', admin_user_create, name='admin_user_create'),
     path('admin/users/<int:pk>/edit/', admin_user_edit, name='admin_user_edit'),
     path('admin/users/<int:pk>/toggle-active/', admin_user_toggle_active, name='admin_user_toggle_active'),
+    path('admin/users/bulk-toggle-active/', admin_user_bulk_toggle_active, name='admin_user_bulk_toggle_active'),
     path('admin/users/<int:pk>/change-password/', admin_user_change_password, name='admin_user_change_password'),
     # Impersonation
     path('impersonate/<int:user_id>/', impersonate_start, name='impersonate_start'),
@@ -57,4 +59,6 @@ urlpatterns = [
     # Role Switching
     path('switch-role/', switch_role, name='switch_role'),
     path('current-role/', get_current_role, name='current_role'),
+    # Department-scoped user picker (HTMX)
+    path('users-by-department/', views.department_users_partial, name='department_users_partial'),
 ]

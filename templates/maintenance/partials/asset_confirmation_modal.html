@@ -2,8 +2,12 @@
 
 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
      onclick="if(event.target === this) this.remove();">
-    <div class="bg-surface rounded-xl shadow-2xl w-full max-w-md mx-4 p-6"
+    <div class="bg-surface rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 relative"
          onclick="event.stopPropagation()">
+
+        <button type="button" onclick="this.closest('.fixed').remove()" class="btn-ghost p-1 absolute top-4 right-4" aria-label="Close">
+            {% lucide "x" size=18 %}
+        </button>
 
         <div class="text-center">
             <div class="flex h-14 w-14 items-center justify-center rounded-full mx-auto mb-4 bg-success/10">
@@ -54,13 +58,13 @@
                           placeholder="Any notes about the maintenance...">{{ form.notes.value|default:'' }}</textarea>
             </div>
 
-            <div class="mt-4">
+            <div class="mt-4 hidden" id="disputeReasonContainer">
                 <label for="asset_confirm_dispute_reason" class="block text-sm font-medium mb-1 text-text-primary">
-                    If disputing: what's wrong?
+                    What's wrong?
                 </label>
                 <textarea name="dispute_reason" id="asset_confirm_dispute_reason" rows="2"
                           class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
-                          placeholder="Required only if you choose Dispute...">{{ form.dispute_reason.value|default:'' }}</textarea>
+                          placeholder="Explain what is wrong with the work performed...">{{ form.dispute_reason.value|default:'' }}</textarea>
                 {% if form.dispute_reason.errors %}
                 <p class="text-xs text-error mt-1">{{ form.dispute_reason.errors.0 }}</p>
                 {% endif %}
@@ -85,3 +89,21 @@
         </form>
     </div>
 </div>
+
+<script>
+    (function () {
+        var container = document.getElementById('disputeReasonContainer');
+        var radios = document.querySelectorAll('input[name="decision"]');
+        if (!container || !radios.length) return;
+
+        function syncDisputeReason() {
+            var checked = document.querySelector('input[name="decision"]:checked');
+            container.classList.toggle('hidden', !(checked && checked.value === 'DISPUTED'));
+        }
+
+        radios.forEach(function (radio) {
+            radio.addEventListener('change', syncDisputeReason);
+        });
+        syncDisputeReason();
+    })();
+</script>

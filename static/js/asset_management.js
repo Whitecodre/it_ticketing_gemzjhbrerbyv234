@@ -212,7 +212,11 @@ function resetFilters(event) {
     
     form.querySelectorAll('input, select').forEach(function(el) {
         if (el.tagName === 'INPUT') {
-            el.value = '';
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                el.checked = false;
+            } else {
+                el.value = '';
+            }
         } else if (el.tagName === 'SELECT') {
             el.selectedIndex = 0;
         }

@@ -19,6 +19,7 @@ from .report_exporters import (
     export_maintenance_pdf, export_maintenance_docx,
 )
 from .views import get_sidebar_template
+from apps.common.permissions import effective_role_name
 
 
 def _get_config_or_404(report_type):
@@ -33,9 +34,10 @@ def _can_access_report(user, config):
     concept — but a Team Lead outside IT is scoped solely to the
     service-request approval flow for now, so reports (which are otherwise
     IT-operational) stay off-limits to them regardless of role name."""
-    if user.role not in config.permission_roles:
+    role_name = effective_role_name(user)
+    if role_name not in config.permission_roles:
         return False
-    if user.role == 'TEAM_LEAD':
+    if role_name == 'TEAM_LEAD':
         return user.department == 'IT'
     return True
 

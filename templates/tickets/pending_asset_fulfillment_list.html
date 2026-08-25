@@ -1,0 +1,97 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Pending Asset Fulfillment{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">{% lucide "package" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold text-text-primary">Pending Asset Fulfillment</h2>
+                <p class="text-sm text-text-secondary">Tickets waiting on an asset — mobilize or fulfill from stock to move them forward.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        {% if tickets %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset Needed</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Category</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Date</th>
+                        <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ticket in tickets %}
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                        <td class="py-3 px-4">
+                            <a href="{% url 'tickets:conversation' pk=ticket.pk %}" class="font-mono text-xs text-primary hover:underline">{{ ticket.number }}</a>
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">
+                            {{ ticket.requester.get_full_name|default:ticket.requester.email }}
+                        </td>
+                        <td class="py-3 px-4 text-text-primary truncate max-w-xs">{{ ticket.title }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ ticket.category.name|default:"—" }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ ticket.created_at|date:"M d, Y" }}</td>
+                        <td class="py-3 px-4 text-right">
+                            {% if ticket.is_mobilization_request %}
+                            <button onclick="openMobilizationCreateModal({{ ticket.pk }})"
+                                    class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                                {% lucide "ship" size=12 %} Mobilize
+                            </button>
+                            {% else %}
+                            <button onclick="openFulfillModal({{ ticket.pk }})"
+                                    class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                                {% lucide "check" size=12 %} Fulfill
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if tickets.paginator.num_pages > 1 %}
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-t border-border text-xs text-text-secondary">
+            <span>Showing <strong>{{ tickets.start_index }}–{{ tickets.end_index }}</strong> of <strong>{{ tickets.paginator.count }}</strong></span>
+            <div class="flex items-center gap-2">
+                {% if tickets.has_previous %}
+                <a href="?page={{ tickets.previous_page_number }}" class="btn-ghost px-3 py-1.5 rounded">Previous</a>
+                {% endif %}
+                <span>Page {{ tickets.number }} of {{ tickets.paginator.num_pages }}</span>
+                {% if tickets.has_next %}
+                <a href="?page={{ tickets.next_page_number }}" class="btn-ghost px-3 py-1.5 rounded">Next</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="p-8 text-center">
+            <div class="flex justify-center mb-2">
+                {% lucide "check-circle" size=28 class="text-success" %}
+            </div>
+            <p class="text-sm font-medium text-text-primary">No pending asset requests</p>
+            <p class="text-xs text-text-secondary">All approved requests have been fulfilled.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

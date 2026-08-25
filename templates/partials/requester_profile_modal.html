@@ -1,0 +1,42 @@
+{% load lucide %}
+
+<div class="p-6 max-h-[90vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
+            {% lucide "user" size=20 %}
+            {{ profile_user.get_full_name|default:profile_user.email }}
+        </h3>
+        <button onclick="closeAttachmentModal()" class="btn-ghost p-1">
+            {% lucide "x" size=20 %}
+        </button>
+    </div>
+
+    <div class="border-t pt-4 border-border space-y-3">
+        <div class="flex items-center gap-2 text-sm">
+            {% lucide "shield" size=14 class="text-text-secondary" %}
+            <span class="text-text-primary">{{ profile_user.get_active_role_display|default:profile_user.get_role_display }}</span>
+        </div>
+        <div class="flex items-center gap-2 text-sm">
+            {% lucide "mail" size=14 class="text-text-secondary" %}
+            <span class="text-primary">{{ profile_user.email }}</span>
+        </div>
+        {% if profile_user.department %}
+        <div class="flex items-center gap-2 text-sm">
+            {% lucide "building-2" size=14 class="text-text-secondary" %}
+            <span class="text-text-primary">{{ profile_user.get_department_display }}</span>
+        </div>
+        {% endif %}
+        {% if profile_user.position %}
+        <div class="flex items-center gap-2 text-sm">
+            {% lucide "briefcase" size=14 class="text-text-secondary" %}
+            <span class="text-text-primary">{{ profile_user.position }}</span>
+        </div>
+        {% endif %}
+        {% if profile_user.manager %}
+        <div class="flex items-center gap-2 text-sm">
+            {% lucide "user-check" size=14 class="text-text-secondary" %}
+            <span class="text-text-primary">Reports to {{ profile_user.manager.get_full_name|default:profile_user.manager.email }}</span>
+        </div>
+        {% endif %}
+    </div>
+</div>

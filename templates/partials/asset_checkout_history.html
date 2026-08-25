@@ -1,13 +1,21 @@
 {% load lucide %}
 
-<div class="checkout-history">
-    <div class="flex items-center justify-between mb-4">
-        <h4 class="text-sm font-semibold text-text-primary">
-            {% lucide "clock" size=16 %}
-            Checkout History ({{ history|length }})
-        </h4>
+<div class="p-6">
+    <div class="flex items-center justify-between gap-3 mb-4">
+        <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                {% lucide "clock" size=20 %}
+            </div>
+            <div>
+                <h3 class="text-base font-semibold text-text-primary">Checkout History</h3>
+                <p class="text-sm text-text-secondary">{{ history|length }} record{{ history|length|pluralize }}</p>
+            </div>
+        </div>
+        <button type="button" onclick="closeModal()" class="btn-ghost p-1 rounded-lg shrink-0">
+            {% lucide "x" size=18 %}
+        </button>
     </div>
-    
+
     {% if history %}
         <div class="space-y-3 max-h-80 overflow-y-auto pr-1">
             {% for record in history %}
@@ -32,7 +40,7 @@
                     </div>
                     {% if record.checked_in_at %}
                         <div class="history-return">
-                            <span class="text-xs text-success">✓ Returned</span>
+                            <span class="text-xs text-success flex items-center gap-0.5">{% lucide "check" size=12 %} Returned</span>
                             <span class="text-xs text-text-secondary">
                                 {{ record.checked_in_at|date:"M d, Y" }}
                             </span>
@@ -55,6 +63,10 @@
             <p class="empty-state-title">No checkout history for this asset.</p>
         </div>
     {% endif %}
+
+    <div class="flex justify-end pt-4">
+        <button type="button" onclick="closeModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Close</button>
+    </div>
 </div>
 
 <style>

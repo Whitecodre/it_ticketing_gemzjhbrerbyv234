@@ -16,6 +16,7 @@ from django.utils import timezone
 from .models import Ticket, Asset, ServiceCategory, AssetCategory
 from apps.accounts.models import User
 from apps.maintenance.models import MaintenanceSchedule, MaintenanceActivityLog, MaintenanceAssetConfirmation
+from apps.common.permissions import effective_role_name
 
 
 def _date_range_filter(request, field_name):
@@ -334,8 +335,16 @@ def _audit_logs_queryset(request):
     from django.db.models import Q
 
     logs = TicketActivityLog.objects.select_related('ticket', 'actor').all()
-    if request.user.role == 'TEAM_LEAD':
-        team_members = User.objects.filter(department=request.user.department, role='AGENT')
+    if effective_role_name(request.user) == 'TEAM_LEAD':
+        # Narrow via the legacy `role` field or the roles M2M (either can lag
+        # behind a user's actual active role), then resolve each candidate's
+        # true active role in Python so a stale field doesn't drop a real
+        # team member from scope.
+        candidates = User.objects.filter(
+            Q(role='AGENT') | Q(roles__name='AGENT'),
+            department=request.user.department,
+        ).distinct()
+        team_members = [u for u in candidates if effective_role_name(u) == 'AGENT']
         logs = logs.filter(Q(ticket__assigned_to__in=team_members) | Q(ticket__requester__in=team_members))
 
     action = request.GET.get('action')
@@ -412,11 +421,18 @@ def _assets_queryset(request):
     location = request.GET.get('location')
     if location:
         assets = assets.filter(location__icontains=location)
-    if request.GET.get('renewal_due_soon'):
+    if request.GET.get('filter_renewal_due'):
         assets = assets.filter(
             category__is_renewable=True,
             next_renewal_date__isnull=False,
             next_renewal_date__lte=timezone.now().date() + timedelta(days=30),
+        )
+    if request.GET.get('filter_low_stock'):
+        from django.db.models import F
+        assets = assets.filter(
+            category__is_consumable=True,
+            low_stock_threshold__isnull=False,
+            quantity_in_stock__lte=F('low_stock_threshold'),
         )
     assets = assets.filter(**_date_range_filter(request, 'created_at'))
     return assets
@@ -436,8 +452,10 @@ def _asset_row(asset):
         ('Low Stock Threshold', asset.low_stock_threshold if asset.is_consumable and asset.low_stock_threshold is not None else '—'),
         ('Low Stock', 'Yes' if asset.is_low_stock else 'No'),
         ('Assigned To', asset.assigned_to.get_full_name() if asset.assigned_to else ''),
+        ('Assigned Department', asset.assigned_to.get_department_display() if asset.assigned_to else ''),
         ('Purchase Date', asset.purchase_date.strftime('%Y-%m-%d') if asset.purchase_date else ''),
         ('Warranty Expiry', asset.warranty_expiry.strftime('%Y-%m-%d') if asset.warranty_expiry else ''),
+        ('Warranty Duration (Years)', asset.warranty_duration_years),
         ('Renewable', 'Yes' if asset.is_renewable else 'No'),
         ('Next Renewal Date', asset.next_renewal_date.strftime('%Y-%m-%d') if asset.next_renewal_date else ''),
         ('Renewal Interval (months)', asset.renewal_interval_months if asset.renewal_interval_months else ''),
@@ -445,7 +463,9 @@ def _asset_row(asset):
         ('Renewal Vendor', asset.renewal_vendor.name if asset.renewal_vendor else ''),
         ('Renewal Reference', asset.renewal_reference),
         ('Auto-Renews', 'Yes' if asset.auto_renews else 'No'),
+        ('Notes', asset.notes),
         ('Created', asset.created_at.strftime('%Y-%m-%d %H:%M')),
+        ('Updated', asset.updated_at.strftime('%Y-%m-%d %H:%M')),
     ])
 
 
@@ -456,13 +476,14 @@ ASSETS = ReportType(
     permission_roles=['ADMIN', 'SUPERADMIN'],
     get_queryset=_assets_queryset,
     row_from_obj=_asset_row,
-    columns=['Tracking ID', 'Name', 'Category', 'Serial Number', 'Model', 'Manufacturer', 'Location', 'Status', 'Quantity In Stock', 'Low Stock Threshold', 'Low Stock', 'Assigned To', 'Purchase Date', 'Warranty Expiry', 'Renewable', 'Next Renewal Date', 'Renewal Interval (months)', 'Renewal Cost', 'Renewal Vendor', 'Renewal Reference', 'Auto-Renews', 'Created'],
+    columns=['Tracking ID', 'Name', 'Category', 'Serial Number', 'Model', 'Manufacturer', 'Location', 'Status', 'Quantity In Stock', 'Low Stock Threshold', 'Low Stock', 'Assigned To', 'Assigned Department', 'Purchase Date', 'Warranty Expiry', 'Warranty Duration (Years)', 'Renewable', 'Next Renewal Date', 'Renewal Interval (months)', 'Renewal Cost', 'Renewal Vendor', 'Renewal Reference', 'Auto-Renews', 'Notes', 'Created', 'Updated'],
     date_field_label='Added Date',
     filter_fields=[
         FilterField('q', 'Search', 'text', placeholder='Name, tracking ID, serial...'),
         FilterField('category', 'Category', 'select', lambda: [(str(pk), name) for pk, name in AssetCategory.objects.values_list('id', 'name')]),
         FilterField('status', 'Status', 'select', list(Asset.Status.choices)),
-        FilterField('renewal_due_soon', 'Renewal Due Soon', 'select', [('1', 'Yes')]),
+        FilterField('filter_renewal_due', 'Renewal Due Soon', 'select', [('1', 'Yes')]),
+        FilterField('filter_low_stock', 'Low Stock Only', 'select', [('1', 'Yes')]),
     ],
 )
 

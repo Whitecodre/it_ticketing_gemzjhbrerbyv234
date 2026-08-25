@@ -8,7 +8,7 @@
 {% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
 
 {% block sidebar_nav %}
-    {% include "partials/sidebar_end_user.html" %}
+    {% include sidebar_template %}
 {% endblock %}
 
 {% block dashboard_content %}
@@ -27,12 +27,13 @@
     </div>
 
     {# Search Bar #}
-    <form method="get" class="mb-5 rounded-xl border p-3 bg-surface border-border">
-        <div class="relative max-w-xl">
+    <form method="get" class="mb-5 rounded-xl border p-3 bg-surface border-border flex items-center gap-2">
+        <div class="relative max-w-xl flex-1">
             {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
             <input type="text" name="q" value="{{ query }}" placeholder="Search articles…"
                    class="w-full rounded-lg border py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
         </div>
+        <button type="submit" class="btn-primary text-sm px-4 py-2.5 rounded-lg shrink-0">Search</button>
     </form>
 
     {# Category Sections — top-level cards, shown when browsing (no search query) #}
@@ -50,8 +51,8 @@
                 </div>
                 {% if cat.description %}<p class="text-xs text-text-secondary line-clamp-2 mb-3">{{ cat.description }}</p>{% endif %}
                 <div class="flex items-center gap-4 text-xs text-text-secondary pt-2 border-t border-border">
-                    <span>Articles<br><span class="text-text-primary font-semibold">{{ cat.article_count }}</span></span>
-                    <span>Sections<br><span class="text-text-primary font-semibold">{{ cat.section_count }}</span></span>
+                    <span>Articles: <span class="text-text-primary font-semibold">{{ cat.article_count }}</span></span>
+                    <span>Sections: <span class="text-text-primary font-semibold">{{ cat.section_count }}</span></span>
                 </div>
             </a>
             {% empty %}
@@ -78,7 +79,7 @@
     {# Tag Filter Chips #}
     {% if all_tags %}
     <div class="flex flex-wrap items-center gap-2 mb-4 py-2 px-3 rounded-lg border border-border bg-surface">
-        <span class="text-xs text-text-secondary font-medium">🏷️ Filter by Tag:</span>
+        <span class="text-xs text-text-secondary font-medium flex items-center gap-1">{% lucide "tag" size=12 %} Filter by Tag:</span>
         {% for tag in all_tags %}
             <a href="{% url 'kb:portal' %}?tag={{ tag.name }}{% if query %}&q={{ query }}{% endif %}{% if selected_category %}&category={{ selected_category.pk }}{% endif %}"
                class="text-[0.6rem] px-2 py-0.5 rounded-full border transition hover:border-primary {% if selected_tag == tag.name %}border-primary text-primary bg-primary/10{% else %}border-border text-text-secondary{% endif %}">
@@ -91,16 +92,12 @@
     </div>
     {% endif %}
 
-    {# Article Grid #}
+    {# Article Grid — only when actually searching/filtering, not the bare category-browsing landing page #}
+    {% if show_articles %}
     {% if articles %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         {% for article in articles %}
         <a href="{% url 'kb:article_detail' article.slug %}" class="group block rounded-lg overflow-hidden border hover:shadow-md transition-shadow duration-200 border-border bg-surface">
-
-            {# Image #}
-            <div class="w-full h-48 bg-background overflow-hidden flex items-center justify-center py-3">
-                <img src="{% static 'img/undraw_faq_pgxi.svg' %}" alt="{{ article.title }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-200">
-            </div>
 
             {# Content #}
             <div class="p-4 flex flex-col">
@@ -146,6 +143,7 @@
         <p class="empty-state-title">No articles found</p>
         <p class="empty-state-subtext">Try adjusting your search, category, or tag filter.</p>
     </div>
+    {% endif %}
     {% endif %}
 </div>
 {% endblock %}

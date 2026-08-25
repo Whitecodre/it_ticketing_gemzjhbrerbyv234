@@ -14,7 +14,7 @@
         </thead>
         <tbody>
             {% for ticket in tickets %}
-            <tr class="border-b hover:bg-black/5 transition-colors group border-border"
+            <tr class="border-b hover:bg-black/5 transition-colors group border-border ticket-row cursor-pointer"
                 data-ticket-id="{{ ticket.pk }}"
                 data-ticket-number="{{ ticket.number }}"
                 data-ticket-status="{{ ticket.status }}"
@@ -54,9 +54,9 @@
             <tr>
                 <td colspan="6" class="text-center py-6">
                     <div class="flex flex-col items-center gap-0.5">
-                        <span class="text-2xl">📭</span>
+                        <span class="flex items-center justify-center">{% lucide "inbox" size=22 %}</span>
                         <p class="text-text-secondary text-sm">No tickets here.</p>
-                        <p class="text-text-secondary text-xs">Create your first ticket →</p>
+                        <a href="{% url 'tickets:create' %}" class="text-primary text-xs hover:underline">Create your first ticket →</a>
                     </div>
                 </td>
             </tr>
@@ -122,6 +122,17 @@
         const cancelBtn = dropdown.querySelector('.dropdown-cancel');
         let dropdownCleanup = null;
 
+        // Clicking anywhere on a row opens the ticket, matching the
+        // click-a-row-to-open-it convention used elsewhere in the app —
+        // only the "⋮" actions button (handled separately below) opts out.
+        // Delegated on document (not bound per-row) so it keeps working
+        // after Cancel re-swaps #ticketTableContainer via HTMX.
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.ticket-action-btn')) return;
+            const row = e.target.closest('.ticket-row');
+            if (row && row.dataset.detailUrl) window.location.href = row.dataset.detailUrl;
+        });
+
         window.userTicketActionBtnClick = function(btn) {
             closeDropdown();
 
@@ -131,6 +142,7 @@
             activeData = {
                 detailUrl: btn.dataset.detailUrl,
                 cancelUrl: btn.dataset.cancelUrl,
+                ticketNumber: btn.dataset.ticketNumber,
                 canCancel: (status === 'NEW' || status === 'TRIAGED')
             };
 
@@ -167,13 +179,24 @@
         });
 
         cancelBtn.addEventListener('click', function() {
-            if (activeData.cancelUrl) {
-                htmx.ajax('POST', activeData.cancelUrl, {
-                    target: '#ticketTableContainer',
-                    swap: 'innerHTML',
-                });
-            }
+            const cancelUrl = activeData.cancelUrl;
+            const ticketNumber = activeData.ticketNumber;
             closeDropdown();
+            if (!cancelUrl) return;
+            openConfirmationModal({
+                title: 'Cancel Ticket',
+                message: `Cancel ticket ${ticketNumber || ''}?`,
+                detail: 'This cannot be undone — you\'ll need to submit a new ticket if you still need help.',
+                confirmText: 'Yes, cancel it',
+                confirmButtonClass: 'btn-danger',
+                icon: 'danger',
+                onConfirm: function() {
+                    htmx.ajax('POST', cancelUrl, {
+                        target: '#ticketTableContainer',
+                        swap: 'innerHTML',
+                    });
+                }
+            });
         });
     });
 </script>

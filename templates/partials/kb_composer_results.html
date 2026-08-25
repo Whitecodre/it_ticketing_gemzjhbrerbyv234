@@ -1,0 +1,15 @@
+{% load lucide %}
+{% if articles %}
+<div class="py-1">
+    {% for article in articles %}
+    <button type="button"
+            class="w-full text-left text-sm hover:bg-primary/5 px-3 py-2 transition flex items-start gap-2 text-text-secondary"
+            onclick="insertKbArticleLink('{{ article.title|escapejs }}', '{% url 'kb:article_detail' article.slug %}')">
+        {% lucide "file-text" size=14 class="mt-0.5 text-primary shrink-0" %}
+        <span class="font-medium text-text-primary">{{ article.title }}</span>
+    </button>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-xs text-text-secondary px-3 py-3">No matching articles.</p>
+{% endif %}

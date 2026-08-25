@@ -26,7 +26,7 @@
         <div class="flex items-center justify-between px-5 py-3 border-b border-border">
             <h3 class="text-sm font-semibold text-text-primary">SLA Policies</h3>
             <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
-                    onclick="document.getElementById('slaModal').classList.remove('hidden')">
+                    onclick="openAddSlaModal()">
                 {% lucide "plus" size=14 %} Add Policy
             </button>
         </div>
@@ -57,8 +57,12 @@
                         <td class="py-3 px-4 text-text-secondary">{{ sla.get_response_display }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ sla.get_resolution_display }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ sla.calendar.name|default:"Default" }}</td>
-                        <td class="py-3 px-4 text-right">
-                            <form method="post" action="{% url 'tickets:sla_delete' sla.pk %}" id="deleteSlaForm{{ sla.pk }}">
+                        <td class="py-3 px-4 text-right flex">
+                            <button type="button" class="btn-ghost p-1 text-text-secondary hover:bg-primary/10 hover:text-primary rounded-full transition" aria-label="Edit SLA"
+                                    onclick="openEditSlaModal('{{ sla.priority }}', {{ sla.response_minutes }}, {{ sla.resolution_minutes }}, '{{ sla.calendar_id|default_if_none:"" }}')">
+                                {% lucide "pencil" size=16 %}
+                            </button>
+                            <form method="post" action="{% url 'tickets:sla_delete' sla.pk %}" id="deleteSlaForm{{ sla.pk }}" class="inline">
                                 {% csrf_token %}
                                 <button type="button" class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition" aria-label="Delete SLA"
                                         onclick="confirmDelete('{{ sla.get_priority_display|escapejs }} SLA Policy', 'SLA Policy', function() { document.getElementById('deleteSlaForm{{ sla.pk }}').submit(); })">
@@ -85,7 +89,7 @@
         <div class="flex items-center justify-between px-5 py-3 border-b border-border">
             <h3 class="text-sm font-semibold text-text-primary">Business Calendars</h3>
             <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
-                    onclick="document.getElementById('calendarModal').classList.remove('hidden')">
+                    onclick="openAddCalendarModal()">
                 {% lucide "plus" size=14 %} Add Calendar
             </button>
         </div>
@@ -99,10 +103,16 @@
                     <span class="text-text-secondary text-xs">Hours: {{ cal.work_start }} – {{ cal.work_end }}</span>
                     <span class="text-text-secondary text-xs">Holidays: {{ cal.holidays|join:", "|default:"None" }}</span>
                 </div>
-                <button class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition shrink-0"
-                        onclick="confirmDelete('{{ cal.name|escapejs }}', 'Business Calendar', function() { document.getElementById('deleteCalForm{{ cal.pk }}').submit(); })" aria-label="Delete Calendar">
-                    {% lucide "trash-2" size=16 %}
-                </button>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button class="btn-ghost p-1 text-text-secondary hover:bg-primary/10 hover:text-primary rounded-full transition"
+                            onclick="openEditCalendarModal({{ cal.pk }})" aria-label="Edit Calendar">
+                        {% lucide "pencil" size=16 %}
+                    </button>
+                    <button class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition"
+                            onclick="confirmDeleteCalendar('{{ cal.name|escapejs }}', {{ cal.sla_count }}, 'deleteCalForm{{ cal.pk }}')" aria-label="Delete Calendar">
+                        {% lucide "trash-2" size=16 %}
+                    </button>
+                </div>
                 <form id="deleteCalForm{{ cal.pk }}" method="post" action="{% url 'tickets:calendar_delete' cal.pk %}" style="display:none;">
                     {% csrf_token %}
                 </form>
@@ -123,7 +133,7 @@
         <div class="flex items-center justify-between px-5 py-3 border-b border-border">
             <h3 class="text-sm font-semibold text-text-primary">Escalation Rules</h3>
             <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
-                    onclick="document.getElementById('ruleModal').classList.remove('hidden')">
+                    onclick="openAddRuleModal()">
                 {% lucide "plus" size=14 %} Add Rule
             </button>
         </div>
@@ -156,8 +166,12 @@
                         <td class="py-3 px-4 text-text-secondary">{{ rule.threshold_percent }}%</td>
                         <td class="py-3 px-4 text-text-secondary">{{ rule.get_action_type_display }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ rule.notify_role|default:rule.reassign_to_role|default:"—" }}</td>
-                        <td class="py-3 px-4 text-right">
-                            <form method="post" action="{% url 'tickets:rule_delete' rule.pk %}" id="deleteRuleForm{{ rule.pk }}">
+                        <td class="py-3 px-4 text-right flex justify-center">
+                            <button type="button" class="btn-ghost p-1 text-text-secondary hover:bg-primary/10 hover:text-primary rounded-full transition" aria-label="Edit Rule"
+                                    onclick="openEditRuleModal({{ rule.pk }})">
+                                {% lucide "pencil" size=16 %}
+                            </button>
+                            <form method="post" action="{% url 'tickets:rule_delete' rule.pk %}" id="deleteRuleForm{{ rule.pk }}" class="inline">
                                 {% csrf_token %}
                                 <button type="button" class="btn-ghost p-1 text-error hover:bg-error/10 rounded-full transition" aria-label="Delete Rule"
                                         onclick="confirmDelete('{{ rule.get_priority_display|escapejs }} Escalation Rule', 'Escalation Rule', function() { document.getElementById('deleteRuleForm{{ rule.pk }}').submit(); })">
@@ -180,189 +194,36 @@
     </div>
 </div>
 
-<!-- ========== ADD SLA MODAL ========== -->
+<!-- ========== ADD/EDIT SLA MODAL ========== -->
 <div id="slaModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
     <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-text-primary">Add SLA Policy</h3>
-            <button onclick="document.getElementById('slaModal').classList.add('hidden')" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+            <h3 id="slaModalTitle" class="text-base font-semibold text-text-primary">Add SLA Policy</h3>
+            <button onclick="document.getElementById('slaModal').classList.add('hidden')" class="btn-ghost p-1" aria-label="Close">{% lucide "x" size=18 %}</button>
         </div>
-        <form method="post" action="{% url 'tickets:sla_create' %}" class="space-y-4">
-            {% csrf_token %}
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Priority</label>
-                <select name="priority" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" required>
-                    <option value="">Select Priority</option>
-                    {% for value, label in priority_choices %}
-                        <option value="{{ value }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Response Target</label>
-                <div class="flex items-center gap-2">
-                    <input type="number" name="response_hours" value="0" min="0" placeholder="Hrs"
-                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <span class="text-sm text-text-secondary">h</span>
-                    <input type="number" name="response_minutes" value="0" min="0" max="59" placeholder="Mins"
-                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <span class="text-sm text-text-secondary">m</span>
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Resolution Target</label>
-                <div class="flex items-center gap-2">
-                    <input type="number" name="resolution_hours" value="0" min="0" placeholder="Hrs"
-                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <span class="text-sm text-text-secondary">h</span>
-                    <input type="number" name="resolution_minutes" value="0" min="0" max="59" placeholder="Mins"
-                           class="w-1/2 rounded-lg border py-2.5 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <span class="text-sm text-text-secondary">m</span>
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Calendar</label>
-                <select name="calendar_id" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <option value="">Default Calendar</option>
-                    {% for cal in calendars %}
-                        <option value="{{ cal.pk }}">{{ cal.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="document.getElementById('slaModal').classList.add('hidden')" class="btn-ghost text-sm">Cancel</button>
-                <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save SLA</button>
-            </div>
-        </form>
+        {% include "partials/sla_form.html" with form=sla_form %}
     </div>
 </div>
 
-<!-- ========== ADD CALENDAR MODAL ========== -->
+<!-- ========== ADD/EDIT CALENDAR MODAL ========== -->
 <div id="calendarModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
     <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-text-primary">Add Business Calendar</h3>
-            <button onclick="document.getElementById('calendarModal').classList.add('hidden')" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+            <h3 id="calendarModalTitle" class="text-base font-semibold text-text-primary">Add Business Calendar</h3>
+            <button onclick="document.getElementById('calendarModal').classList.add('hidden')" class="btn-ghost p-1" aria-label="Close">{% lucide "x" size=18 %}</button>
         </div>
-        <form method="post" action="{% url 'tickets:calendar_create' %}" class="space-y-4">
-            {% csrf_token %}
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Calendar Name</label>
-                <input type="text" name="name" placeholder="Calendar name" required
-                       class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Workdays</label>
-                <div class="flex flex-wrap gap-2">
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="0" class="rounded border-border text-primary focus:ring-primary" checked> Mon
-                    </label>
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="1" class="rounded border-border text-primary focus:ring-primary" checked> Tue
-                    </label>
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="2" class="rounded border-border text-primary focus:ring-primary" checked> Wed
-                    </label>
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="3" class="rounded border-border text-primary focus:ring-primary" checked> Thu
-                    </label>
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="4" class="rounded border-border text-primary focus:ring-primary" checked> Fri
-                    </label>
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="5" class="rounded border-border text-primary focus:ring-primary"> Sat
-                    </label>
-                    <label class="text-xs flex items-center gap-1 cursor-pointer">
-                        <input type="checkbox" name="workdays" value="6" class="rounded border-border text-primary focus:ring-primary"> Sun
-                    </label>
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-text-secondary mb-1">Start Time</label>
-                    <input type="time" name="work_start" required
-                           class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" value="08:00">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-text-secondary mb-1">End Time</label>
-                    <input type="time" name="work_end" required
-                           class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" value="18:00">
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Holidays (comma separated)</label>
-                <input type="text" name="holidays" placeholder="YYYY-MM-DD, YYYY-MM-DD"
-                       class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            </div>
-            <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="document.getElementById('calendarModal').classList.add('hidden')" class="btn-ghost text-sm">Cancel</button>
-                <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save Calendar</button>
-            </div>
-        </form>
+        {% include "partials/calendar_form.html" with form=calendar_form %}
     </div>
 </div>
 
-<!-- ========== ADD ESCALATION RULE MODAL ========== -->
+<!-- ========== ADD/EDIT ESCALATION RULE MODAL ========== -->
 <div id="ruleModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden">
     <div class="bg-surface rounded-xl shadow-xl w-full max-w-md p-6 mx-4">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-base font-semibold text-text-primary">Add Escalation Rule</h3>
-            <button onclick="document.getElementById('ruleModal').classList.add('hidden')" class="btn-ghost p-1">{% lucide "x" size=18 %}</button>
+            <h3 id="ruleModalTitle" class="text-base font-semibold text-text-primary">Add Escalation Rule</h3>
+            <button onclick="document.getElementById('ruleModal').classList.add('hidden')" class="btn-ghost p-1" aria-label="Close">{% lucide "x" size=18 %}</button>
         </div>
-        <form method="post" action="{% url 'tickets:rule_create' %}" class="space-y-4">
-            {% csrf_token %}
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Priority</label>
-                <select name="priority" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" required>
-                    <option value="">Select Priority</option>
-                    {% for value, label in priority_choices %}
-                        <option value="{{ value }}">{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Timer Type</label>
-                <select name="timer_type" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" required>
-                    <option value="response">Response</option>
-                    <option value="resolution">Resolution</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Threshold (%)</label>
-                <input type="number" name="threshold_percent" placeholder="75" required min="1" max="100"
-                       class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-text-secondary mb-1">Action Type</label>
-                <select name="action_type" id="actionTypeSelect" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" required
-                        onchange="toggleTargetDropdown()">
-                    <option value="notify">Notify</option>
-                    <option value="reassign">Reassign</option>
-                    <option value="add_watcher">Add Watcher</option>
-                </select>
-            </div>
-            <div id="notifyRoleGroup">
-                <label class="block text-xs font-medium text-text-secondary mb-1">Notify Role</label>
-                <select name="notify_role" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <option value="">— Select Role —</option>
-                    <option value="TEAM_LEAD">Team Lead</option>
-                    <option value="ADMIN">Admin</option>
-                </select>
-            </div>
-            <div id="reassignRoleGroup" class="hidden">
-                <label class="block text-xs font-medium text-text-secondary mb-1">Reassign to Role</label>
-                <select name="reassign_to_role" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                    <option value="">— Select Role —</option>
-                    <option value="TEAM_LEAD">Team Lead</option>
-                    <option value="ADMIN">Admin</option>
-                    <option value="AGENT">Agent</option>
-                </select>
-            </div>
-            <div class="flex justify-end gap-2 pt-2">
-                <button type="button" onclick="document.getElementById('ruleModal').classList.add('hidden')" class="btn-ghost text-sm">Cancel</button>
-                <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save Rule</button>
-            </div>
-        </form>
+        {% include "partials/rule_form.html" with form=rule_form %}
     </div>
 </div>
 {% endblock %}
@@ -370,11 +231,90 @@
 {% block scripts %}
 {{ block.super }}
 <script>
+    // Editing an SLA policy re-opens the same Add-policy form pre-filled —
+    // sla_create() upserts on priority server-side, so re-submitting the
+    // same priority updates the existing row rather than creating a new
+    // one. Priority stays editable (it's a real <select>, disabling it
+    // would drop it from the submit entirely) — changing it while
+    // "editing" just means you're now saving a different priority's
+    // policy instead, which the hint below calls out.
+    function openAddSlaModal() {
+        document.getElementById('slaModalTitle').textContent = 'Add SLA Policy';
+        document.getElementById('slaModal').querySelector('form').reset();
+        document.getElementById('slaPriorityHint').classList.add('hidden');
+        document.getElementById('slaModal').classList.remove('hidden');
+    }
+
+    function openEditSlaModal(priority, responseMinutes, resolutionMinutes, calendarId) {
+        document.getElementById('slaModalTitle').textContent = 'Edit SLA Policy';
+        document.getElementById('id_priority').value = priority;
+        document.getElementById('id_response_hours').value = Math.floor(responseMinutes / 60);
+        document.getElementById('id_response_minutes').value = responseMinutes % 60;
+        document.getElementById('id_resolution_hours').value = Math.floor(resolutionMinutes / 60);
+        document.getElementById('id_resolution_minutes').value = resolutionMinutes % 60;
+        document.getElementById('id_calendar_id').value = calendarId || '';
+        document.getElementById('slaPriorityHint').classList.remove('hidden');
+        document.getElementById('slaModal').classList.remove('hidden');
+    }
+
+    // Calendars and Rules have no upsert shortcut like SLA policies do, so
+    // both Add and Edit load a freshly server-rendered form (via HTMX GET)
+    // into the same modal container — Add always gets a blank form (so a
+    // leftover Edit form never lingers), Edit gets one pre-filled from the
+    // real row, each pointed at its own endpoint (create vs. edit).
+    function openAddCalendarModal() {
+        document.getElementById('calendarModalTitle').textContent = 'Add Business Calendar';
+        htmx.ajax('GET', "{% url 'tickets:calendar_add_modal' %}", { target: '#calendarFormContainer', swap: 'outerHTML' });
+        document.getElementById('calendarModal').classList.remove('hidden');
+    }
+
+    function openEditCalendarModal(pk) {
+        document.getElementById('calendarModalTitle').textContent = 'Edit Business Calendar';
+        const url = "{% url 'tickets:calendar_edit_modal' 0 %}".replace('/0/', '/' + pk + '/');
+        htmx.ajax('GET', url, { target: '#calendarFormContainer', swap: 'outerHTML' });
+        document.getElementById('calendarModal').classList.remove('hidden');
+    }
+
+    function openAddRuleModal() {
+        document.getElementById('ruleModalTitle').textContent = 'Add Escalation Rule';
+        htmx.ajax('GET', "{% url 'tickets:rule_add_modal' %}", { target: '#ruleFormContainer', swap: 'outerHTML' });
+        document.getElementById('ruleModal').classList.remove('hidden');
+    }
+
+    function openEditRuleModal(pk) {
+        document.getElementById('ruleModalTitle').textContent = 'Edit Escalation Rule';
+        const url = "{% url 'tickets:rule_edit_modal' 0 %}".replace('/0/', '/' + pk + '/');
+        htmx.ajax('GET', url, { target: '#ruleFormContainer', swap: 'outerHTML' });
+        document.getElementById('ruleModal').classList.remove('hidden');
+    }
+
     function toggleTargetDropdown() {
         const action = document.getElementById('actionTypeSelect').value;
         document.getElementById('notifyRoleGroup').classList.toggle('hidden', action !== 'notify');
         document.getElementById('reassignRoleGroup').classList.toggle('hidden', action !== 'reassign');
     }
     document.addEventListener('DOMContentLoaded', toggleTargetDropdown);
+
+    // Deleting a calendar doesn't delete the SLA policies that reference
+    // it — SLA.calendar is SET_NULL, so those policies silently fall back
+    // to the default calendar instead. Say that plainly instead of the
+    // generic "permanently removed" wording confirmDelete() uses for
+    // things that actually are deleted outright.
+    function confirmDeleteCalendar(calendarName, slaCount, formId) {
+        const detail = slaCount > 0
+            ? `Used by ${slaCount} SLA polic${slaCount === 1 ? 'y' : 'ies'} — deleting it won't delete those policies, they'll just fall back to the default calendar.`
+            : 'Not currently used by any SLA policy.';
+        openConfirmationModal({
+            title: 'Delete Business Calendar',
+            message: `Are you sure you want to delete "${calendarName}"?`,
+            detail: detail,
+            confirmText: 'Yes, delete it',
+            confirmButtonClass: 'btn-danger',
+            icon: 'danger',
+            onConfirm: function() {
+                document.getElementById(formId).submit();
+            }
+        });
+    }
 </script>
 {% endblock %}

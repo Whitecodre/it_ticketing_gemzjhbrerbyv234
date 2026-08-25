@@ -74,39 +74,9 @@
     </div>
 </div>
 
-<!-- Modal Overlay -->
-<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
-     onclick="if(event.target===this) closeMobilizationModal()">
-    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-        <!-- Content loaded via HTMX -->
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 {{ block.super }}
-<script>
-    function openMobilizationCreateModal() {
-        const url = "{% url 'tickets:mobilization_create_modal' %}";
-        const container = document.getElementById('modalContainer');
-        const overlay = document.getElementById('modalOverlay');
-        if (!container || !overlay) return;
-        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
-        overlay.classList.remove('hidden');
-        htmx.ajax('GET', url, {
-            target: '#modalContainer',
-            swap: 'innerHTML',
-            onError: function() {
-                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
-            }
-        });
-    }
-
-    function closeMobilizationModal() {
-        const overlay = document.getElementById('modalOverlay');
-        const container = document.getElementById('modalContainer');
-        if (overlay) overlay.classList.add('hidden');
-        if (container) container.innerHTML = '';
-    }
-</script>
+{# Mobilize Assets uses the global openMobilizationCreateModal() (static/js/global.js) — too long for a modal/slideover, so it navigates to its own page (tickets/mobilization_create.html) instead. #}
 {% endblock %}

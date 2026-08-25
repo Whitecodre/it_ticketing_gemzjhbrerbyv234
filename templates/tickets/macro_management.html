@@ -29,11 +29,25 @@
         </button>
     </div>
 
+    {# Bulk actions bar — shown once at least one row is selected, same pattern as admin/user_management.html #}
+    <div id="macroBulkActionsBar" class="hidden dashboard-card px-4 py-2.5 flex items-center justify-between gap-3">
+        <span class="text-sm text-text-primary"><span id="macroBulkSelectedCount">0</span> selected</span>
+        <div class="flex items-center gap-2">
+            <button class="btn-danger text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5" onclick="bulkDeleteMacros()">
+                {% lucide "trash-2" size=14 %} Delete Selected
+            </button>
+            <button class="btn-ghost text-sm px-3 py-1.5" onclick="clearMacroSelection()">Clear</button>
+        </div>
+    </div>
+
     <div class="dashboard-card p-0 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="border-b" style="border-color: var(--color-border);">
+                        <th class="py-2.5 px-4" style="width: 36px;">
+                            <input type="checkbox" id="selectAllMacros" onchange="toggleSelectAllMacros(this)" aria-label="Select all macros">
+                        </th>
                         <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Title</th>
                         <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Type</th>
                         <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Visibility</th>
@@ -46,6 +60,11 @@
                     <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);"
                         data-pk="{{ macro.pk }}" data-title="{{ macro.title }}" data-body="{{ macro.body }}"
                         data-type="{{ macro.type }}" data-visibility="{{ macro.visibility }}">
+                        <td class="py-2.5 px-4">
+                            {% if macro.created_by == request.user or active_role_name == "TEAM_LEAD" %}
+                            <input type="checkbox" class="macro-select-checkbox" value="{{ macro.pk }}" onchange="onMacroCheckboxChange()" aria-label="Select {{ macro.title }}">
+                            {% endif %}
+                        </td>
                         <td class="py-2.5 px-4 text-text-primary font-medium">{{ macro.title }}</td>
                         <td class="py-2.5 px-4 text-text-secondary">{{ macro.get_type_display }}</td>
                         <td class="py-2.5 px-4">
@@ -64,7 +83,7 @@
                         </td>
                     </tr>
                     {% empty %}
-                    <tr><td colspan="5" class="py-8 px-4 text-center text-text-secondary text-sm">No macros yet — create one to speed up replies.</td></tr>
+                    <tr><td colspan="6" class="py-8 px-4 text-center text-text-secondary text-sm">No macros yet — create one to speed up replies.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -82,14 +101,16 @@
             <form id="macroModalForm" class="px-6 py-5 space-y-4">
                 {% csrf_token %}
                 <div>
-                    <label class="block text-xs font-medium mb-1 text-text-secondary">Title</label>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Title <span class="text-error">*</span></label>
                     <input type="text" name="title" id="macroTitle" required
                            class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="title"></p>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium mb-1 text-text-secondary">Body</label>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Body <span class="text-error">*</span></label>
                     <textarea name="body" id="macroBody" rows="5" required
                               class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary"></textarea>
+                    <p class="text-xs text-error mt-1 hidden" data-error-for="body"></p>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -99,6 +120,7 @@
                             <option value="REASSIGN_REASON">Reassign Reason</option>
                             <option value="RETURN_REASON">Return Reason</option>
                         </select>
+                        <p class="text-xs text-error mt-1 hidden" data-error-for="type"></p>
                     </div>
                     <div>
                         <label class="block text-xs font-medium mb-1 text-text-secondary">Visibility</label>
@@ -107,6 +129,7 @@
                             <option value="INTERNAL">Internal</option>
                             <option value="PRIVATE">Private (only me)</option>
                         </select>
+                        <p class="text-xs text-error mt-1 hidden" data-error-for="visibility"></p>
                     </div>
                 </div>
                 <div class="flex items-center justify-end gap-2 pt-2">
@@ -140,8 +163,16 @@
         activeMacroPk = null;
     }
 
+    function clearMacroModalErrors() {
+        document.querySelectorAll('#macroModalForm [data-error-for]').forEach(function (el) {
+            el.textContent = '';
+            el.classList.add('hidden');
+        });
+    }
+
     document.getElementById('macroModalForm').addEventListener('submit', function (e) {
         e.preventDefault();
+        clearMacroModalErrors();
         const formData = new FormData(this);
         const url = activeMacroPk ? `/tickets/macros/${activeMacroPk}/update/` : '/tickets/macros/create/';
         fetch(url, {
@@ -153,11 +184,76 @@
               if (result.ok) {
                   closeMacroModal();
                   window.location.reload();
+              } else if (result.data.errors) {
+                  Object.keys(result.data.errors).forEach(function (field) {
+                      const el = document.querySelector('#macroModalForm [data-error-for="' + field + '"]');
+                      if (el) {
+                          el.textContent = result.data.errors[field][0];
+                          el.classList.remove('hidden');
+                      }
+                  });
               } else if (typeof showToast === 'function') {
                   showToast(result.data.error || 'Could not save', 'error');
               }
           });
     });
+
+    function onMacroCheckboxChange() {
+        const checked = document.querySelectorAll('.macro-select-checkbox:checked');
+        const bar = document.getElementById('macroBulkActionsBar');
+        const countEl = document.getElementById('macroBulkSelectedCount');
+        if (checked.length > 0) {
+            bar.classList.remove('hidden');
+            countEl.textContent = checked.length;
+        } else {
+            bar.classList.add('hidden');
+        }
+        const selectAll = document.getElementById('selectAllMacros');
+        const allBoxes = document.querySelectorAll('.macro-select-checkbox');
+        if (selectAll) {
+            selectAll.checked = allBoxes.length > 0 && checked.length === allBoxes.length;
+        }
+    }
+
+    function toggleSelectAllMacros(headerCheckbox) {
+        document.querySelectorAll('.macro-select-checkbox').forEach(function (box) {
+            box.checked = headerCheckbox.checked;
+        });
+        onMacroCheckboxChange();
+    }
+
+    function clearMacroSelection() {
+        document.querySelectorAll('.macro-select-checkbox').forEach(function (box) { box.checked = false; });
+        const selectAll = document.getElementById('selectAllMacros');
+        if (selectAll) selectAll.checked = false;
+        onMacroCheckboxChange();
+    }
+
+    function bulkDeleteMacros() {
+        const ids = Array.from(document.querySelectorAll('.macro-select-checkbox:checked')).map(function (box) { return box.value; });
+        if (ids.length === 0) return;
+
+        confirmBulkAction('delete', ids.length, function () {
+            const body = new URLSearchParams();
+            ids.forEach(function (id) { body.append('ids', id); });
+
+            fetch('{% url "tickets:macro_bulk_delete" %}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: body.toString(),
+            }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+              .then(function (result) {
+                  if (result.ok) {
+                      window.location.reload();
+                  } else if (typeof showToast === 'function') {
+                      showToast(result.data.error || 'Could not delete macros', 'error');
+                  }
+              });
+        });
+    }
 
     function deleteMacro(pk, title) {
         confirmDelete(title, 'Macro', function () {

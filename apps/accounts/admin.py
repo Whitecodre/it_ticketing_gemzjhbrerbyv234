@@ -3,6 +3,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import User, UserProfile
+from apps.common.permissions import effective_role_name
 
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
@@ -19,7 +20,7 @@ class UserAdmin(BaseUserAdmin):
     # else in the admin changelist, mirroring the app's own user management UI.
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if request.user.role == User.Role.SUPERADMIN:
+        if effective_role_name(request.user) == User.Role.SUPERADMIN:
             return qs
         return qs.exclude(role=User.Role.SUPERADMIN)
 
@@ -30,7 +31,7 @@ class UserAdmin(BaseUserAdmin):
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
         requesting_user = getattr(request, 'user', None)
-        if requesting_user is None or requesting_user.role != User.Role.SUPERADMIN:
+        if requesting_user is None or effective_role_name(requesting_user) != User.Role.SUPERADMIN:
             if 'role' in form.base_fields:
                 form.base_fields['role'].choices = [
                     choice for choice in form.base_fields['role'].choices
@@ -64,13 +65,13 @@ class UserAdmin(BaseUserAdmin):
     )
 
     def has_delete_permission(self, request, obj=None):
-        if obj and obj.role == User.Role.SUPERADMIN:
-            return request.user.role == User.Role.SUPERADMIN
+        if obj and obj.roles.filter(name=User.Role.SUPERADMIN).exists():
+            return effective_role_name(request.user) == User.Role.SUPERADMIN
         return super().has_delete_permission(request, obj)
 
     def has_change_permission(self, request, obj=None):
-        if obj and obj.role == User.Role.SUPERADMIN:
-            return request.user.role == User.Role.SUPERADMIN
+        if obj and obj.roles.filter(name=User.Role.SUPERADMIN).exists():
+            return effective_role_name(request.user) == User.Role.SUPERADMIN
         return super().has_change_permission(request, obj)
 
     def save_model(self, request, obj, form, change):

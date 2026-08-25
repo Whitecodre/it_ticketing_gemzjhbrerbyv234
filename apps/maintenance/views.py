@@ -29,7 +29,7 @@ ASSET_EXCLUDED_STATUSES = [
 ]
 from apps.common.utils import send_email_via_brevo, role_of
 from apps.common.models import Notification
-from apps.common.permissions import get_sidebar_template
+from apps.common.permissions import get_sidebar_template, effective_role_name
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def notify_asset_owners_completion(schedule):
     for asset in schedule.target_assets.all():
         notify_asset_confirmers(
             asset, schedule,
-            f'🔧 "{schedule.title}" was marked complete — please confirm or dispute the work done on {asset.name} ({asset.tracking_id}).',
+            f'"{schedule.title}" was marked complete — please confirm or dispute the work done on {asset.name} ({asset.tracking_id}).',
         )
 
 
@@ -149,7 +149,7 @@ def notify_department_team_leads(schedule, departments, request, actor=None):
         Notification.objects.create(
             recipient=tl,
             role=role_of(tl),
-            message=f'📅 New maintenance scheduled for {tl.get_department_display()}: "{schedule.title}" ({schedule.scheduled_date}).',
+            message=f'New maintenance scheduled for {tl.get_department_display()}: "{schedule.title}" ({schedule.scheduled_date}).',
             url=url,
             type=Notification.Type.GENERAL,
         )
@@ -247,7 +247,9 @@ def log_activity(schedule, action, actor=None, details=None):
 @login_required
 def schedule_list(request):
     """List all maintenance schedules with filters."""
-    
+    if effective_role_name(request.user) not in ('AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'):
+        return HttpResponse(status=403)
+
     schedules = MaintenanceSchedule.objects.all()
     
     # Filters
@@ -341,7 +343,7 @@ def schedule_create(request):
             # Send email to assigned IT personnel
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
-            notify_maintenance_assignees(schedule, f'🔧 You were assigned to maintenance: "{schedule.title}" ({schedule.scheduled_date}).')
+            notify_maintenance_assignees(schedule, f'You were assigned to maintenance: "{schedule.title}" ({schedule.scheduled_date}).')
 
             # Inform each target department's Team Lead(s) — informational,
             # fires once at creation for every department on the schedule.
@@ -356,7 +358,16 @@ def schedule_create(request):
         else:
             messages.error(request, 'Please correct the errors below.')
             if request.headers.get('HX-Request'):
-                return render(request, 'maintenance/partials/form_errors.html', {'form': form})
+                it_roles = ['SUPERADMIN', 'ADMIN', 'TEAM_LEAD', 'AGENT']
+                context = {
+                    'form': form,
+                    'schedule': schedule if 'schedule' in locals() and isinstance(schedule, MaintenanceSchedule) else None,
+                    'it_users': User.objects.filter(role__in=it_roles, is_active=True).order_by('first_name', 'last_name'),
+                    'vendors': Vendor.objects.filter(is_active=True).order_by('name'),
+                    'department_choices': MaintenanceSchedule.Department.choices,
+                    'checklist_items': form.data.getlist('checklist_items') if hasattr(form.data, 'getlist') else [],
+                }
+                return render(request, 'maintenance/partials/schedule_form_fields.html', context)
     else:
         form = MaintenanceScheduleForm()
     
@@ -408,7 +419,7 @@ def schedule_edit(request, pk):
             # Send email if assigned_to changed
             if schedule.assigned_to:
                 send_maintenance_assignment_email(schedule, request)
-            notify_maintenance_assignees(schedule, f'🔧 Maintenance schedule updated: "{schedule.title}" ({schedule.scheduled_date}).')
+            notify_maintenance_assignees(schedule, f'Maintenance schedule updated: "{schedule.title}" ({schedule.scheduled_date}).')
 
             # Only notify Team Leads of departments newly added to the
             # schedule — avoids re-notifying on every unrelated edit.
@@ -424,7 +435,16 @@ def schedule_edit(request, pk):
         else:
             messages.error(request, 'Please correct the errors below.')
             if request.headers.get('HX-Request'):
-                return render(request, 'maintenance/partials/form_errors.html', {'form': form})
+                it_roles = ['SUPERADMIN', 'ADMIN', 'TEAM_LEAD', 'AGENT']
+                context = {
+                    'form': form,
+                    'schedule': schedule if 'schedule' in locals() and isinstance(schedule, MaintenanceSchedule) else None,
+                    'it_users': User.objects.filter(role__in=it_roles, is_active=True).order_by('first_name', 'last_name'),
+                    'vendors': Vendor.objects.filter(is_active=True).order_by('name'),
+                    'department_choices': MaintenanceSchedule.Department.choices,
+                    'checklist_items': form.data.getlist('checklist_items') if hasattr(form.data, 'getlist') else [],
+                }
+                return render(request, 'maintenance/partials/schedule_form_fields.html', context)
     else:
         form = MaintenanceScheduleForm(instance=schedule)
         # Pre-populate checklist_items as text
@@ -495,7 +515,15 @@ def schedule_update_status(request, pk):
     # Team Lead may change status — Admin/Superadmin can view but not act.
     if not can_change_maintenance_status(request.user, schedule):
         return HttpResponse(status=403)
-    
+
+    # COMPLETED/CANCELLED are terminal — completing already creates one
+    # MaintenanceAssetConfirmation per target asset and emails owners, so
+    # allowing a further transition out of it risks duplicate confirmations
+    # and a misleading completed_at/notification trail.
+    if schedule.status in (MaintenanceSchedule.Status.COMPLETED, MaintenanceSchedule.Status.CANCELLED):
+        messages.error(request, f'This schedule is already {schedule.get_status_display()} and cannot be changed further.')
+        return redirect('maintenance:detail', pk=pk)
+
     form = MaintenanceStatusForm(request.POST)
     if form.is_valid():
         new_status = form.cleaned_data['status']
@@ -546,13 +574,13 @@ def schedule_update_status(request, pk):
         if new_status == MaintenanceSchedule.Status.IN_PROGRESS:
             notify_maintenance_management(
                 schedule,
-                f'▶️ "{schedule.title}" was started by {request.user.get_full_name()}.',
+                f'"{schedule.title}" was started by {request.user.get_full_name()}.',
                 request.user,
             )
         elif new_status == MaintenanceSchedule.Status.COMPLETED:
             notify_maintenance_management(
                 schedule,
-                f'✅ "{schedule.title}" was marked complete by {request.user.get_full_name()} — pending owner confirmation.',
+                f'"{schedule.title}" was marked complete by {request.user.get_full_name()} — pending owner confirmation.',
                 request.user,
             )
 
@@ -678,10 +706,10 @@ def asset_confirm(request, pk, asset_pk):
 
         send_asset_confirmation_email(schedule, asset, row, request)
         if decision == 'CONFIRMED':
-            notify_maintenance_assignees(schedule, f'✅ {asset.name} ({asset.tracking_id}) was confirmed complete by {request.user.get_full_name()}.')
+            notify_maintenance_assignees(schedule, f'{asset.name} ({asset.tracking_id}) was confirmed complete by {request.user.get_full_name()}.')
             messages.success(request, f'Maintenance on {asset.name} confirmed successfully.')
         else:
-            notify_maintenance_assignees(schedule, f'⚠️ {asset.name} ({asset.tracking_id}) maintenance was disputed by {request.user.get_full_name()}: {row.dispute_reason}')
+            notify_maintenance_assignees(schedule, f'{asset.name} ({asset.tracking_id}) maintenance was disputed by {request.user.get_full_name()}: {row.dispute_reason}')
             messages.warning(request, f'Maintenance on {asset.name} marked as disputed.')
 
         if request.headers.get('HX-Request'):
@@ -743,7 +771,9 @@ def target_assets_partial(request):
 @login_required
 def calendar_view(request):
     """Custom calendar view of maintenance schedules."""
-    
+    if effective_role_name(request.user) not in ('AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'):
+        return HttpResponse(status=403)
+
     # Get month/year from request or use current
     month = int(request.GET.get('month', timezone.now().month))
     year = int(request.GET.get('year', timezone.now().year))

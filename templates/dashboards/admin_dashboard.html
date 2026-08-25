@@ -128,77 +128,6 @@
     </div>
 </div>
 
-{# ========== SECTION 3: PENDING ASSET REQUESTS ========== #}
-<div class="mb-6">
-    <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2">
-            {% lucide "package" size=16 class="text-warning" %}
-            <h2 class="text-sm font-semibold text-text-primary">Pending Asset Fulfillment</h2>
-            {% if pending_fulfillment_count > 0 %}
-            <span class="text-xs font-normal px-2 py-0.5 rounded-full bg-warning text-white">
-                {{ pending_fulfillment_count }}
-            </span>
-            {% endif %}
-        </div>
-        <a href="{% url 'tickets:my_list' %}?status=PENDING_FULFILLMENT" class="text-xs font-medium text-primary hover:underline">View all →</a>
-    </div>
-
-    {% if pending_fulfillment_requests %}
-    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-border">
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset Needed</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Category</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Date</th>
-                        <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for ticket in pending_fulfillment_requests %}
-                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
-                        <td class="py-3 px-4">
-                            <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
-                        </td>
-                        <td class="py-3 px-4 text-text-secondary">
-                            {{ ticket.requester.get_full_name|default:ticket.requester.email }}
-                        </td>
-                        <td class="py-3 px-4 text-text-primary truncate max-w-xs">{{ ticket.title }}</td>
-                        <td class="py-3 px-4 text-text-secondary">{{ ticket.category.name|default:"—" }}</td>
-                        <td class="py-3 px-4 text-text-secondary">{{ ticket.created_at|date:"M d, Y" }}</td>
-                        <td class="py-3 px-4 text-right">
-                            {% if ticket.is_mobilization_request %}
-                            <button onclick="openMobilizeModal({{ ticket.pk }})"
-                                    class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
-                                {% lucide "ship" size=12 %} Mobilize
-                            </button>
-                            {% else %}
-                            <button onclick="openFulfillModal({{ ticket.pk }})"
-                                    class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
-                                {% lucide "check" size=12 %} Fulfill
-                            </button>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% else %}
-    <div class="dashboard-card p-4 text-center">
-        <div class="flex justify-center mb-2">
-            {% lucide "check-circle" size=24 class="text-success" %}
-        </div>
-        <p class="text-sm font-medium text-text-primary">No pending asset requests</p>
-        <p class="text-xs text-text-secondary">All approved requests have been fulfilled.</p>
-    </div>
-    {% endif %}
-</div>
-
 {# ========== SECTION 4: SLA, ESCALATION, QUICK ACTIONS & CONNECTORS ========== #}
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
     
@@ -336,7 +265,7 @@
                     {% for connector in connectors %}
                     <option value="{% url 'tickets:connector_edit' connector.pk %}" 
                             {% if connector.is_active %}selected{% endif %}>
-                        {{ connector.name }} {% if connector.is_active %}✓ Active{% else %}— Inactive{% endif %}
+                        {{ connector.name }} {% if connector.is_active %}Active{% else %}— Inactive{% endif %}
                     </option>
                     {% endfor %}
                 </select>
@@ -404,9 +333,6 @@
         {% endif %}
     </div>
 </div>
-
-{# Fulfillment Modal Container #}
-<div id="fulfillModalContainer"></div>
 
 {% endblock %}
 

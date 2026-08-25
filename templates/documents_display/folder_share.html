@@ -3,6 +3,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}Share “{{ folder.name }}”{% endblock %}
 
@@ -12,11 +13,11 @@
 
 {% block dashboard_content %}
 <div class="max-w-3xl mx-auto">
-    <div class="mb-4 flex items-center gap-3">
-        <a href="{% url 'documents_display:folder_detail' folder.slug %}" class="btn-ghost text-sm flex items-center gap-1">
-            {% lucide "arrow-left" size=16 %} Back to Folder
-        </a>
-    </div>
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% url 'documents_display:folder_list' as folders_url %}
+    {% url 'documents_display:folder_detail' folder.slug as folder_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url "My Folders" folders_url folder.name folder_url "Share" %}
 
     <div class="dashboard-card p-6 shadow-sm mb-6">
         <div class="flex items-center gap-3 mb-4">
@@ -56,7 +57,11 @@
             </div>
 
             <div id="internalRecipientGroup">
-                <label class="block text-sm font-medium mb-1 text-text-primary">Share with</label>
+                <label class="block text-sm font-medium mb-1 text-text-primary">Department</label>
+                {{ form.recipient_department }}
+                <p class="text-xs text-text-secondary mt-1">{{ form.recipient_department.help_text }}</p>
+
+                <label class="block text-sm font-medium mb-1 mt-3 text-text-primary">Share with</label>
                 {{ form.recipient }}
                 <p class="text-xs text-text-secondary mt-1">{{ form.recipient.help_text }}</p>
             </div>

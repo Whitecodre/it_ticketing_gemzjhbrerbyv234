@@ -1,4 +1,6 @@
 import base64
+import os
+import tempfile
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -7,9 +9,9 @@ from django.urls import reverse
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.management import call_command
-from datetime import date, timedelta
+from datetime import date, timedelta, time as datetime_time, datetime as datetime_dt
 from unittest.mock import patch
-from apps.tickets.models import Ticket, TicketComment, Asset, AssetCategory, AssetLog, SLA, EscalationRule, ServiceCategory, RemoteSession, RemoteConnector, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetProcurementRequest
+from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, Asset, AssetCategory, AssetLog, SLA, EscalationRule, ServiceCategory, RemoteSession, RemoteConnector, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetProcurementRequest, Attachment
 from apps.common.models import Category, Notification
 from apps.maintenance.models import MaintenanceSchedule, Vendor
 
@@ -549,9 +551,13 @@ class AssetReassignTests(TestCase):
         self.client.post(url, {'assigned_to': self.agent1.pk, 'comment': 'Second reassign'})
         
         # Get history. The asset was created directly with assigned_to set
-        # (no log for that), so only the two reassign() calls are logged.
+        # (no log for that). Each reassign() now goes through release()+
+        # assign_to() (the single custody-tracking pair also used by
+        # checkout/check-in), so each one logs both an UNASSIGNED (release
+        # from the previous holder) and an ASSIGNED (handover to the new
+        # one) entry — two reassignments means four log entries.
         history = self.asset.get_assignment_history()
-        self.assertEqual(len(history), 2)
+        self.assertEqual(len(history), 4)
         
         # Check latest assignment is agent1
         self.asset.refresh_from_db()
@@ -828,7 +834,7 @@ class VendorCategoryAndMobilizationPrefillTests(TestCase):
             service_request_details={'asset_type': 'LAPTOP', 'number_of_assets': '3'},
         )
 
-        response = self.client.get(reverse('tickets:mobilization_create_modal'), {'ticket_id': ticket.pk})
+        response = self.client.get(reverse('tickets:mobilization_create_page'), {'ticket_id': ticket.pk})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, f'value="{self.laptop_category.pk}" selected')
         self.assertContains(response, 'value="3"')
@@ -852,7 +858,7 @@ class VendorCategoryAndMobilizationPrefillTests(TestCase):
         )
 
         # No AssetCategory named "Other" exists yet — should render without error.
-        response = self.client.get(reverse('tickets:mobilization_create_modal'), {'ticket_id': ticket.pk})
+        response = self.client.get(reverse('tickets:mobilization_create_page'), {'ticket_id': ticket.pk})
         self.assertEqual(response.status_code, 200)
 
 
@@ -1193,7 +1199,7 @@ class ThirdPartyVesselMobilizationTests(TestCase):
         # The vessel checkbox picker on a *new* mobilization form only shows
         # active (approved) vessels — the pending one stays hidden there
         # even though it's visible on the mobilization that already uses it.
-        response = self.client.get(reverse('tickets:mobilization_create_modal'))
+        response = self.client.get(reverse('tickets:mobilization_create_page'))
         self.assertNotContains(response, 'MV Not Approved Yet')
 
     def test_admins_notified_of_new_third_party_vessel(self):
@@ -1863,11 +1869,12 @@ class RoleBasedAccessTests(TestCase):
         response = self.client.get(reverse('tickets:unassigned'))
         self.assertEqual(response.status_code, 403)  # Forbidden
 
-    def test_asset_management_agent_access(self):
-        """Agents should access asset management."""
+    def test_asset_management_agent_denied(self):
+        """Only Admin/Superadmin may browse the full asset inventory — every
+        other role (including Agent) only ever sees their own via my_assets."""
         self.client.login(email='agent@example.com', password='TestPass123!')
         response = self.client.get(reverse('tickets:assets'))
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 403)
 
     def test_asset_create_admin_only(self):
         """Only admins should access asset creation."""
@@ -1986,6 +1993,90 @@ class ServiceRequestFlowTests(TestCase):
         # Asset request should go to PENDING_FULFILLMENT
         self.assertEqual(ticket.status, Ticket.Status.PENDING_FULFILLMENT)
 
+    def test_manager_request_changes_posts_comment_and_resubmit_returns_to_review(self):
+        """The manager's reason must be visible on the ticket (not just an
+        activity-log entry), and once the requester replies, the ticket must
+        go back through manager review, not straight to the agent pool."""
+        self.client.login(email='user@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:create'), {
+            'type': 'SERVICE_REQUEST',
+            'title': 'Need a monitor',
+            'description': 'I need a monitor',
+            'service_category': self.service_category.id,
+            'purpose': 'Desk setup',
+            'urgency': 'MEDIUM',
+            'number_of_assets': '1',
+            'asset_type': 'MONITOR',
+        })
+        ticket = Ticket.objects.filter(title='Need a monitor').first()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_MANAGER_REVIEW)
+
+        self.client.login(email='lead@example.com', password='TestPass123!')
+        response = self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'Please specify monitor size'}
+        )
+        self.assertEqual(response.status_code, 302)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_USER)
+        # The reason must be visible on the ticket, not just logged internally.
+        self.assertTrue(
+            ticket.comments.filter(body__icontains='Please specify monitor size').exists()
+        )
+
+        self.client.login(email='user@example.com', password='TestPass123!')
+        response = self.client.post(
+            reverse('tickets:detail', args=[ticket.pk]),
+            {'body': '27 inch please'},
+            HTTP_HX_REQUEST='true',
+        )
+        self.assertEqual(response.status_code, 200)
+        ticket.refresh_from_db()
+        # Must go back to the Team Lead, not straight to the agent pool.
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_MANAGER_REVIEW)
+
+    def test_unassigned_ticket_conversation_is_blocked(self):
+        """An agent must claim a ticket before its conversation page (and
+        commenting) becomes reachable, so status can never move while the
+        ticket is still sitting unclaimed in the unassigned queue. This only
+        applies to tickets worked via the claim/assign flow (incidents,
+        general service requests) — asset-request tickets are worked through
+        the fulfillment pool and are never assigned, so they're exempt (see
+        test_service_request_admin_fulfillment, which follows the
+        fulfillment redirect into this same conversation page)."""
+        self.client.login(email='user@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:create'), {
+            'type': 'INCIDENT',
+            'title': 'Printer is broken',
+            'description': 'The printer on the 3rd floor is broken',
+            'category': self.category.id,
+            'impact': 'INDIVIDUAL',
+            'urgency': 'MEDIUM',
+        })
+        ticket = Ticket.objects.filter(title='Printer is broken').first()
+        ticket.status = Ticket.Status.NEW
+        ticket.save(update_fields=['status'])
+        self.assertIsNone(ticket.assigned_to)
+
+        User.objects.create_user(
+            email='agent-unassigned-block@example.com', password='TestPass123!',
+            first_name='Agent', last_name='Block', department='IT',
+            role=User.Role.AGENT, is_active=True, email_verified=True,
+        )
+        self.client.login(email='agent-unassigned-block@example.com', password='TestPass123!')
+
+        response = self.client.get(reverse('tickets:conversation', args=[ticket.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(response, reverse('tickets:unassigned'))
+
+        response = self.client.post(
+            reverse('tickets:add_comment_conversation', args=[ticket.pk]),
+            {'body': 'trying to reply without claiming'},
+        )
+        self.assertEqual(response.status_code, 403)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.NEW)
+
     def test_service_request_admin_fulfillment(self):
         """Test admin fulfilling an asset request."""
         # Create and approve a service request
@@ -2023,11 +2114,17 @@ class ServiceRequestFlowTests(TestCase):
             {
                 'asset_id': asset.pk,
                 'comment': 'Fulfilled with Dell Laptop'
-            }
+            },
+            follow=True,
         )
-        self.assertEqual(response.status_code, 302)
-        
+        # Fulfilling redirects straight to the ticket's conversation page —
+        # asset-request tickets are never assigned_to anyone (they're worked
+        # through the fulfillment pool, not the claim flow), so this must
+        # not trip the unclaimed-ticket guard added for unassigned incidents.
+        self.assertEqual(response.status_code, 200)
+
         ticket.refresh_from_db()
+        self.assertIsNone(ticket.assigned_to)
         self.assertEqual(ticket.status, Ticket.Status.PENDING_USER)
         self.assertEqual(ticket.assigned_asset, asset)
 
@@ -2889,7 +2986,7 @@ class BulkReportExportTests(TestCase):
 
     def test_report_table_renders_row_checkboxes(self):
         response = self.client.get(reverse('tickets:report_builder', args=['assets']))
-        self.assertContains(response, 'report-row-checkbox')
+        self.assertContains(response, 'bulk-row-checkbox')
         self.assertContains(response, f'value="{self.asset1.pk}"')
 
 
@@ -2916,11 +3013,6 @@ class NonITTeamLeadRestrictionTests(TestCase):
         self.assertEqual(get_sidebar_template(self.non_it_lead), 'partials/sidebar_team_lead_approver.html')
         self.assertEqual(get_sidebar_template(self.it_lead), 'partials/sidebar_team_lead.html')
 
-    def test_can_edit_org_requires_it_department(self):
-        from apps.common.permissions import can_edit_org
-        self.assertFalse(can_edit_org(self.non_it_lead))
-        self.assertTrue(can_edit_org(self.it_lead))
-
     def test_non_it_lead_denied_it_operational_views(self):
         self.client.login(email='marinelead2@example.com', password='TestPass123!')
         for url_name in ['tickets:team_queue', 'tickets:unassigned', 'tickets:assigned_to_me',
@@ -2932,10 +3024,17 @@ class NonITTeamLeadRestrictionTests(TestCase):
     def test_it_lead_keeps_access_to_it_operational_views(self):
         self.client.login(email='itlead2@example.com', password='TestPass123!')
         for url_name in ['tickets:team_queue', 'tickets:unassigned', 'tickets:assigned_to_me',
-                          'tickets:escalated_tickets', 'tickets:assets', 'tickets:audit_log',
+                          'tickets:escalated_tickets', 'tickets:audit_log',
                           'tickets:macro_management']:
             response = self.client.get(reverse(url_name))
             self.assertEqual(response.status_code, 200, f'{url_name} should stay 200 for an IT Team Lead')
+
+    def test_it_lead_denied_full_asset_inventory(self):
+        """The full asset inventory is Admin/Superadmin-only now — even an
+        IT Team Lead only ever sees assets assigned to them, via my_assets."""
+        self.client.login(email='itlead2@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:assets'))
+        self.assertEqual(response.status_code, 403)
 
     def test_non_it_lead_denied_report_access(self):
         self.client.login(email='marinelead2@example.com', password='TestPass123!')
@@ -3475,3 +3574,102 @@ class ProcurementRequestTests(TestCase):
         self.assertTrue(
             Notification.objects.filter(recipient=other_admin, message__icontains='New Vendor Co').exists()
         )
+
+
+class AttachmentPreviewTests(TestCase):
+    """No preview should depend on Google Docs Viewer reaching a (possibly
+    private/local) file URL — images/PDF/video/audio render natively, Office
+    docs get converted to PDF via LibreOffice and cached."""
+
+    def setUp(self):
+        self.client = Client()
+        self.category = Category.objects.create(name='General', slug='general')
+        self.requester = User.objects.create_user(
+            email='attach-req@example.com', password='TestPass123!',
+            first_name='Attach', last_name='Requester', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.agent = User.objects.create_user(
+            email='attach-agent@example.com', password='TestPass123!',
+            first_name='Attach', last_name='Agent', department='IT',
+            role=User.Role.AGENT, is_active=True, email_verified=True,
+        )
+        self.ticket = Ticket.objects.create(
+            number='TK#ATT1', title='Attachment preview ticket', description='d',
+            requester=self.requester, category=self.category, status=Ticket.Status.NEW,
+        )
+        self.client.login(email='attach-agent@example.com', password='TestPass123!')
+
+    def _attach(self, filename, content_type, content=b'data'):
+        return Attachment.objects.create(
+            ticket=self.ticket,
+            file=SimpleUploadedFile(filename, content, content_type=content_type),
+            filename=filename, content_type=content_type, uploaded_by=self.agent,
+        )
+
+    def test_image_previews_natively_no_gview(self):
+        attachment = self._attach('proof.png', 'image/png', TINY_PNG_BYTES)
+        response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<img')
+        self.assertNotContains(response, 'docs.google.com')
+
+    def test_pdf_previews_natively_no_gview(self):
+        attachment = self._attach('notes.pdf', 'application/pdf', b'%PDF-1.4 fake')
+        response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'docs.google.com')
+        self.assertContains(response, attachment.file.url)
+
+    def test_office_document_converted_via_libreoffice_and_cached(self):
+        attachment = self._attach(
+            'report.docx',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        fake_pdf_dir = tempfile.mkdtemp()
+        fake_pdf_path = os.path.join(fake_pdf_dir, 'converted.pdf')
+        with open(fake_pdf_path, 'wb') as f:
+            f.write(b'%PDF-1.4 fake converted output')
+
+        with patch('apps.documents_display.utils.convert_office_to_pdf', return_value=fake_pdf_path) as mock_convert:
+            response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
+            self.assertEqual(response.status_code, 200)
+            mock_convert.assert_called_once()
+
+        attachment.refresh_from_db()
+        self.assertTrue(attachment.preview_pdf)
+        self.assertNotContains(response, 'docs.google.com')
+
+        # Second preview must reuse the cached PDF, not convert again.
+        with patch('apps.documents_display.utils.convert_office_to_pdf') as mock_convert_again:
+            response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
+            self.assertEqual(response.status_code, 200)
+            mock_convert_again.assert_not_called()
+
+    def test_office_document_conversion_failure_shows_fallback(self):
+        attachment = self._attach(
+            'broken.docx',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        with patch('apps.documents_display.utils.convert_office_to_pdf', return_value=None):
+            response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Couldn't generate a preview")
+
+    def test_video_and_audio_preview_natively(self):
+        video = self._attach('clip.mp4', 'video/mp4')
+        response = self.client.get(reverse('tickets:attachment_preview', args=[video.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<video')
+
+        audio = self._attach('note.mp3', 'audio/mpeg')
+        response = self.client.get(reverse('tickets:attachment_preview', args=[audio.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<audio')
+
+    def test_unrecognized_format_falls_back_to_download(self):
+        attachment = self._attach('archive.zip', 'application/zip')
+        response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Preview not available for this file type')
+

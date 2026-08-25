@@ -2,7 +2,6 @@ import random, hashlib, os, re, csv, json
 from datetime import datetime, timedelta, date
 from decimal import Decimal, InvalidOperation
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -16,19 +15,24 @@ from django.db.models import Count, Avg, Q, F, Value
 from django.db import transaction, IntegrityError
 from django.db.models.functions import TruncDate, Concat
 from django.utils import timezone
-from django.utils.html import strip_tags
+from django.utils.html import strip_tags, escape
 from django.urls import reverse
 from django.template.loader import render_to_string
 from apps.common.utils import send_email_via_brevo, role_of
 from django.conf import settings
-from .forms import TicketForm, IncidentReportForm, ServiceRequestForm, CommentForm, AssetForm, MobilizationForm, ProcurementRequestForm
+from .forms import (
+    TicketForm, IncidentReportForm, ServiceRequestForm, CommentForm, AssetForm, MobilizationForm,
+    ProcurementRequestForm, TicketResolveForm, AssetReassignForm, AssetScrapRequestForm,
+    AssetCheckoutForm, AssetCheckinForm, AssetReturnRequestForm, SLAForm, BusinessCalendarForm, EscalationRuleForm,
+    ConnectorEditForm, EscalatedReassignForm, EscalatedReturnForm,
+)
 from .service_request_fields import build_service_request_details, fields_for_group, display_value_for_field
 from .models import *
 from apps.tickets.models import Asset
 from apps.maintenance.models import Vendor, MaintenanceAssetConfirmation, MaintenanceSchedule
 from apps.accounts.models import User
 from apps.common.models import Notification
-from apps.common.permissions import is_admin, get_sidebar_template
+from apps.common.permissions import is_admin, is_superadmin, get_sidebar_template, effective_role_name
 from bs4 import BeautifulSoup
 import bleach
 
@@ -100,18 +104,24 @@ def apply_sla(ticket):
     Sets the response_due_at and resolution_due_at fields on a ticket
     based on the SLA policy configured for its priority.
     Called after ticket creation and when priority changes.
+
+    Due dates walk forward through the SLA's assigned BusinessCalendar
+    (work hours/workdays/holidays) via add_business_minutes() when one is
+    set, so a P1 filed at 5pm Friday doesn't get a due date that lands
+    mid-weekend. An SLA with no calendar attached falls back to flat
+    calendar-time addition, same as before.
     """
     try:
-        sla = SLA.objects.get(priority=ticket.priority)
+        sla = SLA.objects.select_related('calendar').get(priority=ticket.priority)
     except SLA.DoesNotExist:
         return
-    
+
     # Use the ticket's created_at as the start time
     # If created_at is None or in the future, use timezone.now()
     start_time = ticket.created_at if ticket.created_at and ticket.created_at <= timezone.now() else timezone.now()
-    
-    ticket.response_due_at = start_time + timedelta(minutes=sla.response_minutes)
-    ticket.resolution_due_at = start_time + timedelta(minutes=sla.resolution_minutes)
+
+    ticket.response_due_at = add_business_minutes(start_time, sla.response_minutes, sla.calendar)
+    ticket.resolution_due_at = add_business_minutes(start_time, sla.resolution_minutes, sla.calendar)
     ticket.save(update_fields=['response_due_at', 'resolution_due_at'])
 
 # Helper function to handle "Other" field logic
@@ -372,13 +382,14 @@ def my_ticket_list(request):
     base = request.GET.get('base', '')
     
     open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR', 'APPROVED']
-    closed_statuses = ['RESOLVED', 'CLOSED']
 
     if status_filter == 'OPEN':
         tickets = tickets.filter(status__in=open_statuses)
-    elif status_filter == 'CLOSED':
-        tickets = tickets.filter(status__in=closed_statuses)
     elif status_filter and status_filter.upper() in dict(Ticket.Status.choices):
+        # CLOSED is a real status value (unlike OPEN, which is a synthetic
+        # bucket), so it goes through this exact-match branch like RESOLVED
+        # does — it must not be bucketed together with RESOLVED, or the
+        # "Closed" KPI card's click-through would show Resolved tickets too.
         tickets = tickets.filter(status=status_filter.upper())
 
     # Pagination
@@ -431,7 +442,7 @@ def ticket_detail(request, pk):
     The 'is_agent' flag controls visibility of agent‑only UI elements.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user != ticket.requester and request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+    if request.user != ticket.requester and effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return redirect('dashboard')
 
     # Handle comment submission from requester
@@ -444,7 +455,7 @@ def ticket_detail(request, pk):
             comment.visibility = 'PUBLIC'
             cleaned_body = clean_comment_body(comment.body)
             if cleaned_body is None:
-                return HttpResponse(status=400)   # empty message
+                return HttpResponse('Comment cannot be empty.', status=400)
             comment.body = cleaned_body
             comment.save()
 
@@ -453,11 +464,24 @@ def ticket_detail(request, pk):
                 save_attachments(ticket, files, request.user, comment=comment)
 
             if ticket.status == Ticket.Status.PENDING_USER:
-                ticket.status = Ticket.Status.IN_PROGRESS
+                old_status = ticket.status
+                # PENDING_USER means two different things depending on why it
+                # was set: a manager requesting changes on a service request
+                # (must go back through manager review, not straight to IT),
+                # or an agent proposing a resolution and awaiting confirmation
+                # (a reply here just reopens it to IN_PROGRESS). Disambiguate
+                # via whichever of those two actions happened most recently.
+                last_reason = ticket.activities.filter(
+                    action__in=['manager_requested_changes', 'resolution_requested']
+                ).first()
+                if last_reason and last_reason.action == 'manager_requested_changes':
+                    ticket.status = Ticket.Status.PENDING_MANAGER_REVIEW
+                else:
+                    ticket.status = Ticket.Status.IN_PROGRESS
                 ticket.save()
                 TicketActivityLog.objects.create(
                     ticket=ticket, action='status_changed', actor=request.user,
-                    details={'from': Ticket.Status.PENDING_USER, 'to': Ticket.Status.IN_PROGRESS}
+                    details={'from': old_status, 'to': ticket.status}
                 )
 
             comments = ticket.comments.prefetch_related('attachment_set').all().order_by('created_at')
@@ -468,7 +492,7 @@ def ticket_detail(request, pk):
                 'initial_attachments': initial_attachments,
             })
         else:
-            return HttpResponse(status=422)
+            return HttpResponse('Please check your comment and try again.', status=422)
 
     # GET request – render conversation page
     comments = ticket.comments.all().order_by('created_at')
@@ -478,7 +502,7 @@ def ticket_detail(request, pk):
         uploaded_by__role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
     )
     form = CommentForm()
-    is_agent = request.user.role in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+    is_agent = effective_role_name(request.user) in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
 
     return render(request, 'agent/ticket_conversation.html', {
         'ticket': ticket,
@@ -500,7 +524,7 @@ def unassigned_queue(request):
     """
     Displays all unassigned tickets that are ready for agents to claim.
     """
-    if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     # Get all unassigned tickets
@@ -541,13 +565,36 @@ def unassigned_queue(request):
     }
     return render(request, 'agent/unassigned_queue.html', context)
 
+
+@login_required
+def unassigned_pending_count(request):
+    """Badge count for the sidebar 'Unassigned' link — same filter as
+    unassigned_queue, minus the fields that view only needs for display."""
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
+        return HttpResponse(status=403)
+
+    count = Ticket.objects.filter(assigned_to__isnull=True).filter(
+        Q(type=Ticket.Type.INCIDENT) |
+        (Q(type=Ticket.Type.SERVICE_REQUEST) & Q(status=Ticket.Status.APPROVED))
+    ).exclude(
+        status__in=[
+            Ticket.Status.PENDING_MANAGER_REVIEW,
+            Ticket.Status.PENDING_FULFILLMENT,
+            Ticket.Status.PENDING_APPROVAL,
+            Ticket.Status.RESOLVED,
+            Ticket.Status.CLOSED,
+        ]
+    ).count()
+    return render(request, 'partials/sidebar_count_badge.html', {'count': count})
+
+
 @login_required
 def assigned_to_me(request):
     """
     Displays all tickets assigned to the logged‑in agent,
     excluding resolved, closed, and pending approval tickets.
     """
-    if request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     tickets = Ticket.objects.filter(
@@ -596,7 +643,7 @@ def claim_ticket(request, pk):
         Notification.objects.create(
             recipient=request.user,
             role=role_of(request.user),
-            message=f"✅ You have claimed ticket {ticket.number}: {ticket.title}",
+            message=f"You have claimed ticket {ticket.number}: {ticket.title}",
             url=reverse('tickets:conversation', args=[ticket.pk]),
             type=Notification.Type.TICKET
         )
@@ -604,7 +651,7 @@ def claim_ticket(request, pk):
         Notification.objects.create(
             recipient=ticket.requester,
             role=role_of(ticket.requester),
-            message=f"🎫 Ticket {ticket.number} has been claimed by {request.user.get_full_name()} and is now in progress.",
+            message=f"Ticket {ticket.number} has been claimed by {request.user.get_full_name()} and is now in progress.",
             url=reverse('tickets:detail', args=[ticket.pk]),
             type=Notification.Type.TICKET
         )
@@ -629,7 +676,7 @@ def claim_ticket(request, pk):
                 unassigned_tickets = unassigned_tickets[:5]
                 return JsonResponse({
                     'success': True,
-                    'message': f'✅ Successfully claimed ticket {ticket.number}',
+                    'message': f'Successfully claimed ticket {ticket.number}',
                     'unassigned_count': unassigned_tickets.count(),
                 })
             else:
@@ -643,7 +690,7 @@ def claim_ticket(request, pk):
             # For JSON requests, return JSON
             return JsonResponse({
                 'success': True,
-                'message': f'✅ Successfully claimed ticket {ticket.number}',
+                'message': f'Successfully claimed ticket {ticket.number}',
                 'ticket_id': ticket.pk,
                 'ticket_number': ticket.number,
             })
@@ -661,7 +708,7 @@ def agent_ticket_detail(request, pk):
     Used when an agent clicks the "eye" icon on a ticket row.
     """ 
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
     comments = ticket.comments.all().order_by('created_at')
     user_attachments = ticket.attachments.filter(uploaded_by__role='END_USER')
@@ -682,8 +729,20 @@ def agent_ticket_conversation(request, pk):
     Renders the same template as ticket_detail but with is_agent=True.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
+    # An unclaimed ticket has no owner, so a reply here would move its
+    # status (see add_comment_conversation) while it's still sitting in the
+    # unassigned queue — claim it first, then open the conversation. Use
+    # the "View Details" slideover (agent_ticket_detail) to preview an
+    # unclaimed ticket without entering this page. Asset-request tickets are
+    # exempt: they're worked through the fulfillment pool (fulfill_asset_request,
+    # mobilization, procurement) and never go through assigned_to at all, so
+    # this guard would otherwise lock admins out of fulfilling/commenting on
+    # every asset request.
+    if ticket.assigned_to_id is None and not ticket.is_asset_request:
+        messages.warning(request, f'Claim ticket {ticket.number} before opening its conversation.')
+        return redirect('tickets:unassigned')
     comments = ticket.comments.all().order_by('created_at')
     form = CommentForm()
     initial_attachments = ticket.attachments.filter(comment__isnull=True)
@@ -691,10 +750,6 @@ def agent_ticket_conversation(request, pk):
     agent_attachments = ticket.attachments.filter(
         uploaded_by__role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
     )
-    manual_status_choices = [
-        (value, label) for value, label in Ticket.Status.choices
-        if value in MANUALLY_SETTABLE_STATUSES
-    ]
     return render(request, 'agent/ticket_conversation.html', {
         'ticket': ticket,
         'comments': comments,
@@ -704,8 +759,6 @@ def agent_ticket_conversation(request, pk):
         'agent_attachments': agent_attachments,
         'sidebar_template': get_sidebar_template(request.user),
         'is_agent': True,
-        'manual_status_choices': manual_status_choices,
-        'status_is_manually_editable': ticket.status in MANUALLY_SETTABLE_STATUSES,
     })
 
 @login_required
@@ -719,41 +772,48 @@ def add_comment_conversation(request, pk):
     - Returns the updated conversation timeline partial (HTMX).
     """
     ticket = get_object_or_404(Ticket, pk=pk)
+    if effective_role_name(request.user) not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+        return HttpResponse(status=403)
+    if ticket.assigned_to_id is None and not ticket.is_asset_request:
+        return HttpResponse('Claim this ticket before replying.', status=403)
+
     form = CommentForm(request.POST)
-    if form.is_valid():
-        comment = form.save(commit=False)
-        comment.ticket = ticket
-        comment.author = request.user
-        comment.visibility = request.POST.get('visibility', 'PUBLIC').upper()
-        if comment.visibility not in ['PUBLIC', 'INTERNAL']:
-            comment.visibility = 'PUBLIC'
-        cleaned_body = clean_comment_body(comment.body)
-        if cleaned_body is None:
-            return HttpResponse(status=400)
-        comment.body = cleaned_body
-        comment.save()
+    if not form.is_valid():
+        return HttpResponse('Please check your comment and try again.', status=422)
 
-        files = request.FILES.getlist('attachments')
-        if files:
-            created = save_attachments(ticket, files, request.user, comment=comment)
-            comment = TicketComment.objects.get(pk=comment.pk)
+    comment = form.save(commit=False)
+    comment.ticket = ticket
+    comment.author = request.user
+    comment.visibility = request.POST.get('visibility', 'PUBLIC').upper()
+    if comment.visibility not in ['PUBLIC', 'INTERNAL']:
+        comment.visibility = 'PUBLIC'
+    cleaned_body = clean_comment_body(comment.body)
+    if cleaned_body is None:
+        return HttpResponse('Comment cannot be empty.', status=400)
+    comment.body = cleaned_body
+    comment.save()
 
-        TicketActivityLog.objects.create(
-            ticket=ticket, action='commented', actor=request.user,
-            details={'visibility': comment.visibility, 'body': comment.body[:200]}
-        )
+    files = request.FILES.getlist('attachments')
+    if files:
+        created = save_attachments(ticket, files, request.user, comment=comment)
+        comment = TicketComment.objects.get(pk=comment.pk)
 
-        old_status = ticket.status
-        if comment.visibility == 'PUBLIC':
-            if old_status in [Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS,
-                              Ticket.Status.PENDING_USER, Ticket.Status.NEW, Ticket.Status.TRIAGED]:
-                ticket.status = Ticket.Status.IN_PROGRESS
-                ticket.save()
-                if old_status != ticket.status:
-                    TicketActivityLog.objects.create(
-                        ticket=ticket, action='status_changed', actor=request.user,
-                        details={'from': old_status, 'to': ticket.status}
-                    )
+    TicketActivityLog.objects.create(
+        ticket=ticket, action='commented', actor=request.user,
+        details={'visibility': comment.visibility, 'body': comment.body[:200]}
+    )
+
+    old_status = ticket.status
+    if comment.visibility == 'PUBLIC':
+        if old_status in [Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS,
+                          Ticket.Status.PENDING_USER, Ticket.Status.NEW, Ticket.Status.TRIAGED]:
+            ticket.status = Ticket.Status.IN_PROGRESS
+            ticket.save()
+            if old_status != ticket.status:
+                TicketActivityLog.objects.create(
+                    ticket=ticket, action='status_changed', actor=request.user,
+                    details={'from': old_status, 'to': ticket.status}
+                )
 
     comments = ticket.comments.prefetch_related('attachment_set').all().order_by('created_at')
     initial_attachments = ticket.attachments.filter(comment__isnull=True)
@@ -762,51 +822,6 @@ def add_comment_conversation(request, pk):
         'comments': comments,
         'initial_attachments': initial_attachments, 
     })
-
-# The manual status dropdown on the ticket conversation page is only for
-# the day-to-day "working" states an agent moves a ticket through by hand.
-# Everything else (Resolved, Closed, Approved, Pending Manager Review,
-# Pending Fulfillment, Pending Approval) is owned by a dedicated, guarded
-# flow (Resolve button, manager review, asset fulfillment, approval) and
-# must not be reachable by picking it off this dropdown — that would let an
-# agent skip the automated lifecycle those flows enforce.
-MANUALLY_SETTABLE_STATUSES = {
-    Ticket.Status.NEW, Ticket.Status.TRIAGED, Ticket.Status.ASSIGNED,
-    Ticket.Status.IN_PROGRESS, Ticket.Status.PENDING_USER,
-    Ticket.Status.PENDING_VENDOR, Ticket.Status.ESCALATED,
-}
-
-
-@login_required
-@require_POST
-def update_status(request, pk):
-    """
-    Changes the status of a ticket. Only agents, team leads, admins, and superadmins can do this.
-    The new status is passed as a GET parameter 'status'.
-    Logs the change in TicketActivityLog.
-    """
-    ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
-        return HttpResponse(status=403)
-
-    previous_status = ticket.status
-    new_status = request.GET.get('status')
-
-    if not new_status or new_status not in dict(Ticket.Status.choices):
-        return JsonResponse({'error': 'Unknown status.'}, status=400)
-
-    if previous_status not in MANUALLY_SETTABLE_STATUSES or new_status not in MANUALLY_SETTABLE_STATUSES:
-        return JsonResponse({
-            'error': 'This transition is managed by the ticket workflow (resolve, manager review, or fulfillment) and cannot be set manually.'
-        }, status=400)
-
-    ticket.status = new_status
-    ticket.save()
-    TicketActivityLog.objects.create(
-        ticket=ticket, action='status_changed', actor=request.user,
-        details={'from': previous_status, 'to': new_status}
-    )
-    return HttpResponse(status=204)
 
 @login_required
 @require_http_methods(['GET', 'POST'])
@@ -817,7 +832,7 @@ def resolve_ticket(request, pk):
     - POST: Processes the resolution confirmation
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
     
     # Check if ticket is already resolved
@@ -827,22 +842,20 @@ def resolve_ticket(request, pk):
         messages.warning(request, 'Ticket is already resolved or closed.')
         return redirect('tickets:conversation', pk=ticket.pk)
     
+    is_incident = ticket.type == Ticket.Type.INCIDENT
+
     # GET request - return the modal (HTMX)
     if request.method == 'GET' and request.headers.get('HX-Request'):
-        return render(request, 'partials/resolve_modal.html', {'ticket': ticket})
-    
+        form = TicketResolveForm(is_incident=is_incident)
+        return render(request, 'partials/resolve_modal.html', {'ticket': ticket, 'form': form})
+
     # POST request - process confirmation
     if request.method == 'POST':
         action = request.POST.get('action')
-        comment = request.POST.get('comment', '').strip()
-        root_cause = request.POST.get('resolution_root_cause', '').strip()
-        resolution_steps = request.POST.get('resolution_steps', '').strip()
-        valid_root_cause_categories = dict(Ticket.RootCauseCategory.choices)
-        root_cause_categories = [
-            c for c in request.POST.getlist('resolution_root_cause_category') if c in valid_root_cause_categories
-        ]
 
         if action == 'confirm':
+            comment = request.POST.get('comment', '').strip()
+
             if ticket.is_asset_request and ticket.resolution_confirmed_at:
                 # The requester already confirmed they received the
                 # asset(s) (confirm_resolution) — no need to send it back
@@ -857,14 +870,24 @@ def resolve_ticket(request, pk):
                 )
                 TicketComment.objects.create(
                     ticket=ticket, author=request.user, visibility='PUBLIC',
-                    body=f"✅ **Resolved**.{' ' + comment if comment else ''}"
+                    body=f"**Resolved**.{' ' + escape(comment) if comment else ''}"
                 )
+                if request.headers.get('HX-Request'):
+                    return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:conversation', kwargs={'pk': ticket.pk})})
                 messages.success(request, f'Ticket {ticket.number} resolved.')
                 return redirect('tickets:conversation', pk=ticket.pk)
 
-            if ticket.type == Ticket.Type.INCIDENT and (not root_cause or not resolution_steps):
-                messages.error(request, 'Root Cause and Resolution Steps are required to resolve an Incident ticket.')
+            form = TicketResolveForm(request.POST, is_incident=is_incident)
+            if not form.is_valid():
+                if request.headers.get('HX-Request'):
+                    return render(request, 'partials/resolve_modal.html', {'ticket': ticket, 'form': form})
+                messages.error(request, 'Please correct the errors below.')
                 return redirect('tickets:conversation', pk=ticket.pk)
+
+            comment = form.cleaned_data['comment'].strip()
+            root_cause = form.cleaned_data['resolution_root_cause'].strip()
+            resolution_steps = form.cleaned_data['resolution_steps'].strip()
+            root_cause_categories = form.cleaned_data['resolution_root_cause_category']
 
             # Create resolution request
             ticket.status = Ticket.Status.PENDING_USER
@@ -885,7 +908,7 @@ def resolve_ticket(request, pk):
             TicketComment.objects.create(
                 ticket=ticket,
                 author=request.user,
-                body=f"🔄 **Resolution requested**: Please confirm if this ticket has been resolved.{' ' + comment if comment else ''}",
+                body=f"**Resolution requested**: Please confirm if this ticket has been resolved.{' ' + escape(comment) if comment else ''}",
                 visibility='PUBLIC'
             )
             
@@ -920,9 +943,11 @@ def resolve_ticket(request, pk):
             if not success:
                 logger.error(f"Failed to send resolution confirmation email: {result}")
             
+            if request.headers.get('HX-Request'):
+                return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:conversation', kwargs={'pk': ticket.pk})})
             messages.success(request, f'Resolution confirmation sent to {ticket.requester.get_full_name()}.')
             return redirect('tickets:conversation', pk=ticket.pk)
-        
+
         elif action == 'cancel':
             return redirect('tickets:conversation', pk=ticket.pk)
 
@@ -940,7 +965,7 @@ def approve_incident_report(request, pk):
     """
     ticket = get_object_or_404(Ticket, pk=pk)
 
-    if request.user.role not in [User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
 
     if ticket.type != Ticket.Type.INCIDENT or ticket.status not in [Ticket.Status.RESOLVED, Ticket.Status.CLOSED]:
@@ -1006,7 +1031,7 @@ def confirm_resolution(request, pk):
                 TicketComment.objects.create(
                     ticket=ticket,
                     author=request.user,
-                    body="✅ **Receipt confirmed**. The requester has received the asset(s).",
+                    body="**Receipt confirmed**. The requester has received the asset(s).",
                     visibility='PUBLIC'
                 )
                 messages.success(request, 'Thank you for confirming! Please rate your experience.')
@@ -1028,7 +1053,7 @@ def confirm_resolution(request, pk):
             TicketComment.objects.create(
                 ticket=ticket,
                 author=request.user,
-                body="✅ **Resolution confirmed**. The issue has been resolved.",
+                body="**Resolution confirmed**. The issue has been resolved.",
                 visibility='PUBLIC'
             )
 
@@ -1052,7 +1077,7 @@ def confirm_resolution(request, pk):
                 TicketComment.objects.create(
                     ticket=ticket,
                     author=request.user,
-                    body=f"❌ **Not received**. The requester says the asset(s) weren't received as expected.{' Reason: ' + reason if reason else ''}",
+                    body=f"**Not received**. The requester says the asset(s) weren't received as expected.{' Reason: ' + escape(reason) if reason else ''}",
                     visibility='PUBLIC'
                 )
 
@@ -1074,7 +1099,7 @@ def confirm_resolution(request, pk):
             TicketComment.objects.create(
                 ticket=ticket,
                 author=request.user,
-                body=f"❌ **Resolution rejected**. The issue is not fully resolved.{' Reason: ' + reason if reason else ''}",
+                body=f"**Resolution rejected**. The issue is not fully resolved.{' Reason: ' + escape(reason) if reason else ''}",
                 visibility='PUBLIC'
             )
 
@@ -1203,7 +1228,7 @@ def edit_subject(request, pk):
     Returns the updated subject display partial.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
     new_title = request.POST.get('title', '').strip()
     if new_title:
@@ -1221,6 +1246,8 @@ def assign_popover(request, pk):
     Returns a popover with a list of assignable agents (Agent, Team Lead, Admin, Superadmin)
     so the agent can reassign the ticket.
     """
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk)
     agents = User.objects.filter(
         role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
@@ -1236,9 +1263,16 @@ def assign_to_me(request, pk):
     Assigns the ticket to the current user.
     Returns the updated assignee display partial.
     """
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk)
+    old_assignee = ticket.assigned_to
     ticket.assigned_to = request.user
     ticket.save()
+    TicketActivityLog.objects.create(
+        ticket=ticket, action='assigned', actor=request.user,
+        details={'from': old_assignee.get_full_name() if old_assignee else 'Unassigned', 'to': request.user.get_full_name()}
+    )
     return render(request, 'partials/ticket_details_assignee.html', {'ticket': ticket})
 
 @login_required
@@ -1248,10 +1282,17 @@ def assign_specific(request, pk, user_pk):
     Assigns the ticket to a specific user (by primary key).
     Returns the updated assignee display partial.
     """
+    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk)
     agent = get_object_or_404(User, pk=user_pk)
+    old_assignee = ticket.assigned_to
     ticket.assigned_to = agent
     ticket.save()
+    TicketActivityLog.objects.create(
+        ticket=ticket, action='assigned', actor=request.user,
+        details={'from': old_assignee.get_full_name() if old_assignee else 'Unassigned', 'to': agent.get_full_name()}
+    )
     return render(request, 'partials/ticket_details_assignee.html', {'ticket': ticket})
 
 # ==========================================================================
@@ -1301,7 +1342,7 @@ def bulk_action(request):
                 )
                 
     elif action == 'assign':
-        if request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        if effective_role_name(request.user) not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
             return HttpResponse(status=403)
         if value.isdigit():
             agent = get_object_or_404(User, pk=int(value))
@@ -1328,7 +1369,7 @@ def bulk_action(request):
                 TicketComment.objects.create(
                     ticket=ticket,
                     author=request.user,
-                    body=f"🔄 **Bulk reassign**: Ticket reassigned by {actor_name} from **{old_name}** to **{agent_name}**.",
+                    body=f"**Bulk reassign**: Ticket reassigned by {escape(actor_name)} from **{escape(old_name)}** to **{escape(agent_name)}**.",
                     visibility='PUBLIC'
                 )
             
@@ -1373,7 +1414,7 @@ def team_queue(request):
     Team Lead view: shows all tickets assigned to agents in the same department.
     Allows filtering by individual agent.
     """
-    if request.user.role != 'TEAM_LEAD' or request.user.department != 'IT':
+    if effective_role_name(request.user) != 'TEAM_LEAD' or request.user.department != 'IT':
         return HttpResponse(status=403)
     team_members = User.objects.filter(
         department=request.user.department,
@@ -1403,7 +1444,7 @@ def team_reassign(request, pk):
     Allows a Team Lead to reassign a ticket to another agent in their team.
     Returns JSON status.
     """
-    if request.user.role != 'TEAM_LEAD':
+    if effective_role_name(request.user) != 'TEAM_LEAD':
         return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk)
     new_agent_id = request.POST.get('agent_id')
@@ -1431,7 +1472,7 @@ def team_reassign(request, pk):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"🔄 **Ticket reassigned** by {actor_name} from **{old_name}** to **{new_name}**.",
+        body=f"**Ticket reassigned** by {escape(actor_name)} from **{escape(old_name)}** to **{escape(new_name)}**.",
         visibility='PUBLIC'
     )
     
@@ -1466,7 +1507,8 @@ LOG_CATEGORY_MAP = {
     'manager_approved': 'Manager Review',
     'manager_rejected': 'Manager Review',
     'manager_requested_changes': 'Manager Review',
-    'escalated': 'Escalation',
+    'breached': 'Escalation',
+    'escalation_rule_fired': 'Escalation',
     'reassigned_escalated': 'Escalation',
     'returned_to_pool': 'Escalation',
     'remote_session_requested': 'Remote Sessions',
@@ -1505,11 +1547,11 @@ def _log_detail_items(details):
 
 @login_required
 def audit_log(request):
-    if request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
+    if effective_role_name(request.user) not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     tab = request.GET.get('tab', 'tickets')
-    is_admin_tier = request.user.role in ['ADMIN', 'SUPERADMIN']
+    is_admin_tier = effective_role_name(request.user) in ['ADMIN', 'SUPERADMIN']
 
     # ------------------------------------------------------------------
     # SYSTEM TAB — impersonation events. Admin/Superadmin only; previously
@@ -1534,7 +1576,7 @@ def audit_log(request):
     # TICKETS TAB — ticket activity, grouped by category.
     # ------------------------------------------------------------------
     logs = TicketActivityLog.objects.select_related('ticket', 'actor').all()
-    if request.user.role == 'TEAM_LEAD':
+    if effective_role_name(request.user) == 'TEAM_LEAD':
         team_members = User.objects.filter(department=request.user.department, role='AGENT')
         logs = logs.filter(
             Q(ticket__assigned_to__in=team_members) | Q(ticket__requester__in=team_members)
@@ -1626,7 +1668,7 @@ def audit_log(request):
 def reports_dashboard(request):
     """Renders the reports page with SLA compliance, ticket volume, and priority charts."""
     user = request.user
-    if user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(user) not in ('ADMIN', 'SUPERADMIN', 'TEAM_LEAD'):
         return HttpResponse(status=403)
     
     # ================================================================
@@ -1662,7 +1704,7 @@ def reports_dashboard(request):
         volume_days = 30
         volume_start = start_date
     
-    if user.role == 'TEAM_LEAD':
+    if effective_role_name(user) == 'TEAM_LEAD':
         team_members = User.objects.filter(department=user.department, role='AGENT')
         ticket_filter = Q(assigned_to__in=team_members) | Q(requester__in=team_members)
     else:
@@ -1808,6 +1850,10 @@ def reports_dashboard(request):
         'open_priority_data': open_data,
         'open_total': sum(open_data),
         'sidebar_template': get_sidebar_template(request.user),
+        # Full asset inventory is Admin/Superadmin-only — the KPI cards below
+        # stay visible to Team Lead as read-only numbers, just not clickable
+        # through to the restricted inventory list.
+        'can_view_asset_inventory': effective_role_name(user) in ('ADMIN', 'SUPERADMIN'),
         # Asset metrics
         'total_assets': total_assets,
         'asset_status_labels': asset_status_labels,
@@ -1831,10 +1877,10 @@ def reports_ticket_list(request):
     across the whole org (existing list views are queue/requester-scoped),
     so this reuses the same department-scoping rule as reports_dashboard."""
     user = request.user
-    if user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(user) not in ('ADMIN', 'SUPERADMIN', 'TEAM_LEAD'):
         return HttpResponse(status=403)
 
-    if user.role == 'TEAM_LEAD':
+    if effective_role_name(user) == 'TEAM_LEAD':
         team_members = User.objects.filter(department=user.department, role='AGENT')
         ticket_filter = Q(assigned_to__in=team_members) | Q(requester__in=team_members)
     else:
@@ -1933,7 +1979,7 @@ def trigger_sla_processing_external(request):
 
 @login_required
 def catalogue(request):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']: return HttpResponse(status=403)
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']: return HttpResponse(status=403)
     return render(request, 'admin/catalogue.html', {'sidebar_template': get_sidebar_template(request.user)})
 
 @login_required
@@ -1942,7 +1988,7 @@ def connectors(request):
     Admin/Superadmin configuration page for remote connectors (Quick Assist, etc.).
     Lists all connectors and allows editing.
     """
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if not is_admin(request.user):
         return HttpResponse(status=403)
     connectors_list = RemoteConnector.objects.all().order_by('name')
     return render(request, 'admin/connectors.html', {
@@ -1956,18 +2002,27 @@ def connector_edit(request, pk):
     """
     Edit a specific remote connector: enable/disable and update instructions.
     """
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if not is_admin(request.user):
         return HttpResponse(status=403)
     connector = get_object_or_404(RemoteConnector, pk=pk)
     if request.method == 'POST':
-        connector.is_active = request.POST.get('is_active') == 'on'
-        connector.instructions_for_requester = request.POST.get('instructions_for_requester', '')
-        connector.instructions_for_agent = request.POST.get('instructions_for_agent', '')
-        connector.save()
-        messages.success(request, f'"{connector.name}" updated successfully.')
-        return redirect('tickets:connectors')
+        form = ConnectorEditForm(request.POST)
+        if form.is_valid():
+            connector.is_active = form.cleaned_data['is_active']
+            connector.instructions_for_requester = form.cleaned_data['instructions_for_requester']
+            connector.instructions_for_agent = form.cleaned_data['instructions_for_agent']
+            connector.save()
+            messages.success(request, f'"{connector.name}" updated successfully.')
+            return redirect('tickets:connectors')
+    else:
+        form = ConnectorEditForm(initial={
+            'is_active': connector.is_active,
+            'instructions_for_requester': connector.instructions_for_requester,
+            'instructions_for_agent': connector.instructions_for_agent,
+        })
     return render(request, 'admin/connector_form.html', {
         'connector': connector,
+        'form': form,
         'sidebar_template': get_sidebar_template(request.user),
     })
 
@@ -1999,7 +2054,9 @@ def parse_date(value):
 
 @login_required
 def assets(request):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
+    """Full asset inventory — Admin/Superadmin only. Every other role only
+    ever sees assets assigned to them, via my_assets."""
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
 
     # Use renamed filter parameters
@@ -2112,6 +2169,7 @@ def my_assets(request):
             'asset': asset,
             'pending_confirmations': pending_confirmations,
             'upcoming_schedules': upcoming_schedules,
+            'open_history': asset._open_checkout_history(),
         })
 
     context = {
@@ -2137,7 +2195,7 @@ def my_assets_pending_count(request):
 @login_required
 @require_http_methods(['GET', 'POST'])
 def asset_create_page(request):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     if request.method == 'POST':
@@ -2196,84 +2254,28 @@ def asset_create_page(request):
 @login_required
 @require_http_methods(['GET', 'POST'])
 def asset_edit_page(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=pk)
 
     if request.method == 'POST':
-        # Store the old assigned_to value before saving
-        old_assigned_to = asset.assigned_to
-        old_name = old_assigned_to.get_full_name() if old_assigned_to else 'Unassigned'
-        actor_name = request.user.get_full_name()
-        
         form = AssetForm(request.POST, instance=asset)
         if form.is_valid():
+            # assigned_to is disabled on this form for an existing asset
+            # (see AssetForm.__init__) — custody changes only happen
+            # through assign_to()/release() now (Checkout/Reassign/Check-in),
+            # so this save can never touch who has the asset.
             asset = form.save()
             asset.refresh_low_stock_alert()
 
-            # Check if assigned_to changed
-            new_assigned_to = asset.assigned_to
-            new_name = new_assigned_to.get_full_name() if new_assigned_to else 'Unassigned'
-            
-            # Create appropriate logs based on what changed
-            if old_assigned_to != new_assigned_to:
-                # This is a reassignment or unassignment
-                if new_assigned_to:
-                    # Reassigned to someone
-                    AssetLog.objects.create(
-                        asset=asset,
-                        action=AssetLog.Action.ASSIGNED,
-                        actor=request.user,
-                        details={
-                            'from': old_name,
-                            'to': new_name,
-                            'comment': 'Reassigned via edit form'
-                        }
-                    )
-                    
-                    # ================================================================
-                    # DEFAULT REASSIGN COMMENT
-                    # ================================================================
-                    comment_body = f"🔄 **Asset reassigned** by {actor_name} from **{old_name}** to **{new_name}** via edit form."
-                    if asset.notes:
-                        asset.notes = f"{asset.notes}\n\n{comment_body}"
-                    else:
-                        asset.notes = comment_body
-                    asset.save(update_fields=['notes'])
-                    
-                else:
-                    # Unassigned
-                    AssetLog.objects.create(
-                        asset=asset,
-                        action=AssetLog.Action.UNASSIGNED,
-                        actor=request.user,
-                        details={
-                            'from': old_name,
-                            'to': None,
-                            'comment': 'Unassigned via edit form'
-                        }
-                    )
-                    
-                    # ================================================================
-                    # DEFAULT UNASSIGN COMMENT
-                    # ================================================================
-                    comment_body = f"🔄 **Asset unassigned** by {actor_name} from **{old_name}** via edit form."
-                    if asset.notes:
-                        asset.notes = f"{asset.notes}\n\n{comment_body}"
-                    else:
-                        asset.notes = comment_body
-                    asset.save(update_fields=['notes'])
-                    
-            else:
-                # General update (no assignment change)
-                AssetLog.objects.create(
-                    asset=asset,
-                    action=AssetLog.Action.UPDATED,
-                    actor=request.user,
-                    details={'source': 'edit_page'}
-                )
-            
+            AssetLog.objects.create(
+                asset=asset,
+                action=AssetLog.Action.UPDATED,
+                actor=request.user,
+                details={'source': 'edit_page'}
+            )
+
             messages.success(request, f'Asset "{asset.name}" updated successfully!')
             
             # Preserve filters when redirecting back
@@ -2323,45 +2325,72 @@ def asset_edit_page(request, pk):
 @login_required
 @require_POST
 def asset_reassign(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=pk)
-    new_user_id = request.POST.get('assigned_to')
-    comment = request.POST.get('comment', '')
 
-    old_user = asset.assigned_to
+    # Prevent the action rather than fail after the fact: Reassign only
+    # makes sense when someone actually has the asset. An asset with no
+    # current holder should be Checked Out, not "re"-assigned.
+    if not asset.can_reassign:
+        message = f'"{asset.name}" cannot be reassigned — it has no current holder. Use Checkout instead.'
+        if request.headers.get('HX-Request'):
+            return HttpResponse(message, status=400)
+        messages.error(request, message)
+        return redirect('tickets:assets')
+
+    form = AssetReassignForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/asset_reassign_modal.html', {'asset': asset, 'form': form})
+        messages.error(request, 'Please correct the errors below.')
+        return redirect('tickets:assets')
+
+    new_user = form.cleaned_data['assigned_to']
+    comment = form.cleaned_data['comment']
+
+    old_holder = asset.assigned_to or asset.checked_out_to
+    old_name = old_holder.get_full_name() if old_holder else 'Unassigned'
     actor_name = request.user.get_full_name()
-    
-    if new_user_id:
-        new_user = get_object_or_404(User, pk=new_user_id)
-        asset.assigned_to = new_user
-        new_name = new_user.get_full_name()
-    else:
-        asset.assigned_to = None
-        new_name = 'Unassigned'
-    
-    old_name = old_user.get_full_name() if old_user else 'Unassigned'
-    
-    asset.save()
+    new_name = new_user.get_full_name() if new_user else 'Unassigned'
+    new_user_id = new_user.pk if new_user else None
 
-    # Create asset log
-    AssetLog.objects.create(
-        asset=asset,
-        action=AssetLog.Action.ASSIGNED if new_user_id else AssetLog.Action.UNASSIGNED,
-        actor=request.user,
-        details={
-            'from': old_name,
-            'to': new_name,
-            'comment': comment
-        }
+    # release()/assign_to() are the single source of truth for who has this
+    # asset — routing reassignment through them (instead of setting
+    # assigned_to directly) keeps checked_out_to/status/AssetCheckoutHistory
+    # in lockstep with it, so reassigning can no longer leave the asset
+    # claiming two different current holders at once. The ValueError catch
+    # sits outside the atomic block so a failed assign_to() rolls back the
+    # release() that just happened, rather than leaving the asset unassigned.
+    # can_reassign already guarantees old_holder is set, so release() always runs.
+    try:
+        with transaction.atomic():
+            asset.release(actor=request.user, return_reason=Asset.ReturnReason.OTHER, return_comment=comment or 'Reassigned')
+            if new_user:
+                asset.assign_to(new_user, actor=request.user, notes=comment, previous_holder_name=old_name)
+    except ValueError as e:
+        if request.headers.get('HX-Request'):
+            return HttpResponse(str(e), status=400)
+        messages.error(request, str(e))
+        return redirect('tickets:assets')
+
+    # The old holder didn't initiate this (unlike a self-requested return),
+    # so unlike request_return()/release()'s other callers, nothing else
+    # tells them the asset left their hands — do it here. assign_to()
+    # already notifies the new recipient internally, so no duplicate needed.
+    Notification.objects.create(
+        recipient=old_holder, role=role_of(old_holder),
+        message=f'"{asset.name}" ({asset.tracking_id}) has been reassigned away from you'
+                f'{" to " + new_name if new_user else ""}.',
+        url='/tickets/my-assets/',
     )
 
     # Add comment to asset notes (user can edit the default comment)
     if new_user_id:
-        comment_body = f"🔄 **Asset reassigned** by {actor_name} from **{old_name}** to **{new_name}**.\n\n**Reason:** {comment}"
+        comment_body = f"**Asset reassigned** by {actor_name} from **{old_name}** to **{new_name}**.\n\n**Reason:** {comment}"
     else:
-        comment_body = f"🔄 **Asset unassigned** by {actor_name} from **{old_name}**.\n\n**Reason:** {comment}"
+        comment_body = f"**Asset unassigned** by {actor_name} from **{old_name}**.\n\n**Reason:** {comment}"
     
     if asset.notes:
         asset.notes = f"{asset.notes}\n\n{comment_body}"
@@ -2370,28 +2399,40 @@ def asset_reassign(request, pk):
     asset.save(update_fields=['notes'])
 
     if new_user_id:
-        messages.success(request, f'"{asset.name}" reassigned to {new_name}.')
+        success_message = f'"{asset.name}" reassigned to {new_name}.'
     else:
-        messages.success(request, f'"{asset.name}" unassigned.')
+        success_message = f'"{asset.name}" unassigned.'
+
+    if request.headers.get('HX-Request'):
+        messages.success(request, success_message)
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:assets')})
+    messages.success(request, success_message)
     return redirect('tickets:assets')
 
 @login_required
 def asset_reassign_modal(request, pk):
     """Returns the asset reassign modal with pre-filled comment."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
-    
+
     asset = get_object_or_404(Asset, pk=pk)
+    if not asset.can_reassign:
+        return HttpResponse(
+            f'<div class="p-4 text-center text-text-secondary">"{asset.name}" has no current holder, so it can\'t be reassigned — use Checkout instead.</div>',
+            status=400,
+        )
     users = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
-    
+
     # Generate default comment
     old_name = asset.assigned_to.get_full_name() if asset.assigned_to else 'Unassigned'
     default_comment = f"Reassigning asset from {old_name} to [new user]."
-    
+    form = AssetReassignForm(initial={'comment': default_comment})
+
     return render(request, 'partials/asset_reassign_modal.html', {
         'asset': asset,
         'users': users,
         'default_comment': default_comment,
+        'form': form,
     })
 
 # ==========================================================================
@@ -2400,15 +2441,18 @@ def asset_reassign_modal(request, pk):
 
 @login_required
 def asset_detail(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD']:
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
     
     asset = get_object_or_404(Asset, pk=pk)
     logs = asset.logs.all()[:10]  # Recent activity
-    
+    renewal_logs = asset.logs.filter(action=AssetLog.Action.RENEWED)[:10] if asset.is_renewable else []
+
     return render(request, 'tickets/asset_detail.html', {
         'asset': asset,
         'logs': logs,
+        'renewal_logs': renewal_logs,
+        'attachments': asset.attachments.all(),
         'today': timezone.now().date(),
         'sidebar_template': get_sidebar_template(request.user),
     })
@@ -2419,7 +2463,7 @@ def asset_detail(request, pk):
 def asset_mark_renewed(request, pk):
     """Admin action: the license/subscription was actually paid/renewed —
     advances next_renewal_date, resets reminder flags, logs an audit entry."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=pk)
@@ -2440,8 +2484,82 @@ def asset_mark_renewed(request, pk):
             return redirect('tickets:asset_detail', pk=asset.pk)
 
     asset.mark_renewed(request.user, new_cost=new_cost)
-    messages.success(request, f'✅ "{asset.name}" renewed — next renewal {asset.next_renewal_date}.')
+    messages.success(request, f'"{asset.name}" renewed — next renewal {asset.next_renewal_date}.')
     return redirect('tickets:asset_detail', pk=asset.pk)
+
+
+@login_required
+@require_POST
+def asset_adjust_stock(request, pk):
+    """Admin action: audited correction of a consumable's quantity_in_stock
+    (stocktake correction, shrinkage, breakage found in storage) — see
+    Asset.adjust_stock()."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    asset = get_object_or_404(Asset, pk=pk)
+    if not asset.is_consumable:
+        messages.error(request, 'Stock adjustment only applies to consumable assets.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    reason = request.POST.get('reason', '').strip()
+    if not reason:
+        messages.error(request, 'A reason is required to adjust stock.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    try:
+        new_quantity = int(request.POST.get('new_quantity', ''))
+    except (TypeError, ValueError):
+        messages.error(request, 'Enter a valid quantity.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+    if new_quantity < 0:
+        messages.error(request, 'Quantity cannot be negative.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    asset.adjust_stock(new_quantity, reason, request.user)
+    messages.success(request, f'Stock for "{asset.name}" adjusted to {new_quantity}.')
+    return redirect('tickets:asset_detail', pk=asset.pk)
+
+
+@login_required
+@require_POST
+def asset_attachment_upload(request, pk):
+    """Attach an optional file (license agreement, invoice, contract, etc.)
+    to an asset — free-form, not required by any workflow."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    asset = get_object_or_404(Asset, pk=pk)
+    uploaded = request.FILES.get('file')
+    if not uploaded:
+        messages.error(request, 'Choose a file to upload.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    AssetAttachment.objects.create(
+        asset=asset,
+        file=uploaded,
+        filename=uploaded.name,
+        uploaded_by=request.user,
+        content_type=uploaded.content_type or '',
+        size=uploaded.size,
+    )
+    messages.success(request, f'"{uploaded.name}" attached to "{asset.name}".')
+    return redirect('tickets:asset_detail', pk=asset.pk)
+
+
+@login_required
+@require_POST
+def asset_attachment_delete(request, pk):
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    attachment = get_object_or_404(AssetAttachment, pk=pk)
+    asset_pk = attachment.asset_id
+    attachment.file.delete(save=False)
+    attachment.delete()
+    messages.success(request, 'Attachment removed.')
+    return redirect('tickets:asset_detail', pk=asset_pk)
+
 
 # ==========================================================================
 # ASSET SCRAP REQUEST
@@ -2452,41 +2570,78 @@ def asset_mark_renewed(request, pk):
 @login_required
 @require_POST
 def asset_scrap_request(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=pk)
-    comment = request.POST.get('comment', '')
 
     # Check if asset is already scrapped or damaged
     if asset.status == Asset.Status.SCRAPPED:
         return JsonResponse({'error': 'Asset already scrapped.'}, status=400)
-    
+
     if asset.status == Asset.Status.DAMAGED:
         return JsonResponse({'error': 'Asset already marked as damaged.'}, status=400)
 
-    # Only change status if not already in appropriate state
+    form = AssetScrapRequestForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/scrap_request_modal.html', {'asset': asset, 'form': form})
+        messages.error(request, 'Please correct the errors below.')
+        return redirect('tickets:assets')
+    comment = form.cleaned_data['comment']
+
+    # Record what to restore to if this scrap request is later rejected —
+    # previously hardcoded to IN_STORE on reject, silently "healing" an
+    # asset that had e.g. been in MAINTENANCE before someone additionally
+    # flagged it for scrap. Also release it from whoever currently has it:
+    # scrapping (or requesting to) a checked-out asset used to leave the
+    # AssetCheckoutHistory row open and checked_out_to/assigned_to pointing
+    # at that person forever, misrepresenting a to-be-scrapped item as
+    # still being in someone's possession.
+    previous_status = asset.status
+    previous_holder = asset.checked_out_to or asset.assigned_to
+    if previous_holder:
+        open_history = asset.checkout_history.filter(checked_in_at__isnull=True).first()
+        if open_history:
+            open_history.checked_in_by = request.user
+            open_history.checked_in_at = timezone.now()
+            open_history.return_reason = Asset.ReturnReason.DAMAGED
+            open_history.return_comment = f'Released for scrap request: {comment}' if comment else 'Released for scrap request'
+            open_history.save()
+        asset.checked_out_to = None
+        asset.assigned_to = None
+
     asset.status = Asset.Status.DAMAGED
+    asset.status_updated_at = timezone.now()
+    asset.status_updated_by = request.user
     asset.save()
 
     AssetLog.objects.create(
         asset=asset,
         action=AssetLog.Action.SCRAP_REQUESTED,
         actor=request.user,
-        details={'comment': comment}
+        details={
+            'comment': comment,
+            'previous_status': previous_status,
+            'released_from': previous_holder.get_full_name() if previous_holder else None,
+        }
     )
 
+    if request.headers.get('HX-Request'):
+        messages.success(request, f'Scrap requested for "{asset.name}" — pending approval.')
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:assets')})
     messages.success(request, f'Scrap requested for "{asset.name}" — pending approval.')
     return redirect('tickets:assets')
 
 @login_required
 def scrap_request_modal(request, pk):
     """Returns the scrap request modal content."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
-    
+
     asset = get_object_or_404(Asset, pk=pk)
-    return render(request, 'partials/scrap_request_modal.html', {'asset': asset})
+    form = AssetScrapRequestForm()
+    return render(request, 'partials/scrap_request_modal.html', {'asset': asset, 'form': form})
 
 # ==========================================================================
 # ASSET SCRAP APPROVE
@@ -2495,11 +2650,17 @@ def scrap_request_modal(request, pk):
 @login_required
 @require_POST
 def asset_scrap_approve(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=pk)
     action = request.POST.get('action')  # 'approve' or 'reject'
+
+    requester = asset.pending_scrap_requested_by
+    if not requester:
+        return HttpResponse('This asset has no pending scrap request.', status=400)
+    if requester.id == request.user.id:
+        return HttpResponse('A different Admin/Superadmin must approve or reject this request — the requester cannot approve their own.', status=403)
 
     if action == 'approve':
         asset.status = Asset.Status.SCRAPPED
@@ -2515,9 +2676,17 @@ def asset_scrap_approve(request, pk):
         )
         messages.success(request, f'Scrap approved for "{asset.name}" — asset marked as scrapped.')
     else:
-        # Reject: revert to an available state (asset was marked DAMAGED by
-        # the scrap request; rejecting the scrap returns it to the shelf).
-        asset.status = Asset.Status.IN_STORE
+        # Reject: restore whatever status the asset was actually in before
+        # the scrap request marked it DAMAGED (e.g. MAINTENANCE), rather
+        # than always dropping it straight back to IN_STORE regardless of
+        # what it was doing before. Custody was already released at
+        # request time (see asset_scrap_request) and isn't restored here —
+        # the asset just goes back into the pool at its prior status.
+        last_request_log = asset.logs.filter(action=AssetLog.Action.SCRAP_REQUESTED).order_by('-created_at').first()
+        previous_status = (last_request_log.details or {}).get('previous_status') if last_request_log else None
+        asset.status = previous_status if previous_status in Asset.Status.values else Asset.Status.IN_STORE
+        asset.status_updated_at = timezone.now()
+        asset.status_updated_by = request.user
         asset.save()
         AssetLog.objects.create(
             asset=asset,
@@ -2532,10 +2701,15 @@ def asset_scrap_approve(request, pk):
 @login_required
 def scrap_approve_modal(request, pk):
     """Returns the scrap approve modal content."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     asset = get_object_or_404(Asset, pk=pk)
+    requester = asset.pending_scrap_requested_by
+    if not requester:
+        return HttpResponse('This asset has no pending scrap request.', status=400)
+    if requester.id == request.user.id:
+        return HttpResponse('A different Admin/Superadmin must approve or reject this request — the requester cannot approve their own.', status=400)
     return render(request, 'partials/scrap_approve_modal.html', {'asset': asset})
 
 
@@ -2593,7 +2767,7 @@ def request_remote_session(request, pk):
     Only agents, team leads, admins, and superadmins can call this.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user.role not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.AGENT, User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return JsonResponse({'error': 'You do not have permission to request a remote session.'}, status=403)
 
     # Get the first active remote connector (e.g., Quick Assist)
@@ -2621,7 +2795,7 @@ def request_remote_session(request, pk):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"Remote session requested via {connector.name}. Please check your notifications to accept.",
+        body=f"Remote session requested via {escape(connector.name)}. Please check your notifications to accept.",
         visibility='PUBLIC'
     )
 
@@ -2670,7 +2844,7 @@ def request_remote_session(request, pk):
 def remote_session_detail(request, session_pk):
     session = get_object_or_404(RemoteSession, pk=session_pk)
     user = request.user
-    is_overseer = user.role in [User.Role.ADMIN, User.Role.SUPERADMIN]
+    is_overseer = effective_role_name(user) in [User.Role.ADMIN, User.Role.SUPERADMIN]
     if user != session.requester and user != session.agent and not is_overseer:
         return HttpResponse(status=403)
 
@@ -2748,7 +2922,7 @@ def remote_session_detail(request, session_pk):
                     TicketComment.objects.create(
                         ticket=session.ticket,
                         author=request.user,
-                        body=f"Remote session code: {code}. Please use this code in Quick Assist to start the session.",
+                        body=f"Remote session code: {escape(code)}. Please use this code in Quick Assist to start the session.",
                         visibility='PUBLIC'
                     )
                     # Send email to requester
@@ -2835,10 +3009,10 @@ def remote_session_pending_count(request):
     For requesters: sessions requested for their tickets with status REQUESTED.
     """
     user = request.user
-    if user.role in [User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(user) in [User.Role.ADMIN, User.Role.SUPERADMIN]:
         # Admins see all pending sessions
         count = RemoteSession.objects.filter(status__in=[RemoteSession.Status.REQUESTED, RemoteSession.Status.ACCEPTED]).count()
-    elif user.role in [User.Role.AGENT, User.Role.TEAM_LEAD]:
+    elif effective_role_name(user) in [User.Role.AGENT, User.Role.TEAM_LEAD]:
         count = RemoteSession.objects.filter(agent=user, status__in=[RemoteSession.Status.REQUESTED, RemoteSession.Status.ACCEPTED]).count()
     else:
         # End users: sessions requested for their tickets
@@ -2855,9 +3029,9 @@ def remote_sessions_list(request):
     """
     user = request.user
     base_qs = RemoteSession.objects.select_related('ticket', 'requester', 'agent', 'connector')
-    if user.role in [User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(user) in [User.Role.ADMIN, User.Role.SUPERADMIN]:
         sessions = base_qs.order_by('-created_at')
-    elif user.role in [User.Role.AGENT, User.Role.TEAM_LEAD] and user.department == 'IT':
+    elif effective_role_name(user) in [User.Role.AGENT, User.Role.TEAM_LEAD] and user.department == 'IT':
         sessions = base_qs.filter(agent=user).order_by('-created_at')
     else:
         sessions = base_qs.filter(requester=user).order_by('-created_at')
@@ -2871,17 +3045,31 @@ def remote_sessions_list(request):
         'sessions': page_obj,
         'sidebar_template': get_sidebar_template(request.user),
     }
+    if request.headers.get('HX-Request'):
+        return render(request, 'partials/remote_sessions_grid.html', context)
     return render(request, 'tickets/remote_sessions_list.html', context)
+
+def _build_escalated_reassign_form(agents, agent_workload, data=None):
+    """Builds the reassign form with per-agent workload counts in the option
+    labels — label_from_instance is overridden per-instance since the
+    workload dict is only known at request time."""
+    form = EscalatedReassignForm(data, agents=agents)
+    form.fields['agent_id'].label_from_instance = lambda obj: (
+        f"{obj.get_full_name()} ({agent_workload.get(obj.pk, 0)} open tickets)"
+        if obj.pk in agent_workload else obj.get_full_name()
+    )
+    return form
+
 
 @login_required
 def escalated_tickets(request):
-    if request.user.role not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN] or request.user.department != 'IT':
+    if effective_role_name(request.user) not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     tickets = Ticket.objects.filter(status=Ticket.Status.ESCALATED).order_by('-created_at')
 
     # If Team Lead, filter by their department
-    if request.user.role == User.Role.TEAM_LEAD:
+    if effective_role_name(request.user) == User.Role.TEAM_LEAD:
         tickets = tickets.filter(assigned_to__department=request.user.department)
 
     # Agents in the same department (for reassign)
@@ -2910,21 +3098,54 @@ def escalated_tickets(request):
         'agent_workload': agent_workload,
         'reassign_reasons': reassign_reasons,
         'return_reasons': return_reasons,
+        'reassign_form': _build_escalated_reassign_form(agents, agent_workload),
+        'return_form': EscalatedReturnForm(),
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'team_lead/escalated_tickets.html', context)
 
+
+@login_required
+def escalated_pending_count(request):
+    """Badge count for the sidebar 'Escalated' link — same filter as
+    escalated_tickets, minus the fields that view only needs for display."""
+    if effective_role_name(request.user) not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN] or request.user.department != 'IT':
+        return HttpResponse(status=403)
+
+    tickets = Ticket.objects.filter(status=Ticket.Status.ESCALATED)
+    if effective_role_name(request.user) == User.Role.TEAM_LEAD:
+        tickets = tickets.filter(assigned_to__department=request.user.department)
+    return render(request, 'partials/sidebar_count_badge.html', {'count': tickets.count()})
+
+
 @login_required
 @require_POST
 def reassign_escalated(request, pk):
-    if request.user.role not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
     
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.ESCALATED)
-    agent_id = request.POST.get('agent_id')
-    comment = request.POST.get('comment', '')
-    agent = get_object_or_404(User, pk=agent_id, role=User.Role.AGENT)
-    
+
+    agents = User.objects.filter(department=request.user.department, role=User.Role.AGENT, is_active=True)
+    open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
+    agent_workload = {
+        agent.pk: Ticket.objects.filter(assigned_to=agent, status__in=open_statuses).count()
+        for agent in agents
+    }
+    form = _build_escalated_reassign_form(agents, agent_workload, data=request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/escalated_reassign_form_fields.html', {
+                'form': form,
+                'reassign_reasons': Macro.objects.filter(type=Macro.Type.REASSIGN_REASON),
+            })
+        for error in form.errors.values():
+            messages.error(request, error.as_text())
+        return redirect('tickets:escalated_tickets')
+
+    agent = form.cleaned_data['agent_id']
+    comment = form.cleaned_data['comment']
+
     # Store old assignee name
     old_name = ticket.assigned_to.get_full_name() if ticket.assigned_to else 'Unassigned'
     new_name = agent.get_full_name()
@@ -2946,9 +3167,9 @@ def reassign_escalated(request, pk):
     # ================================================================
     # DEFAULT REASSIGN COMMENT
     # ================================================================
-    reassign_body = f"🔄 **Escalated ticket reassigned** by {actor_name} from **{old_name}** to **{new_name}**."
+    reassign_body = f"**Escalated ticket reassigned** by {escape(actor_name)} from **{escape(old_name)}** to **{escape(new_name)}**."
     if comment:
-        reassign_body += f"\n\n**Reason:** {comment}"
+        reassign_body += f"\n\n**Reason:** {escape(comment)}"
     
     TicketComment.objects.create(
         ticket=ticket,
@@ -2965,12 +3186,14 @@ def reassign_escalated(request, pk):
         url=reverse('tickets:detail', args=[ticket.pk])
     )
     messages.success(request, f'Ticket {ticket.number} reassigned to {new_name}.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:escalated_tickets')})
     return redirect('tickets:escalated_tickets')
 
 @login_required
 def escalated_reassign_modal(request, pk):
     """Returns the escalated ticket reassign modal with pre-filled comment."""
-    if request.user.role not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
     
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.ESCALATED)
@@ -2995,12 +3218,22 @@ def escalated_reassign_modal(request, pk):
 @login_required
 @require_POST
 def return_escalated_to_pool(request, pk):
-    if request.user.role not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
+    if effective_role_name(request.user) not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN]:
         return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.ESCALATED)
-    comment = request.POST.get('comment', '')
-    if not comment:
-        return JsonResponse({'error': 'Comment is required'}, status=400)
+
+    form = EscalatedReturnForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/escalated_return_form_fields.html', {
+                'form': form,
+                'return_reasons': Macro.objects.filter(type=Macro.Type.RETURN_REASON),
+            })
+        for error in form.errors.values():
+            messages.error(request, error.as_text())
+        return redirect('tickets:escalated_tickets')
+
+    comment = form.cleaned_data['comment']
     ticket.assigned_to = None
     ticket.status = Ticket.Status.NEW
     ticket.save()
@@ -3011,6 +3244,8 @@ def return_escalated_to_pool(request, pk):
         details={'comment': comment}
     )
     messages.success(request, f'Ticket {ticket.number} returned to the pool.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:escalated_tickets')})
     return redirect('tickets:escalated_tickets')
 
 
@@ -3018,17 +3253,64 @@ def return_escalated_to_pool(request, pk):
 # ATTACHMENT PREVIEW AND DOWNLOAD
 # ==========================================================================
 
+_OFFICE_CONTENT_TYPES = {
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+}
+
+
+def _generate_attachment_preview_pdf(attachment):
+    """Converts an Office attachment to PDF via LibreOffice and caches the
+    result on attachment.preview_pdf (reuses documents_display's conversion
+    pipeline rather than duplicating it). Returns the FieldFile to serve, or
+    None if conversion failed."""
+    if attachment.preview_pdf:
+        return attachment.preview_pdf
+
+    from django.core.files import File as DjangoFile
+    from apps.documents_display.utils import convert_office_to_pdf, _local_path_for
+
+    input_path, input_is_temp = _local_path_for(attachment.file)
+    try:
+        pdf_path = convert_office_to_pdf(input_path)
+    finally:
+        if input_is_temp:
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
+
+    if not pdf_path or not os.path.exists(pdf_path):
+        return None
+
+    base_name = os.path.splitext(attachment.filename)[0]
+    with open(pdf_path, 'rb') as f:
+        attachment.preview_pdf.save(f'{base_name}_preview.pdf', DjangoFile(f), save=True)
+
+    import shutil
+    shutil.rmtree(os.path.dirname(pdf_path), ignore_errors=True)
+    return attachment.preview_pdf
+
+
 @login_required
 def attachment_preview(request, pk):
     """
     Returns a modal with a preview of the attachment.
-    Supports images, PDF, Office documents, and text files.
+    Supports images, PDF, Office documents (converted to PDF via
+    LibreOffice), video, audio, and text files — everything a browser can
+    natively render. Anything else falls back to a plain download link,
+    since there's no way to meaningfully render an arbitrary binary format
+    in a browser without one.
     """
     attachment = get_object_or_404(Attachment, pk=pk)
     ticket = attachment.ticket
 
     # Permission check: same as download
-    if request.user != ticket.requester and request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+    if request.user != ticket.requester and effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     # Get file URL for embedding
@@ -3043,19 +3325,24 @@ def attachment_preview(request, pk):
 
     if content_type.startswith('image/'):
         preview_type = 'image'
+        embed_url = file_url
     elif content_type == 'application/pdf':
+        # Browsers render PDFs natively — no third-party viewer needed.
         preview_type = 'pdf'
-        embed_url = f"https://docs.google.com/gview?url={file_url}&embedded=true"
-    elif content_type in [
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    ]:
-        preview_type = 'office'
-        embed_url = f"https://docs.google.com/gview?url={file_url}&embedded=true"
+        embed_url = file_url
+    elif content_type in _OFFICE_CONTENT_TYPES:
+        preview_pdf = _generate_attachment_preview_pdf(attachment)
+        if preview_pdf:
+            preview_type = 'pdf'
+            embed_url = request.build_absolute_uri(preview_pdf.url)
+        else:
+            preview_type = 'conversion_failed'
+    elif content_type.startswith('video/'):
+        preview_type = 'video'
+        embed_url = file_url
+    elif content_type.startswith('audio/'):
+        preview_type = 'audio'
+        embed_url = file_url
     elif content_type.startswith('text/') or filename.endswith(('.txt', '.csv', '.log', '.py', '.js', '.html', '.css')):
         preview_type = 'text'
         # Fetch the file content (for small text files only)
@@ -3084,11 +3371,27 @@ def attachment_download(request, pk):
     """
     attachment = get_object_or_404(Attachment, pk=pk)
     ticket = attachment.ticket
-    if request.user != ticket.requester and request.user.role not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+    if request.user != ticket.requester and effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         raise PermissionDenied
     response = FileResponse(attachment.file.open('rb'), content_type=attachment.content_type or 'application/octet-stream')
     response['Content-Disposition'] = f'attachment; filename="{attachment.filename}"'
     return response
+
+
+@login_required
+def requester_profile_modal(request, pk):
+    """Returns a modal with the full profile of a ticket requester — the
+    "See all" expansion of the Lead Information section on the ticket
+    details panel, which previously had no destination at all."""
+    profile_user = get_object_or_404(User, pk=pk)
+
+    # Permission check: same shape as attachment access — the requester
+    # themselves, or any support-staff role.
+    if request.user != profile_user and effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    context = {'profile_user': profile_user}
+    return render(request, 'partials/requester_profile_modal.html', context)
 
 # ==========================================================================
 # SLA MANAGEMENT (Admin & Superadmin only)
@@ -3100,7 +3403,7 @@ def attachment_download(request, pk):
 @user_passes_test(is_admin)
 def sla_list(request):
     slas = SLA.objects.all().order_by('priority')
-    calendars = BusinessCalendar.objects.all()
+    calendars = BusinessCalendar.objects.annotate(sla_count=Count('sla')).order_by('name')
     rules = EscalationRule.objects.all().order_by('priority', 'timer_type', 'threshold_percent')
     context = {
         'slas': slas,
@@ -3108,6 +3411,9 @@ def sla_list(request):
         'rules': rules,
         'priority_choices': Ticket.Priority.choices,
         'sidebar_template': get_sidebar_template(request.user),
+        'sla_form': SLAForm(),
+        'calendar_form': BusinessCalendarForm(initial={'workdays': ['0', '1', '2', '3', '4']}),
+        'rule_form': EscalationRuleForm(),
     }
     return render(request, 'admin/sla_management.html', context)
 
@@ -3115,38 +3421,31 @@ def sla_list(request):
 @user_passes_test(is_admin)
 @require_POST
 def sla_create(request):
-    priority = request.POST.get('priority')
-    if not priority:
-        messages.error(request, 'Please select a priority for the SLA policy.')
+    form = SLAForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/sla_form.html', {'form': form})
+        messages.error(request, 'Please correct the errors below.')
         return redirect('tickets:sla_management')
 
-    try:
-        # Get hours and minutes from form
-        response_hours = int(request.POST.get('response_hours', 0))
-        response_minutes = int(request.POST.get('response_minutes', 0))
-        resolution_hours = int(request.POST.get('resolution_hours', 0))
-        resolution_minutes = int(request.POST.get('resolution_minutes', 0))
-    except ValueError:
-        messages.error(request, 'Please enter valid numbers for the response/resolution times.')
-        return redirect('tickets:sla_management')
-
-    # Calculate total minutes
-    response_total = (response_hours * 60) + response_minutes
-    resolution_total = (resolution_hours * 60) + resolution_minutes
-
-    calendar_id = request.POST.get('calendar_id') or None
+    response_total = (form.cleaned_data['response_hours'] or 0) * 60 + (form.cleaned_data['response_minutes'] or 0)
+    resolution_total = (form.cleaned_data['resolution_hours'] or 0) * 60 + (form.cleaned_data['resolution_minutes'] or 0)
+    calendar = form.cleaned_data['calendar_id']
 
     try:
         sla, created = SLA.objects.update_or_create(
-            priority=priority,
+            priority=form.cleaned_data['priority'],
             defaults={
                 'response_minutes': response_total if response_total > 0 else 60,  # Default 1 hour
                 'resolution_minutes': resolution_total if resolution_total > 0 else 480,  # Default 8 hours
-                'calendar_id': calendar_id
+                'calendar': calendar,
             }
         )
     except Exception as e:
         logger.error(f"Failed to save SLA policy: {e}")
+        if request.headers.get('HX-Request'):
+            form.add_error(None, 'Could not save the SLA policy. Please try again.')
+            return render(request, 'partials/sla_form.html', {'form': form})
         messages.error(request, 'Could not save the SLA policy. Please try again.')
         return redirect('tickets:sla_management')
 
@@ -3154,6 +3453,8 @@ def sla_create(request):
         messages.success(request, f'SLA policy for {sla.get_priority_display()} created successfully.')
     else:
         messages.success(request, f'SLA policy for {sla.get_priority_display()} updated successfully.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
     return redirect('tickets:sla_management')
 
 @login_required
@@ -3175,54 +3476,169 @@ def sla_badge(request, pk):
 @user_passes_test(is_admin)
 @require_POST
 def calendar_create(request):
-    name = request.POST.get('name')
-    if not name:
-        messages.error(request, 'Please enter a name for the business calendar.')
+    form = BusinessCalendarForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/calendar_form.html', {'form': form})
+        messages.error(request, 'Please correct the errors below.')
         return redirect('tickets:sla_management')
 
-    workdays = request.POST.getlist('workdays')
-    work_start = request.POST.get('work_start')
-    work_end = request.POST.get('work_end')
-    holidays_str = request.POST.get('holidays', '')
-    holidays = [h.strip() for h in holidays_str.split(',') if h.strip()]
+    name = form.cleaned_data['name']
     try:
         BusinessCalendar.objects.create(
-            name=name, workdays=workdays, work_start=work_start, work_end=work_end, holidays=holidays
+            name=name,
+            workdays=form.cleaned_data['workdays'],
+            work_start=form.cleaned_data['work_start'],
+            work_end=form.cleaned_data['work_end'],
+            holidays=form.cleaned_data['holidays'],
         )
     except Exception as e:
         logger.error(f"Failed to create business calendar: {e}")
+        if request.headers.get('HX-Request'):
+            form.add_error(None, 'Could not create the business calendar. Please check the values and try again.')
+            return render(request, 'partials/calendar_form.html', {'form': form})
         messages.error(request, 'Could not create the business calendar. Please check the values and try again.')
         return redirect('tickets:sla_management')
 
     messages.success(request, f'Business calendar "{name}" created successfully.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
     return redirect('tickets:sla_management')
 
 @login_required
 @user_passes_test(is_admin)
 @require_POST
 def rule_create(request):
-    priority = request.POST.get('priority')
-    timer_type = request.POST.get('timer_type')
-    threshold = request.POST.get('threshold_percent')
-    action = request.POST.get('action_type')
-    if not (priority and timer_type and threshold and action):
-        messages.error(request, 'Please fill in priority, timer type, threshold, and action for the escalation rule.')
+    form = EscalationRuleForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/rule_form.html', {'form': form})
+        messages.error(request, 'Please correct the errors below.')
         return redirect('tickets:sla_management')
 
-    notify_role = request.POST.get('notify_role') if action == 'notify' else None
-    reassign_to_role = request.POST.get('reassign_to_role') if action == 'reassign' else None
     try:
         EscalationRule.objects.create(
-            priority=priority, timer_type=timer_type, threshold_percent=threshold,
-            action_type=action, notify_role=notify_role, reassign_to_role=reassign_to_role
+            priority=form.cleaned_data['priority'],
+            timer_type=form.cleaned_data['timer_type'],
+            threshold_percent=form.cleaned_data['threshold_percent'],
+            action_type=form.cleaned_data['action_type'],
+            notify_role=form.cleaned_data['notify_role'] or None,
+            reassign_to_role=form.cleaned_data['reassign_to_role'] or None,
         )
     except Exception as e:
         logger.error(f"Failed to create escalation rule: {e}")
+        if request.headers.get('HX-Request'):
+            form.add_error(None, 'Could not create the escalation rule. Please check the values and try again.')
+            return render(request, 'partials/rule_form.html', {'form': form})
         messages.error(request, 'Could not create the escalation rule. Please check the values and try again.')
         return redirect('tickets:sla_management')
 
     messages.success(request, 'Escalation rule created successfully.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
     return redirect('tickets:sla_management')
+
+@login_required
+@user_passes_test(is_admin)
+def calendar_add_modal(request):
+    """Blank calendar form (partials/calendar_form.html, no edit_pk) —
+    fetched via HTMX by the Add button so it always replaces whatever was
+    last swapped into the modal (which might be a stale Edit form) with a
+    guaranteed-fresh create form."""
+    return render(request, 'partials/calendar_form.html', {'form': BusinessCalendarForm(initial={'workdays': ['0', '1', '2', '3', '4']})})
+
+
+@login_required
+@user_passes_test(is_admin)
+def calendar_edit_modal(request, pk):
+    """Returns the calendar form pre-filled for editing an existing
+    calendar (partials/calendar_form.html, shared with Add)."""
+    cal = get_object_or_404(BusinessCalendar, pk=pk)
+    form = BusinessCalendarForm(initial={
+        'name': cal.name,
+        'workdays': cal.workdays,
+        'work_start': cal.work_start,
+        'work_end': cal.work_end,
+        'holidays': ', '.join(cal.holidays),
+    })
+    return render(request, 'partials/calendar_form.html', {'form': form, 'edit_pk': cal.pk})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def calendar_edit(request, pk):
+    cal = get_object_or_404(BusinessCalendar, pk=pk)
+    form = BusinessCalendarForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/calendar_form.html', {'form': form, 'edit_pk': cal.pk})
+        messages.error(request, 'Please correct the errors below.')
+        return redirect('tickets:sla_management')
+
+    cal.name = form.cleaned_data['name']
+    cal.workdays = form.cleaned_data['workdays']
+    cal.work_start = form.cleaned_data['work_start']
+    cal.work_end = form.cleaned_data['work_end']
+    cal.holidays = form.cleaned_data['holidays']
+    cal.save()
+
+    messages.success(request, f'Business calendar "{cal.name}" updated successfully.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
+    return redirect('tickets:sla_management')
+
+
+@login_required
+@user_passes_test(is_admin)
+def rule_add_modal(request):
+    """Blank escalation rule form — see calendar_add_modal for why this
+    exists alongside rule_edit_modal."""
+    return render(request, 'partials/rule_form.html', {'form': EscalationRuleForm()})
+
+
+@login_required
+@user_passes_test(is_admin)
+def rule_edit_modal(request, pk):
+    """Returns the escalation rule form pre-filled for editing an existing
+    rule (partials/rule_form.html, shared with Add)."""
+    rule = get_object_or_404(EscalationRule, pk=pk)
+    form = EscalationRuleForm(initial={
+        'priority': rule.priority,
+        'timer_type': rule.timer_type,
+        'threshold_percent': rule.threshold_percent,
+        'action_type': rule.action_type,
+        'notify_role': rule.notify_role or '',
+        'reassign_to_role': rule.reassign_to_role or '',
+    })
+    return render(request, 'partials/rule_form.html', {'form': form, 'edit_pk': rule.pk})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def rule_edit(request, pk):
+    rule = get_object_or_404(EscalationRule, pk=pk)
+    form = EscalationRuleForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/rule_form.html', {'form': form, 'edit_pk': rule.pk})
+        messages.error(request, 'Please correct the errors below.')
+        return redirect('tickets:sla_management')
+
+    rule.priority = form.cleaned_data['priority']
+    rule.timer_type = form.cleaned_data['timer_type']
+    rule.threshold_percent = form.cleaned_data['threshold_percent']
+    rule.action_type = form.cleaned_data['action_type']
+    rule.notify_role = form.cleaned_data['notify_role'] or None
+    rule.reassign_to_role = form.cleaned_data['reassign_to_role'] or None
+    rule.save()
+
+    messages.success(request, 'Escalation rule updated successfully.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
+    return redirect('tickets:sla_management')
+
 
 @login_required
 @user_passes_test(is_admin)
@@ -3287,7 +3703,7 @@ def resolved_service_requests(request):
 @login_required
 def manager_review_queue(request):
     """Team Lead view – list service requests pending manager review."""
-    if request.user.role != User.Role.TEAM_LEAD:
+    if effective_role_name(request.user) != User.Role.TEAM_LEAD:
         return HttpResponse(status=403)
 
     tickets = Ticket.objects.filter(
@@ -3305,7 +3721,7 @@ def manager_review_queue(request):
 @login_required
 def manager_review_ticket(request, pk):
     """Team Lead review page for a single service request."""
-    if request.user.role != User.Role.TEAM_LEAD:
+    if effective_role_name(request.user) != User.Role.TEAM_LEAD:
         return HttpResponse(status=403)
 
     ticket = get_object_or_404(Ticket, pk=pk)
@@ -3415,6 +3831,14 @@ def manager_review_ticket(request, pk):
                 actor=request.user,
                 details={'comment': comment}
             )
+            # Post the reason as a real comment — previously it only lived in
+            # the activity log and the notification text, so the requester's
+            # ticket page showed nothing explaining what to change.
+            comment_body = clean_comment_body(f'<p><strong>Changes requested:</strong> {comment}</p>')
+            if comment_body:
+                TicketComment.objects.create(
+                    ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body
+                )
             Notification.objects.create(
                 recipient=ticket.requester,
                 role=role_of(ticket.requester),
@@ -3445,156 +3869,13 @@ def manager_review_ticket(request, pk):
 
 @login_required
 def manager_review_count(request):
-    if request.user.role != User.Role.TEAM_LEAD:
+    if effective_role_name(request.user) != User.Role.TEAM_LEAD:
         return HttpResponse('')
     count = Ticket.objects.filter(
         status=Ticket.Status.PENDING_MANAGER_REVIEW,
         requester__department=request.user.department
     ).count()
     return render(request, 'partials/manager_review_badge.html', {'count': count})
-
-# ==========================================================================
-# ASSET EXPORT
-# ==========================================================================
-
-@login_required
-def asset_export(request):
-    """Export assets as CSV, Excel, or JSON"""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
-        return HttpResponse(status=403)
-    
-    export_format = request.GET.get('format', 'csv')
-    filename = f"assets_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
-    
-    # Get filtered assets (respect current filters)
-    query = request.GET.get('q', '')
-    category_filter = request.GET.get('category', '')
-    status_filter = request.GET.get('status', '')
-    location_filter = request.GET.get('location', '')
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-
-    assets = Asset.objects.select_related('category', 'assigned_to').order_by('tracking_id')
-
-    if query:
-        assets = assets.filter(
-            Q(name__icontains=query) |
-            Q(tracking_id__icontains=query) |
-            Q(serial_number__icontains=query) |
-            Q(model__icontains=query) |
-            Q(manufacturer__icontains=query)
-        )
-    if category_filter:
-        assets = assets.filter(category_id=category_filter)
-    if status_filter:
-        assets = assets.filter(status=status_filter)
-    if location_filter:
-        assets = assets.filter(location__icontains=location_filter)
-    if start_date and end_date:
-        try:
-            from datetime import datetime
-            start = datetime.strptime(start_date, '%Y-%m-%d').date()
-            end = datetime.strptime(end_date, '%Y-%m-%d').date()
-            assets = assets.filter(created_at__date__gte=start, created_at__date__lte=end)
-        except ValueError:
-            pass
-    
-    # Prepare data - Use direct field values since choices were removed
-    data = []
-    for asset in assets:
-        data.append({
-            'Tracking ID': asset.tracking_id,
-            'Name': asset.name,
-            'Category': asset.category.name if asset.category else '',
-            'Serial Number': asset.serial_number,
-            'Model': asset.model,
-            'Manufacturer': asset.manufacturer,
-            'Location': asset.location,  # Direct value
-            'Status': asset.status,  # Direct value
-            'Assigned To': asset.assigned_to.get_full_name() if asset.assigned_to else '',
-            'Assigned Department': asset.assigned_to.department if asset.assigned_to else '',
-            'Purchase Date': asset.purchase_date.strftime('%Y-%m-%d') if asset.purchase_date else '',
-            'Warranty Expiry': asset.warranty_expiry.strftime('%Y-%m-%d') if asset.warranty_expiry else '',
-            'Warranty Duration (Years)': asset.warranty_duration_years,
-            'Notes': asset.notes,
-            'Created': asset.created_at.strftime('%Y-%m-%d %H:%M'),
-            'Updated': asset.updated_at.strftime('%Y-%m-%d %H:%M'),
-        })
-    
-    # Export based on format
-    if export_format in ('csv', 'excel'):
-        # Neutralize spreadsheet formula injection: a value starting with
-        # =, +, -, or @ is interpreted as a live formula by Excel/Sheets
-        # when the exported file is later opened by another admin.
-        def _csv_safe(value):
-            s = str(value) if value is not None else ''
-            return "'" + s if s and s[0] in ('=', '+', '-', '@') else s
-
-        for row in data:
-            for key in ('Name', 'Category', 'Serial Number', 'Model', 'Manufacturer',
-                        'Location', 'Assigned To', 'Assigned Department', 'Notes'):
-                if key in row:
-                    row[key] = _csv_safe(row[key])
-
-    if export_format == 'csv':
-        response = HttpResponse(content_type='text/csv')
-        response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
-
-        if data:
-            writer = csv.DictWriter(response, fieldnames=data[0].keys())
-            writer.writeheader()
-            writer.writerows(data)
-        return response
-
-    elif export_format == 'excel':
-        response = HttpResponse(
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Assets"
-        
-        if data:
-            # Headers
-            headers = list(data[0].keys())
-            for col, header in enumerate(headers, 1):
-                cell = ws.cell(row=1, column=col, value=header)
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-                cell.alignment = Alignment(horizontal='center')
-            
-            # Data
-            for row_idx, row_data in enumerate(data, 2):
-                for col_idx, key in enumerate(headers, 1):
-                    ws.cell(row=row_idx, column=col_idx, value=row_data.get(key, ''))
-            
-            # Auto-fit columns
-            for col in ws.columns:
-                max_length = 0
-                column = col[0].column_letter
-                for cell in col:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                ws.column_dimensions[column].width = adjusted_width
-        
-        wb.save(response)
-        return response
-    
-    elif export_format == 'json':
-        response = HttpResponse(
-            json.dumps(data, indent=2),
-            content_type='application/json'
-        )
-        response['Content-Disposition'] = f'attachment; filename="{filename}.json"'
-        return response
-    
-    return HttpResponse('Invalid format', status=400)
 
 
 # ==========================================================================
@@ -3605,7 +3886,7 @@ def asset_export(request):
 @require_POST
 def asset_import(request):
     """Import assets from CSV or Excel file"""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     file = request.FILES.get('file')
@@ -3725,7 +4006,24 @@ def asset_import(request):
                     notes=notes,
                     assigned_to=assigned_to,
                 )
-                
+
+                # Every other creation path (manual create, checkout,
+                # fulfillment) logs a CREATED/ASSIGNED AssetLog entry —
+                # imported assets previously had no audit trail at all.
+                AssetLog.objects.create(
+                    asset=asset,
+                    action=AssetLog.Action.CREATED,
+                    actor=request.user,
+                    details={'name': asset.name, 'category': asset.category.name if asset.category else None, 'source': 'import'}
+                )
+                if asset.assigned_to:
+                    AssetLog.objects.create(
+                        asset=asset,
+                        action=AssetLog.Action.ASSIGNED,
+                        actor=request.user,
+                        details={'to': asset.assigned_to.get_full_name(), 'source': 'import'}
+                    )
+
                 imported += 1
                 
             except Exception as e:
@@ -3737,12 +4035,12 @@ def asset_import(request):
     
     # Show results
     if imported > 0:
-        messages.success(request, f'✅ Successfully imported {imported} asset(s).')
+        messages.success(request, f'Successfully imported {imported} asset(s).')
     if warnings:
         for w in warnings[:10]:
-            messages.warning(request, f'⚠️ {w}')
+            messages.warning(request, f'{w}')
     if errors:
-        messages.warning(request, f'⚠️ {len(errors)} error(s) occurred.')
+        messages.warning(request, f'{len(errors)} error(s) occurred.')
     if not imported and not errors:
         messages.warning(request, 'No assets were imported. Please check your file format.')
     
@@ -3756,7 +4054,7 @@ def asset_import(request):
 @login_required
 def fulfill_asset_modal(request, pk):
     """Returns the fulfillment modal for an asset request."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     ticket = get_object_or_404(
@@ -3819,7 +4117,7 @@ def _mark_asset_ticket_fulfilled(ticket, request, summary):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"📦 **Fulfilled**: {summary}. Please confirm once received.",
+        body=f"**Fulfilled**: {escape(summary)}. Please confirm once received.",
         visibility='PUBLIC'
     )
 
@@ -3898,11 +4196,14 @@ def _fulfill_ticket_with_asset(ticket, asset, actor, request, comment=''):
     """Core of fulfilling an asset-request ticket by assigning `asset` to
     the requester — shared by the direct-fulfillment path (an asset was
     already in stock) and the post-receiving path (a procurement request
-    for this ticket just arrived). Assumes `asset` has already been
-    validated as available; does not re-check `is_available` itself."""
-    old_user = asset.assigned_to
-    asset.assigned_to = ticket.requester
-    asset.save()
+    for this ticket just arrived). Routes through Asset.assign_to() (the
+    same method the standalone checkout flow uses) rather than setting
+    assigned_to directly — this used to be a second, independent
+    'who has this asset' mechanism with no checked_out_to/AssetCheckoutHistory
+    of its own, which meant a fulfilled asset could then also be checked
+    out to a *different* user via the ordinary checkout flow, silently
+    overwriting assigned_to while the ticket still pointed at it."""
+    asset.assign_to(ticket.requester, actor=actor, notes=f'Fulfilled request {ticket.number}: {comment}')
 
     ticket.assigned_asset = asset
     ticket.save(update_fields=['assigned_asset'])
@@ -3910,17 +4211,6 @@ def _fulfill_ticket_with_asset(ticket, asset, actor, request, comment=''):
     if comment:
         summary += f'. {comment}'
     _mark_asset_ticket_fulfilled(ticket, request, summary=summary)
-
-    AssetLog.objects.create(
-        asset=asset,
-        action=AssetLog.Action.ASSIGNED,
-        actor=actor,
-        details={
-            'from': old_user.get_full_name() if old_user else None,
-            'to': ticket.requester.get_full_name(),
-            'comment': f'Fulfilled request {ticket.number}: {comment}'
-        }
-    )
 
     TicketActivityLog.objects.create(
         ticket=ticket,
@@ -3937,7 +4227,7 @@ def _fulfill_ticket_with_asset(ticket, asset, actor, request, comment=''):
     Notification.objects.create(
         recipient=ticket.requester,
         role=role_of(ticket.requester),
-        message=f'✅ Your asset request {ticket.number} has been fulfilled. {asset.name} assigned to you.',
+        message=f'Your asset request {ticket.number} has been fulfilled. {asset.name} assigned to you.',
         url=reverse('tickets:detail', args=[ticket.pk])
     )
 
@@ -3968,7 +4258,7 @@ def _fulfill_ticket_with_asset(ticket, asset, actor, request, comment=''):
 @require_POST
 def fulfill_asset_request(request, pk):
     """Admin action to fulfill an asset request by assigning an asset."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     ticket = get_object_or_404(
@@ -3996,13 +4286,67 @@ def fulfill_asset_request(request, pk):
 
         # Check if asset is actually available (not scrapped/retired/lost/etc.)
         if not asset.is_available:
-            messages.error(request, f'Asset {asset.name} is not available (status: {asset.get_status_display()}).')
+            messages.error(request, f'Asset {asset.name} is not available (status: {asset.status_display["label"]}).')
             return redirect('tickets:conversation', pk=ticket.pk)
 
-        _fulfill_ticket_with_asset(ticket, asset, request.user, request, comment=comment)
+        try:
+            _fulfill_ticket_with_asset(ticket, asset, request.user, request, comment=comment)
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect('tickets:conversation', pk=ticket.pk)
 
-    messages.success(request, f'✅ Asset {asset.name} assigned to {ticket.requester.get_full_name()}.')
+    messages.success(request, f'Asset {asset.name} assigned to {ticket.requester.get_full_name()}.')
     return redirect('tickets:conversation', pk=ticket.pk)
+
+
+@login_required
+def pending_asset_fulfillment_list(request):
+    """Full, paginated list of tickets awaiting asset fulfillment —
+    Admin/Superadmin only. Same query the dashboard's 'Pending Asset
+    Fulfillment' widget uses (apps/accounts/views/__init__.py), just
+    without the [:10] cap, so 'View all' has somewhere real to go."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    tickets_qs = Ticket.objects.filter(
+        status=Ticket.Status.PENDING_FULFILLMENT
+    ).select_related('requester', 'category').order_by('-created_at')
+
+    paginator = Paginator(tickets_qs, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'tickets/pending_asset_fulfillment_list.html', {
+        'tickets': page_obj,
+        'sidebar_template': get_sidebar_template(request.user),
+    })
+
+
+@login_required
+def pending_asset_fulfillment_count(request):
+    """Badge count for the sidebar 'Fulfillment' link — same filter as
+    pending_asset_fulfillment_list."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
+    return render(request, 'partials/sidebar_count_badge.html', {'count': count})
+
+
+@login_required
+def pending_settings_approvals_count(request):
+    """Badge count for the sidebar 'System Settings' link — total rows
+    across every has_proposals resource (Vessels, Job Numbers, Vendors)
+    still is_active=False after being proposed, i.e. exactly what each
+    resource's pending-approval banner on that page shows."""
+    if not is_admin(request.user):
+        return HttpResponse(status=403)
+
+    from .settings_registry import SETTINGS_RESOURCES
+    count = 0
+    for config in SETTINGS_RESOURCES.values():
+        if config.has_proposals:
+            count += config.model.objects.filter(is_active=False, proposed_by__isnull=False).count()
+    return render(request, 'partials/sidebar_count_badge.html', {'count': count})
 
 
 # ==========================================================================
@@ -4012,7 +4356,12 @@ def fulfill_asset_request(request, pk):
 def _notify_new_vendor_proposed(vendor, actor, detail_url):
     """Same propose-and-approve notification shape as mobilization_create's
     third-party-vessel handling — an unrecognized vendor name becomes an
-    inactive Vendor row, and Admins are notified to review/activate it."""
+    inactive Vendor row, and Admins are notified to review/activate it.
+    Runs at every point a Vendor gets proposed this way, so proposed_by is
+    set here once rather than at each of those call sites."""
+    if not vendor.proposed_by_id:
+        vendor.proposed_by = actor
+        vendor.save(update_fields=['proposed_by'])
     for admin in User.objects.filter(role=User.Role.ADMIN, is_active=True):
         Notification.objects.create(
             recipient=admin,
@@ -4031,7 +4380,7 @@ def procurement_request_create(request, pk):
     """Record that an asset-request ticket's needed item isn't in stock and
     is being sourced from a vendor. Ticket moves to PENDING_VENDOR —
     receiving the item later is what actually fulfills it."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.PENDING_FULFILLMENT)
@@ -4054,8 +4403,8 @@ def procurement_request_create(request, pk):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"🛒 **On order**: {procurement_request.item_name} x{procurement_request.quantity} requested from "
-             f"{procurement_request.vendor.name if procurement_request.vendor else 'vendor (TBD)'}"
+        body=f"**On order**: {escape(procurement_request.item_name)} x{procurement_request.quantity} requested from "
+             f"{escape(procurement_request.vendor.name) if procurement_request.vendor else 'vendor (TBD)'}"
              f"{f', expected {procurement_request.expected_arrival_date}' if procurement_request.expected_arrival_date else ''}.",
         visibility='PUBLIC'
     )
@@ -4068,20 +4417,54 @@ def procurement_request_create(request, pk):
     Notification.objects.create(
         recipient=ticket.requester,
         role=role_of(ticket.requester),
-        message=f'🛒 Your asset request {ticket.number} is on order from a vendor. We\'ll notify you once it arrives.',
+        message=f'Your asset request {ticket.number} is on order from a vendor. We\'ll notify you once it arrives.',
         url=reverse('tickets:detail', args=[ticket.pk])
     )
     if form.cleaned_data.get('_new_vendor_proposed'):
         _notify_new_vendor_proposed(procurement_request.vendor, request.user, reverse('tickets:conversation', args=[ticket.pk]))
 
-    messages.success(request, f'🛒 {procurement_request.item_name} recorded as on order.')
+    messages.success(request, f'{procurement_request.item_name} recorded as on order.')
     return redirect('tickets:conversation', pk=ticket.pk)
+
+
+@login_required
+@require_POST
+def procurement_reorder_create(request, asset_pk):
+    """One-click 'Reorder' from a low-stock alert / asset detail page —
+    a standalone AssetProcurementRequest not tied to any ticket or
+    mobilization, restocking the SKU it was raised for once received
+    (same Procurement list/receive flow as every other request)."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    asset = get_object_or_404(Asset, pk=asset_pk)
+    if not asset.is_consumable:
+        messages.error(request, 'Reordering only applies to consumable assets.')
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    form = ProcurementRequestForm(request.POST)
+    if not form.is_valid():
+        for field_errors in form.errors.values():
+            for error in field_errors:
+                messages.error(request, error)
+        return redirect('tickets:asset_detail', pk=asset.pk)
+
+    procurement_request = form.save(commit=False)
+    procurement_request.vendor = form.cleaned_data.get('vendor')
+    procurement_request.requested_by = request.user
+    procurement_request.save()
+
+    if form.cleaned_data.get('_new_vendor_proposed'):
+        _notify_new_vendor_proposed(procurement_request.vendor, request.user, reverse('tickets:asset_detail', args=[asset.pk]))
+
+    messages.success(request, f'{procurement_request.item_name} recorded as on order.')
+    return redirect('tickets:procurement_list')
 
 
 @login_required
 def procurement_list(request):
     """All vendor procurement requests, filterable by status."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     status_filter = request.GET.get('status', '').strip()
@@ -4102,7 +4485,7 @@ def procurement_list(request):
 @login_required
 @require_POST
 def procurement_mark_ordered(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk, status=AssetProcurementRequest.Status.REQUESTED)
@@ -4115,7 +4498,7 @@ def procurement_mark_ordered(request, pk):
 @login_required
 @require_POST
 def procurement_cancel(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk)
@@ -4136,7 +4519,7 @@ def procurement_cancel(request, pk):
     Notification.objects.create(
         recipient=procurement_request.requested_by,
         role=role_of(procurement_request.requested_by),
-        message=f'❌ Procurement request for {procurement_request.item_name} was cancelled.',
+        message=f'Procurement request for {procurement_request.item_name} was cancelled.',
         url=reverse('tickets:procurement_list')
     )
     messages.success(request, f'{procurement_request.item_name} procurement request cancelled.')
@@ -4145,7 +4528,7 @@ def procurement_cancel(request, pk):
 
 @login_required
 def procurement_receive_modal(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk)
@@ -4164,7 +4547,7 @@ def procurement_receive(request, pk):
     if this request was for a ticket or a mobilization, automatically
     finish that ticket/mobilization exactly as if the item had come from
     existing stock."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk)
@@ -4202,10 +4585,17 @@ def procurement_receive(request, pk):
         ):
             ticket = procurement_request.ticket
             fulfillment_asset = received_assets[0]
-            _fulfill_ticket_with_asset(
-                ticket, fulfillment_asset, request.user, request,
-                comment=f'Received from vendor procurement request #{procurement_request.pk}.'
-            )
+            try:
+                _fulfill_ticket_with_asset(
+                    ticket, fulfillment_asset, request.user, request,
+                    comment=f'Received from vendor procurement request #{procurement_request.pk}.'
+                )
+            except ValueError as e:
+                # e.g. a consumable-category item was tied to a ticket —
+                # the stock still gets received above, it just can't be
+                # auto-assigned to one requester the way an individually-
+                # tracked asset can. Leave the ticket for manual fulfillment.
+                messages.warning(request, f'{procurement_request.item_name} received, but could not be auto-assigned to the ticket: {e}')
         elif procurement_request.mobilization_id:
             mobilization = procurement_request.mobilization
             for asset in received_assets:
@@ -4245,16 +4635,16 @@ def procurement_receive(request, pk):
     Notification.objects.create(
         recipient=procurement_request.requested_by,
         role=role_of(procurement_request.requested_by),
-        message=f'📦 {procurement_request.item_name} has been received and added to inventory.',
+        message=f'{procurement_request.item_name} has been received and added to inventory.',
         url=reverse('tickets:procurement_list')
     )
-    messages.success(request, f'📦 {procurement_request.item_name} received.')
+    messages.success(request, f'{procurement_request.item_name} received.')
     return redirect(request.META.get('HTTP_REFERER') or 'tickets:procurement_list')
 
 
 @login_required
 def procurement_export_pdf(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(
@@ -4268,7 +4658,7 @@ def procurement_export_pdf(request, pk):
 @login_required
 def available_assets_for_fulfillment(request):
     """HTMX endpoint to get available assets for a specific request."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     search = request.GET.get('search', '').strip()
@@ -4319,21 +4709,24 @@ def available_assets_for_fulfillment(request):
 @login_required
 def asset_checkout_modal(request, pk):
     """Return the checkout modal for an asset."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     asset = get_object_or_404(Asset, pk=pk)
-    
-    # Only allow checkout if asset is available
-    if asset.is_checked_out:
-        return HttpResponse('<div class="p-4 text-center text-error">This asset is already checked out.</div>', status=400)
-    
+
+    # Full availability check, not just "not already checked out" — matches
+    # what assign_to() will actually enforce on submit.
+    if asset.assignment_blocked_reason:
+        return HttpResponse(f'"{asset.name}" cannot be checked out — {asset.assignment_blocked_reason}.', status=400)
+
     # Get users for dropdown (only active users)
     users = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
-    
+    form = AssetCheckoutForm()
+
     return render(request, 'partials/asset_checkout_modal.html', {
         'asset': asset,
         'users': users,
+        'form': form,
     })
 
 
@@ -4341,69 +4734,38 @@ def asset_checkout_modal(request, pk):
 @require_POST
 def asset_checkout(request, pk):
     """Check out an asset to a user."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
-    
-    user_id = request.POST.get('user_id')
-    expected_return = request.POST.get('expected_return_date')
-    notes = request.POST.get('notes', '').strip()
 
-    if not user_id:
-        messages.error(request, 'Please select a user to check out this asset.')
+    asset_for_form = get_object_or_404(Asset, pk=pk)
+    form = AssetCheckoutForm(request.POST)
+    if not form.is_valid():
+        users = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/asset_checkout_modal.html', {'asset': asset_for_form, 'users': users, 'form': form})
+        messages.error(request, 'Please correct the errors below.')
         return redirect('tickets:assets')
 
-    try:
-        user = User.objects.get(pk=user_id)
-    except User.DoesNotExist:
-        messages.error(request, 'User not found.')
-        return redirect('tickets:assets')
+    user = form.cleaned_data['user_id']
+    expected_return = form.cleaned_data['expected_return_date']
+    notes = form.cleaned_data['notes'].strip()
 
     with transaction.atomic():
         asset = get_object_or_404(Asset.objects.select_for_update(), pk=pk)
 
-        # Only allow checkout if asset is available
-        if asset.is_checked_out:
-            messages.error(request, 'This asset is already checked out.')
+        # assign_to() is the single source of truth for "is this asset
+        # available" — it also refuses damaged/retired/scrapped/already-
+        # assigned assets, not just ones already checked out.
+        try:
+            asset.assign_to(user, actor=request.user, expected_return_date=expected_return, notes=notes)
+        except ValueError as e:
+            if request.headers.get('HX-Request'):
+                return HttpResponse(str(e), status=400)
+            messages.error(request, str(e))
             return redirect('tickets:assets')
 
-        # Update asset
-        asset.checked_out_to = user
-        asset.checked_out_at = timezone.now()
-        asset.assigned_to = user  # Keep the existing field in sync
-        asset.status = Asset.Status.CHECKED_OUT
-        asset.status_updated_at = timezone.now()
-        asset.status_updated_by = request.user
-        if expected_return:
-            try:
-                asset.expected_return_date = datetime.strptime(expected_return, '%Y-%m-%d').date()
-            except ValueError:
-                pass
-        asset.save()
-    
-    # Create history record
-    AssetCheckoutHistory.objects.create(
-        asset=asset,
-        checked_out_by=request.user,
-        checked_out_to=user,
-        checked_out_at=asset.checked_out_at,
-        expected_return_date=asset.expected_return_date,
-        notes=notes
-    )
-    
-    # Create asset log
-    AssetLog.objects.create(
-        asset=asset,
-        action=AssetLog.Action.ASSIGNED,
-        actor=request.user,
-        details={
-            'action': 'checkout',
-            'to': user.get_full_name() or user.email,
-            'notes': notes
-        }
-    )
-    
     # Add comment to asset notes
-    checkout_note = f"🔄 **Asset checked out** by {request.user.get_full_name()} to {user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+    checkout_note = f"**Asset checked out** by {request.user.get_full_name()} to {user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
     if notes:
         checkout_note += f"\nNotes: {notes}"
     if asset.notes:
@@ -4416,29 +4778,43 @@ def asset_checkout(request, pk):
     Notification.objects.create(
         recipient=user,
         role=role_of(user),
-        message=f"📦 Asset {asset.name} ({asset.tracking_id}) has been checked out to you.",
+        message=f"Asset {asset.name} ({asset.tracking_id}) has been checked out to you.",
         url=reverse('tickets:asset_detail', args=[asset.pk])
     )
     
     messages.success(request, f'Asset "{asset.name}" checked out to {user.get_full_name()}.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:assets')})
     return redirect('tickets:assets')
 
 
 @login_required
 def asset_checkin_modal(request, pk):
     """Return the checkin modal for an asset."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     
     asset = get_object_or_404(Asset, pk=pk)
-    
+
     # Only allow checkin if asset is checked out
     if not asset.is_checked_out:
-        return HttpResponse('<div class="p-4 text-center text-warning">This asset is not currently checked out.</div>', status=400)
-    
+        return HttpResponse('This asset is not currently checked out.', status=400)
+
+    # Pre-fill from the holder's self-reported return request, if any —
+    # the admin's own return_condition assessment (not pre-filled, since
+    # only the admin can actually inspect the physical item) still decides
+    # the final status in release().
+    open_history = asset._open_checkout_history()
+    initial = {}
+    if open_history and open_history.return_requested_at:
+        initial = {
+            'return_reason': open_history.return_requested_reason,
+            'return_comment': open_history.return_requested_comment,
+        }
+    form = AssetCheckinForm(initial=initial)
     return render(request, 'partials/asset_checkin_modal.html', {
         'asset': asset,
-        'return_reasons': Asset.ReturnReason.choices,
+        'form': form,
     })
 
 
@@ -4446,69 +4822,50 @@ def asset_checkin_modal(request, pk):
 @require_POST
 def asset_checkin(request, pk):
     """Check in an asset."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
-    
+
     asset = get_object_or_404(Asset, pk=pk)
-    
+
     # Only allow checkin if asset is checked out
     if not asset.is_checked_out:
+        if request.headers.get('HX-Request'):
+            return HttpResponse('This asset is not currently checked out.', status=400)
         messages.error(request, 'This asset is not currently checked out.')
         return redirect('tickets:assets')
-    
-    return_reason = request.POST.get('return_reason')
-    return_comment = request.POST.get('return_comment', '').strip()
-    return_condition = request.POST.get('return_condition', '').strip()
-    
-    if not return_reason:
-        messages.error(request, 'Please select a return reason.')
+
+    form = AssetCheckinForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/asset_checkin_modal.html', {'asset': asset, 'form': form})
+        messages.error(request, 'Please correct the errors below.')
         return redirect('tickets:assets')
-    
-    # Get the active checkout history record
-    history = AssetCheckoutHistory.objects.filter(
-        asset=asset,
-        checked_in_at__isnull=True
-    ).first()
-    
-    # Update asset
-    asset.return_reason = return_reason
-    asset.return_comment = return_comment
-    asset.return_condition = return_condition
-    asset.returned_at = timezone.now()
-    asset.checked_out_to = None
-    asset.assigned_to = None  # Clear the legacy field too
-    if return_condition.upper() in [Asset.Condition.DAMAGED, Asset.Condition.UNUSABLE]:
-        asset.status = Asset.Status.MAINTENANCE
-    else:
-        asset.status = Asset.Status.IN_STORE
-    asset.status_updated_at = timezone.now()
-    asset.status_updated_by = request.user
-    asset.save()
-    
-    # Update history record
-    if history:
-        history.checked_in_by = request.user
-        history.checked_in_at = asset.returned_at
-        history.return_reason = return_reason
-        history.return_comment = return_comment
-        history.return_condition = return_condition
-        history.save()
-    
-    # Create asset log
-    AssetLog.objects.create(
-        asset=asset,
-        action=AssetLog.Action.UNASSIGNED,
+
+    return_reason = form.cleaned_data['return_reason']
+    return_comment = form.cleaned_data['return_comment'].strip()
+    return_condition = form.cleaned_data['return_condition'].strip()
+    holder = asset.checked_out_to  # captured before release() clears it
+
+    # release() is the single source of truth for taking an asset back —
+    # it decides the post-return status from BOTH condition and reason (a
+    # LOST/STOLEN asset lands on that exact status, not IN_STORE), and
+    # closes the open AssetCheckoutHistory row itself.
+    asset.release(
         actor=request.user,
-        details={
-            'action': 'checkin',
-            'reason': asset.get_return_reason_display(),
-            'condition': return_condition,
-            'comment': return_comment
-        }
+        return_reason=return_reason,
+        return_comment=return_comment,
+        return_condition=return_condition,
     )
-    
+
+    if holder:
+        Notification.objects.create(
+            recipient=holder, role=role_of(holder),
+            message=f'Your return of "{asset.name}" ({asset.tracking_id}) has been confirmed. Thanks!',
+            url='/tickets/my-assets/',
+        )
+
     # Add comment to asset notes
-    checkin_note = f"🔄 **Asset checked in** by {request.user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+    checkin_note = f"**Asset checked in** by {request.user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
     checkin_note += f"\nReason: {asset.get_return_reason_display()}"
     if return_condition:
         checkin_note += f"\nCondition: {return_condition}"
@@ -4522,22 +4879,165 @@ def asset_checkin(request, pk):
     asset.save(update_fields=['notes'])
     
     messages.success(request, f'Asset "{asset.name}" checked in successfully.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:assets')})
     return redirect('tickets:assets')
 
 
 @login_required
 def asset_checkout_history(request, pk):
     """View checkout history for an asset."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'TEAM_LEAD']:
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
         return HttpResponse(status=403)
-    
+
     asset = get_object_or_404(Asset, pk=pk)
     history = asset.checkout_history.all().order_by('-checked_out_at')
-    
+
     return render(request, 'partials/asset_checkout_history.html', {
         'asset': asset,
         'history': history,
     })
+
+
+# ==========================================================================
+# ASSET CUSTODY TWO-STEP CONFIRMATION — recipient accepts/disputes a
+# checkout or reassignment handover; holder self-initiates/cancels a
+# return, which an admin then confirms via the existing asset_checkin.
+# Reachable from My Assets, not the admin-only asset inventory.
+# ==========================================================================
+
+@login_required
+@require_POST
+def asset_checkout_accept(request, pk):
+    asset = get_object_or_404(Asset, pk=pk)
+    try:
+        asset.acknowledge_checkout(actor=request.user)
+    except ValueError as e:
+        if request.headers.get('HX-Request'):
+            return HttpResponse(str(e), status=400)
+        messages.error(request, str(e))
+        return redirect('tickets:my_assets')
+    messages.success(request, f'Confirmed receipt of "{asset.name}".')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:my_assets')})
+    return redirect('tickets:my_assets')
+
+
+@login_required
+@require_POST
+def asset_checkout_dispute(request, pk):
+    asset = get_object_or_404(Asset, pk=pk)
+    reason = request.POST.get('reason', '').strip()
+    try:
+        asset.dispute_checkout(actor=request.user, reason=reason)
+    except ValueError as e:
+        if request.headers.get('HX-Request'):
+            return HttpResponse(str(e), status=400)
+        messages.error(request, str(e))
+        return redirect('tickets:my_assets')
+    messages.success(request, f'Reported — an admin will follow up on "{asset.name}".')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:my_assets')})
+    return redirect('tickets:my_assets')
+
+
+@login_required
+def asset_request_return_modal(request, pk):
+    """Confirmation modal for relinquishing an asset — reachable only by
+    whoever the asset is actually checked out to."""
+    asset = get_object_or_404(Asset, pk=pk)
+    if asset.checked_out_to_id != request.user.id:
+        return HttpResponse("This asset isn't checked out to you.", status=403)
+    open_history = asset._open_checkout_history()
+    if open_history and open_history.return_requested_at:
+        return HttpResponse('A return has already been requested for this asset.', status=400)
+    form = AssetReturnRequestForm()
+    return render(request, 'partials/asset_return_request_modal.html', {'asset': asset, 'form': form})
+
+
+@login_required
+@require_POST
+def asset_request_return(request, pk):
+    asset = get_object_or_404(Asset, pk=pk)
+    if asset.checked_out_to_id != request.user.id:
+        return HttpResponse("This asset isn't checked out to you.", status=403)
+
+    form = AssetReturnRequestForm(request.POST)
+    if not form.is_valid():
+        if request.headers.get('HX-Request'):
+            return render(request, 'partials/asset_return_request_modal.html', {'asset': asset, 'form': form})
+        messages.error(request, 'Please correct the errors below.')
+        return redirect('tickets:my_assets')
+
+    try:
+        asset.request_return(
+            actor=request.user,
+            reason=form.cleaned_data['return_reason'],
+            comment=form.cleaned_data['return_comment'].strip(),
+        )
+    except ValueError as e:
+        if request.headers.get('HX-Request'):
+            return HttpResponse(str(e), status=400)
+        messages.error(request, str(e))
+        return redirect('tickets:my_assets')
+
+    messages.success(request, f'Return requested for "{asset.name}" — an admin will arrange pickup.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:my_assets')})
+    return redirect('tickets:my_assets')
+
+
+@login_required
+@require_POST
+def asset_cancel_return_request(request, pk):
+    asset = get_object_or_404(Asset, pk=pk)
+    if asset.checked_out_to_id != request.user.id:
+        return HttpResponse("This asset isn't checked out to you.", status=403)
+    try:
+        asset.cancel_return_request(actor=request.user)
+    except ValueError as e:
+        if request.headers.get('HX-Request'):
+            return HttpResponse(str(e), status=400)
+        messages.error(request, str(e))
+        return redirect('tickets:my_assets')
+    messages.success(request, f'Return request for "{asset.name}" cancelled.')
+    if request.headers.get('HX-Request'):
+        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:my_assets')})
+    return redirect('tickets:my_assets')
+
+
+@login_required
+def pending_asset_returns_list(request):
+    """Full, paginated list of assets whose holder has requested a return
+    but an admin hasn't yet confirmed physical retrieval — the admin-side
+    queue this two-step flow needs, parallel to pending_asset_fulfillment_list."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    history_qs = AssetCheckoutHistory.objects.filter(
+        return_requested_at__isnull=False, checked_in_at__isnull=True
+    ).select_related('asset', 'checked_out_to').order_by('return_requested_at')
+
+    paginator = Paginator(history_qs, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'tickets/pending_asset_returns_list.html', {
+        'returns': page_obj,
+        'sidebar_template': get_sidebar_template(request.user),
+    })
+
+
+@login_required
+def pending_asset_returns_count(request):
+    """Badge count for the sidebar 'Returns' link — same filter as
+    pending_asset_returns_list."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    count = AssetCheckoutHistory.objects.filter(
+        return_requested_at__isnull=False, checked_in_at__isnull=True
+    ).count()
+    return render(request, 'partials/sidebar_count_badge.html', {'count': count})
 
 
 # ==========================================================================
@@ -4546,7 +5046,7 @@ def asset_checkout_history(request, pk):
 
 @login_required
 def mobilizations(request):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     job_filter = request.GET.get('filter_job', '')
@@ -4592,7 +5092,7 @@ def mobilizations(request):
 
 @login_required
 def mobilization_detail(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(
@@ -4611,8 +5111,8 @@ def mobilization_detail(request, pk):
 
 
 @login_required
-def mobilization_create_modal(request):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+def mobilization_create_page(request):
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     form = MobilizationForm()
@@ -4648,7 +5148,7 @@ def mobilization_create_modal(request):
             except (TypeError, ValueError):
                 prefill_quantity = None
 
-    return render(request, 'partials/mobilization_create_modal.html', {
+    return render(request, 'tickets/mobilization_create.html', {
         'form': form,
         'ticket': ticket,
         'trackable_categories': AssetCategory.objects.filter(is_consumable=False).order_by('name'),
@@ -4656,13 +5156,14 @@ def mobilization_create_modal(request):
         'vendors': Vendor.objects.filter(is_active=True).prefetch_related('categories').order_by('name'),
         'prefill_category': prefill_category,
         'prefill_quantity': prefill_quantity,
+        'sidebar_template': get_sidebar_template(request.user),
     })
 
 
 @login_required
 @require_POST
 def mobilization_create(request):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     form = MobilizationForm(request.POST)
@@ -4815,7 +5316,7 @@ def mobilization_create(request):
         TicketComment.objects.create(
             ticket=ticket,
             author=request.user,
-            body=f"📦 **Assets mobilized**: {', '.join(a.tracking_id for a in assets_qs)} sent to {mobilization.destination_display}.",
+            body=f"**Assets mobilized**: {', '.join(a.tracking_id for a in assets_qs)} sent to {escape(mobilization.destination_display)}.",
             visibility='PUBLIC'
         )
         # Only actually fulfills the ticket (and prompts the requester to
@@ -4853,7 +5354,7 @@ def mobilization_create(request):
 @login_required
 def mobilization_available_assets(request):
     """HTMX endpoint: assets available to add to a new mobilization."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     search = request.GET.get('search', '').strip()
@@ -4889,7 +5390,7 @@ def mobilization_autopick_assets(request):
     `asset_ids` list and select_for_update() re-validation in
     mobilization_create as a manually-checked pick, so a race between pick
     and submit just surfaces the existing "not available" error there."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     category_id = request.GET.get('category_id')
@@ -4919,7 +5420,7 @@ def mobilization_autopick_assets(request):
 
 @login_required
 def mobilization_item_demobilize_modal(request, item_pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     item = get_object_or_404(MobilizationItem.objects.select_related('asset', 'mobilization'), pk=item_pk)
@@ -4985,7 +5486,7 @@ def _demobilize_item(item, return_condition, return_notes, actor, return_quantit
 @login_required
 @require_POST
 def mobilization_item_demobilize(request, item_pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     item = get_object_or_404(MobilizationItem.objects.select_related('asset', 'mobilization'), pk=item_pk)
@@ -5015,7 +5516,7 @@ def mobilization_item_demobilize(request, item_pk):
 
 @login_required
 def mobilization_demobilize_all_modal(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -5033,7 +5534,7 @@ def mobilization_demobilize_all_modal(request, pk):
 @login_required
 @require_POST
 def mobilization_demobilize_all(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -5063,7 +5564,7 @@ def mobilization_demobilize_all(request, pk):
 
 @login_required
 def mobilization_extend_date_modal(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -5078,7 +5579,7 @@ def mobilization_extend_date_modal(request, pk):
 @login_required
 @require_POST
 def mobilization_extend_date(request, pk):
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -5123,7 +5624,7 @@ def job_mobilization_lookup(request):
     """HTMX endpoint used from the asset-request fulfillment screen: shows
     what's currently mobilized (out) for a given job/vessel/dive system, so
     an admin can check existing issue before approving more."""
-    if request.user.role not in ['ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
     job_id = request.GET.get('job_number')

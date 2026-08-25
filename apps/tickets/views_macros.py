@@ -14,6 +14,7 @@ from django.views.decorators.http import require_POST
 
 from .models import Macro
 from .views import get_sidebar_template
+from apps.common.permissions import effective_role_name
 
 # Macros are a personal/team productivity tool for whoever actually
 # responds to tickets — not an admin-configured system setting, so
@@ -45,12 +46,12 @@ def visible_macros_for(user):
 
 
 def _can_edit(user, macro):
-    return user == macro.created_by or (user.role == 'TEAM_LEAD' and user.department == 'IT')
+    return user == macro.created_by or (effective_role_name(user) == 'TEAM_LEAD' and user.department == 'IT')
 
 
 @login_required
 def macro_management(request):
-    if request.user.role not in ALLOWED_ROLES or request.user.department != 'IT':
+    if effective_role_name(request.user) not in ALLOWED_ROLES or request.user.department != 'IT':
         return HttpResponse(status=403)
 
     macros = visible_macros_for(request.user).select_related('created_by').order_by('-created_at')
@@ -100,3 +101,20 @@ def macro_delete(request, pk):
         return JsonResponse({'error': 'Forbidden'}, status=403)
     macro.delete()
     return JsonResponse({'status': 'ok'})
+
+
+@login_required
+@require_POST
+def macro_bulk_delete(request):
+    ids = request.POST.getlist('ids')
+    if not ids:
+        return JsonResponse({'error': 'No macros selected'}, status=400)
+
+    macros = Macro.objects.filter(pk__in=ids)
+    not_allowed = [m for m in macros if not _can_edit(request.user, m)]
+    if not_allowed:
+        return JsonResponse({'error': 'You can only delete your own macros (or your team\'s, as Team Lead).'}, status=403)
+
+    deleted_count = macros.count()
+    macros.delete()
+    return JsonResponse({'status': 'ok', 'deleted': deleted_count})

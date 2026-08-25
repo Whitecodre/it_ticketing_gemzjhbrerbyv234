@@ -103,6 +103,8 @@ def category_detail(request, slug):
         'view_mode': view_mode,
         'sidebar_template': get_sidebar_template(request.user),
     }
+    if request.headers.get('HX-Request') == 'true':
+        return render(request, 'documents_display/partials/category_documents.html', context)
     return render(request, 'documents_display/category_detail.html', context)
 
 @login_required
@@ -325,7 +327,7 @@ def _permission_denied_response(message='Permission denied'):
 <html><head><meta charset="utf-8"></head>
 <body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;
              font-family:Arial,sans-serif;background:#F8FAFC;color:#64748B;">
-    <p style="text-align:center;">🔒 {message}</p>
+    <p style="text-align:center;display:flex;align-items:center;justify-content:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> {message}</p>
 </body></html>"""
     return HttpResponse(html, status=403)
 
@@ -517,7 +519,7 @@ def document_share(request, slug):
                     sender=request.user,
                     recipient=recipient,
                     role=role_of(recipient),
-                    message=f'📄 {request.user.get_full_name()} shared "{document.title}" with you.',
+                    message=f'{request.user.get_full_name()} shared "{document.title}" with you.',
                     url=reverse('documents_display:document_share_open', args=[share.token]),
                     type=Notification.Type.GENERAL,
                 )
@@ -607,7 +609,7 @@ def document_share_external(request, token):
             Notification.objects.create(
                 recipient=share.shared_by,
                 role=role_of(share.shared_by),
-                message=f'👀 {share.external_email} opened the external link you shared for "{share.document.title}".',
+                message=f'{share.external_email} opened the external link you shared for "{share.document.title}".',
                 url=reverse('documents_display:document_share', args=[share.document.slug]),
                 type=Notification.Type.GENERAL,
             )
@@ -943,7 +945,7 @@ def folder_share(request, slug):
                     sender=request.user,
                     recipient=recipient,
                     role=role_of(recipient),
-                    message=f'📁 {request.user.get_full_name()} shared the folder "{folder.name}" with you.',
+                    message=f'{request.user.get_full_name()} shared the folder "{folder.name}" with you.',
                     url=reverse('documents_display:folder_share_open', args=[share.token]),
                     type=Notification.Type.GENERAL,
                 )
@@ -1052,7 +1054,7 @@ def folder_share_external(request, token):
             Notification.objects.create(
                 recipient=share.shared_by,
                 role=role_of(share.shared_by),
-                message=f'👀 {share.external_email} opened the external link you shared for "{share.folder.name}".',
+                message=f'{share.external_email} opened the external link you shared for "{share.folder.name}".',
                 url=reverse('documents_display:folder_share', args=[share.folder.slug]),
                 type=Notification.Type.GENERAL,
             )

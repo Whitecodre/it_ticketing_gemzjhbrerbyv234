@@ -36,6 +36,14 @@ class Vendor(models.Model):
     email = models.EmailField(blank=True)
     notes = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
+    # Set when this vendor was created by someone typing an unrecognized
+    # name into a procurement/mobilization form rather than by an admin —
+    # same propose-and-approve shape as tickets.Vessel/JobNumber.proposed_by.
+    # Null for vendors an admin added directly.
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='proposed_vendors'
+    )
     # Which asset categories this vendor supplies — used to narrow the
     # vendor picker wherever a category is already known (procurement
     # requests, asset renewal). Lazy cross-app string reference (like the

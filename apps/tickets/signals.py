@@ -67,7 +67,7 @@ def handle_ticket_fulfillment_notification(sender, instance, created, **kwargs):
                 Notification.objects.create(
                     recipient=instance.requester,
                     role=role_of(instance.requester),
-                    message=f'✅ Your asset request {instance.number} has been fulfilled. Asset assigned to you.',
+                    message=f'Your asset request {instance.number} has been fulfilled. Asset assigned to you.',
                     url=reverse('tickets:detail', args=[instance.pk])
                 )
         except Ticket.DoesNotExist:

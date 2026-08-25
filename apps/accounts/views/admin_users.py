@@ -11,11 +11,27 @@ from django.contrib.auth import get_user_model
 from django.core.paginator import Paginator
 from django.db.models import Q
 from apps.accounts.models import Role
-from apps.common.permissions import is_admin, is_superadmin
+from apps.accounts.forms import AdminUserCreateForm, AdminUserEditForm
+from apps.common.permissions import is_admin, is_superadmin, effective_role_name
 
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+
+def _count_active_admins():
+    """How many users are *currently* acting as Admin/Superadmin, for the
+    'don't deactivate the last admin' guard. Narrows via the legacy `role`
+    field or the roles M2M (either can lag right after account creation —
+    `sync_roles()` is a no-op on a brand new user's very first save, since
+    `self.pk` isn't set yet at that point), then resolves each candidate's
+    true active role in Python via effective_role_name() so a stale/unset
+    `active_role` FK doesn't cause an undercount."""
+    candidates = User.objects.filter(
+        Q(role__in=['ADMIN', 'SUPERADMIN']) | Q(roles__name__in=['ADMIN', 'SUPERADMIN']),
+        is_active=True,
+    ).distinct()
+    return sum(1 for u in candidates if effective_role_name(u) in ('ADMIN', 'SUPERADMIN'))
 
 @login_required
 @user_passes_test(is_admin)
@@ -48,7 +64,7 @@ def admin_user_list(request):
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
     # Dynamic sidebar for admin vs superadmin
-    sidebar_template = 'partials/sidebar_admin.html' if request.user.role == 'ADMIN' else 'partials/sidebar_superadmin.html'
+    sidebar_template = 'partials/sidebar_admin.html' if effective_role_name(request.user) == 'ADMIN' else 'partials/sidebar_superadmin.html'
 
     role_choices = User.Role.choices
     all_roles = Role.objects.all().order_by('priority')
@@ -76,22 +92,25 @@ def admin_user_list(request):
 @user_passes_test(is_admin)
 @require_POST
 def admin_user_create(request):
-    email = request.POST.get('email')
-    first_name = request.POST.get('first_name')
-    last_name = request.POST.get('last_name')
-    position = request.POST.get('position', '')
-    role = request.POST.get('role', 'END_USER')
+    form = AdminUserCreateForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({'error': 'Please correct the errors below.', 'errors': form.errors}, status=400)
+
+    email = form.cleaned_data['email']
+    first_name = form.cleaned_data['first_name']
+    last_name = form.cleaned_data['last_name']
+    position = form.cleaned_data['position']
+    role = form.cleaned_data['role']
+    department = form.cleaned_data['department']
     selected_role_names = request.POST.getlist('selected_roles')
-    
+
     # ✅ Only Superadmin can create Superadmin
-    if role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
+    if role == 'SUPERADMIN' and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can create another Superadmin.'}, status=403)
 
     # ✅ Only Superadmin can grant Superadmin as an additional role
-    if selected_role_names and 'SUPERADMIN' in selected_role_names and request.user.role != 'SUPERADMIN':
+    if selected_role_names and 'SUPERADMIN' in selected_role_names and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can grant the Superadmin role.'}, status=403)
-
-    department = request.POST.get('department', '')
 
     # ✅ Validate: AGENT/ADMIN/SUPERADMIN only allowed for IT department.
     # TEAM_LEAD is allowed in any department (departmental approval gate).
@@ -104,12 +123,6 @@ def admin_user_create(request):
         for selected_role in selected_role_names:
             if selected_role in it_only_roles and department != 'IT':
                 return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
-    
-    if not email:
-        return JsonResponse({'error': 'Email is required.'}, status=400)
-
-    if User.objects.filter(email=email).exists():
-        return JsonResponse({'error': 'User with this email already exists.'}, status=400)
 
     # create_user() requires a password that passes the validators (see
     # UserManager._create_user), but it's discarded immediately below in
@@ -216,25 +229,29 @@ def admin_user_create(request):
 @require_POST
 def admin_user_edit(request, pk):
     user = get_object_or_404(User, pk=pk)
-    
-    if user.role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
+
+    if user.roles.filter(name='SUPERADMIN').exists() and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'You cannot edit a Superadmin.'}, status=403)
 
-    # Get the primary role from the dropdown
-    new_role = request.POST.get('role', user.role)
+    form = AdminUserEditForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({'error': 'Please correct the errors below.', 'errors': form.errors}, status=400)
+
+    new_role = form.cleaned_data['role']
+    new_department = form.cleaned_data['department']
+    new_is_active = form.cleaned_data['is_active']
     selected_role_names = request.POST.getlist('selected_roles')
-    
-    if new_role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
+
+    if new_role == 'SUPERADMIN' and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can assign the Superadmin role.'}, status=403)
 
     # ✅ Only Superadmin can grant Superadmin as an additional role
-    if selected_role_names and 'SUPERADMIN' in selected_role_names and request.user.role != 'SUPERADMIN':
+    if selected_role_names and 'SUPERADMIN' in selected_role_names and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can grant the Superadmin role.'}, status=403)
 
     # ✅ Validate: AGENT/ADMIN/SUPERADMIN only allowed for IT department.
     # TEAM_LEAD is allowed in any department (departmental approval gate).
     it_only_roles = ['AGENT', 'ADMIN', 'SUPERADMIN']
-    new_department = request.POST.get('department', user.department)
 
     if new_role in it_only_roles and new_department != 'IT':
         return JsonResponse({'error': f'"{new_role}" role can only be assigned to IT department users.'}, status=400)
@@ -244,20 +261,18 @@ def admin_user_edit(request, pk):
             if selected_role in it_only_roles and new_department != 'IT':
                 return JsonResponse({'error': f'"{selected_role}" role can only be assigned to IT department users.'}, status=400)
 
-    new_is_active = request.POST.get('is_active', 'true') == 'true'
-    
     if not new_is_active and user == request.user:
         return JsonResponse({'error': 'You cannot deactivate your own account.'}, status=400)
-    
-    if not new_is_active and user.role in ['ADMIN', 'SUPERADMIN']:
-        active_admins = User.objects.filter(role__in=['ADMIN', 'SUPERADMIN'], is_active=True).count()
+
+    if not new_is_active and effective_role_name(user) in ['ADMIN', 'SUPERADMIN']:
+        active_admins = _count_active_admins()
         if active_admins <= 1:
             return JsonResponse({'error': 'Cannot deactivate the last admin/superadmin.'}, status=400)
 
     # Update basic user info
-    user.first_name = request.POST.get('first_name', user.first_name)
-    user.last_name = request.POST.get('last_name', user.last_name)
-    user.position = request.POST.get('position', user.position)
+    user.first_name = form.cleaned_data['first_name']
+    user.last_name = form.cleaned_data['last_name']
+    user.position = form.cleaned_data['position']
     user.department = new_department
     user.is_active = new_is_active
     user.role = new_role
@@ -313,24 +328,60 @@ def admin_user_edit(request, pk):
 def admin_user_toggle_active(request, pk):
     user = get_object_or_404(User, pk=pk)
     
-    if user.role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
+    if user.roles.filter(name='SUPERADMIN').exists() and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can modify another Superadmin.'}, status=403)
-    
+
     if user == request.user:
         return JsonResponse({'error': 'You cannot deactivate your own account.'}, status=400)
-    
+
     if not user.is_active:
         pass
     else:
-        if user.role in ['ADMIN', 'SUPERADMIN']:
-            active_admins = User.objects.filter(role__in=['ADMIN', 'SUPERADMIN'], is_active=True).count()
+        if effective_role_name(user) in ['ADMIN', 'SUPERADMIN']:
+            active_admins = _count_active_admins()
             if active_admins <= 1:
                 return JsonResponse({'error': 'Cannot deactivate the last admin/superadmin.'}, status=400)
     
     user.is_active = not user.is_active
     user.save()
-    
+
     return JsonResponse({'status': 'ok', 'is_active': user.is_active})
+
+
+@login_required
+@user_passes_test(is_admin)
+@require_POST
+def admin_user_bulk_toggle_active(request):
+    """Bulk activate/deactivate — mirrors admin_user_toggle_active's
+    per-user guards (self, cross-Superadmin, last-admin-standing) so bulk
+    selection can't bypass protections the single-user action enforces."""
+    user_ids = request.POST.getlist('user_ids')
+    set_active = request.POST.get('set_active') == 'true'
+
+    if not user_ids:
+        return JsonResponse({'error': 'No users selected.'}, status=400)
+
+    updated = 0
+    skipped = 0
+    for user in User.objects.filter(pk__in=user_ids):
+        if user.is_active == set_active:
+            continue
+        if user.roles.filter(name='SUPERADMIN').exists() and effective_role_name(request.user) != 'SUPERADMIN':
+            skipped += 1
+            continue
+        if user == request.user:
+            skipped += 1
+            continue
+        if not set_active and effective_role_name(user) in ['ADMIN', 'SUPERADMIN']:
+            active_admins = _count_active_admins()
+            if active_admins <= 1:
+                skipped += 1
+                continue
+        user.is_active = set_active
+        user.save()
+        updated += 1
+
+    return JsonResponse({'status': 'ok', 'updated': updated, 'skipped': skipped})
 
 
 @login_required
@@ -339,7 +390,7 @@ def admin_user_toggle_active(request, pk):
 def admin_user_change_password(request, pk):
     user = get_object_or_404(User, pk=pk)
     
-    if user.role == 'SUPERADMIN' and request.user.role != 'SUPERADMIN':
+    if user.roles.filter(name='SUPERADMIN').exists() and effective_role_name(request.user) != 'SUPERADMIN':
         return JsonResponse({'error': 'Only a Superadmin can change another Superadmin\'s password.'}, status=403)
 
     new_password = request.POST.get('password', '').strip()
@@ -355,7 +406,7 @@ def admin_user_change_password(request, pk):
 
 
 @login_required
-@user_passes_test(lambda u: u.role == 'ADMIN')
+@user_passes_test(is_admin)
 def client_logo_upload(request):
     """Upload or update the client company logo. Admin only."""
     if request.method == 'POST':

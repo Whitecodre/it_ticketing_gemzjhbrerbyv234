@@ -1,11 +1,25 @@
 from django import forms
-from .models import Ticket, TicketComment, Asset, AssetCategory, ServiceCategory, Vessel, DiveSystem, JobNumber, Mobilization, AssetProcurementRequest
+from .models import (
+    Ticket, TicketComment, Asset, AssetCategory, ServiceCategory, Vessel, DiveSystem, JobNumber,
+    Mobilization, AssetProcurementRequest, SLA, BusinessCalendar, EscalationRule,
+)
 from apps.common.models import Category
 from apps.maintenance.models import Vendor
 from django.utils.text import slugify
 from django.contrib.auth import get_user_model
+from django.urls import reverse_lazy
 
 User = get_user_model()
+
+# Shared HTMX wiring for the "pick a department, then narrow the user list"
+# pattern (see accounts:department_users_partial). `hx-target` still needs
+# to be set per-field to the actual target <select>'s id.
+_DEPARTMENT_FILTER_ATTRS = {
+    'hx-get': reverse_lazy('accounts:department_users_partial'),
+    'hx-trigger': 'change',
+    'hx-include': 'this',
+    'hx-swap': 'innerHTML',
+}
 
 FIELD_CLASS = 'block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
 
@@ -381,6 +395,19 @@ class AssetForm(forms.ModelForm):
         label='New Category'
     )
 
+    # Client-side filter only, not saved: narrows the `assigned_to` <select>
+    # to one department at a time via HTMX (accounts:department_users_partial)
+    # instead of listing every active user in the system at once.
+    assignee_department = forms.ChoiceField(
+        required=False,
+        label='Assignee Department',
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'hx-target': '#id_assigned_to',
+            **_DEPARTMENT_FILTER_ATTRS,
+        })
+    )
+
     # Location - free text with a datalist of previously-used locations
     # (populated in the template from the `locations` context var), so
     # picking an existing one or typing a brand new one both just work.
@@ -463,8 +490,43 @@ class AssetForm(forms.ModelForm):
                 self.fields['category'].initial = 'OTHER'
                 self.initial['category_other'] = instance.category.name
 
+        if 'assignee_department' in self.fields:
+            self.fields['assignee_department'].choices = [('', 'Select department...')] + list(User.DEPARTMENT_CHOICES)
+            if instance and instance.assigned_to_id:
+                self.initial['assignee_department'] = instance.assigned_to.department
+
         if 'assigned_to' in self.fields:
+            # Validation always accepts any active user regardless of the
+            # client's department-filter state (a stale/JS-disabled client
+            # shouldn't be able to block a legitimate submission) — this
+            # queryset is only narrowed for the *unbound* (GET) render below,
+            # to match the HTMX-scoped <select> the department picker drives.
             self.fields['assigned_to'].queryset = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
+            if not self.is_bound:
+                if instance and instance.assigned_to_id:
+                    self.fields['assigned_to'].queryset = self.fields['assigned_to'].queryset.filter(department=instance.assigned_to.department)
+                else:
+                    self.fields['assigned_to'].queryset = self.fields['assigned_to'].queryset.none()
+            # Editing an existing asset can't change who has it through this
+            # general form anymore — that bypassed assign_to()/release()
+            # entirely (no availability check, no AssetCheckoutHistory, no
+            # status sync). disabled=True keeps it visible (who has it) but
+            # a POSTed value is ignored in favor of the current instance's,
+            # so it can't be changed even via a crafted request. Use
+            # Reassign instead. Still editable at creation — there's no
+            # prior holder to conflict with there.
+            if instance and instance.pk:
+                self.fields['assigned_to'].disabled = True
+                self.fields['assigned_to'].help_text = 'Use Reassign to change who has this asset.'
+
+        # An existing consumable's quantity_in_stock is no longer editable
+        # through this general form — silently overwriting the count here
+        # bypassed the audited Adjust Stock action (Asset.adjust_stock())
+        # and left no reason/before-after trail. Still editable at
+        # creation, where there's no prior count to conflict with.
+        if instance and instance.pk and instance.is_consumable and 'quantity_in_stock' in self.fields:
+            self.fields['quantity_in_stock'].disabled = True
+            self.fields['quantity_in_stock'].help_text = 'Use "Adjust Stock" on the asset detail page to change this.'
 
         if 'renewal_vendor' in self.fields:
             self.fields['renewal_vendor'].queryset = Vendor.objects.filter(is_active=True).prefetch_related('categories')
@@ -653,3 +715,341 @@ class ProcurementRequestForm(forms.ModelForm):
             cleaned_data['vendor'] = vendor
             cleaned_data['_new_vendor_proposed'] = created
         return cleaned_data
+
+
+class _LenientMultipleChoiceField(forms.MultipleChoiceField):
+    """Skips Django's built-in "not a valid choice" rejection — unrecognized
+    values are silently dropped in the form's clean() instead of failing
+    the whole submission, matching the resolve flow's original behavior
+    (a stray/unrecognized root-cause-category checkbox shouldn't block
+    resolving the ticket)."""
+
+    def validate(self, value):
+        if self.required and not value:
+            raise forms.ValidationError(self.error_messages['required'], code='required')
+
+
+class TicketResolveForm(forms.Form):
+    """Agent/Team Lead resolve-confirmation form (partials/resolve_modal.html).
+    Not a ModelForm — it drives a request-confirmation workflow rather than
+    saving directly onto the Ticket, and root_cause/resolution_steps are
+    only required for Incident tickets, so that's enforced in clean() using
+    the ticket type passed in at construction rather than via field-level
+    required=True."""
+
+    resolution_root_cause = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 3, 'placeholder': 'What caused this incident?'}),
+        label='Root Cause',
+    )
+    resolution_steps = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 4, 'placeholder': 'What did you do to fix it?'}),
+        label='Resolution Steps',
+    )
+    resolution_root_cause_category = _LenientMultipleChoiceField(
+        required=False,
+        choices=Ticket.RootCauseCategory.choices,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    comment = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': FIELD_CLASS, 'rows': 3, 'placeholder': 'Add any notes about the resolution...'}),
+        label='Optional comment',
+    )
+
+    def __init__(self, *args, is_incident=False, **kwargs):
+        self.is_incident = is_incident
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if self.is_incident:
+            if not cleaned_data.get('resolution_root_cause', '').strip():
+                self.add_error('resolution_root_cause', 'Root Cause is required to resolve an Incident ticket.')
+            if not cleaned_data.get('resolution_steps', '').strip():
+                self.add_error('resolution_steps', 'Resolution Steps are required to resolve an Incident ticket.')
+
+        valid_categories = dict(Ticket.RootCauseCategory.choices)
+        categories = cleaned_data.get('resolution_root_cause_category') or []
+        cleaned_data['resolution_root_cause_category'] = [c for c in categories if c in valid_categories]
+        return cleaned_data
+
+
+ASSET_MODAL_FIELD_CLASS = 'w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+
+
+class _UserWithRoleChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, user):
+        return user.get_full_name_with_role()
+
+
+class AssetReassignForm(forms.Form):
+    """partials/asset_reassign_modal.html. assigned_to left required=False —
+    the view unassigns (clears assigned_to) when it's left blank, matching
+    the existing asset_reassign view behavior."""
+
+    assignee_department = forms.ChoiceField(
+        required=False,
+        label='Department',
+        widget=forms.Select(attrs={
+            'class': ASSET_MODAL_FIELD_CLASS,
+            'hx-target': '#id_assigned_to',
+            **_DEPARTMENT_FILTER_ATTRS,
+        }),
+    )
+    assigned_to = _UserWithRoleChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by('first_name', 'last_name'),
+        required=False,
+        widget=forms.Select(attrs={'class': ASSET_MODAL_FIELD_CLASS}),
+        empty_label='Select a user...',
+    )
+    comment = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'rows': 3}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['assignee_department'].choices = [('', 'Select department...')] + list(User.DEPARTMENT_CHOICES)
+        # Narrow the visible user list to "nothing yet" on first (unbound)
+        # render — the paired department <select> HTMX-fills it in. Keep
+        # validation unfiltered on POST so a stale client can't block a
+        # legitimate submission.
+        if not self.is_bound:
+            self.fields['assigned_to'].queryset = self.fields['assigned_to'].queryset.none()
+
+
+class AssetScrapRequestForm(forms.Form):
+    """partials/scrap_request_modal.html. The template has always marked
+    the reason as required (HTML5 `required`), but the view never enforced
+    it server-side — closing that gap here."""
+
+    comment = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={
+            'class': ASSET_MODAL_FIELD_CLASS, 'rows': 3,
+            'placeholder': 'Explain why this asset should be scrapped...',
+        }),
+        label='Reason for scrapping',
+        error_messages={'required': 'Please explain why this asset should be scrapped.'},
+    )
+
+
+class _UserWithDepartmentChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, user):
+        return f"{user.get_full_name() or user.email} ({user.get_department_display()})"
+
+
+class AssetCheckoutForm(forms.Form):
+    """partials/asset_checkout_modal.html."""
+
+    assignee_department = forms.ChoiceField(
+        required=False,
+        label='Department',
+        widget=forms.Select(attrs={
+            'class': ASSET_MODAL_FIELD_CLASS,
+            'hx-target': '#id_user_id',
+            **_DEPARTMENT_FILTER_ATTRS,
+        }),
+    )
+    user_id = _UserWithDepartmentChoiceField(
+        queryset=User.objects.filter(is_active=True).order_by('first_name', 'last_name'),
+        required=True,
+        widget=forms.Select(attrs={'class': ASSET_MODAL_FIELD_CLASS}),
+        label='Check Out To',
+        empty_label='Select a user...',
+        error_messages={'required': 'Please select a user to check out this asset.'},
+    )
+    expected_return_date = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'type': 'date'}),
+    )
+    notes = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'rows': 2}),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['assignee_department'].choices = [('', 'Select department...')] + list(User.DEPARTMENT_CHOICES)
+        if not self.is_bound:
+            self.fields['user_id'].queryset = self.fields['user_id'].queryset.none()
+
+
+class AssetCheckinForm(forms.Form):
+    """partials/asset_checkin_modal.html."""
+
+    return_reason = forms.ChoiceField(
+        choices=Asset.ReturnReason.choices,
+        required=True,
+        widget=forms.Select(attrs={'class': ASSET_MODAL_FIELD_CLASS}),
+        error_messages={'required': 'Please select a return reason.'},
+    )
+    return_condition = forms.ChoiceField(
+        # Value IS the display label (not the enum key) — return_condition on
+        # the model is a free-text field that has always stored "Good"/
+        # "Fair"/etc. rather than the Condition enum's key, and other code
+        # (checkin notes/logs, asset detail display) expects that casing.
+        choices=[('', 'Select condition...')] + [(label, label) for _, label in Asset.Condition.choices],
+        required=False,
+        widget=forms.Select(attrs={'class': ASSET_MODAL_FIELD_CLASS}),
+    )
+    return_comment = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'rows': 2}),
+    )
+
+
+class AssetReturnRequestForm(forms.Form):
+    """partials/asset_return_request_modal.html — the holder self-initiating
+    a return from My Assets. No condition field: only the admin physically
+    receiving the item can actually assess its condition, at confirm time."""
+
+    return_reason = forms.ChoiceField(
+        choices=Asset.ReturnReason.choices,
+        required=True,
+        widget=forms.Select(attrs={'class': ASSET_MODAL_FIELD_CLASS}),
+        error_messages={'required': 'Please select a reason for returning this asset.'},
+    )
+    return_comment = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'rows': 2, 'placeholder': 'Any details for the admin arranging pickup...'}),
+    )
+
+
+class ConnectorEditForm(forms.Form):
+    """admin/connector_form.html. Every field here is genuinely optional
+    (a connector can be disabled with no instructions on either side), so
+    this exists for consistent cleaned_data access rather than closing any
+    validation gap."""
+
+    is_active = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'h-4 w-4 rounded border-border text-primary focus:ring-primary'}),
+    )
+    instructions_for_requester = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'rows': 5,
+            'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2 font-mono',
+        }),
+    )
+    instructions_for_agent = forms.CharField(
+        required=False,
+        widget=forms.Textarea(attrs={
+            'rows': 5,
+            'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2 font-mono',
+        }),
+    )
+
+
+class SLAForm(forms.Form):
+    """admin/sla_management.html — Add SLA Policy modal."""
+
+    priority = forms.ChoiceField(
+        choices=Ticket.Priority.choices,
+        widget=forms.Select(attrs={'class': FIELD_CLASS}),
+        error_messages={'required': 'Please select a priority for the SLA policy.'},
+    )
+    # No max_value on the *_minutes fields — the original view did plain
+    # hours*60+minutes arithmetic with no upper bound on minutes, so e.g.
+    # "60 minutes" was accepted as equivalent to 1 hour rather than rejected.
+    response_hours = forms.IntegerField(required=False, min_value=0, initial=0, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Hrs'}))
+    response_minutes = forms.IntegerField(required=False, min_value=0, initial=0, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Mins'}))
+    resolution_hours = forms.IntegerField(required=False, min_value=0, initial=0, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Hrs'}))
+    resolution_minutes = forms.IntegerField(required=False, min_value=0, initial=0, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Mins'}))
+    calendar_id = forms.ModelChoiceField(
+        queryset=BusinessCalendar.objects.all(),
+        required=False,
+        empty_label='Default Calendar',
+        widget=forms.Select(attrs={'class': FIELD_CLASS}),
+    )
+
+
+class BusinessCalendarForm(forms.Form):
+    """admin/sla_management.html — Add Business Calendar modal."""
+
+    WORKDAY_CHOICES = [(str(i), name) for i, name in enumerate(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'])]
+
+    name = forms.CharField(
+        max_length=100,
+        widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'Calendar name'}),
+        error_messages={'required': 'Please enter a name for the business calendar.'},
+    )
+    workdays = forms.MultipleChoiceField(
+        choices=WORKDAY_CHOICES, required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+    work_start = forms.TimeField(widget=forms.TimeInput(attrs={'class': FIELD_CLASS, 'type': 'time'}))
+    work_end = forms.TimeField(widget=forms.TimeInput(attrs={'class': FIELD_CLASS, 'type': 'time'}))
+    holidays = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={'class': FIELD_CLASS, 'placeholder': 'YYYY-MM-DD, YYYY-MM-DD'}),
+    )
+
+    def clean_holidays(self):
+        raw = self.cleaned_data.get('holidays', '')
+        return [h.strip() for h in raw.split(',') if h.strip()]
+
+
+class EscalationRuleForm(forms.Form):
+    """admin/sla_management.html — Add Escalation Rule modal."""
+
+    NOTIFY_ROLE_CHOICES = [('', '— Select Role —'), ('TEAM_LEAD', 'Team Lead'), ('ADMIN', 'Admin')]
+    REASSIGN_ROLE_CHOICES = [('', '— Select Role —'), ('TEAM_LEAD', 'Team Lead'), ('ADMIN', 'Admin'), ('AGENT', 'Agent')]
+
+    priority = forms.ChoiceField(choices=Ticket.Priority.choices, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    timer_type = forms.ChoiceField(choices=EscalationRule.TIMER_CHOICES, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    threshold_percent = forms.IntegerField(min_value=1, max_value=100, widget=forms.NumberInput(attrs={'class': FIELD_CLASS, 'placeholder': '75'}))
+    action_type = forms.ChoiceField(choices=EscalationRule.ACTION_CHOICES, widget=forms.Select(attrs={'class': FIELD_CLASS, 'onchange': 'toggleTargetDropdown()', 'id': 'actionTypeSelect'}))
+    notify_role = forms.ChoiceField(choices=NOTIFY_ROLE_CHOICES, required=False, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+    reassign_to_role = forms.ChoiceField(choices=REASSIGN_ROLE_CHOICES, required=False, widget=forms.Select(attrs={'class': FIELD_CLASS}))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Only the field matching the selected action is meaningful — the
+        # other stays cleared, mirroring the view's original behavior.
+        if cleaned_data.get('action_type') != 'notify':
+            cleaned_data['notify_role'] = ''
+        if cleaned_data.get('action_type') != 'reassign':
+            cleaned_data['reassign_to_role'] = ''
+        return cleaned_data
+
+
+ESCALATED_FIELD_CLASS = 'w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+
+
+class EscalatedReassignForm(forms.Form):
+    """team_lead/escalated_tickets.html — Reassign modal. agent_id's
+    queryset is department-scoped, so it's built by the view and passed in
+    at construction rather than declared statically here."""
+
+    agent_id = forms.ModelChoiceField(
+        queryset=User.objects.none(),
+        required=True,
+        widget=forms.Select(attrs={'class': ESCALATED_FIELD_CLASS, 'id': 'reassignAgent'}),
+        label='Assign to Agent',
+        empty_label='Select an agent',
+        error_messages={'required': 'Please select an agent to reassign this ticket to.'},
+    )
+    comment = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={'class': ESCALATED_FIELD_CLASS, 'rows': 3, 'id': 'reassignComment', 'placeholder': 'Explain the reason for reassigning…'}),
+        error_messages={'required': 'Please explain the reason for reassigning.'},
+    )
+
+    def __init__(self, *args, agents=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if agents is not None:
+            self.fields['agent_id'].queryset = agents
+
+
+class EscalatedReturnForm(forms.Form):
+    """team_lead/escalated_tickets.html — Return to Pool modal."""
+
+    comment = forms.CharField(
+        required=True,
+        widget=forms.Textarea(attrs={'class': ESCALATED_FIELD_CLASS, 'rows': 3, 'id': 'returnComment', 'placeholder': 'Explain why this ticket is being returned to the pool…'}),
+        error_messages={'required': 'Please explain why this ticket is being returned to the pool.'},
+    )

@@ -15,40 +15,40 @@
         Are you sure this ticket is ready to be resolved? The requester will be asked to confirm.
     </p>
     
-    <form method="post" action="{% url 'tickets:resolve_ticket' ticket.pk %}">
+    <form method="post" action="{% url 'tickets:resolve_ticket' ticket.pk %}"
+          hx-post="{% url 'tickets:resolve_ticket' ticket.pk %}"
+          hx-target="#resolveModalContainer"
+          hx-swap="innerHTML">
         {% csrf_token %}
         <input type="hidden" name="action" value="confirm">
-        
+
         {% if ticket.type == 'INCIDENT' %}
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1 text-text-primary">
                 Root Cause <span class="text-error">*</span>
             </label>
-            <textarea name="resolution_root_cause" rows="3" required
-                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                      placeholder="What caused this incident?"></textarea>
+            {{ form.resolution_root_cause }}
+            {% if form.resolution_root_cause.errors %}<p class="text-xs text-error mt-1">{{ form.resolution_root_cause.errors.0 }}</p>{% endif %}
         </div>
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1 text-text-primary">
                 Resolution Steps <span class="text-error">*</span>
             </label>
-            <textarea name="resolution_steps" rows="4" required
-                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                      placeholder="What did you do to fix it?"></textarea>
+            {{ form.resolution_steps }}
+            {% if form.resolution_steps.errors %}<p class="text-xs text-error mt-1">{{ form.resolution_steps.errors.0 }}</p>{% endif %}
         </div>
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1 text-text-primary">
                 Root Cause Category <span class="text-text-secondary text-xs font-normal">(optional, tick all that apply)</span>
             </label>
             <div class="grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg border py-2 px-3 bg-background border-border">
-                {% for value, label in ticket.RootCauseCategory.choices %}
+                {% for checkbox in form.resolution_root_cause_category %}
                 <label class="flex items-center gap-1.5 text-sm text-text-primary">
-                    <input type="checkbox" name="resolution_root_cause_category" value="{{ value }}"
-                           class="rounded border-border text-primary focus:ring-primary">
-                    {{ label }}
+                    {{ checkbox.tag }} {{ checkbox.choice_label }}
                 </label>
                 {% endfor %}
             </div>
+            {% if form.resolution_root_cause_category.errors %}<p class="text-xs text-error mt-1">{{ form.resolution_root_cause_category.errors.0 }}</p>{% endif %}
         </div>
         {% endif %}
 
@@ -56,15 +56,14 @@
             <label class="block text-sm font-medium mb-1 text-text-primary">
                 Optional comment
             </label>
-            <textarea name="comment" rows="3"
-                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                      placeholder="Add any notes about the resolution..."></textarea>
+            {{ form.comment }}
+            {% if form.comment.errors %}<p class="text-xs text-error mt-1">{{ form.comment.errors.0 }}</p>{% endif %}
         </div>
-        
+
         <div class="flex justify-end gap-2">
-            <button type="button" onclick="closeResolveModal()" 
+            <button type="button" onclick="closeResolveModal()"
                     class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
-            <button type="submit" 
+            <button type="submit"
                     class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1">
                 {% lucide "check" size=14 %} Confirm Resolution
             </button>

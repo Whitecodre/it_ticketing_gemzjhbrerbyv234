@@ -1,0 +1,31 @@
+{% load lucide ticket_filters %}
+<div id="reassignFormFields" class="space-y-4">
+    {% if form.non_field_errors %}
+    <p class="text-xs text-error">{{ form.non_field_errors.0 }}</p>
+    {% endif %}
+    <div>
+        <label for="reassignAgent" class="block text-sm font-medium mb-1 text-text-primary">Assign to Agent</label>
+        {{ form.agent_id }}
+        {% if form.agent_id.errors %}<p class="text-xs text-error mt-1">{{ form.agent_id.errors.0 }}</p>{% endif %}
+    </div>
+    <div>
+        <label for="reassignReason" class="block text-sm font-medium mb-1 text-text-primary">Reason (optional)</label>
+        <select id="reassignReason" onchange="fillComment('reassignComment', this.value)" class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+            <option value="">Select a predefined reason…</option>
+            {% for reason in reassign_reasons %}
+            <option value="{{ reason.body }}">{{ reason.title }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div>
+        <label for="reassignComment" class="block text-sm font-medium mb-1 text-text-primary">Comment <span class="text-error">*</span></label>
+        {{ form.comment }}
+        {% if form.comment.errors %}<p class="text-xs text-error mt-1">{{ form.comment.errors.0 }}</p>{% endif %}
+    </div>
+    <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeReassignModal()" class="btn-ghost text-sm">Cancel</button>
+        <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1">
+            {% lucide "user-check" size=14 %} Reassign
+        </button>
+    </div>
+</div>

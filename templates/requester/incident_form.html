@@ -58,6 +58,7 @@
                     hx-indicator="#suggestionsSpinner"
                     hx-params="*"
                     autocomplete="off">
+                {% if form.title.errors %}<p class="text-xs text-error mt-1">{{ form.title.errors.0 }}</p>{% endif %}
                 <div id="suggestionsSpinner" class="htmx-indicator mt-1 text-xs text-text-secondary">
                     {% lucide "loader-circle" size=14 class="animate-spin inline" %} Searching articles...
                 </div>
@@ -65,20 +66,19 @@
                 <div id="kbSuggestions" class="absolute left-0 right-0 z-10 mt-1"></div>
             </div>
 
-            {# Incident Details #}
-            <div class="rounded-lg border p-4 space-y-4" style="border-color: var(--color-border); background-color: var(--color-background);">
-                <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Incident Details</p>
-
+            {% include "components/form_section.html" with label="Incident Details" first=True %}
                 {# Date & Time of Incident + Urgency – two columns #}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label for="id_incident_datetime" class="block text-sm font-medium mb-1 text-text-primary">Date &amp; Time of Incident</label>
                         {{ form.incident_datetime }}
+                        {% if form.incident_datetime.errors %}<p class="text-xs text-error mt-1">{{ form.incident_datetime.errors.0 }}</p>{% endif %}
                         <p class="text-xs text-text-secondary mt-1">When it actually started — not right now.</p>
                     </div>
                     <div>
-                        <label for="id_urgency" class="block text-sm font-medium mb-1 text-text-primary">Urgency</label>
+                        <label for="id_urgency" class="block text-sm font-medium mb-1 text-text-primary">Urgency <span class="text-error">*</span></label>
                         {{ form.urgency }}
+                        {% if form.urgency.errors %}<p class="text-xs text-error mt-1">{{ form.urgency.errors.0 }}</p>{% endif %}
                     </div>
                 </div>
 
@@ -87,13 +87,16 @@
                     <div>
                         <label for="id_incident_category" class="block text-sm font-medium mb-1 text-text-primary">Incident Category</label>
                         {{ form.incident_category }}
+                        {% if form.incident_category.errors %}<p class="text-xs text-error mt-1">{{ form.incident_category.errors.0 }}</p>{% endif %}
                         <div id="incident_category_other_container" class="mt-2 hidden">
                             {{ form.incident_category_other }}
+                            {% if form.incident_category_other.errors %}<p class="text-xs text-error mt-1">{{ form.incident_category_other.errors.0 }}</p>{% endif %}
                         </div>
                     </div>
                     <div>
                         <label for="id_business_impact" class="block text-sm font-medium mb-1 text-text-primary">Business Impact</label>
                         {{ form.business_impact }}
+                        {% if form.business_impact.errors %}<p class="text-xs text-error mt-1">{{ form.business_impact.errors.0 }}</p>{% endif %}
                     </div>
                 </div>
 
@@ -102,8 +105,10 @@
                     <div>
                         <label for="id_how_discovered" class="block text-sm font-medium mb-1 text-text-primary">How Was It Discovered?</label>
                         {{ form.how_discovered }}
+                        {% if form.how_discovered.errors %}<p class="text-xs text-error mt-1">{{ form.how_discovered.errors.0 }}</p>{% endif %}
                         <div id="how_discovered_other_container" class="mt-2 hidden">
                             {{ form.how_discovered_other }}
+                            {% if form.how_discovered_other.errors %}<p class="text-xs text-error mt-1">{{ form.how_discovered_other.errors.0 }}</p>{% endif %}
                         </div>
                     </div>
                     <div>
@@ -111,6 +116,7 @@
                             Location / IP / Hostname <span class="text-text-secondary text-xs font-normal">(if known)</span>
                         </label>
                         {{ form.location_hostname }}
+                        {% if form.location_hostname.errors %}<p class="text-xs text-error mt-1">{{ form.location_hostname.errors.0 }}</p>{% endif %}
                     </div>
                 </div>
 
@@ -120,6 +126,7 @@
                         Description <span class="text-error">*</span>
                     </label>
                     {{ form.description }}
+                    {% if form.description.errors %}<p class="text-xs text-error mt-1">{{ form.description.errors.0 }}</p>{% endif %}
                 </div>
 
                 {# Immediate / Initial Actions Taken – full width, optional #}
@@ -128,11 +135,12 @@
                         Immediate / Initial Actions Taken <span class="text-text-secondary text-xs font-normal">(optional)</span>
                     </label>
                     {{ form.immediate_actions }}
+                    {% if form.immediate_actions.errors %}<p class="text-xs text-error mt-1">{{ form.immediate_actions.errors.0 }}</p>{% endif %}
                 </div>
             </div>
 
             {# Attachments #}
-            <div>
+            <div class="pt-4 border-t border-border">
                 <p class="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1">Attachments <span class="normal-case font-normal">(optional)</span></p>
                 <div class="relative">
                     <input type="file" name="attachments" multiple

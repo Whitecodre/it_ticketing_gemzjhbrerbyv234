@@ -1,0 +1,58 @@
+{% load lucide %}
+<div id="calendarFormContainer">
+    {% if edit_pk %}
+    <form method="post" action="{% url 'tickets:calendar_edit' edit_pk %}"
+          hx-post="{% url 'tickets:calendar_edit' edit_pk %}"
+          hx-target="#calendarFormContainer"
+          hx-swap="outerHTML"
+          class="space-y-4">
+    {% else %}
+    <form method="post" action="{% url 'tickets:calendar_create' %}"
+          hx-post="{% url 'tickets:calendar_create' %}"
+          hx-target="#calendarFormContainer"
+          hx-swap="outerHTML"
+          class="space-y-4">
+    {% endif %}
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <p class="text-xs text-error">{{ form.non_field_errors.0 }}</p>
+        {% endif %}
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Calendar Name</label>
+            {{ form.name }}
+            {% if form.name.errors %}<p class="text-xs text-error mt-1">{{ form.name.errors.0 }}</p>{% endif %}
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Workdays</label>
+            <div class="flex flex-wrap gap-2">
+                {% for checkbox in form.workdays %}
+                <label class="text-xs flex items-center gap-1 cursor-pointer">
+                    {{ checkbox.tag }} {{ checkbox.choice_label }}
+                </label>
+                {% endfor %}
+            </div>
+            {% if form.workdays.errors %}<p class="text-xs text-error mt-1">{{ form.workdays.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="block text-xs font-medium text-text-secondary mb-1">Start Time</label>
+                {{ form.work_start }}
+                {% if form.work_start.errors %}<p class="text-xs text-error mt-1">{{ form.work_start.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-text-secondary mb-1">End Time</label>
+                {{ form.work_end }}
+                {% if form.work_end.errors %}<p class="text-xs text-error mt-1">{{ form.work_end.errors.0 }}</p>{% endif %}
+            </div>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Holidays (comma separated)</label>
+            {{ form.holidays }}
+            {% if form.holidays.errors %}<p class="text-xs text-error mt-1">{{ form.holidays.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="document.getElementById('calendarModal').classList.add('hidden')" class="btn-ghost text-sm">Cancel</button>
+            <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">{% if edit_pk %}Save Changes{% else %}Save Calendar{% endif %}</button>
+        </div>
+    </form>
+</div>

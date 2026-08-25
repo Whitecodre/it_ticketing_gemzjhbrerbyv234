@@ -20,7 +20,7 @@
 
     {# Chart.js is only needed on pages that render a chart (see reports.html) — loaded there, not globally. #}
 
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=3">
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=4">
 
 </head>
 <body>
@@ -86,29 +86,38 @@
             // ================================================================
             // THEME TOGGLE FOR REGISTRATION PAGES
             // ================================================================
+            function applyRegistrationTheme(label) {
+                const radio = label.querySelector('input[type="radio"]');
+                if (!radio) return;
+                const theme = radio.value;
+
+                document.querySelectorAll('.theme-radio').forEach(function(l) {
+                    l.classList.remove('active');
+                });
+                label.classList.add('active');
+
+                if (theme === 'dark') {
+                    document.documentElement.classList.add('dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                }
+                localStorage.setItem('theme', theme);
+            }
+
+            // click (mouse) + change (keyboard — Tab to the now-focusable
+            // radio input, Space/arrow keys to pick one) both drive the
+            // same theme application.
             document.querySelectorAll('.theme-radio').forEach(function(label) {
                 label.addEventListener('click', function(e) {
                     e.preventDefault();
-                    
-                    const radio = this.querySelector('input[type="radio"]');
-                    if (!radio) return;
-                    
-                    const theme = radio.value;
-                    
-                    // Update active state
-                    document.querySelectorAll('.theme-radio').forEach(function(l) {
-                        l.classList.remove('active');
-                    });
-                    this.classList.add('active');
-                    
-                    // Apply theme
-                    if (theme === 'dark') {
-                        document.documentElement.classList.add('dark');
-                    } else {
-                        document.documentElement.classList.remove('dark');
-                    }
-                    localStorage.setItem('theme', theme);
+                    applyRegistrationTheme(label);
                 });
+                const radio = label.querySelector('input[type="radio"]');
+                if (radio) {
+                    radio.addEventListener('change', function() {
+                        applyRegistrationTheme(label);
+                    });
+                }
             });
             
             // Auto-dismiss messages
@@ -126,7 +135,9 @@
     </script>
 
     {# Alpine.js and other scripts are loaded in base_dashboard.html #}
-    {% block scripts %}{% endblock %}
+    {% block scripts %}
+    <script src="{% static 'js/idempotent_actions.js' %}"></script>
+    {% endblock %}
 
 </body>
 </html>

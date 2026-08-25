@@ -18,16 +18,18 @@
         </div>
     </div>
 
-    <form method="post" action="{% url 'tickets:asset_scrap_request' asset.id %}">
+    <form method="post" action="{% url 'tickets:asset_scrap_request' asset.id %}"
+          hx-post="{% url 'tickets:asset_scrap_request' asset.id %}"
+          hx-target="#modalContainer"
+          hx-swap="innerHTML">
         {% csrf_token %}
-        
+
         <div class="mb-4">
             <label class="block text-sm font-medium mb-1" style="color: var(--color-text-primary);">
                 Reason for scrapping <span class="text-error">*</span>
             </label>
-            <textarea name="comment" rows="3" required
-                      class="w-full rounded-lg border py-2.5 px-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                      placeholder="Explain why this asset should be scrapped..."></textarea>
+            {{ form.comment }}
+            {% if form.comment.errors %}<p class="text-xs text-error mt-1">{{ form.comment.errors.0 }}</p>{% endif %}
         </div>
 
         <div class="flex justify-end gap-2 pt-2">

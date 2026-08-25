@@ -75,7 +75,7 @@
      here (not also in system.html) so there's a single copy that stays in
      sync when search/filter re-swaps this container. -->
 {% if not department or department == 'IT' %}
-<div class="it-stats">
+<div class="it-stats absolute bottom-0">
     <div class="stat-item">
         <div class="label">Total IT Staff</div>
         <div class="value">{{ it_dept_stats.total }}</div>

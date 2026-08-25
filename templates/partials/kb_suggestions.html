@@ -3,7 +3,7 @@
 {% if articles %}
 <div class="rounded-lg border shadow-lg overflow-hidden bg-surface border-border">
     <div class="text-xs font-semibold text-text-secondary uppercase tracking-wider px-4 py-2.5 border-b flex items-center justify-between border-border">
-        <span>💡 Related articles ({{ articles|length }})</span>
+        <span class="flex items-center gap-1">{% lucide "lightbulb" size=12 %} Related articles ({{ articles|length }})</span>
         <button type="button" 
                 onclick="closeSuggestions()"
                 class="text-text-secondary hover:text-primary transition p-1">

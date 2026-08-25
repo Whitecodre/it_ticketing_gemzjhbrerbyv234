@@ -1,0 +1,50 @@
+{% load lucide %}
+<div id="slaFormContainer">
+    <form method="post" action="{% url 'tickets:sla_create' %}"
+          hx-post="{% url 'tickets:sla_create' %}"
+          hx-target="#slaFormContainer"
+          hx-swap="outerHTML"
+          class="space-y-4">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <p class="text-xs text-error">{{ form.non_field_errors.0 }}</p>
+        {% endif %}
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Priority</label>
+            {{ form.priority }}
+            {% if form.priority.errors %}<p class="text-xs text-error mt-1">{{ form.priority.errors.0 }}</p>{% endif %}
+            <p id="slaPriorityHint" class="text-xs text-text-secondary mt-1 hidden">Changing this saves a policy for that priority instead — it won't move this one.</p>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Response Target</label>
+            <div class="flex items-center gap-2">
+                {{ form.response_hours }}
+                <span class="text-sm text-text-secondary">h</span>
+                {{ form.response_minutes }}
+                <span class="text-sm text-text-secondary">m</span>
+            </div>
+            {% if form.response_hours.errors %}<p class="text-xs text-error mt-1">{{ form.response_hours.errors.0 }}</p>{% endif %}
+            {% if form.response_minutes.errors %}<p class="text-xs text-error mt-1">{{ form.response_minutes.errors.0 }}</p>{% endif %}
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Resolution Target</label>
+            <div class="flex items-center gap-2">
+                {{ form.resolution_hours }}
+                <span class="text-sm text-text-secondary">h</span>
+                {{ form.resolution_minutes }}
+                <span class="text-sm text-text-secondary">m</span>
+            </div>
+            {% if form.resolution_hours.errors %}<p class="text-xs text-error mt-1">{{ form.resolution_hours.errors.0 }}</p>{% endif %}
+            {% if form.resolution_minutes.errors %}<p class="text-xs text-error mt-1">{{ form.resolution_minutes.errors.0 }}</p>{% endif %}
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-text-secondary mb-1">Calendar</label>
+            {{ form.calendar_id }}
+            {% if form.calendar_id.errors %}<p class="text-xs text-error mt-1">{{ form.calendar_id.errors.0 }}</p>{% endif %}
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick="document.getElementById('slaModal').classList.add('hidden')" class="btn-ghost text-sm">Cancel</button>
+            <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save SLA</button>
+        </div>
+    </form>
+</div>

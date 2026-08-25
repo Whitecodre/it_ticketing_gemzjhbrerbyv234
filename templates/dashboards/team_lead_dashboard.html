@@ -10,6 +10,16 @@
 
 {% block dashboard_content %}
 
+<div class="flex items-center justify-end mb-3">
+    <span class="text-xs text-text-secondary inline-flex items-center gap-1.5" data-freshness-since="{% now 'U' %}">
+        {% lucide "clock" size=12 %}
+        <span data-freshness-text>Updated just now</span>
+        <button type="button" onclick="location.reload()" class="btn-ghost p-1 rounded-full hover:bg-black/5 transition" aria-label="Refresh dashboard" title="Refresh dashboard">
+            {% lucide "refresh-cw" size=12 %}
+        </button>
+    </span>
+</div>
+
 {# ========== SECTION 1: TEAM OVERVIEW ========== #}
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
@@ -24,7 +34,7 @@
                 {% lucide "users" size=14 class="text-text-secondary" %}
             </div>
             <p class="kpi-value">{{ team_open_tickets }}</p>
-            <p class="kpi-trend up">Across {{ team_members|length }} agents</p>
+            <p class="kpi-trend">Across {{ team_members|length }} agents</p>
         </div>
         <div class="kpi-card border-l-4 border-warning">
             <div class="flex items-center justify-between">
@@ -32,7 +42,7 @@
                 {% lucide "inbox" size=14 class="text-text-secondary" %}
             </div>
             <p class="kpi-value text-warning">{{ unassigned_count }}</p>
-            <p class="kpi-trend up">Needs assignment</p>
+            <p class="kpi-trend">Needs assignment</p>
         </div>
         <div class="kpi-card border-l-4 border-info">
             <div class="flex items-center justify-between">
@@ -40,7 +50,7 @@
                 {% lucide "clipboard-check" size=14 class="text-text-secondary" %}
             </div>
             <p class="kpi-value text-info">{{ pending_reviews }}</p>
-            <p class="kpi-trend up">Service requests awaiting review</p>
+            <p class="kpi-trend">Service requests awaiting review</p>
         </div>
         <div class="kpi-card border-l-4 border-error">
             <div class="flex items-center justify-between">
@@ -48,7 +58,7 @@
                 {% lucide "alert-circle" size=14 class="text-text-secondary" %}
             </div>
             <p class="kpi-value text-error">{{ sla_breaches }}</p>
-            <p class="kpi-trend down">Requires attention</p>
+            <p class="kpi-trend attention">Requires attention</p>
         </div>
     </div>
 </div>
@@ -226,7 +236,7 @@
             {% if recent_team_tickets %}
             <div class="divide-y divide-border">
                 {% for ticket in recent_team_tickets %}
-                <div class="flex items-center justify-between px-4 py-2.5 text-sm">
+                <a href="{% url 'tickets:conversation' ticket.pk %}" class="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-black/5 transition">
                     <div class="min-w-0 mr-2 flex items-center gap-2 flex-wrap">
                         <span class="font-mono text-xs text-primary">{{ ticket.number }}</span>
                         <span class="text-text-secondary text-xs truncate max-w-xs">{{ ticket.title }}</span>
@@ -235,7 +245,7 @@
                         </span>
                     </div>
                     <span class="shrink-0 text-xs text-text-secondary">{{ ticket.updated_at|timesince }} ago</span>
-                </div>
+                </a>
                 {% endfor %}
             </div>
             {% else %}

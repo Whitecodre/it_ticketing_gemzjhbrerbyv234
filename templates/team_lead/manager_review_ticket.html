@@ -140,21 +140,9 @@
                         <h3 class="text-xs font-semibold uppercase tracking-wider mb-3 text-text-secondary">
                             Attachments <span class="text-text-secondary font-normal">({{ attachments|length }})</span>
                         </h3>
-                        <div class="space-y-1">
+                        <div class="space-y-1.5">
                             {% for att in attachments %}
-                            <div class="flex items-center gap-2 text-xs">
-                                {% lucide "paperclip" size=12 class="text-text-secondary" %}
-                                <span class="truncate text-text-primary">{{ att.filename }}</span>
-                                <button class="btn-ghost p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
-                                        hx-get="{% url 'tickets:attachment_preview' att.pk %}"
-                                        hx-target="#modalContainer"
-                                        hx-swap="innerHTML"
-                                        onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
-                                        data-tooltip="Preview">
-                                    {% lucide "eye" size=14 %}
-                                </button>
-                                <a href="{% url 'tickets:attachment_download' att.pk %}" class="text-primary ml-auto hover:underline" download>Download</a>
-                            </div>
+                            {% include "partials/attachment_card.html" with att=att %}
                             {% endfor %}
                         </div>
                     </div>

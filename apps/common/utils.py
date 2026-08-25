@@ -161,3 +161,25 @@ def send_email_brevo(to_email, subject, html_template, context_data, from_email=
     """
     html_content = render_to_string(html_template, context_data)
     return send_email_via_brevo(to_email, subject, html_content, from_email)
+
+
+def notify_recipients_by_email(recipients, subject, message, url=None):
+    """Send a plain-text-style HTML email to each of `recipients`, mirroring
+    the message that already went out as an in-app Notification — used for
+    alerts (low-stock, renewal-due) where push/in-app alone can be missed
+    if nobody has a device subscribed or nobody is watching the app.
+    Failures are logged, not raised — email is a supplementary channel
+    here, not the primary one."""
+    absolute_url = f"{settings.SITE_URL}{url}" if url and hasattr(settings, 'SITE_URL') else url
+    link_html = f'<p><a href="{absolute_url}">View details</a></p>' if absolute_url else ''
+    html_content = f'<p>{message}</p>{link_html}'
+    for recipient in recipients:
+        if not recipient.email:
+            continue
+        success, result = send_email_via_brevo(
+            to_email=recipient.email,
+            subject=subject,
+            html_content=html_content,
+        )
+        if not success:
+            logger.error(f"Failed to send alert email to {recipient.email}: {result}")

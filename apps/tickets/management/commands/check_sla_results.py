@@ -31,7 +31,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING('   ⚠️ No escalation yet (SLA may not have breached)'))
                 
                 # Check activity logs
-                logs = TicketActivityLog.objects.filter(ticket=ticket, action='escalated')
+                logs = TicketActivityLog.objects.filter(ticket=ticket, action__in=['breached', 'escalation_rule_fired'])
                 if logs:
                     self.stdout.write(f'   📝 {logs.count()} escalation log entries')
                 

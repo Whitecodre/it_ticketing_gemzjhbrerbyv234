@@ -58,7 +58,6 @@ INSTALLED_APPS = [
     'apps.knowledge_base',
     'apps.common',
     'apps.maintenance',
-    'apps.form_builder',
     'apps.organogram',
     'apps.documents_display',
 ]

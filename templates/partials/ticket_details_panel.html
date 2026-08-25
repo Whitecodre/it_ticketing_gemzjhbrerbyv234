@@ -9,21 +9,21 @@
 
 <div class="p-5 space-y-5 overflow-y-auto flex-1">
 
-    {# ---------- Assignee (read‑only) ---------- #}
+    {# ---------- Assignee ---------- #}
     <div>
-        <label class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2 block text-text-secondary">Assignee</label>
-        <div class="flex items-center gap-2">
-            {% if ticket.assigned_to %}
-                <div class="flex h-8 w-8 items-center justify-center rounded-full text-white text-xs font-medium bg-primary">
-                    {{ ticket.assigned_to.email.0|upper }}
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-medium truncate text-text-primary">{{ ticket.assigned_to.get_full_name_with_role }}</p>
-                    <p class="text-[0.65rem] truncate text-text-secondary">{{ ticket.assigned_to.get_role_display }}</p>
-                </div>
-            {% else %}
-                <span class="text-xs text-text-secondary">Unassigned</span>
+        <div class="flex items-center justify-between mb-2">
+            <label class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Assignee</label>
+            {% if is_agent %}
+            <button type="button" class="text-[0.65rem] font-semibold text-primary hover:underline"
+                    hx-get="{% url 'tickets:assign_popover' ticket.pk %}"
+                    hx-target="body"
+                    hx-swap="beforeend">
+                {% if ticket.assigned_to %}Reassign{% else %}Assign{% endif %}
+            </button>
             {% endif %}
+        </div>
+        <div class="flex items-center gap-2" id="assigneeBlock">
+            {% include "partials/ticket_details_assignee.html" %}
         </div>
     </div>
 
@@ -35,8 +35,9 @@
             <span class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">ID</span>
             <div class="flex items-center gap-1">
                 <span class="text-xs font-mono text-text-primary">{{ ticket.number }}</span>
-                <button class="btn-ghost p-1 element-link" onclick="copyToClipboard('{{ ticket.number }}')" data-tooltip="Copy ticket ID">
-                    {% lucide "copy" size=12 %}
+                <button class="btn-ghost p-1 element-link" onclick="copyToClipboard('{{ ticket.number }}', this)" data-tooltip="Copy ticket ID">
+                    <span class="copy-icon">{% lucide "copy" size=12 %}</span>
+                    <span class="copied-icon hidden text-success">{% lucide "check" size=12 %}</span>
                 </button>
             </div>
         </div>
@@ -104,10 +105,10 @@
     <div>
         <button class="flex items-center gap-1 text-xs font-semibold w-full text-left cursor-pointer text-text-primary"
                 onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
-            {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
+            {% lucide "chevron-right" size=14 class="chevron transition-transform rotate-90" %}
             Lead information
         </button>
-        <div class="hidden mt-2 space-y-2">
+        <div class="mt-2 space-y-2">
             <div class="flex items-center gap-2 text-xs">
                 {% lucide "user" size=14 class="text-text-secondary" %}
                 <span class="truncate text-text-primary">{{ ticket.requester.get_full_name_with_role }}</span>
@@ -116,7 +117,11 @@
                 {% lucide "mail" size=14 class="text-text-secondary" %}
                 <span class="truncate text-primary">{{ ticket.requester.email }}</span>
             </div>
-            <a href="#" class="text-xs text-primary ml-6">See all</a>
+            <a href="#" class="text-xs text-primary ml-6 element-link"
+               hx-get="{% url 'tickets:requester_profile_modal' ticket.requester.pk %}"
+               hx-target="#modalContainer"
+               hx-swap="innerHTML"
+               onclick="document.getElementById('modalOverlay').classList.remove('hidden')">See all</a>
         </div>
     </div>
 
@@ -130,25 +135,13 @@
         <div class="mb-2">
             <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer text-text-primary"
                     onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
-                {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
+                {% lucide "chevron-right" size=14 class="chevron transition-transform rotate-90" %}
                 Sent by {{ ticket.requester.get_full_name_with_role|default:ticket.requester.email }} (User)
                 <span class="text-text-secondary text-[0.6rem] ml-1">({{ user_attachments|length }})</span>
             </button>
-            <div class="hidden mt-1 space-y-1">
+            <div class="mt-1 space-y-1.5 pl-5">
                 {% for att in user_attachments %}
-                <div class="flex items-center gap-2 text-xs pl-5">
-                    {% lucide "paperclip" size=12 class="text-text-secondary" %}
-                    <span class="truncate text-text-primary">{{ att.filename }}</span>
-                    <button class="btn-ghost p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
-                            hx-get="{% url 'tickets:attachment_preview' att.pk %}"
-                            hx-target="#modalContainer"
-                            hx-swap="innerHTML"
-                            onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
-                            data-tooltip="Preview">
-                        {% lucide "eye" size=14 %}
-                    </button>
-                    <a href="{% url 'tickets:attachment_download' att.pk %}" class="text-primary ml-auto hover:underline" download>Download</a>
-                </div>
+                {% include "partials/attachment_card.html" with att=att %}
                 {% empty %}
                 <p class="text-xs text-text-secondary pl-5">No files</p>
                 {% endfor %}
@@ -159,25 +152,13 @@
         <div>
             <button class="flex items-center gap-1 text-xs font-medium w-full text-left cursor-pointer text-text-primary"
                     onclick="this.nextElementSibling.classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')">
-                {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
+                {% lucide "chevron-right" size=14 class="chevron transition-transform rotate-90" %}
                 Sent by Support Team
                 <span class="text-text-secondary text-[0.6rem] ml-1">({{ agent_attachments|length }})</span>
             </button>
-            <div class="hidden mt-1 space-y-1">
+            <div class="mt-1 space-y-1.5 pl-5">
                 {% for att in agent_attachments %}
-                <div class="flex items-center gap-2 text-xs pl-5">
-                    {% lucide "paperclip" size=12 class="text-text-secondary" %}
-                    <span class="truncate text-text-primary">{{ att.filename }}</span>
-                    <button class="btn-attachment p-0.5 text-text-secondary hover:text-primary transition rounded element-link"
-                            hx-get="{% url 'tickets:attachment_preview' att.pk %}"
-                            hx-target="#modalContainer"
-                            hx-swap="innerHTML"
-                            onclick="document.getElementById('modalOverlay').classList.remove('hidden')"
-                            data-tooltip="Preview">
-                        {% lucide "eye" size=14 %}
-                    </button>
-                    <a href="{% url 'tickets:attachment_download' att.pk %}" class="text-primary ml-auto hover:underline" download>Download</a>
-                </div>
+                {% include "partials/attachment_card.html" with att=att %}
                 {% empty %}
                 <p class="text-xs text-text-secondary pl-5">No files</p>
                 {% endfor %}
@@ -187,7 +168,23 @@
 </div>
 
 <script>
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text);
+    function copyToClipboard(text, btn) {
+        navigator.clipboard.writeText(text).then(() => {
+            if (typeof showToast === 'function') showToast('Ticket ID copied', 'success');
+            if (btn) {
+                const copyIcon = btn.querySelector('.copy-icon');
+                const copiedIcon = btn.querySelector('.copied-icon');
+                if (copyIcon && copiedIcon) {
+                    copyIcon.classList.add('hidden');
+                    copiedIcon.classList.remove('hidden');
+                    setTimeout(() => {
+                        copyIcon.classList.remove('hidden');
+                        copiedIcon.classList.add('hidden');
+                    }, 1500);
+                }
+            }
+        }).catch(() => {
+            if (typeof showToast === 'function') showToast('Could not copy ticket ID', 'error');
+        });
     }
 </script>
