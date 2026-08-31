@@ -87,6 +87,24 @@
         </div>
     </div>
 
+    {# Repeats — a lightweight recurrence stopgap for routine reminder-type #}
+    {# entries (e.g. "Send Security Tips") that don't need target assets or #}
+    {# a checklist, just a repeating calendar slot. The next occurrence is  #}
+    {# auto-created once this one's date is reached. #}
+    <div class="mb-4">
+        <label for="id_repeat_interval" class="block text-sm font-medium mb-1 text-text-primary">
+            Repeats
+        </label>
+        <select name="repeat_interval" id="id_repeat_interval"
+                class="w-full rounded-lg border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+            {% for value, label in form.fields.repeat_interval.choices %}
+            <option value="{{ value }}" {% if form.repeat_interval.value == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        {% if form.repeat_interval.errors %}<p class="text-xs text-error mt-1">{{ form.repeat_interval.errors.0 }}</p>{% endif %}
+        <p class="text-xs mt-1 text-text-secondary">For routine items like "Send Security Tips" — a fresh copy of this schedule reappears on the calendar automatically once each occurrence's date arrives.</p>
+    </div>
+
     {# IT Personnel #}
     <div class="mb-4">
         <label for="id_assigned_to" class="block text-sm font-medium mb-1 text-text-primary">

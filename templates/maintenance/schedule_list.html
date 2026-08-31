@@ -18,7 +18,7 @@
         {% if user_role in 'ADMIN,SUPERADMIN,TEAM_LEAD' %}
         <a href="{% url 'maintenance:create' %}" 
            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white rounded-lg transition"
-           style="background-color: var(--color-primary);">
+           style="background-color: var(--color-primary-solid);">
             {% lucide "plus" size=16 %}
             New Schedule
         </a>
@@ -105,8 +105,15 @@
                    style="background-color: var(--color-background); border-color: var(--color-border); color: var(--color-text-primary);">
         </div>
         
+        <div>
+            <label class="block text-xs font-medium mb-1" style="color: var(--color-text-secondary);">
+                Sort
+            </label>
+            {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort %}
+        </div>
+
         <div class="flex items-end gap-2">
-            <button type="reset" 
+            <button type="reset"
                     onclick="document.getElementById('filterForm').reset(); this.closest('form').dispatchEvent(new Event('change'));"
                     class="px-4 py-2 text-sm rounded-lg border transition"
                     style="border-color: var(--color-border); color: var(--color-text-secondary);">

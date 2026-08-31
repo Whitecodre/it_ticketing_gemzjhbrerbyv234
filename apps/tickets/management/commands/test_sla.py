@@ -92,5 +92,5 @@ class Command(BaseCommand):
         
         self.stdout.write(self.style.SUCCESS('✅ Test tickets created!'))
         self.stdout.write('')
-        self.stdout.write('🔄 Run SLA processing: python manage.py run_sla_scheduler --once')
+        self.stdout.write('🔄 Run SLA processing: python manage.py run_periodic_tasks --once')
         self.stdout.write('📊 Check results: python manage.py check_sla_results')

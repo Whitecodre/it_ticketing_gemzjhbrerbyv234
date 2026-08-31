@@ -8,6 +8,7 @@ app_name = 'documents_display'
 urlpatterns = [
     # Dashboard
     path('', views.dashboard, name='dashboard'),
+    path('shared-with-me/', views.shared_with_me, name='shared_with_me'),
     
     # Categories
     path('category/<slug:slug>/', views.category_detail, name='category_detail'),

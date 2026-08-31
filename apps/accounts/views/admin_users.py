@@ -13,6 +13,14 @@ from django.db.models import Q
 from apps.accounts.models import Role
 from apps.accounts.forms import AdminUserCreateForm, AdminUserEditForm
 from apps.common.permissions import is_admin, is_superadmin, effective_role_name
+from apps.common.models import AdminActionLog, log_admin_action
+from apps.common.utils import resolve_sort
+
+USER_LIST_SORT_OPTIONS = {
+    'name': (('first_name', 'last_name'), 'Name (A-Z)'),
+    '-date_joined': (('-date_joined',), 'Recently Joined'),
+    '-last_seen': (('-last_seen',), 'Last Seen'),
+}
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +67,8 @@ def admin_user_list(request):
     if department_filter:
         users = users.filter(department=department_filter)
 
-    users = users.order_by('first_name', 'last_name')
+    order_args, active_sort, sort_options = resolve_sort(request, USER_LIST_SORT_OPTIONS, 'name')
+    users = users.order_by(*order_args)
     paginator = Paginator(users, 15)
     page_obj = paginator.get_page(request.GET.get('page', 1))
 
@@ -81,11 +90,41 @@ def admin_user_list(request):
         'department_choices': User.DEPARTMENT_CHOICES,
         'all_roles': all_roles,
         'sidebar_template': sidebar_template,
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
 
     if request.headers.get('HX-Request'):
         return render(request, 'partials/user_table.html', context)
     return render(request, 'admin/user_management.html', context)
+
+
+@login_required
+@user_passes_test(is_admin)
+def admin_user_detail(request, pk):
+    from apps.accounts.models import LoginHistory
+
+    user_obj = get_object_or_404(User, pk=pk)
+
+    # SUPERADMIN is vendor/support-only — same visibility rule as the list.
+    if user_obj.role == 'SUPERADMIN' and not is_superadmin(request.user):
+        return redirect('accounts:admin_users')
+
+    login_history = user_obj.login_history.all()
+    paginator = Paginator(login_history, 10)
+    page_obj = paginator.get_page(request.GET.get('page', 1))
+
+    sidebar_template = 'partials/sidebar_admin.html' if effective_role_name(request.user) == 'ADMIN' else 'partials/sidebar_superadmin.html'
+
+    context = {
+        'user_obj': user_obj,
+        'login_history': page_obj,
+        'open_requested_tickets': user_obj.requested_tickets.exclude(status__in=['RESOLVED', 'CLOSED']).count(),
+        'assigned_tickets_count': user_obj.assigned_tickets.exclude(status__in=['RESOLVED', 'CLOSED']).count(),
+        'assigned_assets_count': user_obj.assigned_assets.count(),
+        'sidebar_template': sidebar_template,
+    }
+    return render(request, 'admin/user_detail.html', context)
 
 
 @login_required
@@ -220,7 +259,12 @@ def admin_user_create(request):
     
     if not success:
         logger.error(f"Failed to send user creation email: {result}")
-    
+
+    log_admin_action(
+        request.user, AdminActionLog.Category.USER_MANAGEMENT, 'Created user', user.email,
+        details=f'Role: {user.get_role_display()}, Department: {user.get_department_display()}',
+    )
+
     return JsonResponse({'status': 'ok', 'user_id': user.pk})
 
 
@@ -268,6 +312,12 @@ def admin_user_edit(request, pk):
         active_admins = _count_active_admins()
         if active_admins <= 1:
             return JsonResponse({'error': 'Cannot deactivate the last admin/superadmin.'}, status=400)
+
+    before = {
+        'department': user.get_department_display(),
+        'is_active': user.is_active,
+        'role': user.get_role_display(),
+    }
 
     # Update basic user info
     user.first_name = form.cleaned_data['first_name']
@@ -318,7 +368,20 @@ def admin_user_edit(request, pk):
         user.active_role_id = None
         user.role = new_role
         user.save(update_fields=['active_role', 'active_role_id', 'role'])
-    
+
+    user.refresh_from_db()
+    after = {
+        'department': user.get_department_display(),
+        'is_active': user.is_active,
+        'role': user.get_role_display(),
+    }
+    changes = [f'{field}: "{before[field]}" → "{after[field]}"' for field in before if before[field] != after[field]]
+    if changes:
+        log_admin_action(
+            request.user, AdminActionLog.Category.USER_MANAGEMENT, 'Edited user', user.email,
+            details='; '.join(changes),
+        )
+
     return JsonResponse({'status': 'ok'})
 
 
@@ -344,6 +407,11 @@ def admin_user_toggle_active(request, pk):
     
     user.is_active = not user.is_active
     user.save()
+
+    log_admin_action(
+        request.user, AdminActionLog.Category.USER_MANAGEMENT,
+        'Activated user' if user.is_active else 'Deactivated user', user.email,
+    )
 
     return JsonResponse({'status': 'ok', 'is_active': user.is_active})
 
@@ -379,6 +447,10 @@ def admin_user_bulk_toggle_active(request):
                 continue
         user.is_active = set_active
         user.save()
+        log_admin_action(
+            request.user, AdminActionLog.Category.USER_MANAGEMENT,
+            'Activated user' if set_active else 'Deactivated user', user.email, details='Bulk action',
+        )
         updated += 1
 
     return JsonResponse({'status': 'ok', 'updated': updated, 'skipped': skipped})
@@ -401,7 +473,11 @@ def admin_user_change_password(request, pk):
     user.set_password(new_password)
     user.password_changed = True
     user.save()
-    
+
+    log_admin_action(
+        request.user, AdminActionLog.Category.USER_MANAGEMENT, 'Reset password', user.email,
+    )
+
     return JsonResponse({'status': 'ok', 'message': 'Password changed successfully.'})
 
 

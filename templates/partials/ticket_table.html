@@ -68,7 +68,7 @@
     </span>
     <div class="pagination-controls">
         <button class="pagination-step{% if not tickets.has_previous %} is-disabled{% endif %}"
-                {% if tickets.has_previous %}hx-get="{% url 'tickets:my_list' %}?page={{ tickets.previous_page_number }}&status={{ current_status }}"
+                {% if tickets.has_previous %}hx-get="{% url 'tickets:my_list' %}?page={{ tickets.previous_page_number }}&status={{ current_status }}&sort={{ active_sort }}"
                 hx-target="#ticketTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             {% lucide "chevron-left" size=14 %} Prev
         </button>
@@ -78,13 +78,13 @@
                 <span class="pagination-number is-current">{{ num }}</span>
                 {% elif num > tickets.number|add:'-3' and num < tickets.number|add:'3' %}
                 <button class="pagination-number"
-                        hx-get="{% url 'tickets:my_list' %}?page={{ num }}&status={{ current_status }}"
+                        hx-get="{% url 'tickets:my_list' %}?page={{ num }}&status={{ current_status }}&sort={{ active_sort }}"
                         hx-target="#ticketTableContainer" hx-swap="innerHTML">{{ num }}</button>
                 {% endif %}
             {% endfor %}
         </div>
         <button class="pagination-step{% if not tickets.has_next %} is-disabled{% endif %}"
-                {% if tickets.has_next %}hx-get="{% url 'tickets:my_list' %}?page={{ tickets.next_page_number }}&status={{ current_status }}"
+                {% if tickets.has_next %}hx-get="{% url 'tickets:my_list' %}?page={{ tickets.next_page_number }}&status={{ current_status }}&sort={{ active_sort }}"
                 hx-target="#ticketTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             Next {% lucide "chevron-right" size=14 %}
         </button>

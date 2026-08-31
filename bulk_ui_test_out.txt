@@ -1,0 +1,23 @@
+Found 309 test(s).
+Using existing test database for alias 'default'...
+System check identified no issues (0 silenced).
+..........................F......................................................................................................Sent 1 renewal reminder(s).
+No renewal reminders due.
+.No renewal reminders due.
+.Sent 1 renewal reminder(s).
+..................................................................................................................................................................................
+======================================================================
+FAIL: test_report_table_renders_row_checkboxes (apps.tickets.tests.BulkReportExportTests.test_report_table_renders_row_checkboxes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\dammy\Documents\MY CODE\it_ticketing\apps\tickets\tests.py", line 2989, in test_report_table_renders_row_checkboxes
+    self.assertContains(response, 'report-row-checkbox')
+  File "C:\Users\dammy\Documents\MY CODE\it_ticketing\venv\Lib\site-packages\django\test\testcases.py", line 660, in assertContains
+    self.assertTrue(
+AssertionError: False is not true : Couldn't find 'report-row-checkbox' in response
+
+----------------------------------------------------------------------
+Ran 309 tests in 1393.836s
+
+FAILED (failures=1)
+Preserving test database for alias 'default'...

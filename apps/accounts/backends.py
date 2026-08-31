@@ -24,7 +24,12 @@ class EmailBackend(ModelBackend):
             user = User.objects.get(Q(email__iexact=identifier) | Q(username__iexact=identifier))
         except (User.DoesNotExist, User.MultipleObjectsReturned):
             return None
-        if user.check_password(password):
+        # ModelBackend.authenticate() normally gates on this via
+        # user_can_authenticate() — overriding authenticate() entirely (to
+        # look up by email-or-username instead of just username) meant that
+        # check never ran, so a deactivated account could still log in as
+        # long as it knew the password.
+        if user.check_password(password) and self.user_can_authenticate(user):
             return user
         return None
 

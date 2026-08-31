@@ -77,6 +77,43 @@ class Notification(models.Model):
         return f"Notification for {self.recipient.email}: {self.message[:50]}"
 
 
+class AdminActionLog(models.Model):
+    """Audit trail for admin actions that previously left no trace at all:
+    user-account changes (role/department/active-state/password reset) and
+    system-configuration changes (SLA/escalation/business-calendar rules,
+    the generic Settings registry, branding). Distinct from
+    apps.tickets.models.TicketActivityLog (ticket-scoped events) — this
+    covers admin actions that aren't about any one ticket. Written via
+    log_admin_action() below, never directly, so every call site stays
+    consistent."""
+
+    class Category(models.TextChoices):
+        USER_MANAGEMENT = 'USER_MANAGEMENT', 'User Management'
+        SLA_CONFIG = 'SLA_CONFIG', 'SLA & Escalation'
+        SYSTEM_SETTINGS = 'SYSTEM_SETTINGS', 'System Settings'
+
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='admin_actions_performed'
+    )
+    category = models.CharField(max_length=20, choices=Category.choices)
+    action = models.CharField(max_length=100, help_text='Short verb phrase, e.g. "Changed role", "Deleted SLA policy"')
+    target_repr = models.CharField(max_length=255, help_text='Human-readable label for what was affected')
+    details = models.TextField(blank=True, help_text='Freeform before/after summary')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.action} — {self.target_repr} ({self.created_at})'
+
+
+def log_admin_action(actor, category, action, target_repr, details=''):
+    AdminActionLog.objects.create(
+        actor=actor, category=category, action=action, target_repr=target_repr, details=details,
+    )
+
+
 class PushSubscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='push_subscriptions')
     endpoint = models.URLField(unique=True)

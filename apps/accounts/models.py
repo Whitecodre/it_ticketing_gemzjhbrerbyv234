@@ -1,3 +1,4 @@
+from datetime import timedelta
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.contrib.auth import password_validation
 from django.conf import settings
@@ -148,6 +149,20 @@ class User(AbstractUser):
         role_name = active_role.name if active_role else self.role
         return role_name in [self.Role.AGENT, self.Role.TEAM_LEAD, self.Role.ADMIN, self.Role.SUPERADMIN]
 
+    ONLINE_THRESHOLD = timedelta(minutes=5)
+
+    def is_online(self):
+        """True if last_seen falls within ONLINE_THRESHOLD of now AND the
+        user hasn't explicitly logged out since. `has_active_session` is
+        cleared by the user_logged_out signal (apps/accounts/signals.py) so
+        the badge disappears immediately on logout instead of lingering for
+        up to ONLINE_THRESHOLD — a silent session expiry (browser closed,
+        no explicit logout) still self-corrects once last_seen goes stale,
+        since LastSeenMiddleware stops updating it either way."""
+        if not self.has_active_session or not self.last_seen:
+            return False
+        return timezone.now() - self.last_seen <= self.ONLINE_THRESHOLD
+
     def can_work_on_tickets(self):
         """Check if user can work on tickets (IT department + support role)."""
         return self.is_it_staff()
@@ -164,6 +179,16 @@ class User(AbstractUser):
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     signature = models.ImageField(upload_to='signatures/', blank=True, null=True)
     email_verified = models.BooleanField(default=False)
+    # Updated (throttled) by LastSeenMiddleware on every authenticated
+    # request — cheap presence signal, no WebSocket/Channels plumbing
+    # needed. "Online" is derived as "seen within the last few minutes",
+    # not stored directly.
+    last_seen = models.DateTimeField(null=True, blank=True)
+    # Set True on login, False on logout (see apps/accounts/signals.py) — lets
+    # is_online() distinguish "explicitly logged out" from "just went briefly
+    # inactive", so the online badge clears immediately on logout instead of
+    # lingering for up to ONLINE_THRESHOLD.
+    has_active_session = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -268,21 +293,33 @@ class User(AbstractUser):
             self.active_role_id = role.id
             self.role = role.name
             self.save(update_fields=['active_role', 'active_role_id', 'role'])
+            self._active_role_cache = role
             return True
         except Role.DoesNotExist:
             return False
-    
+
     def get_active_role(self):
+        # Memoized per-instance: a fresh User instance is fetched once per
+        # request (by the auth middleware), so this avoids re-querying the
+        # role on every one of the several places per request that call it
+        # (context processor + view code both need it).
+        if hasattr(self, '_active_role_cache'):
+            return self._active_role_cache
+
+        role = None
         if self.active_role_id:
             try:
                 role = self.roles.get(pk=self.active_role_id)
                 self.active_role = role
-                return role
             except Role.DoesNotExist:
-                pass
-        if self.active_role and self.roles.filter(id=self.active_role.id).exists():
-            return self.active_role
-        return self.get_highest_role()
+                role = None
+        if role is None:
+            if self.active_role and self.roles.filter(id=self.active_role.id).exists():
+                role = self.active_role
+            else:
+                role = self.get_highest_role()
+        self._active_role_cache = role
+        return role
     
     def sync_roles(self):
         if not self.pk:
@@ -428,14 +465,92 @@ class ImpersonationToken(models.Model):
         self.save()
 
 
+class LoginHistory(models.Model):
+    """One row per successful login, recorded via the user_logged_in signal
+    (apps/accounts/signals.py). Only starts accumulating from when this was
+    added — there is no way to backfill logins that happened before it
+    existed. Feeds the login-history table on the User Management detail
+    page (apps.accounts.views.admin_users.admin_user_detail)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='login_history')
+    logged_in_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    # Set once, at creation time, by the user_logged_in signal — True only
+    # for a user's very first-ever login row (which, since an admin-created
+    # account has no password until then, is effectively that user's
+    # sign-up). Persisted rather than computed at render time so it stays
+    # correct/cheap under pagination — the earliest row isn't always on the
+    # page being displayed.
+    is_first_login = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['-logged_in_at']
+
+    def __str__(self):
+        return f'{self.user.email} at {self.logged_in_at}'
+
+    @property
+    def action_display(self):
+        return 'Signed up' if self.is_first_login else 'Signed in'
+
+    @property
+    def friendly_device(self):
+        """Collapses the raw User-Agent string into a 'Browser on OS' label
+        (e.g. 'Chrome on Windows') for the login-history table — the raw
+        string is long, unreadable to a non-technical admin, and was
+        overflowing the table. Order matters: Edge/Opera UAs also contain
+        'Chrome', and Chrome's UA also contains 'Safari', so the more
+        specific checks must run first."""
+        ua = (self.user_agent or '').lower()
+        if not ua:
+            return 'Unknown device'
+
+        if 'edg/' in ua:
+            browser = 'Edge'
+        elif 'opr/' in ua or 'opera' in ua:
+            browser = 'Opera'
+        elif 'chrome' in ua or 'crios' in ua:
+            browser = 'Chrome'
+        elif 'firefox' in ua:
+            browser = 'Firefox'
+        elif 'safari' in ua:
+            browser = 'Safari'
+        else:
+            browser = 'Unknown browser'
+
+        if 'windows' in ua:
+            os_name = 'Windows'
+        elif 'iphone' in ua or 'ipad' in ua:
+            # Must run before the macOS check — an iPhone/iPad UA string
+            # also contains "like Mac OS X".
+            os_name = 'iOS'
+        elif 'mac os x' in ua or 'macintosh' in ua:
+            os_name = 'macOS'
+        elif 'android' in ua:
+            os_name = 'Android'
+        elif 'linux' in ua:
+            os_name = 'Linux'
+        else:
+            os_name = 'Unknown OS'
+
+        return f'{browser} on {os_name}'
+
+
 class ClientSettings(models.Model):
     """Client company settings - logo, name, etc."""
     company_name = models.CharField(max_length=200, default='My Company')
     logo = models.ImageField(upload_to='client_logos/', blank=True, null=True)
-    # White-label currency symbol shown wherever the app renders a cost
-    # (renewal cost, maintenance cost, etc.) — was previously hardcoded as
-    # "$" in templates, which is wrong for any non-USD client.
-    currency_symbol = models.CharField(max_length=5, default='$')
+    # Per-client org prefix used when auto-generating new Asset tracking_id
+    # tags (e.g. "HD" -> "HD GF ACC MNT 008") — see Asset.save(). Blank means
+    # the tag generator falls back to the old AST-{year}-{seq} scheme, so
+    # this stays optional rather than forcing every client to set it.
+    asset_tag_prefix = models.CharField(max_length=10, blank=True, default='')
+    # The company's own initials (e.g. "HDG" for Hydrodive Group) —
+    # deliberately separate from asset_tag_prefix (a different, shorter code
+    # used only in asset tags, "HD" in Hydrodive's case). Prefixes every
+    # exported report/document filename (see report_exporters._filename).
+    # Blank means exported filenames simply have no prefix.
+    company_initials = models.CharField(max_length=10, blank=True, default='')
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     

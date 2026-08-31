@@ -28,9 +28,9 @@ heading aligned with the card instead of sitting flush against the sidebar.
     </a>
 
     {# Status Banner #}
-    <div class="mb-6 rounded-lg p-4 border flex items-center justify-between"
+    <div class="mb-6 rounded-lg p-4 border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
          style="background-color: var(--color-surface); border-color: var(--color-border);">
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
             {% include "maintenance/partials/status_badge.html" with status=schedule.status %}
             <span class="text-sm" style="color: var(--color-text-secondary);">
                 {{ schedule.scheduled_date|date:"l, F j, Y" }}
@@ -39,7 +39,7 @@ heading aligned with the card instead of sitting flush against the sidebar.
                 {% endif %}
             </span>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
             {% if user_can_manage and schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
             <a href="{% url 'maintenance:edit' schedule.pk %}"
                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition"
@@ -55,11 +55,11 @@ heading aligned with the card instead of sitting flush against the sidebar.
                 </span>
                 {% elif schedule.status == 'IN_PROGRESS' %}
                 <form id="markCompleteForm{{ schedule.pk }}" method="post" hx-post="{% url 'maintenance:update_status' schedule.pk %}"
-                      hx-swap="none" hx-on::after-request="if(event.detail.successful) { location.reload(); }">
+                      hx-swap="none">
                     {% csrf_token %}
                     <input type="hidden" name="status" value="COMPLETED">
                     <button type="button"
-                            onclick="confirmStatusChange('COMPLETED', '{{ schedule.title|default:schedule.get_maintenance_type_display|escapejs }}', function() { htmx.trigger('#markCompleteForm{{ schedule.pk }}', 'submit'); })"
+                            onclick="confirmStatusChange('COMPLETED', '{{ schedule.title|escapejs }}', function() { htmx.trigger('#markCompleteForm{{ schedule.pk }}', 'submit'); })"
                             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition text-white"
                             style="background-color: var(--color-success);">
                         {% lucide "check" size=14 %}
@@ -67,6 +67,8 @@ heading aligned with the card instead of sitting flush against the sidebar.
                     </button>
                 </form>
                 {% endif %}
+            {% endif %}
+            {% if can_cancel_status and schedule.status != 'COMPLETED' and schedule.status != 'CANCELLED' %}
                 <button onclick="openStatusModal({{ schedule.pk }})" title="Cancel or set another status"
                         class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-lg border transition"
                         style="border-color: var(--color-border); color: var(--color-text-secondary);">
@@ -100,7 +102,7 @@ heading aligned with the card instead of sitting flush against the sidebar.
                         <label class="text-xs font-medium uppercase tracking-wider" style="color: var(--color-text-secondary);">
                             Description
                         </label>
-                        <p class="text-sm mt-1 whitespace-pre-wrap" style="color: var(--color-text-primary);">
+                        <p class="text-sm mt-1" style="color: var(--color-text-primary);">
                             {{ schedule.description|linebreaks }}
                         </p>
                     </div>
@@ -142,10 +144,21 @@ heading aligned with the card instead of sitting flush against the sidebar.
                                 <span>{{ schedule.updated_at|date:"M d, Y g:i A" }}</span>
                             </div>
                             {% endif %}
+                            {% if schedule.started_at %}
+                            <div class="flex justify-between">
+                                <span>Started</span>
+                                <span>{{ schedule.started_at|date:"M d, Y g:i A" }}</span>
+                            </div>
+                            {% endif %}
                             {% if schedule.completed_at %}
                             <div class="flex justify-between text-success">
                                 <span>Completed</span>
-                                <span>{{ schedule.completed_at|date:"M d, Y g:i A" }}</span>
+                                <span>
+                                    {{ schedule.completed_at|date:"M d, Y g:i A" }}
+                                    {% with elapsed=schedule.elapsed_time_display %}
+                                        {% if elapsed %}<span class="opacity-75">({{ elapsed }})</span>{% endif %}
+                                    {% endwith %}
+                                </span>
                             </div>
                             {% endif %}
                             {% if schedule.completed_at and confirmation_state != 'NOT_APPLICABLE' %}
@@ -208,7 +221,7 @@ heading aligned with the card instead of sitting flush against the sidebar.
                 {% if schedule.assigned_to %}
                 <div class="flex items-center gap-3">
                     <div class="flex h-10 w-10 items-center justify-center rounded-full text-white text-sm font-medium shrink-0"
-                         style="background-color: var(--color-primary);">
+                         style="background-color: var(--color-primary-solid);">
                         {{ schedule.assigned_to.email.0|upper }}
                     </div>
                     <div>
@@ -238,7 +251,7 @@ heading aligned with the card instead of sitting flush against the sidebar.
             </div>
 
             {# Target Card #}
-            {% if schedule.facility_location or schedule.target_assets.all or schedule.vendors.all %}
+            {% if schedule.facility_location or visible_target_assets or schedule.vendors.all %}
             <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
                 <h4 class="text-xs font-medium uppercase tracking-wider mb-3" style="color: var(--color-text-secondary);">
                     Target
@@ -248,9 +261,9 @@ heading aligned with the card instead of sitting flush against the sidebar.
                     {% lucide "map-pin" size=14 %} {{ schedule.facility_location }}
                 </p>
                 {% endif %}
-                {% if schedule.target_assets.all %}
+                {% if visible_target_assets %}
                 <div class="flex flex-wrap gap-1.5">
-                    {% for asset in schedule.target_assets.all %}
+                    {% for asset in visible_target_assets %}
                     <span class="text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">
                         {{ asset.name }} ({{ asset.tracking_id }})
                     </span>
@@ -262,7 +275,7 @@ heading aligned with the card instead of sitting flush against the sidebar.
                     <p class="text-xs mb-1.5" style="color: var(--color-text-secondary);">Third-party vendor(s):</p>
                     <div class="flex flex-wrap gap-1.5">
                         {% for vendor in schedule.vendors.all %}
-                        <span class="text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">
+                        <span class="flex gap-2 items-center text-xs px-2 py-0.5 rounded-full border" style="border-color: var(--color-border); color: var(--color-text-primary);">
                             {% lucide "truck" size=10 %} {{ vendor.name }}
                         </span>
                         {% endfor %}

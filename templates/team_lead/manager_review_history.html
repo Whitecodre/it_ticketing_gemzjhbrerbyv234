@@ -1,0 +1,88 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Approved Requests{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+
+<div class="w-full">
+    <div class="flex items-center gap-3 mb-4">
+        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-success/10 text-success shrink-0">
+            {% lucide "circle-check" size=20 %}
+        </div>
+        <div>
+            <h2 class="text-base font-semibold text-text-primary">Approved Requests <span class="text-text-secondary font-normal">({{ page_obj.paginator.count }})</span></h2>
+            <p class="text-sm text-text-secondary">Service requests you have approved, most recent first.</p>
+        </div>
+    </div>
+
+    {% if page_obj.object_list %}
+    <div class="dashboard-card p-0 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Ticket</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Subject</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Approved</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Your Comment</th>
+                        <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in page_obj %}
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                        <td class="py-3 px-4">
+                            <span class="font-mono text-xs text-primary">{{ log.ticket.number }}</span>
+                        </td>
+                        <td class="py-3 px-4 max-w-xs truncate text-text-primary">{{ log.ticket.title }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ log.ticket.requester.get_full_name_with_role|default:log.ticket.requester.email }}</td>
+                        <td class="py-3 px-4 text-text-secondary text-xs">{{ log.created_at|date:"M d, Y H:i" }}</td>
+                        <td class="py-3 px-4 max-w-xs truncate text-text-secondary">{{ log.details.comment|default:"—" }}</td>
+                        <td class="py-3 px-4 text-center">
+                            <a href="{% url 'tickets:conversation' log.ticket.pk %}" class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition inline-flex" aria-label="Open ticket">
+                                {% lucide "message-square" size=16 %}
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-bar mt-3">
+        <span class="pagination-summary">
+            Showing <strong>{{ page_obj.start_index }}–{{ page_obj.end_index }}</strong> of <strong>{{ page_obj.paginator.count }}</strong> approved requests
+        </span>
+        <div class="pagination-controls">
+            <a href="?page={{ page_obj.previous_page_number }}" class="pagination-step{% if not page_obj.has_previous %} is-disabled{% endif %}">
+                {% lucide "chevron-left" size=14 %} Prev
+            </a>
+            <a href="?page={{ page_obj.next_page_number }}" class="pagination-step{% if not page_obj.has_next %} is-disabled{% endif %}">
+                Next {% lucide "chevron-right" size=14 %}
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="dashboard-card text-center py-12">
+        <div class="flex flex-col items-center">
+            <span class="block mb-3 flex items-center justify-center">{% lucide "inbox" size=36 %}</span>
+            <p class="text-text-secondary text-sm">You haven't approved any service requests yet.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

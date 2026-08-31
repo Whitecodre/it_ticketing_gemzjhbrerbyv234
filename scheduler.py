@@ -2,11 +2,9 @@
 # scheduler.py - Production entry point for Azure
 
 import os
-import sys
 import time
 import schedule
 from datetime import datetime
-from django.core.management import call_command
 
 # Set up Django environment
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
@@ -15,45 +13,18 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
 import django
 django.setup()
 
-def process_sla():
-    """Run the SLA processing command."""
-    try:
-        start_time = datetime.now()
-        print(f'⏳ [{start_time.strftime("%H:%M:%S")}] Running SLA processing...')
-        call_command('process_sla', verbosity=0)
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        print(f'✅ [{end_time.strftime("%H:%M:%S")}] SLA processing completed in {duration:.2f}s')
-    except Exception as e:
-        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] SLA processing failed: {str(e)}')
-        import traceback
-        traceback.print_exc()
-
-    try:
-        call_command('send_maintenance_reminders', verbosity=0)
-    except Exception as e:
-        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Maintenance reminders failed: {str(e)}')
-
-    try:
-        call_command('process_remote_session_expiry', verbosity=0)
-    except Exception as e:
-        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Remote session expiry failed: {str(e)}')
-
-    try:
-        call_command('send_renewal_reminders', verbosity=0)
-    except Exception as e:
-        print(f'❌ [{datetime.now().strftime("%H:%M:%S")}] Renewal reminders failed: {str(e)}')
+from apps.tickets.periodic_tasks import run_periodic_jobs
 
 if __name__ == '__main__':
-    print(f'🔄 SLA Scheduler started. Processing every 5 minutes...')
+    print('🔄 Periodic task runner started. Processing every 5 minutes...')
     print(f'📅 Started at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-    
+
     # Run immediately on start
-    process_sla()
-    
+    run_periodic_jobs()
+
     # Schedule every 5 minutes
-    schedule.every(5).minutes.do(process_sla)
-    
+    schedule.every(5).minutes.do(run_periodic_jobs)
+
     try:
         while True:
             schedule.run_pending()

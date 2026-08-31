@@ -1,0 +1,135 @@
+{% load lucide %}
+{% load badge_tags %}
+
+{# ================================================================ #}
+{# LICENSES & SUBSCRIPTIONS TABLE — flat, no seat/owner grouping (a   #}
+{# subscription doesn't have a physical condition or a desk), sorted #}
+{# by renewal urgency. Read-only/navigational like every other asset #}
+{# row — the actual "Mark Renewed" action lives on the asset detail  #}
+{# page it links to, not duplicated here.                            #}
+{# ================================================================ #}
+<div class="overflow-x-auto table-scroll-shell">
+    <table class="text-sm" style="width: 100%; min-width: 900px; table-layout: fixed; border-collapse: separate; border-spacing: 0;">
+        <thead>
+            <tr class="border-b" style="border-color: var(--color-border);">
+                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 240px;">Name</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 150px;">Vendor</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 190px;">Assigned</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 170px;">Renewal</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 120px;">Cost</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 110px;">Auto-renew</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in assets %}
+            <tr class="license-row border-b hover:bg-black/5 transition-colors cursor-pointer"
+                style="border-color: var(--color-border);"
+                data-detail-url="{% url 'tickets:asset_detail' asset.pk %}">
+
+                <td class="py-3 px-4">
+                    <div class="font-medium text-sm truncate" style="color: var(--color-text-primary); max-width: 220px;">{{ asset.name }}</div>
+                    <div class="text-xs font-semibold tracking-tight text-primary">{{ asset.tracking_id }}</div>
+                </td>
+
+                <td class="py-3 px-3">
+                    <span class="text-sm" style="color: var(--color-text-primary);">{{ asset.renewal_vendor.name|default:"—" }}</span>
+                </td>
+
+                <td class="py-3 px-3">
+                    {% if asset.assigned_to %}
+                        <div class="text-sm" style="color: var(--color-text-primary);">{{ asset.assigned_to.get_full_name|default:asset.assigned_to.email }}</div>
+                    {% elif asset.department %}
+                        <span class="text-sm text-text-secondary">Org-wide ({{ asset.department.name }})</span>
+                    {% else %}
+                        <span class="text-sm text-text-secondary opacity-60">Org-wide</span>
+                    {% endif %}
+                </td>
+
+                <td class="py-3 px-3">
+                    {% with renewal_status=asset.renewal_status %}
+                    {% if renewal_status == 'NO_DATE' %}
+                        <span class="status-chip status-chip-neutral text-[0.65rem]">No date on file</span>
+                    {% elif renewal_status == 'OVERDUE' %}
+                        <span class="status-chip status-chip-danger text-[0.65rem]">{% lucide "triangle-alert" size=10 %} Overdue {{ asset.next_renewal_date|timesince }}</span>
+                    {% elif renewal_status == 'DUE_SOON' %}
+                        <span class="status-chip status-chip-warning text-[0.65rem]">{% lucide "clock" size=10 %} Renews in {{ asset.next_renewal_date|timeuntil }}</span>
+                    {% else %}
+                        <span class="status-chip status-chip-success text-[0.65rem]">Renews {{ asset.next_renewal_date|date:"M d, Y" }}</span>
+                    {% endif %}
+                    {% endwith %}
+                </td>
+
+                <td class="py-3 px-3">
+                    <span class="text-sm" style="color: var(--color-text-primary);">
+                        {% if asset.renewal_cost %}{{ asset.renewal_currency }}{{ asset.renewal_cost }}{% else %}—{% endif %}
+                    </span>
+                </td>
+
+                <td class="py-3 px-3">
+                    <span class="text-xs flex items-center gap-1.5 text-text-secondary">
+                        <span class="inline-block w-1.5 h-1.5 rounded-full" style="background-color: {% if asset.auto_renews %}var(--color-success){% else %}var(--color-text-secondary){% endif %};"></span>
+                        {% if asset.auto_renews %}On{% else %}Off{% endif %}
+                    </span>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" class="text-center py-12 text-text-secondary">
+                    <div class="flex flex-col items-center gap-2">
+                        <span class="opacity-30 flex items-center justify-center">{% lucide "receipt" size=36 %}</span>
+                        <p class="text-sm font-medium">No licenses or subscriptions found</p>
+                        <p class="text-xs">Try adjusting your filters, or add one from Add Asset.</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+(function() {
+    document.querySelectorAll('.license-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var url = row.getAttribute('data-detail-url');
+            if (url) window.location.href = url;
+        });
+    });
+})();
+</script>
+
+{% build_qs filter_tab="licenses" filter_q=query filter_category=selected_category filter_due_soon=selected_due_soon sort=active_sort as license_pagination_qs %}
+{% if assets.has_other_pages %}
+<div class="pagination-bar">
+    <span class="pagination-summary">
+        Showing <strong>{{ assets.start_index }}–{{ assets.end_index }}</strong> of <strong>{{ assets.paginator.count }}</strong> licenses
+    </span>
+    <div class="pagination-controls">
+        <button class="pagination-step{% if not assets.has_previous %} is-disabled{% endif %}"
+                {% if assets.has_previous %}hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&{{ license_pagination_qs }}"
+                hx-target="#assetTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
+            {% lucide "chevron-left" size=14 %} Prev
+        </button>
+        <div class="pagination-numbers">
+            {% for num in assets.paginator.page_range %}
+                {% if num == assets.number %}
+                <span class="pagination-number is-current">{{ num }}</span>
+                {% elif num > assets.number|add:'-3' and num < assets.number|add:'3' %}
+                <button class="pagination-number"
+                        hx-get="{% url 'tickets:assets' %}?page={{ num }}&{{ license_pagination_qs }}"
+                        hx-target="#assetTableContainer" hx-swap="innerHTML">{{ num }}</button>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% if assets.has_next %}
+        <button class="pagination-step"
+                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&{{ license_pagination_qs }}"
+                hx-target="#assetTableContainer" hx-swap="innerHTML">
+            Next {% lucide "chevron-right" size=14 %}
+        </button>
+        {% else %}
+        <button class="pagination-step is-disabled" disabled>Next {% lucide "chevron-right" size=14 %}</button>
+        {% endif %}
+    </div>
+</div>
+{% endif %}

@@ -9,6 +9,28 @@ register = template.Library()
 
 
 @register.simple_tag
+def latest_receipt_prompt_id(ticket):
+    """The pk of the most recent 'please confirm receipt' system comment on
+    this ticket, or None. conversation_timeline.html renders only this one
+    comment as the interactive receipt-confirmation card — older prompt
+    comments from an earlier fulfill/dispute/re-fulfill cycle render as
+    plain historical text instead, so a stale card never shows next to a
+    still-pending or already-resolved one."""
+    comment = ticket.comments.filter(is_receipt_confirmation_prompt=True).order_by('-created_at').first()
+    return comment.pk if comment else None
+
+
+@register.filter
+def sum_quantity(items):
+    """Sum of `.quantity` across a MobilizationItem queryset/list — a
+    consumable batch (e.g. 3 laptops from one vendor order) is a single
+    row with quantity=3, so `.count()` on it wrongly reports 1. Used
+    anywhere the conversation thread needs to say how many physical units
+    a mobilization actually covers, not how many database rows it has."""
+    return sum(i.quantity for i in items)
+
+
+@register.simple_tag
 def build_qs(**kwargs):
     """Builds a URL querystring from arbitrary key=value kwargs, e.g.
     {% build_qs q=query category=selected_category %} -> "q=foo&category=bar".
@@ -83,6 +105,7 @@ _TEXT_TONE_RULES = [
     ('critical', 'danger'), ('p1', 'danger'), ('breached', 'danger'),
     ('escalated', 'danger'), ('damaged', 'danger'), ('lost', 'danger'),
     ('stolen', 'danger'), ('overdue', 'danger'), ('rejected', 'danger'),
+    ('disputed', 'danger'),
     ('high', 'warning'), ('p2', 'warning'), ('pending', 'warning'),
     ('waiting', 'warning'), ('maintenance', 'warning'), ('repair', 'warning'),
     ('checked out', 'warning'), ('fair', 'warning'), ('p3', 'neutral'),
@@ -90,7 +113,8 @@ _TEXT_TONE_RULES = [
     ('resolved', 'success'), ('approved', 'success'), ('completed', 'success'),
     ('fulfilled', 'success'), ('available', 'success'), ('active', 'success'),
     ('excellent', 'success'), ('good', 'success'), ('received', 'success'),
-    ('returned', 'success'), ('new', 'info'), ('open', 'info'),
+    ('returned', 'success'), ('demobilized', 'success'), ('return reported', 'warning'),
+    ('new', 'info'), ('open', 'info'),
     ('assigned', 'primary'), ('triaged', 'primary'), ('in progress', 'primary'),
     ('mobilized', 'accent'), ('in use', 'accent'),
     ('closed', 'neutral'), ('retired', 'neutral'), ('scrapped', 'neutral'),
@@ -139,10 +163,9 @@ def status_badge(kind, value, secondary=None, display_label=None):
         css_class = 'priority-chip ' + TICKET_URGENCY_LEVELS.get(value, 'medium')
     elif kind == 'asset_status':
         colors = {
-            'REQUESTED': 'info', 'APPROVED': 'info', 'ORDERED': 'info',
-            'RECEIVED': 'success', 'IN_STORE': 'success', 'READY': 'success',
-            'CHECKED_OUT': 'warning', 'IN_USE': 'accent', 'MOBILIZED': 'accent',
-            'MAINTENANCE': 'warning', 'REPAIR': 'danger', 'RETURNED': 'success',
+            'IN_STORE': 'success', 'READY': 'success',
+            'IN_USE': 'accent', 'MOBILIZED': 'accent',
+            'MAINTENANCE': 'warning', 'REPAIR': 'danger',
             'RETIRED': 'neutral', 'SCRAPPED': 'neutral', 'LOST': 'danger',
             'STOLEN': 'danger', 'DISPOSED': 'neutral',
         }
@@ -182,6 +205,29 @@ def is_secondary_report_column(col):
 @register.filter
 def any_secondary_columns(columns):
     return any(is_secondary_report_column(c) for c in (columns or []))
+
+
+@register.filter
+def column_description(descriptions, col):
+    """Looks up a column's help text for the export column-picker modal —
+    returns '' (not 0, unlike ticket_filters.get_item) when the dict is
+    missing/empty or has no entry for this column, so a column without a
+    written description just renders with no subtext instead of a stray '0'."""
+    if not descriptions:
+        return ''
+    return descriptions.get(col, '')
+
+
+@register.filter
+def is_columnar_export_format(fmt):
+    """CSV/Excel/PDF/DOCX are all flat, columns-driven table layouts for a
+    *list* export (report_pdf.html, the generic export_docx table) — a
+    column picker makes sense for all four. JSON always exports the full
+    record shape regardless. Single-record form exports (one incident/asset/
+    etc.'s letterhead PDF/DOCX) never reach this: their export_menu.html
+    include has no `column_picker_columns`, so the modal never engages for
+    them regardless of format."""
+    return fmt in ('csv', 'excel', 'pdf', 'docx')
 
 
 def _parse_date_presets_list(spec):

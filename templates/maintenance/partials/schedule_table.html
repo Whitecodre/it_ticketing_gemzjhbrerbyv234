@@ -40,11 +40,16 @@
                         </span>
                     </td>
                     <td class="px-4 py-3">
-                        <a href="{% url 'maintenance:detail' schedule.pk %}" 
+                        <a href="{% url 'maintenance:detail' schedule.pk %}"
                            class="font-medium hover:underline"
                            style="color: var(--color-primary);">
                             {{ schedule.title }}
                         </a>
+                        {% if schedule.repeat_interval != 'NONE' %}
+                        <span class="text-xs inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded-full" style="background-color: color-mix(in oklch, var(--color-primary) 12%, transparent); color: var(--color-primary);" title="{{ schedule.get_repeat_interval_display }}">
+                            {% lucide "repeat" size=10 %} {{ schedule.get_repeat_interval_display }}
+                        </span>
+                        {% endif %}
                         {% if schedule.description %}
                         <p class="text-xs truncate max-w-xs" style="color: var(--color-text-secondary);">
                             {{ schedule.description|truncatechars:60 }}

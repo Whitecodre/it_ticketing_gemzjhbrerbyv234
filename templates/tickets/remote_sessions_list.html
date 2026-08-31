@@ -17,6 +17,9 @@
     {# Header #}
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
         <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Remote Sessions</h2>
+        <form method="get">
+            {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort auto_submit=True %}
+        </form>
     </div>
 
     {% include 'partials/remote_sessions_grid.html' %}

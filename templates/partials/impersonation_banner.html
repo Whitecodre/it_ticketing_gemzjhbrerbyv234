@@ -1,33 +1,59 @@
 {% load lucide %}
 
 {% if is_impersonating %}
-<div id="impersonationBanner" class="fixed inset-x-0 top-0 z-50 w-full bg-gradient-to-r from-red-700 via-red-600 to-red-500 px-4 py-3 text-white shadow-lg border-b border-white/15"
-     style="top: 0; min-height: 48px;">
+<div id="impersonationBanner" class="fixed inset-x-0 top-0 z-50 w-full px-4 py-2.5"
+     style="top: 0; min-height: 48px;
+            background-color: color-mix(in oklch, var(--color-error) 13%, var(--color-surface));
+            border-bottom: 2px solid var(--color-error);
+            box-shadow: var(--shadow-md);">
     <div class="flex flex-wrap items-center justify-between gap-2 max-w-full">
-        <div class="flex flex-1 flex-wrap items-center gap-2 min-w-0">
-            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wider text-white/95 whitespace-nowrap">
-                {% lucide "eye" size=14 class="text-white" %}
-                <span>Impersonation Mode</span>
+        <div class="flex flex-1 flex-wrap items-center gap-3 min-w-0">
+            <span class="inline-flex items-center justify-center rounded-full shrink-0"
+                  style="width: 26px; height: 26px; background-color: var(--color-error); color: white;">
+                {% lucide "eye" size=14 %}
             </span>
 
-            <span class="min-w-0 truncate text-sm font-medium text-white/95">
-                Viewing as <strong class="font-semibold text-white">{{ impersonation_target|default:'Unknown user' }}</strong>
+            <span class="rounded-full px-2.5 py-1 text-[0.65rem] font-bold uppercase tracking-wider whitespace-nowrap"
+                  style="background-color: color-mix(in oklch, var(--color-error) 22%, transparent); color: var(--color-error);">
+                Impersonation Mode
+            </span>
+
+            <span class="min-w-0 truncate text-sm font-semibold" style="color: var(--color-text-primary);">
+                Viewing as <strong class="font-bold">{{ impersonation_target|default:'Unknown user' }}</strong>
             </span>
 
             {% if impersonation_reason %}
-            <span class="hidden truncate text-xs text-white/80 sm:inline">
+            <span class="hidden truncate text-xs sm:inline" style="color: var(--color-text-secondary);">
                 Reason: {{ impersonation_reason }}
             </span>
             {% endif %}
 
             {% if impersonation_expires %}
-            <span class="hidden text-xs text-white/70 sm:inline">
+            <span class="hidden text-xs sm:inline" id="impersonationExpiresLabel" style="color: var(--color-text-secondary);"
+                  data-expires-at="{{ impersonation_expires|date:'c' }}">
                 Expires: {{ impersonation_expires|date:"H:i" }}
             </span>
+            <script>
+                (function () {
+                    // Server renders in UTC (no per-request timezone is
+                    // activated anywhere in this app) — converting here
+                    // avoids baking one org's timezone into settings for a
+                    // white-label product. Runs inline, synchronously, right
+                    // where the span is parsed, so the corrected time is in
+                    // place before first paint — no flash of the wrong value.
+                    var el = document.getElementById('impersonationExpiresLabel');
+                    if (!el) return;
+                    var d = new Date(el.getAttribute('data-expires-at'));
+                    if (isNaN(d.getTime())) return;
+                    var hh = String(d.getHours()).padStart(2, '0');
+                    var mm = String(d.getMinutes()).padStart(2, '0');
+                    el.textContent = 'Expires: ' + hh + ':' + mm;
+                })();
+            </script>
             {% endif %}
 
             {% if impersonation_original %}
-            <span class="hidden truncate text-xs text-white/60 lg:inline">
+            <span class="hidden truncate text-xs lg:inline" style="color: var(--color-text-secondary); opacity: 0.75;">
                 Original: {{ impersonation_original }}
             </span>
             {% endif %}
@@ -36,9 +62,9 @@
         <div class="flex shrink-0">
             <form method="post" action="{% url 'accounts:impersonate_stop' %}" class="inline">
                 {% csrf_token %}
-                <button type="submit" class="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-1.5 text-xs font-semibold text-red-700 transition duration-200 hover:bg-white/90 hover:shadow-md">
-                    {% lucide "log-out" size=14 class="text-red-700" %}
-                    <span>Exit</span>
+                <button type="submit" class="btn-danger text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5" style="box-shadow: var(--shadow-sm);">
+                    {% lucide "log-out" size=14 %}
+                    <span>Exit Impersonation</span>
                 </button>
             </form>
         </div>

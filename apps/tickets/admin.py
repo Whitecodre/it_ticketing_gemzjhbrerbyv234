@@ -20,6 +20,20 @@ class TicketAdmin(admin.ModelAdmin):
     readonly_fields = ['number', 'priority']  # auto-generated
     inlines = [CommentInline, AttachmentInline]
 
+    def save_model(self, request, obj, form, change):
+        # Ticket.save() recomputes `priority` when impact/urgency change
+        # (see its docstring), but never touches response_due_at/
+        # resolution_due_at — apply_sla() is the only thing that sets those,
+        # and it was previously only ever called at ticket creation. Without
+        # this, editing impact/urgency here silently updates the priority
+        # badge while leaving the SLA clock running against the OLD
+        # priority's deadlines.
+        priority_changed = change and ('impact' in form.changed_data or 'urgency' in form.changed_data)
+        super().save_model(request, obj, form, change)
+        if priority_changed:
+            from apps.tickets.views import apply_sla
+            apply_sla(obj)
+
 @admin.register(TicketComment)
 class TicketCommentAdmin(admin.ModelAdmin):
     list_display = ['ticket', 'author', 'visibility', 'created_at']
@@ -72,9 +86,9 @@ class RemoteSessionAdmin(admin.ModelAdmin):
 
 @admin.register(ServiceCategory)
 class ServiceCategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'field_group', 'is_active', 'order']
+    list_display = ['name', 'field_group', 'is_active']
     list_filter = ['field_group', 'is_active']
-    list_editable = ['is_active', 'order']
+    list_editable = ['is_active']
     search_fields = ['name', 'description']
     prepopulated_fields = {'slug': ('name',)}
 

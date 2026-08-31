@@ -3,7 +3,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, EscalationRule, SLA
+from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, EscalationRule, SLA, business_minutes_elapsed
 from apps.common.models import Notification
 from apps.common.utils import role_of
 from apps.common.permissions import effective_role_name
@@ -63,23 +63,40 @@ class Command(BaseCommand):
         rules' thresholds (percent of the timer's window elapsed), firing
         each rule at most once, then handle a full (100%) breach separately
         once per timer type."""
+        try:
+            sla = SLA.objects.select_related('calendar').get(priority=ticket.priority)
+        except SLA.DoesNotExist:
+            sla = None
 
-        for timer_type, due_at in (
-            ('response', ticket.response_due_at),
-            ('resolution', ticket.resolution_due_at),
+        for timer_type, due_at, budget_minutes in (
+            ('response', ticket.response_due_at, sla.response_minutes if sla else None),
+            ('resolution', ticket.resolution_due_at, sla.resolution_minutes if sla else None),
         ):
             if not due_at or not ticket.created_at:
                 continue
 
-            window_seconds = (due_at - ticket.created_at).total_seconds()
-            if window_seconds <= 0:
-                continue
-
-            elapsed_percent = (now - ticket.created_at).total_seconds() / window_seconds * 100
+            # Elapsed is measured in business-time minutes against the
+            # SLA's own budget, not a naive wall-clock ratio against
+            # (due_at - created_at) — when a calendar is attached, that
+            # window can span a weekend/holiday that wall-clock elapsed
+            # time would wrongly count as "progress," delaying the 75%/90%
+            # notify/reassign rules until right before (or even past) the
+            # actual breach instead of well ahead of it. The 100% full-
+            # breach check stays exact either way since it's anchored
+            # directly to now >= due_at below.
+            if budget_minutes:
+                calendar = sla.calendar if sla else None
+                elapsed_minutes = business_minutes_elapsed(ticket.created_at, now, calendar)
+                elapsed_percent = elapsed_minutes / budget_minutes * 100
+            else:
+                window_seconds = (due_at - ticket.created_at).total_seconds()
+                if window_seconds <= 0:
+                    continue
+                elapsed_percent = (now - ticket.created_at).total_seconds() / window_seconds * 100
 
             self.fire_threshold_rules(ticket, timer_type, elapsed_percent, system_user)
 
-            if elapsed_percent >= 100:
+            if now >= due_at:
                 self.handle_full_breach(ticket, timer_type, now, system_user)
 
     def fire_threshold_rules(self, ticket, timer_type, elapsed_percent, system_user):
@@ -145,7 +162,8 @@ class Command(BaseCommand):
             ticket=ticket,
             author=system_user,
             body=comment_body,
-            visibility=TicketComment.Visibility.PUBLIC
+            visibility=TicketComment.Visibility.PUBLIC,
+            is_system_generated=True,
         )
 
         TicketActivityLog.objects.create(

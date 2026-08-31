@@ -76,11 +76,14 @@
                 </button>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-sm">
+                <table class="w-full text-sm" data-settings-table="{{ r.config.slug }}">
                     <thead>
                         <tr class="border-b" style="border-color: var(--color-border);">
                             {% for col_attr, col_label in r.config.list_columns %}
-                            <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">{{ col_label }}</th>
+                            <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs cursor-pointer select-none hover:text-text-primary"
+                                onclick="sortSettingsTable(this)" data-sort-col="{{ forloop.counter0 }}" data-sort-dir="">
+                                {{ col_label }} <span class="sort-indicator"></span>
+                            </th>
                             {% endfor %}
                             <th class="text-right py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
                         </tr>
@@ -124,10 +127,16 @@
                            class="block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
                 </div>
                 <div>
-                    <label class="block text-xs font-medium mb-1 text-text-secondary">Currency Symbol</label>
-                    <input type="text" name="currency_symbol" value="{{ client_settings_obj.currency_symbol }}" maxlength="5"
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Company Initials</label>
+                    <input type="text" name="company_initials" value="{{ client_settings_obj.company_initials }}" maxlength="10"
                            class="block w-24 rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
-                    <p class="text-xs text-text-secondary mt-1">Shown wherever the app displays a cost (renewal cost, maintenance cost, etc).</p>
+                    <p class="text-xs text-text-secondary mt-1">Prefixed onto every exported report/document filename (e.g. "HDG-ASSETS-20260827-143022.csv"). Leave blank for no prefix.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Asset Tag Prefix</label>
+                    <input type="text" name="asset_tag_prefix" value="{{ client_settings_obj.asset_tag_prefix }}" maxlength="10"
+                           class="block w-24 rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary">
+                    <p class="text-xs text-text-secondary mt-1">Used at the start of new auto-generated asset tags (e.g. "HD" for "HD GF ACC MNT 008"). Leave blank to keep the default AST-{year}-{number} format.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium mb-1 text-text-secondary">Logo</label>
@@ -185,6 +194,42 @@
 
     const SETTINGS_TAB_KEY = 'systemSettingsActiveTab';
     const SETTINGS_TOAST_KEY = 'systemSettingsPendingToast';
+
+    // Client-side sort for a settings resource table — these lists are all
+    // small (no pagination exists here) and every tab is already rendered
+    // client-side in one page load, so re-sorting the rows already in the
+    // DOM is simpler and instant compared to a server round-trip per tab.
+    function sortSettingsTable(th) {
+        const table = th.closest('table');
+        const tbody = table.querySelector('tbody');
+        const colIndex = parseInt(th.dataset.sortCol, 10);
+        const rows = Array.from(tbody.querySelectorAll('tr')).filter(function (tr) { return tr.dataset.pk; });
+        if (!rows.length) return;
+
+        const nextDir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+        table.querySelectorAll('th[data-sort-col]').forEach(function (header) {
+            header.dataset.sortDir = '';
+            const indicator = header.querySelector('.sort-indicator');
+            if (indicator) indicator.textContent = '';
+        });
+        th.dataset.sortDir = nextDir;
+        const indicator = th.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent = nextDir === 'asc' ? '▲' : '▼';
+
+        rows.sort(function (a, b) {
+            const aText = a.children[colIndex].textContent.trim();
+            const bText = b.children[colIndex].textContent.trim();
+            const aNum = parseFloat(aText), bNum = parseFloat(bText);
+            let cmp;
+            if (!isNaN(aNum) && !isNaN(bNum) && aText !== '' && bText !== '') {
+                cmp = aNum - bNum;
+            } else {
+                cmp = aText.localeCompare(bText, undefined, { sensitivity: 'base' });
+            }
+            return nextDir === 'asc' ? cmp : -cmp;
+        });
+        rows.forEach(function (row) { tbody.appendChild(row); });
+    }
 
     function switchSettingsTab(tab) {
         const btn = document.querySelector('.settings-tab-btn[data-tab="' + tab + '"]');

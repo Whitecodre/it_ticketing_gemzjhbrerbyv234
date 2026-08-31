@@ -2,6 +2,7 @@ from django import forms
 from .models import (
     Ticket, TicketComment, Asset, AssetCategory, ServiceCategory, Vessel, DiveSystem, JobNumber,
     Mobilization, AssetProcurementRequest, SLA, BusinessCalendar, EscalationRule,
+    Location, AssetDepartment,
 )
 from apps.common.models import Category
 from apps.maintenance.models import Vendor
@@ -369,6 +370,12 @@ class CommentForm(forms.ModelForm):
             }),
         }
 
+    def __init__(self, *args, **kwargs):
+        # An attachment-only reply is valid — the views enforce "body or
+        # attachments required", not "body always required".
+        super().__init__(*args, **kwargs)
+        self.fields['body'].required = False
+
 
 class AssetForm(forms.ModelForm):
     """Streamlined Asset Form: identify the asset, where it is, who has it,
@@ -408,17 +415,42 @@ class AssetForm(forms.ModelForm):
         })
     )
 
-    # Location - free text with a datalist of previously-used locations
-    # (populated in the template from the `locations` context var), so
-    # picking an existing one or typing a brand new one both just work.
+    # Location - plain Select w/ "+ Add New Location" sentinel, same
+    # OTHER-sentinel pattern as category above, resolved in clean().
     location = forms.CharField(
-        max_length=200,
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
+        })
+    )
+    location_other = forms.CharField(
+        max_length=100,
         required=False,
         widget=forms.TextInput(attrs={
             'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-            'list': 'locationOptions',
-            'placeholder': 'e.g. Warehouse, Rig 4, IT Store Room...'
+            'placeholder': 'Enter new location name...',
+            'id': 'location_other'
+        }),
+        label='New Location'
+    )
+
+    # Department (asset-only AssetDepartment, separate from
+    # User.DEPARTMENT_CHOICES) - same OTHER-sentinel pattern.
+    department = forms.CharField(
+        required=False,
+        widget=forms.Select(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
         })
+    )
+    department_other = forms.CharField(
+        max_length=100,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+            'placeholder': 'Enter new department name...',
+            'id': 'department_other'
+        }),
+        label='New Department'
     )
 
     # Status is a strict workflow enum - no "Other" escape hatch, since
@@ -489,6 +521,22 @@ class AssetForm(forms.ModelForm):
             if instance.category_id not in category_ids:
                 self.fields['category'].initial = 'OTHER'
                 self.initial['category_other'] = instance.category.name
+
+        locations = Location.objects.filter(is_active=True).order_by('name').values_list('id', 'name')
+        self.fields['location'].widget.choices = [('', '-- Select Location --')] + list(locations) + [('OTHER', '+ Add New Location')]
+        if instance and instance.location_id:
+            location_ids = [l[0] for l in locations]
+            if instance.location_id not in location_ids:
+                self.fields['location'].initial = 'OTHER'
+                self.initial['location_other'] = instance.location.name
+
+        departments = AssetDepartment.objects.filter(is_active=True).order_by('name').values_list('id', 'name')
+        self.fields['department'].widget.choices = [('', '-- Select Department --')] + list(departments) + [('OTHER', '+ Add New Department')]
+        if instance and instance.department_id:
+            department_ids = [d[0] for d in departments]
+            if instance.department_id not in department_ids:
+                self.fields['department'].initial = 'OTHER'
+                self.initial['department_other'] = instance.department.name
 
         if 'assignee_department' in self.fields:
             self.fields['assignee_department'].choices = [('', 'Select department...')] + list(User.DEPARTMENT_CHOICES)
@@ -563,6 +611,42 @@ class AssetForm(forms.ModelForm):
         else:
             cleaned_data['category'] = None
 
+        # --- Handle "OTHER" for location: create/reuse a real Location ---
+        location = cleaned_data.get('location')
+        location_other = cleaned_data.get('location_other', '').strip()
+
+        if location == 'OTHER':
+            if location_other:
+                location_obj, _ = Location.objects.get_or_create(name=location_other, parent=None)
+                cleaned_data['location'] = location_obj
+            else:
+                self.add_error('location_other', 'Please enter a new location name.')
+        elif location:
+            try:
+                cleaned_data['location'] = Location.objects.get(pk=location)
+            except (Location.DoesNotExist, ValueError):
+                self.add_error('location', 'Please select a valid location.')
+        else:
+            cleaned_data['location'] = None
+
+        # --- Handle "OTHER" for department: create/reuse a real AssetDepartment ---
+        department = cleaned_data.get('department')
+        department_other = cleaned_data.get('department_other', '').strip()
+
+        if department == 'OTHER':
+            if department_other:
+                department_obj, _ = AssetDepartment.objects.get_or_create(name=department_other)
+                cleaned_data['department'] = department_obj
+            else:
+                self.add_error('department_other', 'Please enter a new department name.')
+        elif department:
+            try:
+                cleaned_data['department'] = AssetDepartment.objects.get(pk=department)
+            except (AssetDepartment.DoesNotExist, ValueError):
+                self.add_error('department', 'Please select a valid department.')
+        else:
+            cleaned_data['department'] = None
+
         if not cleaned_data.get('status'):
             cleaned_data['status'] = Asset.Status.IN_STORE
 
@@ -587,11 +671,11 @@ class AssetForm(forms.ModelForm):
 
             # Renewal (software licenses, subscriptions) — only meaningful
             # when category.is_renewable, hidden/unused otherwise
-            'next_renewal_date', 'renewal_interval_months', 'renewal_cost',
+            'next_renewal_date', 'renewal_interval_months', 'renewal_cost', 'renewal_currency',
             'renewal_vendor', 'renewal_reference', 'auto_renews',
 
             # Assignment
-            'assigned_to', 'assigned_to_department',
+            'assigned_to',
 
             # Status & Condition
             'status', 'condition', 'condition_notes',
@@ -620,13 +704,15 @@ class AssetForm(forms.ModelForm):
                 'type': 'date',
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
-            'renewal_interval_months': forms.NumberInput(attrs={
+            'renewal_interval_months': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'min': 1, 'placeholder': 'e.g. 12 for annual'
             }),
             'renewal_cost': forms.NumberInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
+                'class': 'flex-1 min-w-0 rounded-r-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
                 'min': 0, 'step': '0.01'
+            }),
+            'renewal_currency': forms.Select(attrs={
+                'class': 'w-20 shrink-0 rounded-l-lg border border-r-0 py-2 px-2 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
             }),
             'renewal_vendor': VendorSelect(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
@@ -650,13 +736,6 @@ class AssetForm(forms.ModelForm):
                 'placeholder': 'Additional warranty notes...'
             }),
             'assigned_to': forms.Select(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
-            }),
-            'assigned_to_department': forms.TextInput(attrs={
-                'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary',
-                'placeholder': 'Department name'
-            }),
-            'department': forms.Select(attrs={
                 'class': 'w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary'
             }),
             'condition_notes': forms.Textarea(attrs={
@@ -900,6 +979,12 @@ class AssetCheckinForm(forms.Form):
         widget=forms.Textarea(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'rows': 2}),
     )
 
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('return_reason') == Asset.ReturnReason.OTHER and not cleaned_data.get('return_comment', '').strip():
+            self.add_error('return_comment', 'Please describe the return reason.')
+        return cleaned_data
+
 
 class AssetReturnRequestForm(forms.Form):
     """partials/asset_return_request_modal.html — the holder self-initiating
@@ -916,6 +1001,12 @@ class AssetReturnRequestForm(forms.Form):
         required=False,
         widget=forms.Textarea(attrs={'class': ASSET_MODAL_FIELD_CLASS, 'rows': 2, 'placeholder': 'Any details for the admin arranging pickup...'}),
     )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get('return_reason') == Asset.ReturnReason.OTHER and not cleaned_data.get('return_comment', '').strip():
+            self.add_error('return_comment', 'Please describe the return reason.')
+        return cleaned_data
 
 
 class ConnectorEditForm(forms.Form):
@@ -965,6 +1056,22 @@ class SLAForm(forms.Form):
         empty_label='Default Calendar',
         widget=forms.Select(attrs={'class': FIELD_CLASS}),
     )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Mirrors the same hours*60+minutes totals and zero-fallback
+        # defaults sla_create() uses when actually saving, so this compares
+        # what will really be persisted rather than the raw sub-fields.
+        response_total = (cleaned_data.get('response_hours') or 0) * 60 + (cleaned_data.get('response_minutes') or 0)
+        resolution_total = (cleaned_data.get('resolution_hours') or 0) * 60 + (cleaned_data.get('resolution_minutes') or 0)
+        response_total = response_total if response_total > 0 else 60
+        resolution_total = resolution_total if resolution_total > 0 else 480
+        if resolution_total < response_total:
+            raise forms.ValidationError(
+                'Resolution time must be greater than or equal to response time — '
+                'a ticket can\'t be resolved before it\'s even been responded to.'
+            )
+        return cleaned_data
 
 
 class BusinessCalendarForm(forms.Form):

@@ -30,7 +30,7 @@
                        hx-trigger="keyup changed delay:300ms"
                        hx-target="#resolvedRequestsTableContainer"
                        hx-swap="innerHTML"
-                       hx-include="#departmentFilter"
+                       hx-include="#departmentFilter, #sortSelect"
                        name="q" value="{{ q }}">
             </div>
         </div>
@@ -43,10 +43,20 @@
                 hx-get="{% url 'tickets:resolved_service_requests' %}"
                 hx-target="#resolvedRequestsTableContainer"
                 hx-swap="innerHTML"
-                hx-include="#searchInput">
+                hx-include="#searchInput, #sortSelect">
             <option value="">All Departments</option>
             {% for value, label in department_choices %}
                 <option value="{{ value }}" {% if department_filter == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select id="sortSelect" name="sort"
+                class="text-sm rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                hx-get="{% url 'tickets:resolved_service_requests' %}"
+                hx-target="#resolvedRequestsTableContainer"
+                hx-swap="innerHTML"
+                hx-include="#searchInput, #departmentFilter">
+            {% for key, label in sort_options %}
+            <option value="{{ key }}" {% if key == active_sort %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
     </div>

@@ -19,8 +19,21 @@
 {# instance on a page (lets multiple export menus coexist). If a bulk-   #}
 {# select component on the same page needs to scope exports to selected  #}
 {# rows, it calls window.updateExportMenuLinks_<menu_id>(ids).           #}
+{#                                                                        #}
+{# Optional column picker: pass `column_picker_columns` (the full list   #}
+{# of exportable column names for this table) and `column_picker_key`    #}
+{# (a stable string to remember the selection under, e.g. the report     #}
+{# type slug — falls back to `menu_id`). When set, clicking CSV, Excel,   #}
+{# PDF, or Word opens a checkbox modal instead of downloading immediately;#}
+{# the chosen columns are appended as `&cols=A,B,C` and remembered in     #}
+{# localStorage per `column_picker_key` for next time. Only JSON is       #}
+{# unaffected (always exports the full record shape) — see                #}
+{# badge_tags.is_columnar_export_format. This only ever applies where the #}
+{# caller opted in with `column_picker_columns` — a single-record form's   #}
+{# export_menu.html include never passes it, so its PDF/DOCX links stay   #}
+{# plain downloads regardless of this filter.                             #}
 {# ================================================================ #}
-{% with mid=menu_id|default:"export" parsed_formats=formats|parse_export_formats %}
+{% with mid=menu_id|default:"export" parsed_formats=formats|parse_export_formats cpk=column_picker_key|default:menu_id|default:"export" %}
 <div class="relative" id="exportMenu-{{ mid }}">
     <button type="button" id="exportMenuBtn-{{ mid }}"
             class="{{ button_class|default:'btn-outline' }} text-sm px-4 py-2 rounded-lg flex items-center gap-2"
@@ -40,11 +53,46 @@
     <a id="exportMenuLink-{{ mid }}-{{ fmt.format }}"
        data-base-href="{{ export_url }}?format={{ fmt.format }}{% if extra_qs %}&{{ extra_qs }}{% endif %}"
        href="{{ export_url }}?format={{ fmt.format }}{% if extra_qs %}&{{ extra_qs }}{% endif %}"
+       {% if column_picker_columns and fmt.format|is_columnar_export_format %}onclick="window.openExportColsModal_{{ mid }}(this); return false;"{% endif %}
        class="flex items-center gap-2 px-4 py-2 text-xs hover:bg-black/5 transition text-text-primary">
         {% lucide fmt.icon|default:"file" size=13 %} {{ fmt.label }}
     </a>
     {% endfor %}
 </div>
+
+{% if column_picker_columns %}
+<div id="exportColsModal-{{ mid }}" class="fixed inset-0 z-[10000] items-center justify-center bg-black/40 p-4" style="display:none;">
+    <div class="rounded-lg shadow-xl border w-full max-w-md max-h-[80vh] flex flex-col bg-surface border-border">
+        <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--color-border);">
+            <h3 class="text-sm font-semibold text-text-primary">Choose columns to export</h3>
+            <button type="button" onclick="window.closeExportColsModal_{{ mid }}()" class="btn-ghost btn-icon" aria-label="Close">
+                {% lucide "x" size=16 %}
+            </button>
+        </div>
+        <div class="px-4 py-2 border-b flex items-center gap-4 text-xs" style="border-color: var(--color-border);">
+            <button type="button" class="font-medium text-primary" onclick="window.setAllExportCols_{{ mid }}(true)">Select all</button>
+            <button type="button" class="font-medium text-primary" onclick="window.setAllExportCols_{{ mid }}(false)">Deselect all</button>
+        </div>
+        <div class="px-4 py-3 overflow-y-auto flex-1 space-y-3">
+            {% for col in column_picker_columns %}
+            {% with desc=column_picker_descriptions|column_description:col %}
+            <label class="flex items-start gap-2 text-sm text-text-primary">
+                <input type="checkbox" class="export-col-checkbox-{{ mid }} rounded border-border text-primary focus:ring-primary mt-0.5" value="{{ col }}" checked>
+                <span>
+                    <span class="block leading-tight">{{ col }}</span>
+                    {% if desc %}<span class="block text-xs text-text-secondary leading-snug mt-0.5">{{ desc }}</span>{% endif %}
+                </span>
+            </label>
+            {% endwith %}
+            {% endfor %}
+        </div>
+        <div class="px-4 py-3 border-t flex justify-end gap-2" style="border-color: var(--color-border);">
+            <button type="button" class="btn-ghost text-xs px-3 py-1.5 rounded-lg" onclick="window.closeExportColsModal_{{ mid }}()">Cancel</button>
+            <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded-lg" id="exportColsConfirm-{{ mid }}">Export</button>
+        </div>
+    </div>
+</div>
+{% endif %}
 <script>
 (function() {
     var btn = document.getElementById('exportMenuBtn-{{ mid }}');
@@ -91,6 +139,66 @@
                 : base;
         });
     };
+
+    {% if column_picker_columns %}
+    // Column-picker modal for CSV/Excel — see the note above this include's
+    // markup. Selection is remembered in localStorage under `cpk` (the
+    // report-type/table-specific key), independent of any other export
+    // menu instance on the page.
+    var colsModal = document.getElementById('exportColsModal-{{ mid }}');
+    var colsConfirmBtn = document.getElementById('exportColsConfirm-{{ mid }}');
+    var storageKey = 'exportCols:{{ cpk }}';
+    var pendingLink = null;
+
+    function colsCheckboxes() {
+        return colsModal.querySelectorAll('.export-col-checkbox-{{ mid }}');
+    }
+
+    function loadSavedCols() {
+        try {
+            var saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            return Array.isArray(saved) ? saved : null;
+        } catch (e) { return null; }
+    }
+
+    window['openExportColsModal_{{ mid }}'] = function(link) {
+        pendingLink = link;
+        var saved = loadSavedCols();
+        colsCheckboxes().forEach(function(cb) {
+            cb.checked = saved ? saved.indexOf(cb.value) !== -1 : true;
+        });
+        close();
+        colsModal.style.display = 'flex';
+    };
+
+    window['closeExportColsModal_{{ mid }}'] = function() {
+        colsModal.style.display = 'none';
+        pendingLink = null;
+    };
+
+    window['setAllExportCols_{{ mid }}'] = function(checked) {
+        colsCheckboxes().forEach(function(cb) { cb.checked = checked; });
+    };
+
+    colsConfirmBtn.addEventListener('click', function() {
+        if (!pendingLink) return;
+        var selected = Array.prototype.filter.call(colsCheckboxes(), function(cb) { return cb.checked; })
+            .map(function(cb) { return cb.value; });
+        // Never export a file with zero columns — fall back to everything.
+        if (!selected.length) {
+            selected = Array.prototype.map.call(colsCheckboxes(), function(cb) { return cb.value; });
+        }
+        localStorage.setItem(storageKey, JSON.stringify(selected));
+        var base = pendingLink.href;
+        var sep = base.indexOf('?') === -1 ? '?' : '&';
+        window.location.href = base + sep + 'cols=' + selected.map(encodeURIComponent).join(',');
+        window['closeExportColsModal_{{ mid }}']();
+    });
+
+    colsModal.addEventListener('click', function(e) {
+        if (e.target === colsModal) window['closeExportColsModal_{{ mid }}']();
+    });
+    {% endif %}
 })();
 </script>
 {% endwith %}

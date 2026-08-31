@@ -22,4 +22,7 @@ urlpatterns = [
     # Per-asset owner confirmation (HTMX)
     path('<int:pk>/asset/<int:asset_pk>/confirm-modal/', views.asset_confirm_modal, name='asset_confirm_modal'),
     path('<int:pk>/asset/<int:asset_pk>/confirm/', views.asset_confirm, name='asset_confirm'),
+
+    # OS backup status (Admin/Superadmin only, current-state, no schedule involved)
+    path('assets/<int:asset_pk>/backup-status/', views.asset_backup_status_update, name='asset_backup_status_update'),
 ]

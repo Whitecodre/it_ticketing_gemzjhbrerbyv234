@@ -21,7 +21,7 @@
             </p>
             <p class="text-xs mt-2 p-3 rounded-lg bg-background text-text-secondary">
                 <strong>{{ asset.name }}</strong> ({{ asset.tracking_id }})<br>
-                {{ schedule.title }} — {{ schedule.departments_display }}, {{ schedule.scheduled_date|date:"M d, Y" }}
+                {{ schedule.title }} — {{ asset.department.name|default:"—" }}, {{ schedule.scheduled_date|date:"M d, Y" }}
                 {% if schedule.assigned_to %}
                     <br>Performed by: {{ schedule.assigned_to.get_full_name|default:schedule.assigned_to.email }}
                 {% endif %}
@@ -32,7 +32,6 @@
               hx-post="{% url 'maintenance:asset_confirm' schedule.pk asset.pk %}"
               hx-target="#confirmModalContainer"
               hx-swap="outerHTML"
-              hx-on::after-request="if(event.detail.successful) { setTimeout(() => location.reload(), 500); }"
               class="mt-6">
 
             {% csrf_token %}

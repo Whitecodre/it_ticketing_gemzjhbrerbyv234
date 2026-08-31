@@ -1,10 +1,19 @@
 {% load lucide %}
 
+{% if sort_options %}
+<div class="flex justify-end px-4 pt-4">
+    <form method="get">
+        <input type="hidden" name="base" value="{{ base_status }}">
+        <input type="hidden" name="status" value="{{ selected_status }}">
+        {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort auto_submit=True %}
+    </form>
+</div>
+{% endif %}
 {# Filter chips - Using URL parameters like KB portal #}
-<div class="flex flex-wrap gap-2 px-4 pt-4 pb-2 border-b border-border">
+<div class="flex flex-nowrap overflow-x-auto sm:flex-wrap sm:overflow-visible gap-2 px-4 pt-4 pb-2 border-b border-border">
     {# All button - clears all filters #}
     <a href="{% url 'tickets:my_list' %}{% if base_status %}?base={{ base_status }}{% endif %}"
-       class="filter-chip text-xs rounded-full px-4 py-1.5 border transition font-medium 
+       class="filter-chip flex-shrink-0 text-xs rounded-full px-4 py-1.5 border transition font-medium
               {% if not selected_status %}active{% else %}bg-background text-text-secondary border-border hover:bg-primary/10{% endif %}">
         All
     </a>
@@ -12,7 +21,7 @@
     {# Status buttons - filter by specific status #}
     {% for value, label in status_choices %}
         <a href="{% url 'tickets:my_list' %}?base={{ base_status }}&status={{ value }}"
-           class="filter-chip text-xs rounded-full px-4 py-1.5 border transition font-medium 
+           class="filter-chip flex-shrink-0 text-xs rounded-full px-4 py-1.5 border transition font-medium
                   {% if selected_status == value %}active{% else %}bg-background text-text-secondary border-border hover:bg-primary/10{% endif %}"
            data-status="{{ value }}">
             {{ label }}

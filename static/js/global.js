@@ -29,34 +29,25 @@ function positionDropdown(triggerEl, dropdownEl, options) {
     const align = options.align || 'right';
     const direction = options.direction || 'auto';
 
-    function measure() {
-        // A `hidden` (display:none) element reports zero size. If that's
-        // the state we're in, measure it invisibly-but-rendered first.
-        const wasHidden = dropdownEl.classList.contains('hidden');
-        let prevVisibility, prevDisplay;
-        if (wasHidden) {
-            prevVisibility = dropdownEl.style.visibility;
-            prevDisplay = dropdownEl.style.display;
-            dropdownEl.classList.remove('hidden');
-            dropdownEl.style.visibility = 'hidden';
-            dropdownEl.style.display = 'block';
-        }
-
-        const width = dropdownEl.offsetWidth;
-        const height = dropdownEl.offsetHeight;
-
-        if (wasHidden) {
-            dropdownEl.classList.add('hidden');
-            dropdownEl.style.visibility = prevVisibility;
-            dropdownEl.style.display = prevDisplay;
-        }
-        return { width, height };
-    }
-
     function compute() {
         if (!triggerEl || !dropdownEl) return;
         const triggerRect = triggerEl.getBoundingClientRect();
-        const { width, height } = measure();
+
+        // Every caller removes the `hidden` class before calling us (so the
+        // dropdown participates in a fade-in transition, etc.), which means
+        // by the time we get here it's already visible with no position set
+        // — i.e. sitting in normal document flow, still `position:static`,
+        // as a real block inside the topbar. Take it out of flow and hide it
+        // visually (not via display:none, which would zero its measured
+        // size) before measuring/positioning, so it's never rendered
+        // in-flow long enough to distort the topbar's layout or throw off
+        // this very measurement.
+        const prevVisibility = dropdownEl.style.visibility;
+        dropdownEl.style.position = 'fixed';
+        dropdownEl.style.visibility = 'hidden';
+
+        const width = dropdownEl.offsetWidth;
+        const height = dropdownEl.offsetHeight;
 
         const spaceBelow = window.innerHeight - triggerRect.bottom - gap - margin;
         const spaceAbove = triggerRect.top - gap - margin;
@@ -69,18 +60,36 @@ function positionDropdown(triggerEl, dropdownEl, options) {
         const maxTop = window.innerHeight - height - margin;
         top = Math.max(margin, Math.min(top, maxTop));
 
-        let left;
-        if (align === 'left') left = triggerRect.left;
-        else if (align === 'center') left = triggerRect.left + triggerRect.width / 2 - width / 2;
-        else left = triggerRect.right - width;
+        // Horizontal placement flips to the other alignment when the
+        // preferred one doesn't fit — otherwise clamping to the viewport
+        // edge visually detaches the dropdown from its trigger (e.g. a
+        // right-aligned trigger near the left edge on a narrow screen would
+        // get clamped all the way to the left margin instead of just
+        // flipping to left-aligned, which keeps it anchored to the button).
         const maxLeft = window.innerWidth - width - margin;
+        let left;
+        if (align === 'left') {
+            left = triggerRect.left;
+            if (left > maxLeft) {
+                const flipped = triggerRect.right - width;
+                if (flipped >= margin) left = flipped;
+            }
+        } else if (align === 'center') {
+            left = triggerRect.left + triggerRect.width / 2 - width / 2;
+        } else {
+            left = triggerRect.right - width;
+            if (left < margin) {
+                const flipped = triggerRect.left;
+                if (flipped <= maxLeft) left = flipped;
+            }
+        }
         left = Math.max(margin, Math.min(left, maxLeft));
 
-        dropdownEl.style.position = 'fixed';
         dropdownEl.style.top = top + 'px';
         dropdownEl.style.left = left + 'px';
         dropdownEl.style.right = 'auto';
         dropdownEl.style.bottom = 'auto';
+        dropdownEl.style.visibility = prevVisibility;
     }
 
     compute();
@@ -164,6 +173,134 @@ function createActionDropdown(dropdownEl, options) {
     return { toggle: toggle, close: close, isOpen: isOpen };
 }
 window.createActionDropdown = createActionDropdown;
+
+// ================================================================
+// SHARED ATTACHMENT COMPOSER
+// ================================================================
+// Wires a file input + preview container into a multi-file staging
+// composer: files persist across repeated picker openings (native
+// multi-file inputs replace the whole FileList on every dialog use, so
+// without this a second "Attach files" click would wipe out the first
+// selection), each valid file gets a removable chip, and anything over
+// the size limit or not on the allowed-type list gets its own visible
+// rejection chip with a reason instead of being silently dropped.
+//
+// opts:
+//   maxSizeMB: max file size in MB (default 10, matches server MAX_SIZE_MB)
+//   allowedMimes: array of allowed MIME types (default matches server
+//                 ALLOWED_MIMES in apps/tickets/views.py — keep in sync)
+function createAttachmentComposer(inputId, previewId, opts) {
+    const input = document.getElementById(inputId);
+    const preview = document.getElementById(previewId);
+    if (!input || !preview) return null;
+
+    const options = opts || {};
+    const maxSizeBytes = (options.maxSizeMB || 10) * 1024 * 1024;
+    const allowedMimes = options.allowedMimes || [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'text/plain',
+        'application/zip',
+    ];
+
+    let stagedFiles = [];
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function syncInputFiles() {
+        const dt = new DataTransfer();
+        stagedFiles.forEach(function(f) { dt.items.add(f); });
+        input.files = dt.files;
+    }
+
+    function truncateName(name, max) {
+        if (name.length <= max) return name;
+        const dot = name.lastIndexOf('.');
+        const ext = dot > -1 ? name.slice(dot) : '';
+        const base = dot > -1 ? name.slice(0, dot) : name;
+        const keep = Math.max(1, max - ext.length - 1);
+        return base.slice(0, keep) + '…' + ext;
+    }
+
+    function renderChips() {
+        preview.innerHTML = '';
+        stagedFiles.forEach(function(file, index) {
+            const chip = document.createElement('span');
+            chip.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border max-w-full';
+            chip.style.borderColor = 'var(--color-border)';
+            chip.style.backgroundColor = 'var(--color-background)';
+            chip.title = file.name;
+
+            const label = document.createElement('span');
+            label.className = 'truncate';
+            label.textContent = truncateName(file.name, 28) + ' (' + formatFileSize(file.size) + ')';
+            chip.appendChild(label);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.textContent = '×';
+            removeBtn.setAttribute('aria-label', 'Remove ' + file.name);
+            removeBtn.className = 'shrink-0 text-text-secondary hover:text-error font-bold leading-none';
+            removeBtn.addEventListener('click', function() {
+                stagedFiles.splice(index, 1);
+                syncInputFiles();
+                renderChips();
+            });
+            chip.appendChild(removeBtn);
+
+            preview.appendChild(chip);
+        });
+    }
+
+    function renderRejection(name, reason) {
+        const row = document.createElement('div');
+        row.className = 'flex items-start gap-1.5 px-2.5 py-1.5 rounded-md border border-error/40 bg-error/5 text-xs text-error w-full';
+        row.title = name;
+
+        const label = document.createElement('span');
+        label.className = 'truncate';
+        label.textContent = truncateName(name, 40) + ' — ' + reason;
+        row.appendChild(label);
+
+        preview.appendChild(row);
+    }
+
+    input.addEventListener('change', function() {
+        const incoming = Array.from(input.files || []);
+        const rejections = [];
+        incoming.forEach(function(file) {
+            if (file.size > maxSizeBytes) {
+                rejections.push([file.name, 'exceeds the ' + (options.maxSizeMB || 10) + 'MB limit, not attached']);
+                return;
+            }
+            if (allowedMimes.length && file.type && allowedMimes.indexOf(file.type) === -1) {
+                rejections.push([file.name, 'file type not allowed, not attached']);
+                return;
+            }
+            stagedFiles.push(file);
+        });
+        syncInputFiles();
+        renderChips();
+        rejections.forEach(function(r) { renderRejection(r[0], r[1]); });
+    });
+
+    return {
+        reset: function() {
+            stagedFiles = [];
+            preview.innerHTML = '';
+            input.value = '';
+        },
+    };
+}
+window.createAttachmentComposer = createAttachmentComposer;
 
 // ================================================================
 // SIDEBAR STATE - Initialize
@@ -645,6 +782,27 @@ function markReadAndGo(url, notificationId) {
     }
 }
 
+function markAllReadAndRefresh() {
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+    fetch('/notifications/mark-all-read/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrfToken || ''
+        }
+    }).then(() => {
+        if (!window.htmx) return;
+        htmx.ajax('GET', '/notifications/unread-count/', {
+            target: '#notificationBadgeContainer',
+            swap: 'innerHTML'
+        });
+        htmx.ajax('GET', '/notifications/list/', {
+            target: '#notificationDropdownContent',
+            swap: 'innerHTML'
+        });
+    });
+}
+window.markAllReadAndRefresh = markAllReadAndRefresh;
+
 // Close notification dropdown on outside click
 document.addEventListener('click', function(event) {
     const dropdown = document.getElementById('notificationDropdown');
@@ -763,6 +921,168 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ================================================================
+// RECEIPT CONFIRM MODAL (requester confirms/disputes a fulfilled asset
+// request — single-asset or per-item mobilization — from the ticket
+// conversation page's compact signifier)
+// ================================================================
+
+// Per-item Accept/Dispute decisions made inside the currently-open receipt
+// modal, keyed by MobilizationItem pk — { decision: 'accept'|'dispute',
+// reason: string }. Cleared each time the modal opens. Nothing is actually
+// submitted to the server until submitReceiptBatch() below runs, so
+// clicking through the list never reloads the page or shows a per-item
+// message — only the final "Done" click does.
+window.receiptDecisions = {};
+
+function openReceiptConfirmModal(ticketId) {
+    const existing = document.getElementById('receiptConfirmModal');
+    if (existing) existing.remove();
+
+    window.receiptDecisions = {};
+    document.body.style.overflow = 'hidden';
+
+    fetch(`/tickets/${ticketId}/receipt-confirm-modal/`)
+        .then(response => response.text())
+        .then(html => {
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = html;
+            document.body.appendChild(wrapper.firstElementChild);
+
+            const modal = document.getElementById('receiptConfirmModal');
+            if (modal && typeof htmx !== 'undefined') {
+                htmx.process(modal);
+            }
+
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this || e.target.hasAttribute('data-modal-backdrop')) {
+                        closeReceiptConfirmModal();
+                    }
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading receipt confirm modal:', error);
+            document.body.style.overflow = '';
+            if (typeof showToast === 'function') {
+                showToast('Error loading confirmation form.', 'error');
+            }
+        });
+}
+
+function closeReceiptConfirmModal() {
+    const modal = document.getElementById('receiptConfirmModal');
+    if (modal) {
+        modal.remove();
+    }
+    document.body.style.overflow = '';
+}
+
+// Mark (or un-mark, on a second click of the same button) one item's
+// decision. Purely local state + a visual toggle — nothing is sent to the
+// server here.
+function markReceiptItem(itemPk, decision) {
+    const key = String(itemPk);
+    const acceptBtn = document.getElementById('itemAcceptBtn' + itemPk);
+    const disputeBtn = document.getElementById('itemDisputeBtn' + itemPk);
+    const reasonBox = document.getElementById('itemDisputeReason' + itemPk);
+    const statusEl = document.getElementById('itemStatus' + itemPk);
+
+    const current = window.receiptDecisions[key];
+    if (current && current.decision === decision) {
+        // Clicked the same decision again — undo it.
+        delete window.receiptDecisions[key];
+        if (acceptBtn) acceptBtn.classList.remove('ring-2', 'ring-success');
+        if (disputeBtn) disputeBtn.classList.remove('ring-2', 'ring-error');
+        if (reasonBox) reasonBox.classList.add('hidden');
+        if (statusEl) statusEl.classList.add('hidden');
+    } else {
+        window.receiptDecisions[key] = { decision: decision, reason: '' };
+        if (decision === 'accept') {
+            if (acceptBtn) acceptBtn.classList.add('ring-2', 'ring-success');
+            if (disputeBtn) disputeBtn.classList.remove('ring-2', 'ring-error');
+            if (reasonBox) reasonBox.classList.add('hidden');
+            if (statusEl) { statusEl.textContent = 'Marked as received'; statusEl.classList.remove('hidden', 'text-error'); statusEl.classList.add('text-success'); }
+        } else {
+            if (disputeBtn) disputeBtn.classList.add('ring-2', 'ring-error');
+            if (acceptBtn) acceptBtn.classList.remove('ring-2', 'ring-success');
+            if (reasonBox) reasonBox.classList.remove('hidden');
+            if (statusEl) { statusEl.textContent = 'Marked as not received'; statusEl.classList.remove('hidden', 'text-success'); statusEl.classList.add('text-error'); }
+        }
+    }
+    updateReceiptDoneButton();
+}
+
+function updateReceiptDoneButton() {
+    const doneBtn = document.getElementById('receiptDoneBtn');
+    if (!doneBtn) return;
+    const total = parseInt(doneBtn.dataset.pendingCount || '0', 10);
+    const decided = Object.keys(window.receiptDecisions).length;
+    doneBtn.disabled = decided < total;
+}
+
+function submitReceiptBatch(ticketId) {
+    const decisions = window.receiptDecisions;
+    const acceptCount = Object.values(decisions).filter(d => d.decision === 'accept').length;
+    const disputeCount = Object.values(decisions).filter(d => d.decision === 'dispute').length;
+    if (acceptCount + disputeCount === 0) return;
+
+    const parts = [];
+    if (acceptCount) parts.push(acceptCount + ' confirmed as received');
+    if (disputeCount) parts.push(disputeCount + ' marked as not received');
+
+    openConfirmationModal({
+        title: 'Submit Receipt Confirmation',
+        message: 'You are about to submit: ' + parts.join(', ') + '. Continue?',
+        confirmText: 'Submit',
+        confirmButtonClass: 'btn-primary',
+        icon: 'success',
+        onConfirm: function () {
+            const form = document.getElementById('receiptBatchForm');
+            if (!form) return;
+            const inputsContainer = document.getElementById('receiptBatchInputs');
+            inputsContainer.innerHTML = '';
+            Object.keys(decisions).forEach(function (itemPk) {
+                const decision = decisions[itemPk];
+                const nameInput = document.createElement('input');
+                nameInput.type = 'hidden';
+                nameInput.name = decision.decision === 'accept' ? 'accept_ids' : 'dispute_ids';
+                nameInput.value = itemPk;
+                inputsContainer.appendChild(nameInput);
+                if (decision.decision === 'dispute') {
+                    const reasonEl = document.getElementById('itemReasonText' + itemPk);
+                    const reasonInput = document.createElement('input');
+                    reasonInput.type = 'hidden';
+                    reasonInput.name = 'reason_' + itemPk;
+                    reasonInput.value = reasonEl ? reasonEl.value : '';
+                    inputsContainer.appendChild(reasonInput);
+                }
+            });
+            form.submit();
+        }
+    });
+}
+
+window.markReceiptItem = markReceiptItem;
+window.submitReceiptBatch = submitReceiptBatch;
+window.openReceiptConfirmModal = openReceiptConfirmModal;
+window.closeReceiptConfirmModal = closeReceiptConfirmModal;
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeReceiptConfirmModal();
+    }
+});
+
+document.addEventListener('click', function(e) {
+    const closeBtn = e.target.closest('[data-close-modal]');
+    if (closeBtn && closeBtn.closest('#receiptConfirmModal')) {
+        e.preventDefault();
+        closeReceiptConfirmModal();
+    }
+});
+
+// ================================================================
 // VENDOR-BY-CATEGORY FILTER
 // Narrows an already-rendered vendor <select> to vendors that supply the
 // category picked in a sibling <select> — options are pre-tagged with
@@ -845,6 +1165,15 @@ document.body.addEventListener('htmx:configRequest', function(event) {
 // already handles htmx:responseError on a given element.
 document.body.addEventListener('htmx:responseError', function(event) {
     if (typeof showToast !== 'function') return;
+    // Background polling (sidebar badge counts, etc. — anything with an
+    // "every Ns" trigger) fails silently instead of surfacing a toast: a
+    // missed badge refresh isn't worth interrupting the user for, and
+    // without this, a single stretch of denied/failed polls (e.g. a role
+    // that can't see one particular badge) stacks up a new error toast
+    // every few seconds for as long as the page stays open.
+    const elt = event.detail.elt;
+    const trigger = elt && elt.getAttribute && elt.getAttribute('hx-trigger');
+    if (trigger && trigger.indexOf('every') !== -1) return;
     const xhr = event.detail.xhr;
     const raw = (xhr && xhr.responseText || '').trim();
     // Plain-text error bodies (the common case) are shown as-is; a few

@@ -22,15 +22,8 @@
         </div>
         {% if tab == 'tickets' %}
         <div class="flex flex-wrap gap-2">
-            <button onclick="exportAudit('csv')" class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
-                {% lucide "file-text" size=14 %} CSV
-            </button>
-            <button onclick="exportAudit('json')" class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
-                {% lucide "file-code" size=14 %} JSON
-            </button>
-            <button onclick="exportAudit('excel')" class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1">
-                {% lucide "file-spreadsheet" size=14 %} Excel
-            </button>
+            {% url 'tickets:audit_log' as audit_log_export_url %}
+            {% include "components/export_menu.html" with menu_id="auditlog" export_url=audit_log_export_url extra_qs=base_qs formats="csv:CSV:file-text,json:JSON:file-code,excel:Excel:file-spreadsheet" button_label="Export" column_picker_columns=audit_log_columns column_picker_key="audit-log" column_picker_descriptions=audit_log_column_help %}
         </div>
         {% endif %}
     </div>
@@ -53,6 +46,14 @@
 
     {% if tab == 'system' %}
     {# ==================== SYSTEM / IMPERSONATION LOG ==================== #}
+    <div class="flex justify-end mb-3">
+        <select class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                onchange="const p = new URLSearchParams(window.location.search); p.set('sort', this.value); window.location.search = p.toString();">
+            {% for key, label in sort_options %}
+            <option value="{{ key }}" {% if key == active_sort %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
     <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -133,6 +134,12 @@
         <input type="text" id="ticketFilter" placeholder="Search ticket number…" aria-label="Filter audit log by ticket number" value="{{ request.GET.ticket|default:'' }}"
                class="w-40 text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
                onkeyup="filterAudit()">
+        <select id="auditSortFilter" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                onchange="filterAudit()">
+            {% for key, label in sort_options %}
+            <option value="{{ key }}" {% if key == active_sort %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
         <button onclick="filterAudit()" class="btn-primary text-xs px-3 py-1.5 rounded-lg">Apply</button>
         <button onclick="resetFilters()" class="btn-ghost text-xs px-3 py-1.5 rounded-lg">Reset</button>
     </div>
@@ -255,22 +262,18 @@
         const category = document.getElementById('categoryFilter').value;
         const action = document.getElementById('actionFilter').value;
         const ticket = document.getElementById('ticketFilter').value;
+        const sortEl = document.getElementById('auditSortFilter');
         const params = new URLSearchParams();
         params.set('tab', 'tickets');
         if (category) params.set('category', category);
         if (action) params.set('action', action);
         if (ticket) params.set('ticket', ticket);
+        if (sortEl && sortEl.value) params.set('sort', sortEl.value);
         window.location.href = "{% url 'tickets:audit_log' %}?" + params.toString();
     }
 
     function resetFilters() {
         window.location.href = "{% url 'tickets:audit_log' %}?tab=tickets";
-    }
-
-    function exportAudit(format) {
-        const params = new URLSearchParams(window.location.search);
-        params.set('export', format);
-        window.location.href = "{% url 'tickets:audit_log' %}?" + params.toString();
     }
 
     function goToPage(page) {

@@ -2,10 +2,30 @@ from django.utils.deprecation import MiddlewareMixin
 from django.shortcuts import redirect
 from django.contrib import messages
 from django.urls import reverse
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.utils import timezone
 
 # apps/common/middleware.py
+
+class CloudflareRealIPMiddleware(MiddlewareMixin):
+    """Rewrites REMOTE_ADDR to the real client IP from Cloudflare's
+    CF-Connecting-IP header before anything else runs (rate limiting, audit
+    logs, ImpersonationLog, LoginHistory) — without this, every request
+    behind Cloudflare/a Worker router appears to originate from Cloudflare's
+    edge, breaking per-IP rate limiting and making audit trails useless.
+
+    Must be first in MIDDLEWARE so downstream code sees the corrected value.
+    Only takes effect when the header is present, so it's a no-op locally.
+    Assumes the origin is only reachable through Cloudflare (Workers/
+    Containers) — if the container is ever also exposed on a public IP
+    directly, that path must be closed off, or this header becomes spoofable."""
+
+    def process_request(self, request):
+        real_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+        if real_ip:
+            request.META['REMOTE_ADDR'] = real_ip
+        return None
+
 
 class SecurityHeadersMiddleware(MiddlewareMixin):
     """Add additional security headers to all responses."""
@@ -104,11 +124,17 @@ class ImpersonationMiddleware(MiddlewareMixin):
                     from datetime import datetime
                     expiry = datetime.fromisoformat(expires_at)
                     if timezone.now() > expiry:
-                        # Session expired - clear it
-                        request.session.pop('impersonate', None)
+                        # Session expired — actually end impersonation (log
+                        # the admin back into their own account, close the
+                        # audit log row), not just delete the session flag.
+                        # The latter used to leave the admin fully
+                        # authenticated as the target indefinitely, with no
+                        # way back short of a full logout/login.
+                        from apps.accounts.views.impersonate import end_impersonation
+                        end_impersonation(request, impersonate_data)
                         messages.warning(
                             request,
-                            'Impersonation session expired after 1 hour.'
+                            'Impersonation session expired after 1 hour — you have been returned to your own account.'
                         )
                         return None
                 except (ValueError, TypeError):
@@ -122,5 +148,25 @@ class ImpersonationMiddleware(MiddlewareMixin):
                 'original_user': impersonate_data.get('original_user_email'),
                 'expires_at': impersonate_data.get('expires_at'),
             }
-        
+
+        return None
+
+
+class LastSeenMiddleware(MiddlewareMixin):
+    """Stamps User.last_seen on authenticated requests — the only signal the
+    "online" indicator on the requester profile card (see
+    apps.tickets.views.requester_profile_modal) is based on. Throttled to
+    once per minute per user so it doesn't add a write to every request."""
+
+    THROTTLE = timedelta(minutes=1)
+
+    def process_request(self, request):
+        user = getattr(request, 'user', None)
+        if not user or not user.is_authenticated:
+            return None
+        now = timezone.now()
+        if user.last_seen and now - user.last_seen < self.THROTTLE:
+            return None
+        user.last_seen = now
+        user.save(update_fields=['last_seen'])
         return None

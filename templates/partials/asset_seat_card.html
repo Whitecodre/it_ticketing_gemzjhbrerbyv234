@@ -1,0 +1,54 @@
+{% load lucide %}
+{% load badge_tags %}
+
+{# ================================================================ #}
+{# ONE COLLAPSIBLE SEAT/WORKSPACE CARD — one owner's (or one unmatched #}
+{# import name's, or one department+location pool's) full kit as a    #}
+{# single row, expandable into the same per-asset rows the flat table #}
+{# uses. Expects `group` (a dict from _build_asset_groups) in context. #}
+{# Nested inside the outer x-data="bulkSelect()" wrapper — `selected`/ #}
+{# `toggleRow` below resolve to that ancestor scope.                  #}
+{# ================================================================ #}
+<div class="border-b" style="border-color: var(--color-border);"
+     x-data="{ open: false, ids: ($el.dataset.cardIds || '').split(',').filter(Boolean) }"
+     data-card-ids="{{ group.asset_ids|join:',' }}">
+
+    <div class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-black/5 transition-colors" @click="open = !open">
+        <input type="checkbox" @click.stop
+               :checked="ids.length > 0 && ids.every(id => selected.includes(id))"
+               @change="ids.forEach(id => toggleRow(id, $event.target.checked))"
+               class="rounded border-border text-primary focus:ring-primary"
+               aria-label="Select all items for {{ group.label }}">
+
+        <span class="shrink-0 text-text-secondary">{% lucide "user" size=13 %}</span>
+
+        <div class="flex-1 min-w-0 flex items-baseline gap-1.5 truncate">
+            <span class="font-medium text-sm truncate" style="color: var(--color-text-primary);">{{ group.label }}</span>
+            {% if group.seat_code %}
+            <span class="status-chip status-chip-neutral text-[0.55rem] shrink-0">Seat {{ group.seat_code }}</span>
+            {% endif %}
+            <span class="text-xs text-text-secondary truncate">
+                — {{ group.item_count }} item{{ group.item_count|pluralize }}{% if group.category_summary %}: {{ group.category_summary }}{% endif %}
+            </span>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+            {% status_badge 'asset_status' group.worst_status %}
+            {% if group.worst_condition %}{% status_badge 'asset_condition' group.worst_condition %}{% endif %}
+            <span class="text-text-secondary transition-transform" :class="open && 'rotate-180'">
+                {% lucide "chevron-down" size=14 %}
+            </span>
+        </div>
+    </div>
+
+    <div x-show="open" x-cloak x-transition class="overflow-x-auto table-scroll-shell border-t" style="border-color: var(--color-border);">
+        <table class="text-sm" style="width: 100%; min-width: 1074px; table-layout: fixed; border-collapse: separate; border-spacing: 0;">
+            {% include "partials/_asset_table_head.html" with show_select_all=False %}
+            <tbody>
+                {% for asset in group.assets %}
+                    {% include "partials/_asset_row.html" %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

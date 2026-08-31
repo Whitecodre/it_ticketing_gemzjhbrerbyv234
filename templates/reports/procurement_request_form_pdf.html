@@ -1,109 +1,180 @@
-{% load static %}
+{% load static tailwind_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 {% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
 <title>Vendor Procurement Request — {{ procurement_request.item_name }}</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="{% static 'css/service_request_pdf.css' %}?v=2">
-
+{% tailwind_css %}
+<link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
 </head>
 <body>
 
 <div class="page">
 
-  <!-- Header Table -->
-  <table class="w-full border-collapse border-2 border-black mb-10">
+  <table class="w-full border-collapse border-2 border-black mb-6">
     <tr>
-      <!-- Logo cell -->
-      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="2">
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="3">
         {% if client_settings.logo_url %}
-            <img src="{{ client_settings.logo_url }}">
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
         {% else %}
-            <div class="logo-text">{{ client_settings.company_name|default:"TicketSwipe" }}</div>
-            <div class="logo-underline"></div>
+          <div class="logo-text">{{ client_settings.company_name|default:"TicketSwipe" }}</div>
+          <div class="logo-underline"></div>
         {% endif %}
       </td>
-
-      <!-- Title cell -->
-      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="2">
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="3">
         <span class="font-bold text-lg tracking-wide">VENDOR PROCUREMENT REQUEST</span>
       </td>
-
-      <!-- Metadata cell -->
-      <td class="border-2 border-black text-xs text-center font-semibold p-1" colspan="2">
-        Request #{{ procurement_request.pk }}
-      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">Request #{{ procurement_request.pk }}</td>
     </tr>
     <tr>
-      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Date:</td>
-      <td class="border-2 border-black text-xs p-1 pl-2">{{ procurement_request.requested_at|date:"M d, Y" }}</td>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Raised:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ procurement_request.requested_at|date:"d/m/Y" }}</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Printed:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"d/m/Y" }}</td>
     </tr>
   </table>
 
-  <!-- Form Body -->
-  <div class="space-y-6 text-[15px]">
+  <!-- SECTION 1 — ITEM(S) REQUESTED -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 1 &mdash; ITEM(S) REQUESTED</div>
 
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Item:</span>
-      <span class="field-line flex-1 px-1">{{ procurement_request.item_name }}</span>
+    <div class="cell">
+      <div class="cell-label mb-1">Item:</div>
+      <div class="mb-2">{{ procurement_request.item_name }}</div>
     </div>
 
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Category:</span>
-      <span class="field-line w-64 px-1">{{ procurement_request.category.name }}</span>
-      <span class="font-bold whitespace-nowrap ml-16 mr-2">Quantity:</span>
-      <span class="field-line flex-1 px-1">{{ procurement_request.quantity }}</span>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Category:</div>
+        <div class="mb-2">{{ procurement_request.category.name }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Quantity:</div>
+        <div class="mb-2">{{ procurement_request.quantity }}</div>
+      </div>
     </div>
 
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Vendor:</span>
-      <span class="field-line flex-1 px-1">{% if procurement_request.vendor %}{{ procurement_request.vendor.name }}{% else %}<span class="italic text-gray-400">Not yet selected</span>{% endif %}</span>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Requested Vendor:</div>
+        <div class="mb-2">{% if procurement_request.vendor %}{{ procurement_request.vendor.name }}{% else %}<span class="italic text-gray-400">Not yet selected</span>{% endif %}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Needed By:</div>
+        <div class="mb-2">{{ procurement_request.expected_arrival_date|date:"d/m/Y"|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2 — DELIVERY & CONTACT -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 2 &mdash; DELIVERY &amp; CONTACT</div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Deliver To:</div>
+        <div class="mb-2">{{ client_settings.company_name|default:"—" }} — {{ destination_display }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Origin of Request:</div>
+        <div class="mb-2">{{ origin_display }}</div>
+      </div>
     </div>
 
-    {% if procurement_request.vendor %}
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Vendor Contact:</span>
-      <span class="field-line w-64 px-1">{{ procurement_request.vendor.contact_person|default:"—" }}</span>
-      <span class="font-bold whitespace-nowrap ml-16 mr-2">Phone / Email:</span>
-      <span class="field-line flex-1 px-1">{{ procurement_request.vendor.phone|default:"—" }}{% if procurement_request.vendor.email %} / {{ procurement_request.vendor.email }}{% endif %}</span>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Contact Person:</div>
+        <div class="mb-2">{{ contact.get_full_name|default:contact.email }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Phone / Email:</div>
+        <div class="mb-2">{{ contact.email }}</div>
+      </div>
     </div>
-    {% endif %}
+  </div>
 
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Expected Date:</span>
-      <span class="field-line w-64 px-1">{{ procurement_request.expected_arrival_date|date:"M d, Y"|default:"—" }}</span>
-      <span class="font-bold whitespace-nowrap ml-16 mr-2">Requested By:</span>
-      <span class="field-line flex-1 px-1">{{ procurement_request.requested_by.get_full_name }}</span>
+  <!-- SECTION 3 — BACKGROUND -->
+  {% if source_ticket %}
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION {{ background_section }} &mdash; WHAT THIS IS FOR</div>
+    <div class="cell">
+      <div class="cell-label mb-1">{{ source_ticket.title }}</div>
+      <div class="mb-2">{{ source_ticket.description|default:"—"|linebreaksbr }}</div>
     </div>
+  </div>
+  {% endif %}
 
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">For:</span>
-      <span class="field-line flex-1 px-1">
-        {% if procurement_request.ticket %}Service Request {{ procurement_request.ticket.number }}
-        {% elif procurement_request.mobilization %}Mobilization — {{ procurement_request.mobilization.destination_display }}
-        {% else %}<span class="italic text-gray-400">—</span>{% endif %}
-      </span>
+  <!-- NOTES (only when the requester actually left one) -->
+  {% if procurement_request.notes %}
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION {{ notes_section }} &mdash; NOTES</div>
+    <div class="cell">
+      <div class="mb-2">{{ procurement_request.notes|linebreaksbr }}</div>
     </div>
+  </div>
+  {% endif %}
 
-    <div class="pt-4">
-      <span class="font-bold">Notes:</span>
+  <!-- SUPPORTING DOCUMENTATION -->
+  <div class="section-box mb-6">
+    <div class="section-title">SECTION {{ documentation_section }} &mdash; SUPPORTING DOCUMENTATION</div>
+    <div class="cell">
+      {% if attachments or image_attachments %}
+        {% for a in attachments %}<div>&bull; {{ a.filename }}</div>{% endfor %}
+        {% for a in image_attachments %}<div>&bull; {{ a.filename }} (see attached page)</div>{% endfor %}
+        <div class="mb-4">&nbsp;</div>
+      {% else %}
+        <div class="mb-4 italic text-gray-400">None attached to the originating request.</div>
+      {% endif %}
     </div>
-    <div class="pt-2">
-      <span class="field-line w-full block px-1">{{ procurement_request.notes|default:"—"|linebreaksbr }}</span>
-    </div>
+  </div>
 
-    <!-- Blank space for the procurement system's own reference number,
-         to be typed back into TicketSwipe once assigned. -->
-    <div class="flex items-end pt-10">
-      <span class="font-bold whitespace-nowrap mr-2">Procurement System Reference #:</span>
-      <span class="field-line flex-1 px-1">{{ procurement_request.external_reference|default:"" }}</span>
-    </div>
-
+  <!-- Internal-use only: filled in once the order is placed on the org's own PMS -->
+  <div class="cell" style="border:1px dashed #666; padding:8px 10px;">
+    <span class="cell-label text-gray-500">Procurement System Reference # (for internal use — vendor need not complete):</span>
+    <span class="ml-2">{{ procurement_request.external_reference|default:"" }}</span>
   </div>
 
 </div>
+
+{% for pair in image_attachment_pairs %}
+<!-- ================= SUPPORTING DOCUMENTATION PAGE (up to 2 photos) ================= -->
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-6">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="2">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"TicketSwipe" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="2">
+        <span class="font-bold text-lg tracking-wide">VENDOR PROCUREMENT REQUEST</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">Request #{{ procurement_request.pk }}</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Page</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">Supporting Documentation</td>
+    </tr>
+  </table>
+
+  <div class="font-bold text-[13px] mb-3">SECTION {{ documentation_section }} &mdash; SUPPORTING DOCUMENTATION</div>
+
+  {% for a in pair %}
+  <div class="mb-4" style="border:1px solid #ccc; padding:8px;">
+    <div class="text-xs font-bold mb-1 text-center">{{ a.filename }}</div>
+    <img src="{{ a.file.url }}" style="max-width:100%; max-height:400px; display:block; margin:0 auto; object-fit:contain;">
+  </div>
+  {% endfor %}
+
+</div>
+{% endfor %}
 
 </body>
 </html>

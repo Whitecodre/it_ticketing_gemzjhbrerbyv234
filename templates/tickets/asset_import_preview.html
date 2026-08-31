@@ -1,0 +1,163 @@
+{% extends "base_dashboard.html" %}
+{% load lucide %}
+
+{% block dashboard_title %}Import Preview{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex items-center gap-3 mb-6">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "table" size=19 %}</span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">Import Preview</h2>
+            <p class="text-sm text-text-secondary">
+                {{ batch.row_count }} asset{{ batch.row_count|pluralize }} recognized from your file. Review before importing —
+                nothing has been created yet.
+            </p>
+        </div>
+    </div>
+
+    <form method="post" action="{% url 'tickets:asset_import_commit' batch.pk %}">
+        {% csrf_token %}
+
+        {% if unmatched_departments or unmatched_locations or unmatched_categories %}
+        <div class="dashboard-card p-4 mb-6 border-warning/40">
+            <div class="flex items-start gap-3 mb-3">
+                <span class="text-warning mt-0.5">{% lucide "triangle-alert" size=18 %}</span>
+                <div>
+                    <h3 class="text-sm font-semibold text-text-primary">Review new departments, locations &amp; categories</h3>
+                    <p class="text-xs text-text-secondary">
+                        These names from your file don't exactly match anything already in the system.
+                        If one of these is actually existing under a different
+                        name (e.g. "Account" vs "Accounting"), pick it below instead of creating a duplicate.
+                        Leave as "Create new" if it's genuinely new.
+                    </p>
+                </div>
+            </div>
+            {% if unmatched_categories %}
+            <div class="mb-3">
+                <div class="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">Categories</div>
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {% for cat_name in unmatched_categories %}
+                    <label class="flex items-center gap-2 text-sm">
+                        <span class="text-text-primary min-w-0 truncate" title="{{ cat_name }}">{{ cat_name }}</span>
+                        <span class="text-text-secondary">→</span>
+                        <select name="cat_map:{{ cat_name }}" class="flex-1 text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary">
+                            <option value="">Create new category "{{ cat_name }}"</option>
+                            {% for cat in existing_categories %}
+                            <option value="{{ cat.pk }}">Use existing: {{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% if unmatched_departments %}
+            <div class="mb-3">
+                <div class="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">Departments</div>
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {% for dept_name in unmatched_departments %}
+                    <label class="flex items-center gap-2 text-sm">
+                        <span class="text-text-primary min-w-0 truncate" title="{{ dept_name }}">{{ dept_name }}</span>
+                        <span class="text-text-secondary">→</span>
+                        <select name="dept_map:{{ dept_name }}" class="flex-1 text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary">
+                            <option value="">Create new department "{{ dept_name }}"</option>
+                            {% for dept in existing_departments %}
+                            <option value="{{ dept.pk }}">Use existing: {{ dept.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% if unmatched_locations %}
+            <div>
+                <div class="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-1.5">Locations</div>
+                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {% for loc_name in unmatched_locations %}
+                    <label class="flex items-center gap-2 text-sm">
+                        <span class="text-text-primary min-w-0 truncate" title="{{ loc_name }}">{{ loc_name }}</span>
+                        <span class="text-text-secondary">→</span>
+                        <select name="loc_map:{{ loc_name }}" class="flex-1 text-sm rounded-lg border py-1.5 px-2 bg-background border-border text-text-primary">
+                            <option value="">Create new location "{{ loc_name }}"</option>
+                            {% for loc in existing_locations %}
+                            <option value="{{ loc.pk }}">Use existing: {{ loc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="dashboard-card overflow-x-auto mb-6">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs uppercase tracking-wide text-text-secondary border-b border-border">
+                        <th class="py-2 px-3">Name</th>
+                        <th class="py-2 px-3">Category</th>
+                        <th class="py-2 px-3">Tag</th>
+                        <th class="py-2 px-3">Department</th>
+                        <th class="py-2 px-3">Location</th>
+                        <th class="py-2 px-3">Assigned To</th>
+                        <th class="py-2 px-3">Status</th>
+                        <th class="py-2 px-3">Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in preview_rows %}
+                    <tr class="border-b border-border {% if row.assign_warning %}bg-warning/5{% endif %}">
+                        <td class="py-2 px-3">{{ row.name|default:"—" }}</td>
+                        <td class="py-2 px-3">
+                            {{ row.category_name|default:"—" }}
+                            {% if row.category_name in unmatched_categories %}<span class="text-warning" title="No exact match — see above">*</span>{% endif %}
+                        </td>
+                        <td class="py-2 px-3 font-mono text-xs">{{ row.tracking_id|default:"(auto-generated)" }}</td>
+                        <td class="py-2 px-3">
+                            {{ row.department_name|default:"—" }}
+                            {% if row.department_name in unmatched_departments %}<span class="text-warning" title="No exact match — see above">*</span>{% endif %}
+                        </td>
+                        <td class="py-2 px-3">
+                            {{ row.location_name|default:"—" }}
+                            {% if row.location_name in unmatched_locations %}<span class="text-warning" title="No exact match — see above">*</span>{% endif %}
+                        </td>
+                        <td class="py-2 px-3">
+                            {% if row.assigned_to_resolved %}
+                                {{ row.assigned_to_resolved }}
+                            {% elif row.assign_warning %}
+                                <span class="text-warning">{{ row.assign_warning }}</span>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td class="py-2 px-3">{{ row.resolved_status }}</td>
+                        <td class="py-2 px-3 text-text-secondary">{{ row.notes|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="flex items-center justify-end gap-3">
+            <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg flex items-center gap-2">
+                {% lucide "check" size=16 %} Confirm Import
+            </button>
+        </div>
+    </form>
+
+    <form method="post" action="{% url 'tickets:asset_import_discard' batch.pk %}" class="flex justify-end mt-3">
+        {% csrf_token %}
+        <button type="submit" class="btn-ghost text-sm px-4 py-2 rounded-lg">Discard</button>
+    </form>
+</div>
+{% endblock %}

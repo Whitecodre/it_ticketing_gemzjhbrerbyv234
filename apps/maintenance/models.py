@@ -4,7 +4,8 @@ from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
 from django.utils import timezone
 from django.core.validators import MinLengthValidator
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, date, timedelta
+import calendar
 import uuid
 
 from apps.accounts.models import User
@@ -73,6 +74,12 @@ class MaintenanceSchedule(models.Model):
         IN_PROGRESS = 'IN_PROGRESS', 'In Progress'
         COMPLETED = 'COMPLETED', 'Completed'
         CANCELLED = 'CANCELLED', 'Cancelled'
+
+    class Recurrence(models.TextChoices):
+        NONE = 'NONE', 'Does not repeat'
+        WEEKLY = 'WEEKLY', 'Weekly'
+        BIWEEKLY = 'BIWEEKLY', 'Every 2 weeks'
+        MONTHLY = 'MONTHLY', 'Monthly'
 
     Department = _DepartmentChoices
 
@@ -154,10 +161,20 @@ class MaintenanceSchedule(models.Model):
     reminder_24h_sent = models.BooleanField(default=False)
     reminder_1h_sent = models.BooleanField(default=False)
     reminder_10m_sent = models.BooleanField(default=False)
+
+    # Recurrence — a lightweight stopgap for routine reminder-type entries
+    # (e.g. "Send Security Tips") that don't need the full checklist/target-
+    # asset machinery above, just a repeating calendar slot. Each occurrence
+    # is its own independent row (not a virtual series) — spawn_next_occurrence()
+    # clones this row forward once its date is reached, same convention as
+    # the other "already handled" boolean flags on this model.
+    repeat_interval = models.CharField(max_length=10, choices=Recurrence.choices, default=Recurrence.NONE, blank=True)
+    next_occurrence_created = models.BooleanField(default=False)
     
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     
     class Meta:
@@ -187,12 +204,76 @@ class MaintenanceSchedule(models.Model):
         naive = datetime.combine(self.scheduled_date, self.start_time or dt_time.min)
         return timezone.make_aware(naive) if timezone.is_naive(naive) else naive
 
+    def _next_scheduled_date(self):
+        """The next occurrence's date per repeat_interval. Monthly clips to
+        the target month's last day when the original day doesn't exist
+        there (e.g. Jan 31 -> Feb 28/29), same behavior most calendar apps use."""
+        if self.repeat_interval == self.Recurrence.WEEKLY:
+            return self.scheduled_date + timedelta(days=7)
+        if self.repeat_interval == self.Recurrence.BIWEEKLY:
+            return self.scheduled_date + timedelta(days=14)
+        if self.repeat_interval == self.Recurrence.MONTHLY:
+            year = self.scheduled_date.year + (self.scheduled_date.month // 12)
+            month = self.scheduled_date.month % 12 + 1
+            day = min(self.scheduled_date.day, calendar.monthrange(year, month)[1])
+            return date(year, month, day)
+        return None
+
+    def spawn_next_occurrence(self):
+        """Clone this schedule forward to its next due date (see
+        _next_scheduled_date) and mark this row so it's never spawned twice.
+        Only meaningful for a recurring (repeat_interval != NONE) schedule —
+        called by the send_maintenance_reminders job once scheduled_date is
+        reached, per the "auto-create on due date" behavior chosen for this
+        stopgap. The new row starts completely fresh (no carried-over status/
+        checklist progress/reminder flags) since it's a distinct occurrence."""
+        next_date = self._next_scheduled_date()
+        if not next_date:
+            return None
+        clone = MaintenanceSchedule.objects.create(
+            title=self.title,
+            description=self.description,
+            departments=list(self.departments),
+            scheduled_date=next_date,
+            start_time=self.start_time,
+            end_time=self.end_time,
+            assigned_to=self.assigned_to,
+            facility_location=self.facility_location,
+            repeat_interval=self.repeat_interval,
+        )
+        clone.additional_assignees.set(self.additional_assignees.all())
+        clone.vendors.set(self.vendors.all())
+        self.next_occurrence_created = True
+        self.save(update_fields=['next_occurrence_created'])
+        return clone
+
     def is_overdue(self):
         """Check if schedule is overdue (past date and not completed)."""
         if self.status in [self.Status.COMPLETED, self.Status.CANCELLED]:
             return False
         return self.scheduled_date < timezone.now().date()
     
+    def elapsed_time_display(self):
+        """Human-readable duration between started_at and completed_at, for
+        the Completed badge. Returns '' when either timestamp is missing
+        (e.g. historical rows completed before started_at existed)."""
+        if not self.started_at or not self.completed_at:
+            return ''
+        seconds = (self.completed_at - self.started_at).total_seconds()
+        if seconds < 60:
+            return 'under a minute'
+        minutes = int(seconds // 60)
+        hours, minutes = divmod(minutes, 60)
+        days, hours = divmod(hours, 24)
+        parts = []
+        if days:
+            parts.append(f"{days}d")
+        if hours:
+            parts.append(f"{hours}h")
+        if minutes and not days:
+            parts.append(f"{minutes}m")
+        return ' '.join(parts)
+
     def is_assigned_to(self, user):
         """True if user is the primary assignee or one of the additional ones."""
         if not user or not user.is_authenticated:
@@ -330,6 +411,41 @@ class MaintenanceAssetConfirmation(models.Model):
 
     def __str__(self):
         return f"{self.asset} — {self.get_status_display()} ({self.schedule})"
+
+
+class AssetBackupStatus(models.Model):
+    """Current OS/data backup state for an asset — a satellite record, same
+    shape/precedent as MaintenanceAssetConfirmation, deliberately kept off
+    Asset.status (which is reserved for the asset's own lifecycle, not
+    maintenance-side state). One row per asset (current state, not a
+    history log) — get_or_create'd and overwritten in place each time it's
+    updated, mirroring how most fields on Asset itself behave."""
+
+    class Status(models.TextChoices):
+        NOT_BACKED_UP = 'NOT_BACKED_UP', 'Not Backed Up'
+        IN_PROGRESS = 'IN_PROGRESS', 'Backup In Progress'
+        BACKED_UP = 'BACKED_UP', 'Backed Up'
+        FAILED = 'FAILED', 'Backup Failed'
+
+    asset = models.OneToOneField('tickets.Asset', on_delete=models.CASCADE, related_name='backup_status')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_BACKED_UP)
+    # Free text, e.g. "OneDrive", "External HDD", "Network Share" — not an
+    # enum, since backup methods vary too much across clients/devices to
+    # enumerate up front.
+    method = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Asset Backup Status'
+        verbose_name_plural = 'Asset Backup Statuses'
+
+    def __str__(self):
+        return f"{self.asset} — {self.get_status_display()}"
 
 
 class MaintenanceChecklistTemplate(models.Model):

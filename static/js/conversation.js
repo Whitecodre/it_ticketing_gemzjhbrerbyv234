@@ -40,11 +40,22 @@ function toggleSubjectEdit() {
 // ================================================================
 // ATTACHMENT PREVIEW MODAL (open via inline onclick elsewhere; close here)
 // ================================================================
+// #modalContainer is shared by every "open a thing in the middle of the
+// screen" trigger on this page (attachment previews, the requester profile
+// card, etc). Most of those want the wide default box; a few (the profile
+// card) shrink it to fit their own content and must NOT leave that behind
+// for the next, unrelated modal — so every close restores this canonical
+// className rather than leaving whatever the last content set.
+const MODAL_CONTAINER_DEFAULT_CLASS = 'bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto';
+
 function closeAttachmentModal() {
     const overlay = document.getElementById('modalOverlay');
     if (overlay) overlay.classList.add('hidden');
     const container = document.getElementById('modalContainer');
-    if (container) container.innerHTML = '';
+    if (container) {
+        container.innerHTML = '';
+        container.className = MODAL_CONTAINER_DEFAULT_CLASS;
+    }
     document.body.style.overflow = '';
 }
 
@@ -175,70 +186,17 @@ function formatDocument(command) {
 // ================================================================
 // ATTACHMENT PREVIEW
 // ================================================================
+// Shared staging/validation logic lives in global.js's
+// createAttachmentComposer (also used by the Incident/Service Request
+// submission forms) so all three attachment inputs behave identically.
 (function() {
-    const input = document.getElementById('attachmentsInput');
-    const preview = document.getElementById('filePreviewContainer');
-    if (!input || !preview) return;
-
-    // Staged files persist across multiple picker openings (native
-    // multi-file inputs replace the whole FileList on every dialog use),
-    // and each chip gets its own remove button so a single mis-added file
-    // doesn't force starting the whole selection over.
-    let stagedFiles = [];
-
-    function formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-
-    function syncInputFiles() {
-        const dt = new DataTransfer();
-        stagedFiles.forEach(function(f) { dt.items.add(f); });
-        input.files = dt.files;
-    }
-
-    function renderChips() {
-        preview.innerHTML = '';
-        stagedFiles.forEach(function(file, index) {
-            const chip = document.createElement('span');
-            chip.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border';
-            chip.style.borderColor = 'var(--color-border)';
-            chip.style.backgroundColor = 'var(--color-background)';
-
-            const label = document.createElement('span');
-            label.textContent = `${file.name} (${formatFileSize(file.size)})`;
-            chip.appendChild(label);
-
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.textContent = '×';
-            removeBtn.setAttribute('aria-label', `Remove ${file.name}`);
-            removeBtn.className = 'text-text-secondary hover:text-error font-bold leading-none';
-            removeBtn.addEventListener('click', function() {
-                stagedFiles.splice(index, 1);
-                syncInputFiles();
-                renderChips();
-            });
-            chip.appendChild(removeBtn);
-
-            preview.appendChild(chip);
-        });
-    }
-
-    input.addEventListener('change', function() {
-        stagedFiles = stagedFiles.concat(Array.from(input.files || []));
-        syncInputFiles();
-        renderChips();
-    });
+    if (!window.createAttachmentComposer) return;
+    const composer = window.createAttachmentComposer('attachmentsInput', 'filePreviewContainer');
+    if (!composer) return;
 
     // Exposed so the comment-send success handler can clear staged
     // attachments along with the rest of the composer.
-    window.resetAttachmentComposer = function() {
-        stagedFiles = [];
-        preview.innerHTML = '';
-        input.value = '';
-    };
+    window.resetAttachmentComposer = composer.reset;
 })();
 
 // ================================================================

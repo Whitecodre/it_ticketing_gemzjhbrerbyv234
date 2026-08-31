@@ -1,46 +1,136 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #EF4444; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-        .content { padding: 20px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px; background: white; }
-        .warning { background: #fef3c7; padding: 12px 16px; border-radius: 6px; margin: 12px 0; border-left: 4px solid #F59E0B; }
-        .info { background: #f8fafc; padding: 12px 16px; border-radius: 6px; margin: 12px 0; border-left: 4px solid #0D9488; }
-        .footer { margin-top: 20px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-        .button { display: inline-block; padding: 10px 20px; background: #EF4444; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Account Access Notice</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body>
-    <div class="header">
-        <h1 style="margin: 0; font-size: 20px;">⚠️ Account Access Notice</h1>
-    </div>
-    <div class="content">
-        <p>Dear {{ user_name }},</p>
-        
-        <div class="warning">
-            <p style="margin: 0; font-weight: 600;">An administrator has logged in to your account.</p>
-        </div>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        <div class="info">
-            <p style="margin: 0;"><strong>Admin:</strong> {{ admin_name }} ({{ admin_email }})</p>
-            <p style="margin: 4px 0 0 0;"><strong>Reason:</strong> {{ reason }}</p>
-        </div>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    An administrator {{ admin_name }} has logged in to your account on {{ client_settings.company_name }}.
+  </div>
 
-        <p style="font-size: 14px;">This action has been logged for security purposes.</p>
-        
-        <p style="font-size: 14px;">If you did not request this access or believe this was unauthorized, please contact your system administrator immediately.</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
 
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="mailto:{{ support_email }}" class="button">Contact Support</a>
-        </p>
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
 
-        <p style="font-size: 14px;">Best regards,<br>TicketSwipe Security Team</p>
-    </div>
-    <div class="footer">
-        <p>This is an automated security notification. Please do not reply to this email.</p>
-        <p>Access logged at: {{ now|date:"Y-m-d H:i:s" }}</p>
-    </div>
+          <!-- Top accent bar (red for urgency) -->
+          <tr>
+            <td style="background-color:#DC2626; height:3px; line-height:3px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
+
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+              {% else %}
+                <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#DC2626; font-weight:600; margin:0 0 10px;">Security notice</p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:27px; font-weight:400; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                Account access notice
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Dear <strong>{{ user_name }}</strong>,
+              </p>
+
+              <!-- Warning box (urgent) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#FEF3C7; border-left:4px solid #F59E0B; border-radius:6px; margin:16px 0;">
+                <tr>
+                  <td style="padding:12px 16px; font-size:14px; color:#92400E; line-height:1.5;">
+                    <strong style="font-weight:600;">An administrator has logged in to your account.</strong>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Info box (details) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border-left:4px solid #0D9488; border-radius:6px; margin:16px 0;">
+                <tr>
+                  <td style="padding:12px 16px; font-size:14px; color:#0F172A; line-height:1.6;">
+                    <strong>Admin:</strong> {{ admin_name }} ({{ admin_email }})<br>
+                    <strong>Reason:</strong> {{ reason }}
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                This action has been logged for security purposes. If you did not request this access or believe this was unauthorized, please contact your system administrator immediately.
+              </p>
+
+              <!-- Button (with Outlook VML fallback) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">
+                <tr>
+                  <td style="border-radius:8px; background-color:#DC2626;">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="mailto:{{ support_email }}" style="height:46px;v-text-anchor:middle;width:200px;" fillcolor="#DC2626" stroke="false">
+                    <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">Contact Support</center>
+                    </v:rect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="mailto:{{ support_email }}" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; background-color:#DC2626; border-radius:8px;">Contact Support</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:14px; color:#475569; line-height:1.65; margin:24px 0 0;">
+                Best regards,<br>
+                {{ client_settings.company_name }} Security Team
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  This is an automated security notification. Please do not reply to this email.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  Access logged at: {{ now|date:"Y-m-d H:i:s" }} · {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

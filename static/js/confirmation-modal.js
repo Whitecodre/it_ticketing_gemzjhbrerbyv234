@@ -91,7 +91,7 @@ function openConfirmationModal(config = {}) {
                 icon: 'check-circle'
             },
             question: {
-                bg: 'var(--color-primary)',
+                bg: 'var(--color-primary-solid)',
                 icon: 'help-circle'
             }
         };

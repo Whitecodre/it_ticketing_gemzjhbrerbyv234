@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}Mobilization Detail{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -28,6 +29,9 @@
         <span class="status-chip {% if mobilization.status == 'ACTIVE' %}primary{% else %}success{% endif %} text-xs ml-auto">
             {{ mobilization.get_status_display }}
         </span>
+        <a href="{% url 'tickets:mobilization_audit_report' mobilization.pk %}" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+            {% lucide "file-text" size=14 %} Audit Report
+        </a>
         {% if mobilization.status == 'ACTIVE' and active_role_name in 'ADMIN,SUPERADMIN' %}
         <button onclick="openDemobilizeAllModal({{ mobilization.pk }})" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5">
             {% lucide "log-in" size=14 %} Demobilize All
@@ -37,7 +41,7 @@
 
     {% if mobilization.ticket %}
     <div class="mb-4 p-3 rounded-lg border border-border bg-surface text-sm">
-        <span class="text-text-secondary">Fulfilled request:</span>
+        <span class="text-text-secondary">Request being fulfilled:</span>
         <a href="{% url 'tickets:detail' mobilization.ticket.pk %}" class="text-primary hover:underline ml-1">{{ mobilization.ticket.number }}</a>
     </div>
     {% endif %}
@@ -104,8 +108,10 @@
                     <tr class="border-b" style="border-color: var(--color-border);">
                         <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset</th>
                         <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Self-Reported</th>
                         <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Demobilized</th>
                         <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Condition</th>
+                        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Notes</th>
                         <th class="text-center py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-24">Actions</th>
                     </tr>
                 </thead>
@@ -122,16 +128,36 @@
                             {% endif %}
                         </td>
                         <td class="py-3 px-3">
-                            <span class="status-chip {% if item.is_active %}primary{% else %}success{% endif %} text-xs">
-                                {% if item.is_active %}Mobilized{% else %}Demobilized{% endif %}
-                            </span>
+                            {% if not item.is_active %}
+                                {% status_badge 'text' 'Demobilized' %}
+                            {% elif item.disputed_at %}
+                                {% status_badge 'text' 'Receipt Disputed' %}
+                            {% elif item.mobilization.ticket_id and not item.acknowledged_at %}
+                                {% status_badge 'text' 'Pending Confirmation' %}
+                            {% elif item.return_requested_at %}
+                                {% status_badge 'text' 'Return Reported' %}
+                            {% else %}
+                                {% status_badge 'text' 'Mobilized' %}
+                            {% endif %}
+                        </td>
+                        <td class="py-3 px-3 text-text-secondary">
+                            {% if item.return_requested_at %}
+                                <span class="font-semibold">{{ item.return_requested_at|date:"M d, Y H:i" }}</span>
+                                <div class="text-xs">by {{ item.return_requested_by.get_full_name|default:item.return_requested_by.email }}</div>
+                            {% else %}—{% endif %}
                         </td>
                         <td class="py-3 px-3 text-text-secondary">
                             {% if item.demobilized_at %}
-                                {{ item.demobilized_at|date:"M d, Y H:i" }} by {{ item.demobilized_by.get_full_name|default:item.demobilized_by.email }}
+                                <span class="font-semibold">{{ item.demobilized_at|date:"M d, Y H:i" }}</span>
+                                <div class="text-xs">by {{ item.demobilized_by.get_full_name|default:item.demobilized_by.email }}</div>
                             {% else %}—{% endif %}
                         </td>
                         <td class="py-3 px-3 text-text-secondary">{{ item.get_return_condition_display|default:"—" }}</td>
+                        <td class="py-3 px-3 text-text-secondary truncate max-w-xs">
+                            {% if item.return_requested_notes %}<div>Requester: "{{ item.return_requested_notes }}"</div>{% endif %}
+                            {% if item.return_notes %}<div>Admin: "{{ item.return_notes }}"</div>{% endif %}
+                            {% if not item.return_requested_notes and not item.return_notes %}—{% endif %}
+                        </td>
                         <td class="py-3 px-2 text-center">
                             {% if item.is_active and active_role_name in 'ADMIN,SUPERADMIN' %}
                             <button onclick="openDemobilizeModal({{ item.pk }})"
@@ -145,7 +171,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="5" class="text-center py-12 text-text-secondary">No assets on this mobilization.</td>
+                        <td colspan="7" class="text-center py-12 text-text-secondary">No assets on this mobilization.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

@@ -12,7 +12,17 @@ from apps.maintenance.models import (
 )
 from apps.maintenance.views import can_change_maintenance_status
 from apps.maintenance.management.commands.send_maintenance_reminders import auto_start_due_schedules
-from apps.tickets.models import Asset, AssetCategory
+from apps.tickets.models import Asset, AssetCategory, AssetDepartment
+
+
+def _department(code):
+    """Test helper: resolve/create the AssetDepartment matching a legacy
+    User.DEPARTMENT_CHOICES code, mirroring how the seeded data migration
+    populates it in real environments."""
+    dept, _ = AssetDepartment.objects.get_or_create(
+        legacy_user_department_code=code, defaults={'name': code}
+    )
+    return dept
 from django.core.management import call_command
 
 
@@ -112,6 +122,78 @@ class MaintenanceReminderTests(TestCase):
         self.assertEqual(Notification.objects.filter(recipient=self.assignee).count(), 0)
 
 
+class RecurringScheduleTests(TestCase):
+    """MaintenanceSchedule.spawn_next_occurrence / the send_maintenance_reminders
+    job's auto-create-on-due-date recurrence stopgap."""
+
+    def setUp(self):
+        self.assignee = User.objects.create_user(
+            email='recurring-assignee@example.com', password='TestPass123!',
+            first_name='Recurring', last_name='Assignee', department='IT', role=User.Role.AGENT,
+        )
+
+    def test_weekly_next_date(self):
+        schedule = make_schedule(
+            assigned_to=self.assignee, repeat_interval=MaintenanceSchedule.Recurrence.WEEKLY,
+            scheduled_date=timezone.now().date(),
+        )
+        clone = schedule.spawn_next_occurrence()
+        self.assertEqual(clone.scheduled_date, schedule.scheduled_date + timedelta(days=7))
+        self.assertEqual(clone.repeat_interval, MaintenanceSchedule.Recurrence.WEEKLY)
+        self.assertEqual(clone.title, schedule.title)
+        self.assertEqual(clone.status, MaintenanceSchedule.Status.SCHEDULED)
+
+    def test_monthly_next_date_clips_short_month(self):
+        from datetime import date
+        schedule = make_schedule(
+            assigned_to=self.assignee, repeat_interval=MaintenanceSchedule.Recurrence.MONTHLY,
+            scheduled_date=date(2026, 1, 31),
+        )
+        clone = schedule.spawn_next_occurrence()
+        self.assertEqual(clone.scheduled_date, date(2026, 2, 28))
+
+    def test_non_recurring_schedule_spawns_nothing(self):
+        schedule = make_schedule(assigned_to=self.assignee)
+        self.assertIsNone(schedule.spawn_next_occurrence())
+
+    def test_spawn_marks_original_and_is_idempotent(self):
+        schedule = make_schedule(
+            assigned_to=self.assignee, repeat_interval=MaintenanceSchedule.Recurrence.WEEKLY,
+            scheduled_date=timezone.now().date(),
+        )
+        schedule.spawn_next_occurrence()
+        schedule.refresh_from_db()
+        self.assertTrue(schedule.next_occurrence_created)
+
+    def test_reminders_job_spawns_due_recurring_schedule(self):
+        schedule = make_schedule(
+            assigned_to=self.assignee, repeat_interval=MaintenanceSchedule.Recurrence.WEEKLY,
+            scheduled_date=timezone.now().date() - timedelta(days=1),
+        )
+        call_command('send_maintenance_reminders')
+        schedule.refresh_from_db()
+        self.assertTrue(schedule.next_occurrence_created)
+        self.assertEqual(
+            MaintenanceSchedule.objects.filter(title=schedule.title).count(), 2,
+        )
+
+        # Running again shouldn't spawn a second clone.
+        call_command('send_maintenance_reminders')
+        self.assertEqual(
+            MaintenanceSchedule.objects.filter(title=schedule.title).count(), 2,
+        )
+
+    def test_reminders_job_does_not_spawn_future_recurring_schedule(self):
+        schedule = make_schedule(
+            assigned_to=self.assignee, repeat_interval=MaintenanceSchedule.Recurrence.WEEKLY,
+            scheduled_date=timezone.now().date() + timedelta(days=5),
+        )
+        call_command('send_maintenance_reminders')
+        schedule.refresh_from_db()
+        self.assertFalse(schedule.next_occurrence_created)
+        self.assertEqual(MaintenanceSchedule.objects.filter(title=schedule.title).count(), 1)
+
+
 class AssetOwnerConfirmationTests(TestCase):
     """The asset OWNER confirms/disputes completion — not the technician who
     did the work — per-asset via MaintenanceAssetConfirmation."""
@@ -130,7 +212,7 @@ class AssetOwnerConfirmationTests(TestCase):
             first_name='Doer', last_name='Two', department='IT', role=User.Role.AGENT,
         )
         category = AssetCategory.objects.create(name='Laptops')
-        self.asset = Asset.objects.create(name='Owner Laptop', category=category, department='IT', assigned_to=self.owner)
+        self.asset = Asset.objects.create(name='Owner Laptop', category=category, department=_department('IT'), assigned_to=self.owner)
         self.schedule = make_schedule(
             assigned_to=self.assignee, status=MaintenanceSchedule.Status.COMPLETED,
             completed_at=timezone.now(),
@@ -185,24 +267,39 @@ class AssetOwnerConfirmationTests(TestCase):
         self.assertEqual(self.row.dispute_reason, 'Still broken')
         self.assertEqual(self.schedule.confirmation_state(), 'HAS_DISPUTE')
 
-    def test_admin_can_override_after_owner_confirmed(self):
+    def test_admin_cannot_confirm_asset_that_has_an_owner(self):
+        """Admin is never eligible while a real confirmer (the owner) exists
+        — not on a PENDING row, and not to reopen an already-resolved one.
+        The whole point of the independent confirmation step is that the
+        party accountable for scheduling the work doesn't get final say."""
         admin = User.objects.create_user(
             email='override-admin@example.com', password='TestPass123!',
             first_name='Override', last_name='Admin', department='IT', role=User.Role.ADMIN,
         )
+        self.client.login(email='override-admin@example.com', password='TestPass123!')
+
+        # PENDING row: Admin still can't jump in ahead of the owner.
+        response = self.client.post(
+            reverse('maintenance:asset_confirm', kwargs={'pk': self.schedule.pk, 'asset_pk': self.asset.pk}),
+            {'decision': 'CONFIRMED', 'notes': ''},
+        )
+        self.row.refresh_from_db()
+        self.assertEqual(self.row.status, 'PENDING')
+
+        # Owner confirms for real...
         self.row.status = 'CONFIRMED'
         self.row.confirmed_by = self.owner
         self.row.confirmed_at = timezone.now()
         self.row.save()
 
-        self.client.login(email='override-admin@example.com', password='TestPass123!')
+        # ...and Admin can no longer reopen/overwrite it either.
         response = self.client.post(
             reverse('maintenance:asset_confirm', kwargs={'pk': self.schedule.pk, 'asset_pk': self.asset.pk}),
             {'decision': 'DISPUTED', 'notes': '', 'dispute_reason': 'Found an issue on recheck'},
         )
         self.row.refresh_from_db()
-        self.assertEqual(self.row.status, 'DISPUTED')
-        self.assertEqual(self.row.confirmed_by, admin)
+        self.assertEqual(self.row.status, 'CONFIRMED')
+        self.assertEqual(self.row.confirmed_by, self.owner)
 
     def test_other_user_cannot_confirm(self):
         outsider = User.objects.create_user(
@@ -220,8 +317,9 @@ class AssetOwnerConfirmationTests(TestCase):
 
 
 class OwnerlessAssetFallbackConfirmationTests(TestCase):
-    """When an asset has no assigned_to, any Team Lead of the asset's own
-    department may confirm; Admin/Superadmin can always confirm."""
+    """When an ownerless asset has no owner, the IT Team Lead confirms it.
+    Admin/Superadmin are only eligible when no IT Team Lead exists at all —
+    not merely because the asset itself has no owner."""
 
     def setUp(self):
         self.assignee = User.objects.create_user(
@@ -237,7 +335,7 @@ class OwnerlessAssetFallbackConfirmationTests(TestCase):
             first_name='HR', last_name='Lead', department='HR', role=User.Role.TEAM_LEAD,
         )
         category = AssetCategory.objects.create(name='Servers')
-        self.asset = Asset.objects.create(name='Ownerless Server', category=category, department='IT')
+        self.asset = Asset.objects.create(name='Ownerless Server', category=category, department=_department('IT'))
         self.schedule = make_schedule(
             assigned_to=self.assignee, status=MaintenanceSchedule.Status.COMPLETED,
             completed_at=timezone.now(),
@@ -265,6 +363,73 @@ class OwnerlessAssetFallbackConfirmationTests(TestCase):
         )
         self.row.refresh_from_db()
         self.assertEqual(self.row.status, 'PENDING')
+
+    def test_admin_cannot_confirm_ownerless_asset_while_it_team_lead_exists(self):
+        admin = User.objects.create_user(
+            email='fallback-admin@example.com', password='TestPass123!',
+            first_name='Fallback', last_name='Admin', department='IT', role=User.Role.ADMIN,
+        )
+        self.client.login(email='fallback-admin@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('maintenance:asset_confirm', kwargs={'pk': self.schedule.pk, 'asset_pk': self.asset.pk}),
+            {'decision': 'CONFIRMED', 'notes': ''},
+        )
+        self.row.refresh_from_db()
+        self.assertEqual(self.row.status, 'PENDING')
+
+
+class AdminLastResortFallbackConfirmationTests(TestCase):
+    """Admin/Superadmin may confirm an ownerless asset ONLY when there is
+    truly no one else who ever could — no owner, and no IT Team Lead
+    anywhere in the system. Even then, once resolved, it's final: not even
+    another Admin can reopen it."""
+
+    def setUp(self):
+        self.assignee = User.objects.create_user(
+            email='orphan-doer@example.com', password='TestPass123!',
+            first_name='Doer', last_name='Orphan', department='IT', role=User.Role.AGENT,
+        )
+        self.admin = User.objects.create_user(
+            email='orphan-admin@example.com', password='TestPass123!',
+            first_name='Orphan', last_name='Admin', department='IT', role=User.Role.ADMIN,
+        )
+        category = AssetCategory.objects.create(name='Routers')
+        self.asset = Asset.objects.create(name='Orphan Router', category=category, department=_department('IT'))
+        self.schedule = make_schedule(
+            assigned_to=self.assignee, status=MaintenanceSchedule.Status.COMPLETED,
+            completed_at=timezone.now(),
+        )
+        self.schedule.target_assets.add(self.asset)
+        self.row = MaintenanceAssetConfirmation.objects.create(
+            schedule=self.schedule, asset=self.asset, technician_completed_at=self.schedule.completed_at,
+        )
+        self.client = Client()
+        # No IT Team Lead exists anywhere in this TestCase's data — genuine
+        # orphan case.
+
+    def test_admin_can_confirm_when_no_owner_and_no_it_team_lead_exists(self):
+        self.client.login(email='orphan-admin@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('maintenance:asset_confirm', kwargs={'pk': self.schedule.pk, 'asset_pk': self.asset.pk}),
+            {'decision': 'CONFIRMED', 'notes': ''},
+        )
+        self.row.refresh_from_db()
+        self.assertEqual(self.row.status, 'CONFIRMED')
+        self.assertEqual(self.row.confirmed_by, self.admin)
+
+    def test_admin_cannot_reopen_its_own_last_resort_confirmation(self):
+        self.row.status = 'CONFIRMED'
+        self.row.confirmed_by = self.admin
+        self.row.confirmed_at = timezone.now()
+        self.row.save()
+
+        self.client.login(email='orphan-admin@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('maintenance:asset_confirm', kwargs={'pk': self.schedule.pk, 'asset_pk': self.asset.pk}),
+            {'decision': 'DISPUTED', 'notes': '', 'dispute_reason': 'Changed my mind'},
+        )
+        self.row.refresh_from_db()
+        self.assertEqual(self.row.status, 'CONFIRMED')
 
 
 class StatusChangePermissionTests(TestCase):
@@ -584,9 +749,12 @@ class ChecklistCompletionOnFinishTests(TestCase):
 
 
 class ConfirmationVisibilityTests(TestCase):
-    """The per-asset Confirm/Dispute button is only shown to whoever
-    can_confirm_asset_maintenance allows for that asset — the owner, a
-    same-department Team Lead fallback, or Admin/Superadmin."""
+    """The per-asset Confirm/Dispute affordance is only shown to whoever
+    can_confirm_asset_maintenance allows for that asset. An owner (an End
+    User) confirms from My Assets, not the IT-internal schedule detail page
+    — that page is gated to AGENT/TEAM_LEAD/ADMIN/SUPERADMIN only, since it
+    also exposes personnel/activity-log info that isn't the owner's
+    business (see _asset_review_url)."""
 
     def setUp(self):
         self.assignee = User.objects.create_user(
@@ -598,7 +766,7 @@ class ConfirmationVisibilityTests(TestCase):
             first_name='Confirm', last_name='Owner', department='IT', role=User.Role.END_USER,
         )
         category = AssetCategory.objects.create(name='Desktops')
-        self.asset = Asset.objects.create(name='Confirm Desktop', category=category, department='IT', assigned_to=self.owner)
+        self.asset = Asset.objects.create(name='Confirm Desktop', category=category, department=_department('IT'), assigned_to=self.owner)
         self.schedule = make_schedule(
             assigned_to=self.assignee, status=MaintenanceSchedule.Status.COMPLETED,
             completed_at=timezone.now(),
@@ -616,8 +784,15 @@ class ConfirmationVisibilityTests(TestCase):
 
     def test_owner_sees_confirm_button(self):
         self.client.login(email='confirm-owner@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:my_assets'))
+        self.assertContains(response, 'Review &amp; Confirm')
+
+    def test_owner_cannot_access_schedule_detail(self):
+        """Owners confirm from My Assets — the schedule detail page itself
+        is IT-internal (personnel, activity log) and off-limits to them."""
+        self.client.login(email='confirm-owner@example.com', password='TestPass123!')
         response = self.client.get(reverse('maintenance:detail', kwargs={'pk': self.schedule.pk}))
-        self.assertContains(response, 'Confirm / Dispute')
+        self.assertEqual(response.status_code, 403)
 
     def test_assignee_sees_confirmed_status_after_confirmation(self):
         self.row.status = 'CONFIRMED'
@@ -639,8 +814,8 @@ class TargetAssetDepartmentScopingTests(TestCase):
             first_name='Asset', last_name='Admin', department='IT', role=User.Role.ADMIN,
         )
         category = AssetCategory.objects.create(name='Laptops')
-        self.it_asset = Asset.objects.create(name='IT Laptop', category=category, department='IT')
-        self.hr_asset = Asset.objects.create(name='HR Printer', category=category, department='HR')
+        self.it_asset = Asset.objects.create(name='IT Laptop', category=category, department=_department('IT'))
+        self.hr_asset = Asset.objects.create(name='HR Printer', category=category, department=_department('HR'))
         self.client = Client()
         self.client.login(email='asset-admin@example.com', password='TestPass123!')
 

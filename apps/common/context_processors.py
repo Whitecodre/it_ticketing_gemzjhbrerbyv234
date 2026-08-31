@@ -1,6 +1,10 @@
 # apps/common/context_processors.py
 from django.conf import settings
+from django.core.cache import cache
 from django.utils import timezone
+
+CLIENT_SETTINGS_CACHE_KEY = 'client_settings_context'
+CLIENT_SETTINGS_CACHE_TTL = 300  # branding rarely changes; self-heals within 5 min of an edit
 
 def vapid_keys(request):
     return {
@@ -42,7 +46,11 @@ def impersonation_context(request):
         context['impersonation_original'] = data.get('original_user')
         return context
 
-    # Fallback: read the active impersonation data from the session.
+    # Fallback: read the active impersonation data from the session. This
+    # only runs for paths ImpersonationMiddleware skips (login/logout/
+    # static/impersonate/*), so it needs the same real end-of-session
+    # handling as the middleware — not just deleting the session flag,
+    # which used to leave the admin fully authenticated as the target.
     impersonate_data = request.session.get('impersonate')
     if impersonate_data:
         expires_at = impersonate_data.get('expires_at')
@@ -50,7 +58,8 @@ def impersonation_context(request):
             if expires_at:
                 expiry = timezone.datetime.fromisoformat(expires_at)
                 if timezone.now() > expiry:
-                    request.session.pop('impersonate', None)
+                    from apps.accounts.views.impersonate import end_impersonation
+                    end_impersonation(request, impersonate_data)
                     return context
         except (TypeError, ValueError):
             pass
@@ -64,28 +73,58 @@ def impersonation_context(request):
     return context
 
 def client_settings(request):
-    """Add client settings (logo, company name) to context."""
+    """Add client settings (logo, company name) to context.
+
+    This runs on every request (global context processor), so the lookup
+    is cached — branding is effectively static and doesn't warrant a DB
+    query on every single page load. See ClientSettings' post_save signal
+    for cache invalidation on edit.
+    """
+    cached = cache.get(CLIENT_SETTINGS_CACHE_KEY)
+    if cached is not None:
+        return {'client_settings': cached}
+
     from apps.accounts.models import ClientSettings
-    
+
     try:
-        settings = ClientSettings.objects.first()
-        if settings:
-            return {
-                'client_settings': {
-                    'company_name': settings.company_name,
-                    'logo': settings.logo,
-                    'logo_url': settings.logo.url if settings.logo else None,
-                }
-            }
-    except:
-        pass
-    
-    return {
-        'client_settings': {
+        obj = ClientSettings.objects.first()
+        data = {
+            'company_name': obj.company_name,
+            'logo': obj.logo,
+            'logo_url': obj.logo.url if obj.logo else None,
+        } if obj else {
             'company_name': 'My Company',
             'logo': None,
             'logo_url': None,
         }
+    except Exception:
+        data = {
+            'company_name': 'My Company',
+            'logo': None,
+            'logo_url': None,
+        }
+
+    cache.set(CLIENT_SETTINGS_CACHE_KEY, data, CLIENT_SETTINGS_CACHE_TTL)
+    return {'client_settings': data}
+
+
+def mobilization_pending(request):
+    """Whether this user has ever had anything mobilized-and-acknowledged
+    on one of their own tickets — drives the sidebar 'Demobilization'
+    link's visibility. Deliberately NOT scoped to still-outstanding items:
+    the link (and the history it leads to) stays up permanently once
+    earned, so the requester always has a timestamped record of what
+    they've returned to point to if their return is ever disputed."""
+    if not request.user.is_authenticated:
+        return {'has_mobilization_history': False}
+
+    from apps.tickets.models import MobilizationItem
+
+    return {
+        'has_mobilization_history': MobilizationItem.objects.filter(
+            mobilization__ticket__requester=request.user,
+            acknowledged_at__isnull=False,
+        ).exists()
     }
 
 def active_role_context(request):

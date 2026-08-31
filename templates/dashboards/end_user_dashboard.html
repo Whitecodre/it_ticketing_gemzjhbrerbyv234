@@ -17,7 +17,7 @@
                 {{ user.first_name|default:user.email|slice:":1"|upper }}
             </div>
             <div>
-                <h2 class="text-xl font-bold">Welcome back, {{ user.first_name|default:"User" }}</h2>
+                <h2 class="text-xl font-bold">{{ greeting|default:"Welcome back" }}, {{ user.first_name|default:"User" }}</h2>
                 <p class="text-sm opacity-90 mt-0.5">Here's a summary of your tickets and requests</p>
             </div>
         </div>

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When fixing an issue or implementing a request, use the most token-efficient approach that does not reduce the quality of the outcome. Concretely: read only the files/sections you actually need (targeted Grep/Read over wholesale file reads, especially for the large files like `apps/tickets/views.py` or `apps/tickets/models.py`), avoid re-reading files you just edited, skip exploratory detours once you have enough context to act, and keep explanations/summaries terse. Never cut corners on correctness, testing, or thoroughness to save tokens — efficiency is about cutting wasted steps, not cutting rigor.
 
+When the user gives a description of a feature/behavior they want (a process walkthrough, a pasted spec, a bug report with expected behavior), restructure it back in your own words as a confirmation of understanding before implementing — don't just start coding off the literal text. This surfaces misreadings before they turn into a wrong implementation, which is cheaper to correct at the paraphrase stage than after code is written.
+
 When a full test suite run is warranted after a change (not a small targeted test), do not run it yourself in the background. Instead, give the user the exact `python manage.py test ...` command to run in their own terminal, and wait for them to report back the results. A small, targeted test (e.g. a single new test class) to verify an implementation works is still fine to run directly.
 
 ## Project
@@ -40,9 +42,13 @@ python manage.py seed_macros
 python manage.py seed_assets
 python manage.py seed_roles
 
-# SLA background processing (must run continuously; not triggered by request cycle)
-python manage.py run_sla_scheduler --interval=5   # or run_sla_scheduler.bat on Windows
-python manage.py process_sla                       # single pass, used by scheduler.py on Azure
+# Periodic background jobs — SLA processing, maintenance reminders/auto-start,
+# remote session expiry, renewal reminders (must run continuously; not triggered
+# by request cycle). Despite the historical name, run_sla_scheduler ran all of
+# these, not just SLA — renamed to run_periodic_tasks to reflect that; job list
+# lives in apps/tickets/periodic_tasks.py, shared with scheduler.py on Azure.
+python manage.py run_periodic_tasks --interval=5   # or run_periodic_tasks.bat on Windows
+python manage.py process_sla                       # single pass of just SLA processing
 
 # Tailwind (theme app, django-tailwind)
 python manage.py tailwind start   # watch mode during development
@@ -59,7 +65,7 @@ Settings module is chosen via `DJANGO_SETTINGS_MODULE`; `manage.py` defaults to 
 
 **Apps** (`apps/`):
 - `accounts` — custom email-based `User` model (`AUTH_USER_MODEL = accounts.User`, no username field, `EmailBackend` auth backend). Dual role system in transition: a legacy single `role` CharField (`Role` TextChoices: SUPERADMIN/ADMIN/TEAM_LEAD/AGENT/END_USER) kept for backward compatibility, plus a newer M2M `Role` model (`apps.accounts.models.Role`, separate from the enum) with per-user `active_role` FK — `dashboard()` in `apps/accounts/views/__init__.py` reads `active_role` to pick which dashboard template and context to render, falling back to highest-priority assigned role. Also owns: department field (fixed choices, currently Hydrodive-specific — see multi-tenancy note above), manager/subordinate org hierarchy, audited user impersonation (`ImpersonationLog`/`ImpersonationToken`, gated by `ImpersonationMiddleware` in `apps/common/middleware.py`), and `ClientSettings` for white-label branding (company name/logo).
-- `tickets` — the core domain: `Ticket` (Incident/Service Request types, multi-stage status workflow, impact/urgency/priority P1-P4), `SLA`/`EscalationRule`/`BusinessCalendar` for response/resolution breach tracking, `Asset`/`AssetCategory`/`AssetCheckoutHistory`/`AssetMaintenanceLog` for IT asset management, `RemoteConnector`/`RemoteSession`. SLA breach checking is NOT computed on request — it's driven by the standalone `run_sla_scheduler`/`process_sla` management commands, meant to run as a separate long-lived process (Windows: `run_sla_scheduler.bat`; Azure: `scheduler.py` as a WebJob, see `ReadMe-Making SLA SCHEDULER WORK WITH AZURE.txt`). `views.py` here is very large (~150KB) — search for the specific view rather than reading it wholesale.
+- `tickets` — the core domain: `Ticket` (Incident/Service Request types, multi-stage status workflow, impact/urgency/priority P1-P4), `SLA`/`EscalationRule`/`BusinessCalendar` for response/resolution breach tracking, `Asset`/`AssetCategory`/`AssetCheckoutHistory`/`AssetMaintenanceLog` for IT asset management, `RemoteConnector`/`RemoteSession`. SLA breach checking is NOT computed on request — it's driven by the standalone `process_sla` management command, run periodically alongside three unrelated jobs (maintenance reminders/auto-start, remote session expiry, renewal reminders) by `run_periodic_tasks` (job list in `apps/tickets/periodic_tasks.py`, shared with `scheduler.py`), meant to run as a separate long-lived process (Windows: `run_periodic_tasks.bat`; `scheduler.py` is the production entry point — deployment target is Cloudflare, not Azure). `views.py` here is very large (~150KB) — search for the specific view rather than reading it wholesale.
 - `common` — cross-cutting concerns: `SecurityHeadersMiddleware` and `ImpersonationMiddleware`, `NotificationConsumer` (WebSocket), `Notification`/`PushSubscription` models, shared `Category`/`Tag`, context processors (`vapid_keys`, `impersonation_context`, `client_settings`, `active_role_context` — all globally available in templates).
 - `documents_display` — newest app, in-progress document approval workflow with PDF/Office preview (LibreOffice conversion via `LIBREOFFICE_BINARY_PATH`). Has its own `permissions.py`. `SecurityHeadersMiddleware` special-cases this app's viewer/serve URLs and `/media/display_docs/` to allow framing (needed for embedded PDF/Office previews) and skips `X-Frame-Options: DENY` for PDF responses generally.
 - `knowledge_base`, `maintenance`, `organogram` — supporting apps (KB articles via TinyMCE, maintenance scheduling/calendar, org chart). `organogram` is now **System Organogram only** — an auto-generated, read-only tree built from users' roles/departments (`views.system_org`). The old customizable draft/approval/publish workflow (`OrgDraft`/`OrgApproval`/`OrgPublished`/`OrgAuditLog`, the builder UI, the DCC-upload "Organization Chart" view) was removed as deprecated — don't reintroduce it without confirming with the user first. `form_builder` (the formio.js-based dynamic form builder) has been removed entirely — it's gone from `INSTALLED_APPS`, the codebase, and the database (see `apps/common/migrations/0008_drop_form_builder_tables.py`), not just unrouted.

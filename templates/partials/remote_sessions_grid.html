@@ -1,6 +1,6 @@
 {% load lucide %}
 <div id="remoteSessionsGrid"
-     hx-get="{% url 'tickets:remote_sessions_list' %}{% if request.GET.page %}?page={{ request.GET.page }}{% endif %}"
+     hx-get="{% url 'tickets:remote_sessions_list' %}?page={{ request.GET.page|default:'' }}&sort={{ active_sort }}"
      hx-trigger="every 20s"
      hx-target="this"
      hx-swap="outerHTML">
@@ -92,7 +92,7 @@
         </span>
         <div class="pagination-controls">
             {% if sessions.has_previous %}
-            <a href="?page={{ sessions.previous_page_number }}" class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
+            <a href="?page={{ sessions.previous_page_number }}&sort={{ active_sort }}" class="pagination-step">{% lucide "chevron-left" size=14 %} Prev</a>
             {% else %}
             <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
             {% endif %}
@@ -101,12 +101,12 @@
                     {% if num == sessions.number %}
                     <span class="pagination-number is-current">{{ num }}</span>
                     {% elif num > sessions.number|add:'-3' and num < sessions.number|add:'3' %}
-                    <a href="?page={{ num }}" class="pagination-number">{{ num }}</a>
+                    <a href="?page={{ num }}&sort={{ active_sort }}" class="pagination-number">{{ num }}</a>
                     {% endif %}
                 {% endfor %}
             </div>
             {% if sessions.has_next %}
-            <a href="?page={{ sessions.next_page_number }}" class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
+            <a href="?page={{ sessions.next_page_number }}&sort={{ active_sort }}" class="pagination-step">Next {% lucide "chevron-right" size=14 %}</a>
             {% else %}
             <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
             {% endif %}

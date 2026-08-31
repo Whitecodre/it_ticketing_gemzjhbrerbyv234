@@ -1,0 +1,83 @@
+{% load lucide %}
+{# Budget / renewal-urgency summary — always global/unfiltered, same #}
+{# convention as the page's main KPI strip, so it doesn't jump around #}
+{# as someone types a search. Reuses the same .kpi-card component as   #}
+{# that strip rather than a bespoke text row, for visual consistency. #}
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+    <div class="kpi-card border-l-4 border-info">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Annual Renewal Budget</p>
+            {% lucide "wallet" size=14 class="text-text-secondary" %}
+        </div>
+        {% if license_budget_mixed_currencies %}
+        <p class="kpi-value" style="font-size: 1.05rem;">
+            {% for row in license_budget_breakdown %}{{ row.renewal_currency }}{{ row.total }}{% if not forloop.last %} + {% endif %}{% endfor %}
+        </p>
+        <p class="kpi-trend">Totaled separately per currency</p>
+        {% else %}
+        <p class="kpi-value text-info">{% if license_total_cost %}{{ license_budget_currency }}{{ license_total_cost }}{% else %}—{% endif %}</p>
+        <p class="kpi-trend">{{ license_costed_count }} of {{ license_total_count }} costed</p>
+        {% endif %}
+    </div>
+    <div class="kpi-card border-l-4 border-warning">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Renewing Soon</p>
+            {% lucide "clock" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value text-warning">{{ license_due_soon_count }}</p>
+        <p class="kpi-trend">Within 30 days</p>
+    </div>
+    <div class="kpi-card border-l-4 border-error">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Overdue</p>
+            {% lucide "triangle-alert" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value text-error">{{ license_overdue_count }}</p>
+        <p class="kpi-trend attention">Needs action</p>
+    </div>
+</div>
+
+{# Filters #}
+<form id="assetFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3 bg-surface border-border"
+    hx-get="{% url 'tickets:assets' %}?filter_tab=licenses"
+    hx-target="#assetTableContainer"
+    hx-swap="innerHTML"
+    hx-indicator="#assetFilterSpinner"
+    hx-trigger="change, keyup delay:300ms from:input">
+    <input type="hidden" name="filter_tab" value="licenses">
+
+    <div class="relative flex-1 min-w-[200px]">
+        <input type="text" name="filter_q" value="{{ query }}"
+            placeholder="Search by name, vendor, assignee..."
+            class="w-full rounded-lg border py-2 pl-10 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
+        <span id="assetFilterSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
+            {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
+        </span>
+    </div>
+
+    <select name="filter_category" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <option value="">All Categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat.pk }}" {% if selected_category == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+        {% endfor %}
+    </select>
+
+    <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
+        <input type="checkbox" name="filter_due_soon" value="1" {% if selected_due_soon %}checked{% endif %}
+               class="rounded border-border text-primary focus:ring-primary">
+        {% lucide "calendar" size=14 %} Due within 30 days
+    </label>
+
+    {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort %}
+
+    <button type="reset" class="btn-ghost text-sm"
+            onclick="resetFilters(event)">Reset</button>
+</form>
+
+{# License Table #}
+<div id="assetTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
+    {% include "partials/asset_license_table.html" %}
+</div>
+
+{% include "partials/asset_renewal_budget_summary.html" %}

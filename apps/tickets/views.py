@@ -1,4 +1,4 @@
-import random, hashlib, os, re, csv, json
+import random, hashlib, os, re, csv, json, io
 from datetime import datetime, timedelta, date
 from decimal import Decimal, InvalidOperation
 from openpyxl import Workbook
@@ -11,14 +11,14 @@ from django.core.management import call_command
 from django.http import JsonResponse, HttpResponse, FileResponse
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
-from django.db.models import Count, Avg, Q, F, Value
+from django.db.models import Count, Avg, Q, F, Value, Prefetch, Sum
 from django.db import transaction, IntegrityError
 from django.db.models.functions import TruncDate, Concat
 from django.utils import timezone
 from django.utils.html import strip_tags, escape
 from django.urls import reverse
 from django.template.loader import render_to_string
-from apps.common.utils import send_email_via_brevo, role_of
+from apps.common.utils import send_email_via_brevo, role_of, resolve_sort
 from django.conf import settings
 from .forms import (
     TicketForm, IncidentReportForm, ServiceRequestForm, CommentForm, AssetForm, MobilizationForm,
@@ -27,11 +27,13 @@ from .forms import (
     ConnectorEditForm, EscalatedReassignForm, EscalatedReturnForm,
 )
 from .service_request_fields import build_service_request_details, fields_for_group, display_value_for_field
+from .asset_import_transform import transform_raw_rows, resolve_status_hint, parse_track_no_slot
+from .asset_name_matching import match_users_by_name
 from .models import *
 from apps.tickets.models import Asset
 from apps.maintenance.models import Vendor, MaintenanceAssetConfirmation, MaintenanceSchedule
 from apps.accounts.models import User
-from apps.common.models import Notification
+from apps.common.models import Notification, AdminActionLog, log_admin_action
 from apps.common.permissions import is_admin, is_superadmin, get_sidebar_template, effective_role_name
 from bs4 import BeautifulSoup
 import bleach
@@ -124,6 +126,31 @@ def apply_sla(ticket):
     ticket.resolution_due_at = add_business_minutes(start_time, sla.resolution_minutes, sla.calendar)
     ticket.save(update_fields=['response_due_at', 'resolution_due_at'])
 
+def notify_department_team_leads_pending_review(ticket):
+    """Alerts every Team Lead in the requester's department that a service
+    request is waiting on their manager-review queue — called whenever a
+    ticket enters PENDING_MANAGER_REVIEW (on submission, and again if it
+    re-enters review after the requester responds to changes-requested).
+
+    Narrows via the legacy `role` field or the roles M2M (either can lag
+    behind a user's actual active role, per report_registry.py's team-scope
+    lookup), then resolves each candidate's true active role in Python so a
+    stale field doesn't drop a real Team Lead from the notification."""
+    from django.db.models import Q
+    candidates = User.objects.filter(
+        Q(role=User.Role.TEAM_LEAD) | Q(roles__name='TEAM_LEAD'),
+        department=ticket.requester.department, is_active=True,
+    ).distinct()
+    leads = [u for u in candidates if effective_role_name(u) == 'TEAM_LEAD']
+    for lead in leads:
+        Notification.objects.create(
+            recipient=lead,
+            role=role_of(lead),
+            message=f'Service request {ticket.number} from {ticket.requester.get_full_name()} needs your approval.',
+            url=reverse('tickets:manager_review_ticket', kwargs={'pk': ticket.pk}),
+            type=Notification.Type.MANAGER_REVIEW,
+        )
+
 # Helper function to handle "Other" field logic
 def get_other_value(data, select_field, other_field, default_value):
     """Helper to handle 'Other' field logic for asset forms."""
@@ -182,19 +209,25 @@ def sniffed_mime_matches(uploaded_file, claimed_mime):
 def save_attachments(ticket, files, author, comment=None):
     """
     Validates and saves uploaded file attachments.
-    - Skips files that exceed MAX_SIZE_MB or have disallowed MIME types.
+    - Rejects files that exceed MAX_SIZE_MB or have disallowed/spoofed MIME types.
     - Computes SHA-256 hash for integrity checking.
     - Associates attachments with a ticket and optionally a specific comment.
-    Returns list of created Attachment objects.
+    Returns (created, rejected) — created is a list of Attachment objects,
+    rejected is a list of (filename, reason) tuples for anything skipped, so
+    callers can surface exactly what happened instead of silently dropping it.
     """
     created = []
+    rejected = []
     for f in files:
         if f.size > MAX_SIZE_MB * 1024 * 1024:
+            rejected.append((f.name, f'exceeds the {MAX_SIZE_MB}MB limit'))
             continue
         mime = f.content_type.split(';')[0].strip().lower()
         if mime not in ALLOWED_MIMES:
+            rejected.append((f.name, 'file type not allowed'))
             continue
         if not sniffed_mime_matches(f, mime):
+            rejected.append((f.name, 'file type not allowed'))
             continue
         sha = hashlib.sha256()
         for chunk in f.chunks():
@@ -211,7 +244,7 @@ def save_attachments(ticket, files, author, comment=None):
             hash=sha.hexdigest(),
         )
         created.append(att)
-    return created
+    return created, rejected
 
 # ==========================================================================
 # TICKET CREATION & LISTING VIEWS (End Users)
@@ -320,7 +353,9 @@ def create_ticket(request):
 
             files = request.FILES.getlist('attachments')
             if files:
-                save_attachments(ticket, files, request.user)
+                _, rejected = save_attachments(ticket, files, request.user)
+                for name, reason in rejected:
+                    messages.warning(request, f'"{name}" was not attached — {reason}.')
 
             # If it's a service request, set status to PENDING_MANAGER_REVIEW
             if ticket.type == Ticket.Type.SERVICE_REQUEST:
@@ -331,6 +366,7 @@ def create_ticket(request):
                     ticket.is_mobilization_request = request.POST.get('is_mobilization_request') == 'on'
 
                 ticket.save(update_fields=['status', 'is_asset_request', 'is_mobilization_request'])
+                notify_department_team_leads_pending_review(ticket)
 
                 messages.success(request, f'Service request {ticket.number} submitted for manager review.')
             else:
@@ -410,8 +446,9 @@ def my_ticket_list(request):
     Supports filtering by status (OPEN/CLOSED or specific status).
     Uses URL parameters for filter persistence.
     """
-    tickets = Ticket.objects.filter(requester=request.user).order_by('-created_at')
-    
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
+    tickets = Ticket.objects.filter(requester=request.user).order_by(*order_args)
+
     # Get filter parameters from URL
     status_filter = request.GET.get('status', '')
     base = request.GET.get('base', '')
@@ -460,6 +497,8 @@ def my_ticket_list(request):
         'sidebar_template': get_sidebar_template(request.user),
         'base_status': base_status,
         'explicit': explicit,
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
 
     if request.headers.get('HX-Request'):
@@ -484,19 +523,21 @@ def ticket_detail(request, pk):
     if request.method == 'POST' and request.headers.get('HX-Request'):
         form = CommentForm(request.POST)
         if form.is_valid():
+            files = request.FILES.getlist('attachments')
+            cleaned_body = clean_comment_body(form.cleaned_data.get('body', ''))
+            if cleaned_body is None and not files:
+                return HttpResponse('Comment cannot be empty.', status=400)
+
             comment = form.save(commit=False)
             comment.ticket = ticket
             comment.author = request.user
             comment.visibility = 'PUBLIC'
-            cleaned_body = clean_comment_body(comment.body)
-            if cleaned_body is None:
-                return HttpResponse('Comment cannot be empty.', status=400)
-            comment.body = cleaned_body
+            comment.body = cleaned_body or ''
             comment.save()
 
-            files = request.FILES.getlist('attachments')
+            rejected = []
             if files:
-                save_attachments(ticket, files, request.user, comment=comment)
+                _, rejected = save_attachments(ticket, files, request.user, comment=comment)
 
             if ticket.status == Ticket.Status.PENDING_USER:
                 old_status = ticket.status
@@ -518,6 +559,8 @@ def ticket_detail(request, pk):
                     ticket=ticket, action='status_changed', actor=request.user,
                     details={'from': old_status, 'to': ticket.status}
                 )
+                if ticket.status == Ticket.Status.PENDING_MANAGER_REVIEW:
+                    notify_department_team_leads_pending_review(ticket)
 
             comments = ticket.comments.prefetch_related('attachment_set').all().order_by('created_at')
             initial_attachments = ticket.attachments.filter(comment__isnull=True)
@@ -525,6 +568,7 @@ def ticket_detail(request, pk):
                 'ticket': ticket,
                 'comments': comments,
                 'initial_attachments': initial_attachments,
+                'attachment_warnings': rejected,
             })
         else:
             return HttpResponse('Please check your comment and try again.', status=422)
@@ -554,6 +598,12 @@ def ticket_detail(request, pk):
 # AGENT QUEUES & TICKET MANAGEMENT
 # ==========================================================================
 
+TICKET_SORT_OPTIONS = {
+    '-created_at': (('-created_at',), 'Newest First'),
+    '-updated_at': (('-updated_at',), 'Recently Updated'),
+    'number': (('number',), 'Number (A-Z)'),
+}
+
 @login_required
 def unassigned_queue(request):
     """
@@ -563,9 +613,10 @@ def unassigned_queue(request):
         return HttpResponse(status=403)
 
     # Get all unassigned tickets
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
     tickets = Ticket.objects.filter(
         assigned_to__isnull=True
-    ).select_related('requester', 'category').order_by('-created_at')
+    ).select_related('requester', 'category').order_by(*order_args)
 
     # ================================================================
     # 🔥 Filter: Show INCIDENTS + APPROVED SERVICE REQUESTS
@@ -600,6 +651,8 @@ def unassigned_queue(request):
         'assignable_agents': assignable_agents,
         'status_choices': Ticket.Status.choices,
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     return render(request, 'agent/unassigned_queue.html', context)
 
@@ -829,21 +882,23 @@ def add_comment_conversation(request, pk):
     if not form.is_valid():
         return HttpResponse('Please check your comment and try again.', status=422)
 
+    files = request.FILES.getlist('attachments')
+    cleaned_body = clean_comment_body(form.cleaned_data.get('body', ''))
+    if cleaned_body is None and not files:
+        return HttpResponse('Comment cannot be empty.', status=400)
+
     comment = form.save(commit=False)
     comment.ticket = ticket
     comment.author = request.user
     comment.visibility = request.POST.get('visibility', 'PUBLIC').upper()
     if comment.visibility not in ['PUBLIC', 'INTERNAL']:
         comment.visibility = 'PUBLIC'
-    cleaned_body = clean_comment_body(comment.body)
-    if cleaned_body is None:
-        return HttpResponse('Comment cannot be empty.', status=400)
-    comment.body = cleaned_body
+    comment.body = cleaned_body or ''
     comment.save()
 
-    files = request.FILES.getlist('attachments')
+    rejected = []
     if files:
-        created = save_attachments(ticket, files, request.user, comment=comment)
+        _, rejected = save_attachments(ticket, files, request.user, comment=comment)
         comment = TicketComment.objects.get(pk=comment.pk)
 
     TicketActivityLog.objects.create(
@@ -868,7 +923,8 @@ def add_comment_conversation(request, pk):
     return render(request, 'partials/conversation_timeline.html', {
         'ticket': ticket,
         'comments': comments,
-        'initial_attachments': initial_attachments, 
+        'initial_attachments': initial_attachments,
+        'attachment_warnings': rejected,
     })
 
 @login_required
@@ -1053,7 +1109,17 @@ def confirm_resolution(request, pk):
     if ticket.status != Ticket.Status.PENDING_USER:
         messages.warning(request, f'Ticket {ticket.number} is not awaiting resolution confirmation.')
         return redirect('tickets:detail', pk=ticket.pk)
-    
+
+    # Asset-request tickets (mobilization or single-asset) now confirm
+    # receipt inline on the ticket conversation page via receipt_confirm_modal
+    # — this standalone page is retired for them. A GET here (old bookmark/
+    # email link) just redirects; the POST action handlers below are still
+    # what the modal's form actually submits to for non-mobilization asset
+    # requests, so that logic is untouched.
+    if request.method == 'GET' and ticket.is_asset_request:
+        messages.info(request, 'Confirm receipt from the ticket page.')
+        return redirect('tickets:detail', pk=ticket.pk)
+
     if request.method == 'POST':
         action = request.POST.get('action')
         reason = request.POST.get('reason', '').strip()
@@ -1076,12 +1142,6 @@ def confirm_resolution(request, pk):
                     actor=request.user,
                     details={'confirmed_at': ticket.resolution_confirmed_at.isoformat()}
                 )
-                TicketComment.objects.create(
-                    ticket=ticket,
-                    author=request.user,
-                    body="**Receipt confirmed**. The requester has received the asset(s).",
-                    visibility='PUBLIC'
-                )
                 messages.success(request, 'Thank you for confirming! Please rate your experience.')
                 return redirect('tickets:submit_feedback', pk=ticket.pk)
 
@@ -1102,7 +1162,8 @@ def confirm_resolution(request, pk):
                 ticket=ticket,
                 author=request.user,
                 body="**Resolution confirmed**. The issue has been resolved.",
-                visibility='PUBLIC'
+                visibility='PUBLIC',
+                is_system_generated=True,
             )
 
             messages.success(request, 'Thank you for confirming! Please rate your experience.')
@@ -1418,7 +1479,8 @@ def bulk_action(request):
                     ticket=ticket,
                     author=request.user,
                     body=f"**Bulk reassign**: Ticket reassigned by {escape(actor_name)} from **{escape(old_name)}** to **{escape(agent_name)}**.",
-                    visibility='PUBLIC'
+                    visibility='PUBLIC',
+                    is_system_generated=True,
                 )
             
             # Notify the agent once for all tickets
@@ -1470,10 +1532,11 @@ def team_queue(request):
         is_active=True
     )
     # Note: team_members already filtered by department from request.user
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
     tickets = Ticket.objects.filter(
         assigned_to__in=team_members
     ).exclude(status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED]
-    ).order_by('-created_at')
+    ).order_by(*order_args)
     agent_id = request.GET.get('agent')
     if agent_id:
         tickets = tickets.filter(assigned_to_id=agent_id)
@@ -1482,6 +1545,8 @@ def team_queue(request):
         'team_members': team_members,
         'selected_agent': agent_id,
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     return render(request, 'partials/team_queue.html', context)
 
@@ -1521,9 +1586,10 @@ def team_reassign(request, pk):
         ticket=ticket,
         author=request.user,
         body=f"**Ticket reassigned** by {escape(actor_name)} from **{escape(old_name)}** to **{escape(new_name)}**.",
-        visibility='PUBLIC'
+        visibility='PUBLIC',
+        is_system_generated=True,
     )
-    
+
     # Notify the new agent
     Notification.objects.create(
         recipient=agent,
@@ -1593,6 +1659,14 @@ def _log_detail_items(details):
     return items
 
 
+def _audit_log_column_help():
+    # Reuses the same descriptions as the generic Exportables 'audit-logs'
+    # report type (report_registry.py) rather than duplicating them — this
+    # view's hand-rolled export writes the same six columns.
+    from .report_registry import REPORT_TYPES
+    return REPORT_TYPES['audit-logs'].column_help
+
+
 @login_required
 def audit_log(request):
     if effective_role_name(request.user) not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] or request.user.department != 'IT':
@@ -1610,6 +1684,11 @@ def audit_log(request):
             return HttpResponse(status=403)
         from apps.accounts.models import ImpersonationLog
         system_logs = ImpersonationLog.objects.select_related('admin', 'target_user').order_by('-started_at')
+        active_sort = request.GET.get('sort', 'newest')
+        if active_sort not in ('newest', 'oldest'):
+            active_sort = 'newest'
+        if active_sort == 'oldest':
+            system_logs = system_logs.reverse()
         paginator = Paginator(system_logs, 50)
         page_obj = paginator.get_page(request.GET.get('page', 1))
         context = {
@@ -1617,6 +1696,8 @@ def audit_log(request):
             'system_logs': page_obj,
             'is_admin_tier': is_admin_tier,
             'sidebar_template': get_sidebar_template(request.user),
+            'sort_options': [('newest', 'Newest First'), ('oldest', 'Oldest First')],
+            'active_sort': active_sort,
         }
         return render(request, 'partials/audit_log.html', context)
 
@@ -1641,9 +1722,14 @@ def audit_log(request):
     if ticket_id:
         logs = logs.filter(ticket__number__icontains=ticket_id)
     logs = logs.order_by('-created_at')
+    active_sort = request.GET.get('sort', 'newest')
+    if active_sort not in ('newest', 'oldest'):
+        active_sort = 'newest'
+    if active_sort == 'oldest':
+        logs = logs.reverse()
 
     # --- Export logic (CSV, JSON, Excel) ---
-    export_format = request.GET.get('export')
+    export_format = request.GET.get('format')
     if export_format:
         filename = f"logs_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
 
@@ -1659,13 +1745,26 @@ def audit_log(request):
                 'details': str(log.details) if log.details else ''  # Convert dict to string
             })
 
+        # Column picker (CSV/Excel only, see components/export_menu.html) —
+        # `cols` is a comma-separated subset of the header labels below,
+        # re-filtered/re-ordered against the real list so a tampered value
+        # just falls back to every column.
+        all_columns = [('Time', 'time'), ('Category', 'category'), ('Ticket', 'ticket'),
+                        ('Action', 'action'), ('Actor', 'actor'), ('Details', 'details')]
+        columns = all_columns
+        if export_format in ('csv', 'excel') and request.GET.get('cols'):
+            requested = set(c.strip() for c in request.GET['cols'].split(','))
+            selected = [c for c in all_columns if c[0] in requested]
+            if selected:
+                columns = selected
+
         if export_format == 'csv':
             response = HttpResponse(content_type='text/csv')
             response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
             writer = csv.writer(response)
-            writer.writerow(['Time', 'Category', 'Ticket', 'Action', 'Actor', 'Details'])
+            writer.writerow([label for label, key in columns])
             for row in export_data:
-                writer.writerow([row['time'], row['category'], row['ticket'], row['action'], row['actor'], row['details']])
+                writer.writerow([row[key] for label, key in columns])
             return response
 
         elif export_format == 'json':
@@ -1677,9 +1776,9 @@ def audit_log(request):
             wb = Workbook()
             ws = wb.active
             ws.title = "Logs"
-            ws.append(['Time', 'Category', 'Ticket', 'Action', 'Actor', 'Details'])
+            ws.append([label for label, key in columns])
             for row in export_data:
-                ws.append([row['time'], row['category'], row['ticket'], row['action'], row['actor'], row['details']])
+                ws.append([row[key] for label, key in columns])
             response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
             response['Content-Disposition'] = f'attachment; filename="{filename}.xlsx"'
             wb.save(response)
@@ -1697,6 +1796,9 @@ def audit_log(request):
         grouped[log.category].append(log)
     grouped_logs = [(cat, entries) for cat, entries in grouped.items() if entries]
 
+    base_get = request.GET.copy()
+    base_get.pop('page', None)
+
     context = {
         'tab': 'tickets',
         'logs': page_obj,
@@ -1704,7 +1806,12 @@ def audit_log(request):
         'action_choices': sorted(LOG_CATEGORY_MAP.keys()),
         'category_choices': LOG_CATEGORY_ORDER[:-1],  # exclude 'Other' from the filter
         'is_admin_tier': is_admin_tier,
+        'base_qs': base_get.urlencode(),
+        'audit_log_columns': ['Time', 'Category', 'Ticket', 'Action', 'Actor', 'Details'],
+        'audit_log_column_help': _audit_log_column_help(),
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': [('newest', 'Newest First'), ('oldest', 'Oldest First')],
+        'active_sort': active_sort,
     }
     return render(request, 'partials/audit_log.html', context)
 
@@ -1851,7 +1958,7 @@ def reports_dashboard(request):
     
     asset_status_labels = ['Active', 'In Store', 'Maintenance', 'Damaged', 'Scrapped']
     asset_status_counts = [
-        Asset.objects.filter(status__in=[Asset.Status.IN_USE, Asset.Status.CHECKED_OUT, Asset.Status.MOBILIZED]).count(),
+        Asset.objects.filter(status__in=[Asset.Status.IN_USE, Asset.Status.MOBILIZED]).count(),
         Asset.objects.filter(status=Asset.Status.IN_STORE).count(),
         Asset.objects.filter(status=Asset.Status.MAINTENANCE).count(),
         Asset.objects.filter(status=Asset.Status.DAMAGED).count(),
@@ -1953,7 +2060,8 @@ def reports_ticket_list(request):
     else:
         tickets = Ticket.objects.filter(ticket_filter, status__in=open_statuses)
         heading = 'Open Tickets'
-    tickets = tickets.order_by('-created_at')
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
+    tickets = tickets.order_by(*order_args)
 
     paginator = Paginator(tickets, 20)
     page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -1962,6 +2070,8 @@ def reports_ticket_list(request):
         'tickets': page_obj,
         'heading': heading,
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     return render(request, 'dashboards/reports_ticket_list.html', context)
 
@@ -2030,6 +2140,41 @@ def trigger_sla_processing_external(request):
     except Exception:
         logger.exception('trigger_sla_processing_external failed')
         return JsonResponse({'error': 'SLA processing failed. Check server logs for details.'}, status=500)
+
+
+@csrf_exempt
+def trigger_periodic_jobs_external(request):
+    """
+    External endpoint for a scheduled caller with no long-lived process of
+    its own (e.g. a Cloudflare Cron Trigger hitting this on an interval)
+    to run all periodic jobs — not just SLA. Runs the same job list as
+    `run_periodic_tasks`/`scheduler.py` via the shared
+    apps.tickets.periodic_tasks.run_periodic_jobs, so this stays in sync
+    with that job list automatically instead of needing its own copy.
+
+    Same auth pattern as trigger_sla_processing_external: a secret in the
+    X-SLA-Trigger-Secret header (or `secret` query param), compared with
+    secrets.compare_digest.
+    """
+    import os
+    import secrets as secrets_module
+    from apps.tickets.periodic_tasks import run_periodic_jobs
+
+    secret = request.headers.get('X-SLA-Trigger-Secret') or request.GET.get('secret', '')
+    expected_secret = os.environ.get('SLA_TRIGGER_SECRET')
+
+    if not expected_secret:
+        return JsonResponse({'error': 'Periodic job trigger not configured'}, status=500)
+
+    if not secrets_module.compare_digest(secret, expected_secret):
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    try:
+        run_periodic_jobs()
+        return JsonResponse({'status': 'ok'})
+    except Exception:
+        logger.exception('trigger_periodic_jobs_external failed')
+        return JsonResponse({'error': 'Periodic job run failed. Check server logs for details.'}, status=500)
 
 # ==========================================================================
 # PLACEHOLDER / STATIC PAGES
@@ -2110,22 +2255,185 @@ def parse_date(value):
 # ASSET LIST
 # ==========================================================================
 
-@login_required
-def assets(request):
-    """Full asset inventory — Admin/Superadmin only. Every other role only
-    ever sees assets assigned to them, via my_assets."""
-    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
-        return HttpResponse(status=403)
+# Worst-case severity tiers for a seat/workspace card's summary badges —
+# most severe first. A card shows the single most-severe status/condition
+# among its items rather than every item's own badge, so "one damaged UPS"
+# is never hidden behind two other perfectly-fine items in the same group.
+_ASSET_STATUS_SEVERITY_TIERS = [
+    {Asset.Status.DAMAGED},
+    {Asset.Status.MAINTENANCE, Asset.Status.REPAIR},
+    {Asset.Status.LOST, Asset.Status.STOLEN},
+    {Asset.Status.IN_USE, Asset.Status.MOBILIZED},
+    {Asset.Status.IN_STORE, Asset.Status.READY},
+]
+_ASSET_CONDITION_SEVERITY_TIERS = [
+    {Asset.Condition.UNUSABLE}, {Asset.Condition.DAMAGED}, {Asset.Condition.POOR},
+    {Asset.Condition.FAIR}, {Asset.Condition.GOOD}, {Asset.Condition.EXCELLENT},
+]
 
-    # Use renamed filter parameters
+
+def _severity_rank(value, tiers):
+    for rank, tier in enumerate(tiers):
+        if value in tier:
+            return rank
+    return len(tiers)  # unlisted/unknown values sort as least severe
+
+
+def _build_asset_groups(asset_qs):
+    """Groups an already-ordered Asset queryset/list into workspace/seat
+    groups — one person's (or one unmatched-import name's, or one
+    department+location pool's) full kit as a single unit, for the
+    collapsible seat-card view. Same 3-tier grouping key as the old
+    per-row annotation this replaces (assigned user -> unresolved import
+    hint -> department+location pool), but now returns real groups (each
+    with its own asset list) instead of tagging a flat sequence — needed
+    so a card can show its own item count and worst-case status/condition
+    before rendering. Must run on the FULL filtered queryset (not a single
+    page) so a group can never split across a pagination boundary; the
+    view paginates the returned group list itself, not the raw queryset.
+    Returns a list of dicts: {label, seat_code, assets, item_count,
+    worst_status, worst_condition}, in the queryset's own order."""
+    groups = []
+    groups_by_key = {}
+    for asset in asset_qs:
+        if asset.assigned_to_id:
+            key = ('user', asset.assigned_to_id)
+            label = asset.assigned_to.get_full_name() or asset.assigned_to.email
+        elif asset.unresolved_assignee_hint:
+            key = ('hint', asset.unresolved_assignee_hint)
+            # "Needs review" rather than "Unmatched" — the latter reads like
+            # a system error to the non-technical staff this view is for;
+            # it just means the imported name hasn't been linked to a login yet.
+            label = f'Needs review: {asset.unresolved_assignee_hint}'
+        else:
+            key = ('pool', asset.department_id, asset.location_id)
+            dept = asset.department.name if asset.department else 'No department'
+            loc = asset.location.full_name() if asset.location else 'No location'
+            label = f'Unassigned — {dept} / {loc}'
+
+        group = groups_by_key.get(key)
+        if group is None:
+            group = {'key': key, 'label': label, 'seat_code': None, 'assets': []}
+            groups_by_key[key] = group
+            groups.append(group)
+        group['assets'].append(asset)
+        # tag_slot_number is shared by every device for the same
+        # assigned_to+department pair (see Asset._resolve_tag_slot_number) —
+        # the closest existing DB concept to the client's "seat" id (e.g.
+        # PLD-003). Null for legacy-format assets, in which case the group
+        # just falls back to its owner/hint/pool label above.
+        if not group['seat_code'] and asset.tag_slot_number and asset.department_id:
+            dept_code = asset.department.tag_code or asset.department.name
+            group['seat_code'] = f'{dept_code}-{asset.tag_slot_number:03d}'
+
+    for group in groups:
+        group['item_count'] = len(group['assets'])
+        group['asset_ids'] = [str(a.pk) for a in group['assets']]
+        group['worst_status'] = min(
+            group['assets'], key=lambda a: _severity_rank(a.status, _ASSET_STATUS_SEVERITY_TIERS)
+        ).status
+        conditioned = [a for a in group['assets'] if a.condition]
+        group['worst_condition'] = (
+            min(conditioned, key=lambda a: _severity_rank(a.condition, _ASSET_CONDITION_SEVERITY_TIERS)).condition
+            if conditioned else None
+        )
+        # Deduplicated, first-seen-order device-type summary for the
+        # collapsed card (e.g. "CPU, Monitor, UPS") — cheaper and less
+        # fragile than a template-side {% regroup %} (which silently
+        # produces wrong groupings if the list isn't already sorted by the
+        # grouped attribute).
+        category_names = []
+        seen = set()
+        for a in group['assets']:
+            name = a.category.name if a.category_id else 'Other'
+            if name not in seen:
+                seen.add(name)
+                category_names.append(name)
+        group['category_summary'] = ', '.join(category_names)
+    return groups
+
+
+def get_asset_kpis():
+    """Shared Asset Inventory KPI counts — used by both the Overview
+    dashboard and the asset inventory page's stat strip, so the two never
+    drift apart. Always global/unfiltered (matches the dashboard's own
+    semantics); the inventory page's own filters don't affect these."""
+    total_assets = Asset.objects.count()
+    # 'ACTIVE' isn't a real Asset.Status value — "active" here means
+    # currently in use, matching Asset.is_active's own definition.
+    active_assets = Asset.objects.filter(
+        status__in=[Asset.Status.IN_USE, Asset.Status.MOBILIZED]
+    ).count()
+    in_store_assets = Asset.objects.filter(status=Asset.Status.IN_STORE).count()
+    maintenance_assets = Asset.objects.filter(status=Asset.Status.MAINTENANCE).count()
+    damaged_assets = Asset.objects.filter(status=Asset.Status.DAMAGED).count()
+    scrapped_assets = Asset.objects.filter(status=Asset.Status.SCRAPPED).count()
+
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    recently_added = Asset.objects.filter(created_at__gte=thirty_days_ago).count()
+    assigned_assets = Asset.objects.filter(assigned_to__isnull=False).count()
+    unassigned_assets = total_assets - assigned_assets
+
+    today = timezone.now().date()
+    ninety_days_later = today + timedelta(days=90)
+    expiring_warranty = Asset.objects.filter(
+        warranty_expiry__gte=today,
+        warranty_expiry__lte=ninety_days_later,
+    ).exclude(
+        status__in=[Asset.Status.RETIRED, Asset.Status.SCRAPPED, Asset.Status.LOST, Asset.Status.STOLEN, Asset.Status.DISPOSED]
+    ).count()
+
+    return {
+        'total_assets': total_assets,
+        'active_assets': active_assets,
+        'in_store_assets': in_store_assets,
+        'maintenance_assets': maintenance_assets,
+        'damaged_assets': damaged_assets,
+        'scrapped_assets': scrapped_assets,
+        'recently_added': recently_added,
+        'assigned_assets': assigned_assets,
+        'unassigned_assets': unassigned_assets,
+        'expiring_warranty': expiring_warranty,
+    }
+
+
+_ASSET_EQUIPMENT_SORT_OPTIONS = {
+    'owner': ((
+        'assigned_to__last_name', 'assigned_to__first_name',
+        'unresolved_assignee_hint', 'department__name', 'location__name',
+        'category__name', 'name',
+    ), 'Owner (default grouping)'),
+    '-created_at': (('-created_at',), 'Recently Added'),
+    '-updated_at': (('-updated_at',), 'Recently Updated'),
+    'name': (('name',), 'Name (A-Z)'),
+}
+
+
+def _build_equipment_context(request):
+    """Context for the Inventory page's Equipment tab — physical assets
+    only. Renewable assets (software licenses, subscriptions, support
+    contracts) are excluded entirely; see _build_license_context for their
+    own tab, since a physical seat card's item count/condition badge is
+    meaningless for a subscription."""
     query = request.GET.get('filter_q', '')
     category_filter = request.GET.get('filter_category', '')
     status_filter = request.GET.get('filter_status', '')
     location_filter = request.GET.get('filter_location', '')
     low_stock_filter = request.GET.get('filter_low_stock', '')
-    renewal_due_filter = request.GET.get('filter_renewal_due', '')
+    # Defaults on: absent (first load) reads as '1'; only an explicit '0'
+    # from the hidden-fallback input (see asset_list.html) turns it off.
+    group_by_owner = request.GET.get('filter_group_by_owner', '1') != '0'
 
-    assets_list = Asset.objects.select_related('category', 'assigned_to', 'checked_out_to').order_by('-created_at')
+    assets_list = Asset.objects.select_related(
+        'category', 'assigned_to', 'checked_out_to', 'department', 'location'
+    ).exclude(category__is_renewable=True)
+    # Default ordering matches prior behavior exactly (grouped-by-owner vs.
+    # flat-by-recently-added); a `sort=` override on top of that — e.g.
+    # `-updated_at` — is what lets an admin float a just-edited asset back
+    # to page 1 instead of losing it in whatever page they last had open.
+    default_sort_key = 'owner' if group_by_owner else '-created_at'
+    order_args, active_sort, sort_options = resolve_sort(request, _ASSET_EQUIPMENT_SORT_OPTIONS, default_sort_key)
+    assets_list = assets_list.order_by(*order_args)
 
     if query:
         assets_list = assets_list.filter(
@@ -2133,53 +2441,191 @@ def assets(request):
             Q(tracking_id__icontains=query) |
             Q(serial_number__icontains=query) |
             Q(model__icontains=query) |
-            Q(manufacturer__icontains=query)
+            Q(manufacturer__icontains=query) |
+            Q(assigned_to__first_name__icontains=query) |
+            Q(assigned_to__last_name__icontains=query) |
+            Q(checked_out_to__first_name__icontains=query) |
+            Q(checked_out_to__last_name__icontains=query) |
+            Q(unresolved_assignee_hint__icontains=query)
         )
     if category_filter:
         assets_list = assets_list.filter(category_id=category_filter)
     if status_filter:
         assets_list = assets_list.filter(status=status_filter)
     if location_filter:
-        assets_list = assets_list.filter(location__icontains=location_filter)
+        assets_list = assets_list.filter(location_id=location_filter)
     if low_stock_filter:
         assets_list = assets_list.filter(
             category__is_consumable=True,
             low_stock_threshold__isnull=False,
             quantity_in_stock__lte=F('low_stock_threshold'),
         )
-    if renewal_due_filter:
-        assets_list = assets_list.filter(
-            category__is_renewable=True,
-            next_renewal_date__isnull=False,
-            next_renewal_date__lte=timezone.now().date() + timedelta(days=30),
-        )
 
-    paginator = Paginator(assets_list, 10)
     page_number = request.GET.get('page')
+    if group_by_owner:
+        # Group on the FULL filtered/ordered queryset, then paginate the
+        # resulting group list itself — a seat's items can no longer split
+        # across a page boundary the way the old per-page annotation could.
+        groups = _build_asset_groups(assets_list)
+        paginator = Paginator(groups, 10)
+    else:
+        paginator = Paginator(assets_list, 10)
     page_obj = paginator.get_page(page_number)
 
     users = User.objects.filter(is_active=True).order_by('first_name', 'last_name')
 
-    context = {
+    return {
         'assets': page_obj,
+        'group_by_owner': group_by_owner,
+        'group_by_owner_param': '1' if group_by_owner else '0',
         'users': users,
-        'categories': AssetCategory.objects.all().order_by('name'),
+        'categories': AssetCategory.objects.filter(is_renewable=False).order_by('name'),
         'status_choices': Asset.Status.choices,
         'status_values': [v for v, _ in Asset.Status.choices],
-        'location_choices': Asset.Location.choices,
-        'location_values': [v for v, _ in Asset.Location.choices],
+        'location_choices': [(loc.pk, loc.full_name()) for loc in Location.objects.filter(is_active=True)],
+        'location_values': [loc.pk for loc in Location.objects.filter(is_active=True)],
         'query': query,
         'selected_category': category_filter,
         'selected_status': status_filter,
         'selected_location': location_filter,
         'selected_low_stock': low_stock_filter,
-        'selected_renewal_due': renewal_due_filter,
         'today': timezone.now().date(),
-        'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
 
+
+_ASSET_LICENSE_SORT_OPTIONS = {
+    'renewal': ((F('next_renewal_date').asc(nulls_last=True), 'name'), 'Renewal Date (default)'),
+    '-updated_at': (('-updated_at',), 'Recently Updated'),
+    'name': (('name',), 'Name (A-Z)'),
+}
+
+
+def _build_license_context(request):
+    """Context for the Inventory page's Licenses & Subscriptions tab —
+    renewable assets only (software licenses, SaaS subscriptions, support
+    contracts), sorted by renewal urgency rather than grouped by owner.
+    Budget/renewal-urgency aggregates are deliberately global/unfiltered
+    (same convention as get_asset_kpis' dashboard-equivalent counts) so the
+    summary strip doesn't jump around as someone types a search."""
+    query = request.GET.get('filter_q', '')
+    category_filter = request.GET.get('filter_category', '')
+    due_soon_filter = request.GET.get('filter_due_soon', '')
+    today = timezone.now().date()
+
+    license_qs = Asset.objects.filter(category__is_renewable=True).select_related(
+        'category', 'assigned_to', 'department', 'renewal_vendor'
+    )
+    if query:
+        license_qs = license_qs.filter(
+            Q(name__icontains=query) |
+            Q(renewal_vendor__name__icontains=query) |
+            Q(assigned_to__first_name__icontains=query) |
+            Q(assigned_to__last_name__icontains=query)
+        )
+    if category_filter:
+        license_qs = license_qs.filter(category_id=category_filter)
+    if due_soon_filter:
+        license_qs = license_qs.filter(next_renewal_date__isnull=False, next_renewal_date__lte=today + timedelta(days=30))
+    order_args, active_sort, sort_options = resolve_sort(request, _ASSET_LICENSE_SORT_OPTIONS, 'renewal')
+    license_qs = license_qs.order_by(*order_args)
+
+    paginator = Paginator(license_qs, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    renewable_qs = Asset.objects.filter(category__is_renewable=True)
+    costed_count = renewable_qs.filter(renewal_cost__isnull=False).count()
+    total_count = renewable_qs.count()
+    due_soon_count = renewable_qs.filter(
+        next_renewal_date__isnull=False, next_renewal_date__gte=today, next_renewal_date__lte=today + timedelta(days=30)
+    ).count()
+    overdue_count = renewable_qs.filter(next_renewal_date__lt=today).count()
+
+    # Currency is set per-asset (see Asset.renewal_currency), not org-wide, so
+    # a plain Sum('renewal_cost') across assets would silently add e.g. a
+    # $100 line and a ₦20,000 line into a meaningless "20100". Group by
+    # currency instead: one total per currency, and only collapse to a single
+    # labeled figure when every costed asset actually agrees on one.
+    currency_breakdown = list(
+        renewable_qs.filter(renewal_cost__isnull=False)
+        .values('renewal_currency').annotate(total=Sum('renewal_cost')).order_by('-total')
+    )
+    budget_mixed_currencies = len(currency_breakdown) > 1
+    if len(currency_breakdown) == 1:
+        budget_currency = currency_breakdown[0]['renewal_currency']
+        total_cost = currency_breakdown[0]['total']
+    else:
+        budget_currency = ''
+        total_cost = None
+
+    # Per-renewal audit trail — every actual renewal (auto or manual), for
+    # a spend history under the table (distinct from the forward-looking
+    # "what's currently costed" KPI strip above; this is "what did we
+    # actually pay, and when" for a budget summary at year-end).
+    budget_renewal_logs = AssetLog.objects.filter(
+        action=AssetLog.Action.RENEWED, asset__category__is_renewable=True
+    ).select_related('asset', 'actor').order_by('-created_at')[:100]
+
+    return {
+        'assets': page_obj,
+        'categories': AssetCategory.objects.filter(is_renewable=True).order_by('name'),
+        'query': query,
+        'selected_category': category_filter,
+        'selected_due_soon': due_soon_filter,
+        'today': today,
+        'license_total_cost': total_cost,
+        'license_costed_count': costed_count,
+        'license_total_count': total_count,
+        'license_due_soon_count': due_soon_count,
+        'license_overdue_count': overdue_count,
+        'license_budget_currency': budget_currency,
+        'license_budget_mixed_currencies': budget_mixed_currencies,
+        'license_budget_breakdown': currency_breakdown,
+        'budget_renewal_logs': budget_renewal_logs,
+        'sort_options': sort_options,
+        'active_sort': active_sort,
+    }
+
+
+@login_required
+def assets(request):
+    """Full asset inventory — Admin/Superadmin only. Every other role only
+    ever sees assets assigned to them, via my_assets. Two tabs sharing this
+    one view/URL: Equipment (physical assets, default) and Licenses &
+    Subscriptions (renewable assets) — see _build_equipment_context/
+    _build_license_context."""
+    if effective_role_name(request.user) not in ('ADMIN', 'SUPERADMIN'):
+        return HttpResponse(status=403)
+
+    active_tab = request.GET.get('filter_tab', 'equipment')
+    if active_tab not in ('equipment', 'licenses'):
+        active_tab = 'equipment'
+
+    context = _build_license_context(request) if active_tab == 'licenses' else _build_equipment_context(request)
+    context['active_tab'] = active_tab
+    context['sidebar_template'] = get_sidebar_template(request.user)
+    # Needed on both tabs — the tab switcher's Licenses badge count must
+    # show even while viewing Equipment. Cheap count query either way.
+    context['license_total_count'] = Asset.objects.filter(category__is_renewable=True).count()
+    context.update(get_asset_kpis())
+
+    from .report_registry import REPORT_TYPES
+    context['export_columns'] = REPORT_TYPES['assets'].columns
+    context['export_column_help'] = REPORT_TYPES['assets'].column_help
+
     if request.headers.get('HX-Request'):
-        return render(request, 'partials/asset_table.html', context)
+        # The tab switcher (asset_tabs.html) targets #assetPanel and needs
+        # the whole tabs+filter-form+results block re-rendered; every other
+        # HTMX trigger on this page (search/category/pagination/reset)
+        # targets #assetTableContainer nested inside that block and only
+        # wants the results — re-rendering the full panel there would
+        # nest a second copy of the filter form/tabs inside that small
+        # container.
+        if request.headers.get('HX-Target') == 'assetPanel':
+            return render(request, 'partials/asset_panel.html', context)
+        table_template = 'partials/asset_license_table.html' if active_tab == 'licenses' else 'partials/asset_table.html'
+        return render(request, table_template, context)
 
     return render(request, 'tickets/asset_list.html', context)
 
@@ -2196,11 +2642,39 @@ def _my_assets_pending_confirmations_q(user):
     by both my_assets() and my_assets_pending_count(). Deliberately does NOT
     include the department-Team-Lead fallback or the Admin/Superadmin
     override (see apps.maintenance.views.can_confirm_asset_maintenance) —
-    this page is about assets allocated to THIS user specifically, not every
-    schedule they happen to be eligible to act on."""
+    that's a separate category, handled by
+    _shared_asset_pending_confirmations_q below."""
     return MaintenanceAssetConfirmation.objects.filter(
         asset__assigned_to=user, status=MaintenanceAssetConfirmation.Status.PENDING,
     )
+
+
+def _shared_asset_pending_confirmations_q(user):
+    """Rows the IT Team Lead is eligible to confirm as the fallback for
+    shared, ownerless pool inventory — regardless of which department code
+    the asset itself is tagged with, since unassigned equipment is IT-
+    managed inventory (see apps.maintenance.views.can_confirm_asset_maintenance).
+    Empty for anyone who isn't currently acting as the IT Team Lead.
+    Admin/Superadmin's override isn't surfaced here — they already have
+    full IT-internal access via the maintenance schedule detail page."""
+    if effective_role_name(user) != 'TEAM_LEAD' or user.department != 'IT':
+        return MaintenanceAssetConfirmation.objects.none()
+    return MaintenanceAssetConfirmation.objects.filter(
+        asset__assigned_to__isnull=True,
+        status=MaintenanceAssetConfirmation.Status.PENDING,
+    )
+
+
+def _shared_asset_resolved_confirmations_q(user):
+    """The history counterpart to _shared_asset_pending_confirmations_q — a
+    resolved (CONFIRMED/DISPUTED) row drops off the pending list the moment
+    it's acted on, so without this the IT Team Lead has nowhere to see that
+    a shared asset was ever maintained at all."""
+    if effective_role_name(user) != 'TEAM_LEAD' or user.department != 'IT':
+        return MaintenanceAssetConfirmation.objects.none()
+    return MaintenanceAssetConfirmation.objects.filter(
+        asset__assigned_to__isnull=True,
+    ).exclude(status=MaintenanceAssetConfirmation.Status.PENDING)
 
 
 @login_required
@@ -2209,16 +2683,26 @@ def my_assets(request):
     maintenance and any completion awaiting their confirmation surfaced
     inline — open to every role, since asset ownership isn't role-bound."""
     assets_list = Asset.objects.filter(assigned_to=request.user).select_related('category').prefetch_related(
-        'maintenance_confirmations__schedule',
+        Prefetch(
+            'maintenance_confirmations',
+            queryset=MaintenanceAssetConfirmation.objects.select_related('schedule', 'confirmed_by'),
+        ),
         'maintenance_schedules',
     ).order_by('name')
 
     rows = []
     for asset in assets_list:
+        confirmations = list(asset.maintenance_confirmations.all())
         pending_confirmations = [
-            c for c in asset.maintenance_confirmations.all()
-            if c.status == MaintenanceAssetConfirmation.Status.PENDING
+            c for c in confirmations if c.status == MaintenanceAssetConfirmation.Status.PENDING
         ]
+        # Most recent resolved confirmation — the maintenance history trail
+        # a requester sees for their own asset, independent of whether a
+        # newer maintenance cycle is currently pending confirmation above.
+        confirmed_history = sorted(
+            (c for c in confirmations if c.status == MaintenanceAssetConfirmation.Status.CONFIRMED and c.confirmed_at),
+            key=lambda c: c.confirmed_at, reverse=True,
+        )
         upcoming_schedules = [
             s for s in asset.maintenance_schedules.all()
             if s.status in (MaintenanceSchedule.Status.SCHEDULED, MaintenanceSchedule.Status.IN_PROGRESS)
@@ -2227,11 +2711,23 @@ def my_assets(request):
             'asset': asset,
             'pending_confirmations': pending_confirmations,
             'upcoming_schedules': upcoming_schedules,
+            'last_maintained': confirmed_history[0] if confirmed_history else None,
             'open_history': asset._open_checkout_history(),
         })
 
+    shared_asset_confirmations = list(
+        _shared_asset_pending_confirmations_q(request.user).select_related('asset', 'schedule')
+    )
+    shared_asset_history = list(
+        _shared_asset_resolved_confirmations_q(request.user)
+        .select_related('asset', 'schedule', 'confirmed_by')
+        .order_by('-confirmed_at')[:20]
+    )
+
     context = {
         'rows': rows,
+        'shared_asset_confirmations': shared_asset_confirmations,
+        'shared_asset_history': shared_asset_history,
         'today': timezone.now().date(),
         'sidebar_template': get_sidebar_template(request.user),
     }
@@ -2241,9 +2737,167 @@ def my_assets(request):
 @login_required
 def my_assets_pending_count(request):
     """Badge count for the sidebar 'My Assets' link — mirrors the pattern
-    used by remote_session_pending_count."""
-    count = _my_assets_pending_confirmations_q(request.user).count()
+    used by remote_session_pending_count. Includes the IT Team Lead's
+    shared-asset fallback confirmations alongside their own owned assets, so
+    the badge matches everything my_assets() actually surfaces to them."""
+    count = (
+        _my_assets_pending_confirmations_q(request.user).count()
+        + _shared_asset_pending_confirmations_q(request.user).count()
+    )
     return render(request, 'partials/my_assets_badge.html', {'count': count})
+
+
+# ==========================================================================
+# DEMOBILIZATION (requester self-report — mirrors My Assets / asset return
+# request. Open to every role, since being a ticket requester isn't
+# role-bound, same posture as my_assets above.)
+# ==========================================================================
+
+def _demobilization_eligible_q(user):
+    """Items mobilized to this user's own tickets, confirmed received, and
+    not yet demobilized by an admin — the pool eligible for self-report."""
+    return MobilizationItem.objects.filter(
+        mobilization__ticket__requester=user,
+        acknowledged_at__isnull=False,
+        demobilized_at__isnull=True,
+    ).select_related('asset', 'mobilization').order_by('mobilization_id', 'asset__name')
+
+
+@login_required
+def demobilization_list(request):
+    """Two-tab view of the requester's own mobilized assets: 'Active' —
+    grouped by job, anything ready to report or awaiting admin
+    confirmation — and 'History' — everything already demobilized, also
+    grouped by job (so items from different jobs never run together),
+    with a search box to narrow within/across groups. Kept as separate
+    tabs (rather than mixed into one list) so the action-needed items
+    never get buried under an ever-growing return log; History persists
+    forever so the requester always has a timestamped record to point to."""
+    active_items = list(_demobilization_eligible_q(request.user))
+    history_items = list(
+        MobilizationItem.objects.filter(
+            mobilization__ticket__requester=request.user,
+            demobilized_at__isnull=False,
+        ).select_related('asset', 'mobilization', 'mobilization__ticket').order_by('-demobilized_at')
+    )
+
+    active_groups_map = {}
+    for item in active_items:
+        mob = item.mobilization
+        bucket = active_groups_map.setdefault(mob.pk, {'mobilization': mob, 'ready': [], 'pending': []})
+        if item.return_requested_at:
+            bucket['pending'].append(item)
+        else:
+            bucket['ready'].append(item)
+    active_groups = sorted(active_groups_map.values(), key=lambda g: g['mobilization'].mobilized_at, reverse=True)
+    active_count = sum(len(g['ready']) + len(g['pending']) for g in active_groups)
+
+    history_groups_map = {}
+    for item in history_items:
+        mob = item.mobilization
+        if mob.pk not in history_groups_map:
+            history_groups_map[mob.pk] = {
+                'mobilization': mob,
+                'items': [],
+                'vessel_names': list(mob.vessels.values_list('name', flat=True)),
+                'dive_system_names': list(mob.dive_systems.values_list('name', flat=True)),
+            }
+        history_groups_map[mob.pk]['items'].append(item)
+    history_groups = sorted(
+        history_groups_map.values(), key=lambda g: g['items'][0].demobilized_at, reverse=True
+    )
+
+    context = {
+        'active_groups': active_groups,
+        'active_count': active_count,
+        'history_groups': history_groups,
+        'history_count': len(history_items),
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'tickets/demobilization_list.html', context)
+
+
+@login_required
+def demobilization_pending_count(request):
+    """Badge count for the sidebar 'Demobilization' link — items ready to
+    report that haven't been reported yet (the nudge, same semantics as
+    my_assets_pending_count)."""
+    count = _demobilization_eligible_q(request.user).filter(return_requested_at__isnull=True).count()
+    return render(request, 'partials/sidebar_count_badge.html', {'count': count})
+
+
+@login_required
+@require_POST
+def mobilization_items_request_demobilize_batch(request):
+    """Requester reports a batch of items as sent back, sharing one notes
+    field across the batch. One bad/ineligible id is skipped rather than
+    failing the whole batch."""
+    item_ids = request.POST.getlist('item_ids')
+    notes = request.POST.get('notes', '').strip()
+
+    if not item_ids:
+        messages.error(request, 'Select at least one item to report.')
+        return redirect('tickets:demobilization_list')
+
+    reported, skipped = 0, 0
+    for item_pk in item_ids:
+        try:
+            item = MobilizationItem.objects.select_related('mobilization', 'asset').get(pk=item_pk)
+            item.request_demobilization(actor=request.user, notes=notes)
+            reported += 1
+        except (MobilizationItem.DoesNotExist, ValueError):
+            skipped += 1
+
+    if reported:
+        messages.success(request, f'Reported {reported} asset(s) as demobilized — awaiting admin confirmation.')
+    if skipped:
+        messages.warning(request, f'{skipped} item(s) could not be reported (already actioned or not yours).')
+    return redirect('tickets:demobilization_list')
+
+
+@login_required
+@require_POST
+def mobilization_item_cancel_demobilize_request(request, item_pk):
+    item = get_object_or_404(MobilizationItem.objects.select_related('mobilization'), pk=item_pk)
+    try:
+        item.cancel_demobilization_request(actor=request.user)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('tickets:demobilization_list')
+    messages.success(request, f'Demobilization request for "{item.asset.name}" cancelled.')
+    return redirect('tickets:demobilization_list')
+
+
+@login_required
+def pending_demobilizations_list(request):
+    """Admin-side queue: items the requester has self-reported as returned
+    but an admin hasn't yet confirmed physical receipt — mirrors
+    pending_asset_returns_list."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    items_qs = MobilizationItem.objects.filter(
+        return_requested_at__isnull=False, demobilized_at__isnull=True
+    ).select_related('asset', 'mobilization', 'return_requested_by').order_by('return_requested_at')
+
+    paginator = Paginator(items_qs, 10)
+    page_obj = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'tickets/pending_demobilizations_list.html', {
+        'items': page_obj,
+        'sidebar_template': get_sidebar_template(request.user),
+    })
+
+
+@login_required
+def pending_demobilizations_count(request):
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    count = MobilizationItem.objects.filter(
+        return_requested_at__isnull=False, demobilized_at__isnull=True
+    ).count()
+    return render(request, 'partials/sidebar_count_badge.html', {'count': count})
 
 
 # ==========================================================================
@@ -2299,7 +2953,6 @@ def asset_create_page(request):
         'categories': AssetCategory.objects.all().order_by('name'),
         'status_choices': Asset.Status.choices,
         'status_values': [v for v, _ in Asset.Status.choices],
-        'locations': Asset.objects.exclude(location='').values_list('location', flat=True).distinct().order_by('location'),
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'tickets/asset_form_page.html', context)
@@ -2336,27 +2989,20 @@ def asset_edit_page(request, pk):
 
             messages.success(request, f'Asset "{asset.name}" updated successfully!')
             
-            # Preserve filters when redirecting back
+            # Preserve filters/sort/page when redirecting back — param names
+            # here must match what _build_equipment_context actually reads
+            # (filter_q/filter_category/etc., not q/category/etc.), otherwise
+            # this silently no-ops and every edit bounces back to page 1 of
+            # the default view regardless of where the admin edited from.
             source = request.GET.get('source', 'list')
-            query = request.GET.get('q', '')
-            category_param = request.GET.get('category', '')
-            status = request.GET.get('status', '')
-            location = request.GET.get('location', '')
-
             redirect_url = reverse('tickets:assets')
             if source == 'list':
-                params = []
-                if query:
-                    params.append(f'q={query}')
-                if category_param:
-                    params.append(f'category={category_param}')
-                if status:
-                    params.append(f'status={status}')
-                if location:
-                    params.append(f'location={location}')
+                preserved_params = ['filter_q', 'filter_category', 'filter_status', 'filter_location',
+                                     'filter_group_by_owner', 'filter_tab', 'sort', 'page']
+                params = [f'{name}={request.GET[name]}' for name in preserved_params if request.GET.get(name)]
                 if params:
                     redirect_url += '?' + '&'.join(params)
-            
+
             return redirect(redirect_url)
         else:
             messages.error(request, 'Please correct the errors below.')
@@ -2371,7 +3017,6 @@ def asset_edit_page(request, pk):
         'categories': AssetCategory.objects.all().order_by('name'),
         'status_choices': Asset.Status.choices,
         'status_values': [v for v, _ in Asset.Status.choices],
-        'locations': Asset.objects.exclude(location='').values_list('location', flat=True).distinct().order_by('location'),
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'tickets/asset_form_page.html', context)
@@ -2390,9 +3035,16 @@ def asset_reassign(request, pk):
 
     # Prevent the action rather than fail after the fact: Reassign only
     # makes sense when someone actually has the asset. An asset with no
-    # current holder should be Checked Out, not "re"-assigned.
+    # current holder should be Checked Out, not "re"-assigned. A currently-
+    # mobilized asset must be demobilized first — reassigning it would clear
+    # status/holder out from under the still-open MobilizationItem, leaving
+    # it orphaned (see Asset.mobilization_blocked_reason).
     if not asset.can_reassign:
-        message = f'"{asset.name}" cannot be reassigned — it has no current holder. Use Checkout instead.'
+        blocked = asset.mobilization_blocked_reason
+        if blocked:
+            message = f'{blocked} before reassigning.'
+        else:
+            message = f'"{asset.name}" cannot be reassigned — it has no current holder. Use Checkout instead.'
         if request.headers.get('HX-Request'):
             return HttpResponse(message, status=400)
         messages.error(request, message)
@@ -2421,7 +3073,11 @@ def asset_reassign(request, pk):
     # claiming two different current holders at once. The ValueError catch
     # sits outside the atomic block so a failed assign_to() rolls back the
     # release() that just happened, rather than leaving the asset unassigned.
-    # can_reassign already guarantees old_holder is set, so release() always runs.
+    # can_reassign no longer guarantees old_holder is set — it also allows
+    # reassigning an asset whose status implies a holder but has none (e.g.
+    # an imported row left unassigned). release() and the notification
+    # below both tolerate old_holder being None; release() still runs
+    # unconditionally to normalize status/holder fields before assign_to().
     try:
         with transaction.atomic():
             asset.release(actor=request.user, return_reason=Asset.ReturnReason.OTHER, return_comment=comment or 'Reassigned')
@@ -2437,12 +3093,15 @@ def asset_reassign(request, pk):
     # so unlike request_return()/release()'s other callers, nothing else
     # tells them the asset left their hands — do it here. assign_to()
     # already notifies the new recipient internally, so no duplicate needed.
-    Notification.objects.create(
-        recipient=old_holder, role=role_of(old_holder),
-        message=f'"{asset.name}" ({asset.tracking_id}) has been reassigned away from you'
-                f'{" to " + new_name if new_user else ""}.',
-        url='/tickets/my-assets/',
-    )
+    # Skipped entirely when there was no old holder to begin with (e.g.
+    # claiming an imported asset that was never actually assigned to anyone).
+    if old_holder:
+        Notification.objects.create(
+            recipient=old_holder, role=role_of(old_holder),
+            message=f'"{asset.name}" ({asset.tracking_id}) has been reassigned away from you'
+                    f'{" to " + new_name if new_user else ""}.',
+            url='/tickets/my-assets/',
+        )
 
     # Add comment to asset notes (user can edit the default comment)
     if new_user_id:
@@ -2506,11 +3165,21 @@ def asset_detail(request, pk):
     logs = asset.logs.all()[:10]  # Recent activity
     renewal_logs = asset.logs.filter(action=AssetLog.Action.RENEWED)[:10] if asset.is_renewable else []
 
+    from apps.maintenance.models import AssetBackupStatus
+    import json
+
     return render(request, 'tickets/asset_detail.html', {
         'asset': asset,
         'logs': logs,
         'renewal_logs': renewal_logs,
         'attachments': asset.attachments.all(),
+        'maintenance_confirmations': asset.maintenance_confirmations.select_related(
+            'schedule', 'confirmed_by'
+        ).order_by('-technician_completed_at'),
+        'checkout_history': asset.checkout_history.select_related(
+            'checked_out_by', 'checked_out_to'
+        ).order_by('-checked_out_at'),
+        'backup_status_choices': json.dumps(list(AssetBackupStatus.Status.choices)),
         'today': timezone.now().date(),
         'sidebar_template': get_sidebar_template(request.user),
     })
@@ -2541,7 +3210,18 @@ def asset_mark_renewed(request, pk):
             messages.error(request, 'Enter a valid cost, or leave it blank to keep the current cost.')
             return redirect('tickets:asset_detail', pk=asset.pk)
 
-    asset.mark_renewed(request.user, new_cost=new_cost)
+    date_type = request.POST.get('date_type', 'LAST')
+    if date_type not in ('LAST', 'NEXT'):
+        date_type = 'LAST'
+    renewal_date_raw = request.POST.get('renewal_date', '').strip()
+    renewal_date = None
+    if renewal_date_raw:
+        renewal_date = parse_date(renewal_date_raw)
+        if renewal_date is None:
+            messages.error(request, 'Enter a valid date.')
+            return redirect('tickets:asset_detail', pk=asset.pk)
+
+    asset.mark_renewed(request.user, new_cost=new_cost, renewal_date=renewal_date, date_type=date_type)
     messages.success(request, f'"{asset.name}" renewed — next renewal {asset.next_renewal_date}.')
     return redirect('tickets:asset_detail', pk=asset.pk)
 
@@ -2648,6 +3328,15 @@ def asset_scrap_request(request, pk):
 
     if asset.status == Asset.Status.DAMAGED:
         return JsonResponse({'error': 'Asset already marked as damaged.'}, status=400)
+
+    # A mobilized asset must be demobilized first — this view clears
+    # checked_out_to/assigned_to and flips status directly (mobilization
+    # doesn't route through release()), so scrap-requesting it while the
+    # MobilizationItem is still open would orphan that row exactly like an
+    # un-guarded reassign would (see Asset.mobilization_blocked_reason).
+    blocked = asset.mobilization_blocked_reason
+    if blocked:
+        return JsonResponse({'error': f'{blocked} before requesting scrap.'}, status=400)
 
     form = AssetScrapRequestForm(request.POST)
     if not form.is_valid():
@@ -2863,7 +3552,9 @@ def request_remote_session(request, pk):
         ticket=ticket,
         author=request.user,
         body=f"Remote session requested via {escape(connector.name)}. Please check your notifications to accept.",
-        visibility='PUBLIC'
+        visibility='PUBLIC',
+        is_system_generated=True,
+        system_icon='monitor',
     )
 
     # Send in‑app notification
@@ -2947,6 +3638,14 @@ def remote_session_detail(request, session_pk):
                     url=reverse('tickets:remote_session_detail', args=[session.pk]),
                     type=Notification.Type.REMOTE_SESSION
                 )
+                TicketComment.objects.create(
+                    ticket=session.ticket,
+                    author=user,
+                    body=f"{escape(session.requester.get_full_name())} declined the remote session request.",
+                    visibility='PUBLIC',
+                    is_system_generated=True,
+                    system_icon='monitor',
+                )
                 TicketActivityLog.objects.create(
                     ticket=session.ticket,
                     action='remote_session_status_change',
@@ -2966,6 +3665,14 @@ def remote_session_detail(request, session_pk):
                     message=f"{session.requester.get_full_name()} accepted the remote session for ticket {session.ticket.number}.",
                     url=reverse('tickets:remote_session_detail', args=[session.pk]),
                     type=Notification.Type.REMOTE_SESSION
+                )
+                TicketComment.objects.create(
+                    ticket=session.ticket,
+                    author=user,
+                    body=f"{escape(session.requester.get_full_name())} accepted the remote session request.",
+                    visibility='PUBLIC',
+                    is_system_generated=True,
+                    system_icon='monitor',
                 )
                 TicketActivityLog.objects.create(
                     ticket=session.ticket,
@@ -2990,7 +3697,9 @@ def remote_session_detail(request, session_pk):
                         ticket=session.ticket,
                         author=request.user,
                         body=f"Remote session code: {escape(code)}. Please use this code in Quick Assist to start the session.",
-                        visibility='PUBLIC'
+                        visibility='PUBLIC',
+                        is_system_generated=True,
+                        system_icon='monitor',
                     )
                     # Send email to requester
                     html_message = render_to_string('emails/remote_session_code.html', {
@@ -3032,6 +3741,14 @@ def remote_session_detail(request, session_pk):
                     message=f"The remote session for ticket {session.ticket.number} has ended.",
                     url=reverse('tickets:remote_session_detail', args=[session.pk]),
                     type=Notification.Type.REMOTE_SESSION
+                )
+                TicketComment.objects.create(
+                    ticket=session.ticket,
+                    author=user,
+                    body="The remote session has ended.",
+                    visibility='PUBLIC',
+                    is_system_generated=True,
+                    system_icon='monitor',
                 )
                 html_message = render_to_string('emails/remote_session_ended.html', {
                     'requester_name': session.requester.get_full_name() or session.requester.email,
@@ -3095,22 +3812,28 @@ def remote_sessions_list(request):
     - Admins/Superadmins see all sessions (optional, but we'll filter by role).
     """
     user = request.user
+    order_args, active_sort, sort_options = resolve_sort(request, {
+        '-created_at': (('-created_at',), 'Newest First'),
+        '-updated_at': (('-updated_at',), 'Recently Updated'),
+    }, '-created_at')
     base_qs = RemoteSession.objects.select_related('ticket', 'requester', 'agent', 'connector')
     if effective_role_name(user) in [User.Role.ADMIN, User.Role.SUPERADMIN]:
-        sessions = base_qs.order_by('-created_at')
+        sessions = base_qs.order_by(*order_args)
     elif effective_role_name(user) in [User.Role.AGENT, User.Role.TEAM_LEAD] and user.department == 'IT':
-        sessions = base_qs.filter(agent=user).order_by('-created_at')
+        sessions = base_qs.filter(agent=user).order_by(*order_args)
     else:
-        sessions = base_qs.filter(requester=user).order_by('-created_at')
-    
+        sessions = base_qs.filter(requester=user).order_by(*order_args)
+
     # Pagination
     paginator = Paginator(sessions, 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    
+
     context = {
         'sessions': page_obj,
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     if request.headers.get('HX-Request'):
         return render(request, 'partials/remote_sessions_grid.html', context)
@@ -3133,7 +3856,8 @@ def escalated_tickets(request):
     if effective_role_name(request.user) not in [User.Role.TEAM_LEAD, User.Role.ADMIN, User.Role.SUPERADMIN] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
-    tickets = Ticket.objects.filter(status=Ticket.Status.ESCALATED).order_by('-created_at')
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
+    tickets = Ticket.objects.filter(status=Ticket.Status.ESCALATED).order_by(*order_args)
 
     # If Team Lead, filter by their department
     if effective_role_name(request.user) == User.Role.TEAM_LEAD:
@@ -3168,6 +3892,8 @@ def escalated_tickets(request):
         'reassign_form': _build_escalated_reassign_form(agents, agent_workload),
         'return_form': EscalatedReturnForm(),
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     return render(request, 'team_lead/escalated_tickets.html', context)
 
@@ -3518,8 +4244,13 @@ def sla_create(request):
 
     if created:
         messages.success(request, f'SLA policy for {sla.get_priority_display()} created successfully.')
+        log_admin_action(request.user, AdminActionLog.Category.SLA_CONFIG, 'Created SLA policy', sla.get_priority_display())
     else:
         messages.success(request, f'SLA policy for {sla.get_priority_display()} updated successfully.')
+        log_admin_action(
+            request.user, AdminActionLog.Category.SLA_CONFIG, 'Updated SLA policy', sla.get_priority_display(),
+            details=f'Response: {sla.response_minutes}min, Resolution: {sla.resolution_minutes}min, Calendar: {sla.calendar}',
+        )
     if request.headers.get('HX-Request'):
         return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
     return redirect('tickets:sla_management')
@@ -3531,6 +4262,7 @@ def sla_delete(request, pk):
     sla = get_object_or_404(SLA, pk=pk)
     priority_display = sla.get_priority_display()
     sla.delete()
+    log_admin_action(request.user, AdminActionLog.Category.SLA_CONFIG, 'Deleted SLA policy', priority_display)
     messages.success(request, f'SLA policy for {priority_display} deleted.')
     return redirect('tickets:sla_management')
 
@@ -3567,6 +4299,7 @@ def calendar_create(request):
         messages.error(request, 'Could not create the business calendar. Please check the values and try again.')
         return redirect('tickets:sla_management')
 
+    log_admin_action(request.user, AdminActionLog.Category.SLA_CONFIG, 'Created business calendar', name)
     messages.success(request, f'Business calendar "{name}" created successfully.')
     if request.headers.get('HX-Request'):
         return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
@@ -3584,7 +4317,7 @@ def rule_create(request):
         return redirect('tickets:sla_management')
 
     try:
-        EscalationRule.objects.create(
+        rule = EscalationRule.objects.create(
             priority=form.cleaned_data['priority'],
             timer_type=form.cleaned_data['timer_type'],
             threshold_percent=form.cleaned_data['threshold_percent'],
@@ -3600,6 +4333,10 @@ def rule_create(request):
         messages.error(request, 'Could not create the escalation rule. Please check the values and try again.')
         return redirect('tickets:sla_management')
 
+    log_admin_action(
+        request.user, AdminActionLog.Category.SLA_CONFIG, 'Created escalation rule',
+        f'{rule.get_priority_display()} / {rule.get_timer_type_display()}',
+    )
     messages.success(request, 'Escalation rule created successfully.')
     if request.headers.get('HX-Request'):
         return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
@@ -3650,6 +4387,7 @@ def calendar_edit(request, pk):
     cal.holidays = form.cleaned_data['holidays']
     cal.save()
 
+    log_admin_action(request.user, AdminActionLog.Category.SLA_CONFIG, 'Updated business calendar', cal.name)
     messages.success(request, f'Business calendar "{cal.name}" updated successfully.')
     if request.headers.get('HX-Request'):
         return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
@@ -3701,6 +4439,10 @@ def rule_edit(request, pk):
     rule.reassign_to_role = form.cleaned_data['reassign_to_role'] or None
     rule.save()
 
+    log_admin_action(
+        request.user, AdminActionLog.Category.SLA_CONFIG, 'Updated escalation rule',
+        f'{rule.get_priority_display()} / {rule.get_timer_type_display()}',
+    )
     messages.success(request, 'Escalation rule updated successfully.')
     if request.headers.get('HX-Request'):
         return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:sla_management')})
@@ -3712,7 +4454,9 @@ def rule_edit(request, pk):
 @require_POST
 def rule_delete(request, pk):
     rule = get_object_or_404(EscalationRule, pk=pk)
+    rule_label = f'{rule.get_priority_display()} / {rule.get_timer_type_display()}'
     rule.delete()
+    log_admin_action(request.user, AdminActionLog.Category.SLA_CONFIG, 'Deleted escalation rule', rule_label)
     messages.success(request, 'Escalation rule deleted.')
     return redirect('tickets:sla_management')
 
@@ -3723,6 +4467,7 @@ def calendar_delete(request, pk):
     cal = get_object_or_404(BusinessCalendar, pk=pk)
     cal_name = cal.name
     cal.delete()
+    log_admin_action(request.user, AdminActionLog.Category.SLA_CONFIG, 'Deleted business calendar', cal_name)
     messages.success(request, f'Business calendar "{cal_name}" deleted.')
     return redirect('tickets:sla_management')
 
@@ -3732,10 +4477,11 @@ def resolved_service_requests(request):
     """Admin-only transparency view: every service request that has reached
     a resolved outcome, org-wide. Distinct from Reports/Exportables, which
     are analytics/export tooling rather than a plain audit list."""
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-updated_at')
     tickets = Ticket.objects.filter(
         type=Ticket.Type.SERVICE_REQUEST,
         status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED],
-    ).select_related('requester', 'assigned_to', 'category').order_by('-updated_at')
+    ).select_related('requester', 'assigned_to', 'category').order_by(*order_args)
 
     department = request.GET.get('department', '').strip()
     if department:
@@ -3758,6 +4504,8 @@ def resolved_service_requests(request):
         'department_filter': department,
         'q': q,
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     if request.headers.get('HX-Request'):
         return render(request, 'partials/resolved_service_requests_table.html', context)
@@ -3773,14 +4521,17 @@ def manager_review_queue(request):
     if effective_role_name(request.user) != User.Role.TEAM_LEAD:
         return HttpResponse(status=403)
 
+    order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
     tickets = Ticket.objects.filter(
         status=Ticket.Status.PENDING_MANAGER_REVIEW,
         requester__department=request.user.department
-    ).order_by('-created_at')
+    ).order_by(*order_args)
 
     context = {
         'tickets': tickets,
         'sidebar_template': get_sidebar_template(request.user),
+        'sort_options': sort_options,
+        'active_sort': active_sort,
     }
     return render(request, 'team_lead/manager_review_queue.html', context)
 
@@ -3945,17 +4696,131 @@ def manager_review_count(request):
     return render(request, 'partials/manager_review_badge.html', {'count': count})
 
 
+@login_required
+def manager_review_history(request):
+    """Team Lead view - every service request this Team Lead has personally
+    approved, most recent first, with their approval comment and where it
+    was routed (straight to the agent queue, or to Admin for fulfillment)."""
+    if effective_role_name(request.user) != User.Role.TEAM_LEAD:
+        return HttpResponse(status=403)
+
+    logs = TicketActivityLog.objects.filter(
+        action='manager_approved', actor=request.user
+    ).select_related('ticket', 'ticket__requester').order_by('-created_at')
+
+    paginator = Paginator(logs, 15)
+    page_number = request.GET.get('page', 1)
+    try:
+        page_obj = paginator.page(page_number)
+    except (PageNotAnInteger, EmptyPage):
+        page_obj = paginator.page(1)
+
+    context = {
+        'page_obj': page_obj,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'team_lead/manager_review_history.html', context)
+
+
 # ==========================================================================
 # ASSET IMPORT
 # ==========================================================================
 
+def _find_assigned_to_by_name_or_email(name_or_email):
+    """Exact email or exact full-name match (case-insensitive) only —
+    ambiguous/no matches return (None, warning) rather than guessing via a
+    fuzzy substring match. Name matching also tolerates first/last being
+    swapped (see asset_name_matching.match_users_by_name) since imported
+    sheets and the system's own first_name/last_name split don't always
+    agree on which is which. Shared by the legacy row-mapping helper below
+    and asset_import_commit."""
+    name_or_email = str(name_or_email).strip()
+    if not name_or_email:
+        return None, None
+    if '@' in name_or_email:
+        matches = list(User.objects.filter(email__iexact=name_or_email))
+    else:
+        matches = list(match_users_by_name(name_or_email))
+    if len(matches) == 1:
+        return matches[0], None
+    if len(matches) > 1:
+        return None, f"'{name_or_email}' matched multiple users, left unassigned."
+    return None, f"no user found matching '{name_or_email}', left unassigned."
+
+
+def _resolve_department_match(name):
+    """Existing AssetDepartment matching `name` by exact name or tag_code
+    (case-insensitive) — or None if none exists and one would need to be
+    created. Deliberately exact-only, same as _find_assigned_to_by_name_or_
+    email: a fuzzy match here is exactly how 'Account' silently became a
+    duplicate of 'Accounting' instead of asking. Shared by
+    asset_import_preview (to flag the miss before committing) and
+    asset_import_commit (to actually resolve it)."""
+    name = (name or '').strip()
+    if not name:
+        return None
+    return (
+        AssetDepartment.objects.filter(name__iexact=name).first()
+        or AssetDepartment.objects.filter(tag_code__iexact=name).first()
+    )
+
+
+def _resolve_location_match(name):
+    """Existing top-level Location matching `name` (case-insensitive) — or
+    None if one would need to be created. See _resolve_department_match."""
+    name = (name or '').strip()
+    if not name:
+        return None
+    return Location.objects.filter(name__iexact=name, parent__isnull=True).first()
+
+
+def _resolve_category_match(name):
+    """Existing top-level AssetCategory matching `name` by exact name or
+    tag_code (case-insensitive) — or None if one would need to be created.
+    See _resolve_department_match. AssetCategory already had pre-existing
+    near-duplicates before this import ever ran (e.g. 'Laptop'/'Laptops',
+    'Monitor'/'Monitor x2') — this only prevents new ones from imports
+    going forward, it doesn't retroactively clean up those."""
+    name = (name or '').strip()
+    if not name:
+        return None
+    return (
+        AssetCategory.objects.filter(name__iexact=name, parent__isnull=True).first()
+        or AssetCategory.objects.filter(tag_code__iexact=name, parent__isnull=True).first()
+    )
+
+
+def _read_raw_rows(file):
+    """Returns a list of row tuples (values only) for either a CSV or
+    Excel upload, in original sheet order — the shape asset_import_transform
+    .transform_raw_rows() expects. CSV rows are read plainly (no DictReader)
+    so a CSV export of the same raw, section-header-having layout is
+    normalized identically to an Excel one."""
+    file_name = file.name.lower()
+    if file_name.endswith('.csv'):
+        decoded = file.read().decode('utf-8')
+        # io.StringIO (not decoded.splitlines()) so csv.reader sees the
+        # real line breaks itself — splitlines() would pre-split a quoted
+        # multi-line field (e.g. a Comments cell) before csv.reader gets a
+        # chance to respect the quoting, silently merging it into one line.
+        return [tuple(row) for row in csv.reader(io.StringIO(decoded))]
+    import openpyxl
+    wb = openpyxl.load_workbook(file)
+    ws = wb.active
+    return list(ws.iter_rows(min_row=1, max_row=ws.max_row, values_only=True))
+
+
 @login_required
 @require_POST
 def asset_import(request):
-    """Import assets from CSV or Excel file"""
+    """Step 1: upload a CSV/Excel file, run it through the transform step,
+    and stage the result as an AssetImportBatch for review — no Asset rows
+    are created here. URL name kept as 'asset_import' (unchanged from the
+    old single-step flow) so the existing Import button/form doesn't need
+    updating."""
     if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
-    
+
     file = request.FILES.get('file')
     if not file:
         messages.error(request, 'Please select a file to import.')
@@ -3966,151 +4831,247 @@ def asset_import(request):
         messages.error(request, 'File too large. Maximum size is 5MB.')
         return redirect('tickets:assets')
 
-    # Check file type
     file_name = file.name.lower()
-    is_csv = file_name.endswith('.csv')
-    is_excel = file_name.endswith(('.xlsx', '.xls'))
-
-    if not (is_csv or is_excel):
+    if not file_name.endswith(('.csv', '.xlsx', '.xls')):
         messages.error(request, 'Please upload a CSV or Excel file.')
         return redirect('tickets:assets')
-    
-    imported = 0
-    errors = []
-    warnings = []
-    
+
     try:
-        if is_csv:
-            # Parse CSV
-            decoded = file.read().decode('utf-8')
-            reader = csv.DictReader(decoded.splitlines())
-            rows = list(reader)
-        else:
-            # Parse Excel
-            import openpyxl
-            wb = openpyxl.load_workbook(file)
-            ws = wb.active
-            
-            # Get headers from first row
-            headers = []
-            for cell in ws[1]:
-                headers.append(cell.value)
-            
-            rows = []
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                row_dict = {}
-                for idx, header in enumerate(headers):
-                    if idx < len(row):
-                        row_dict[header] = row[idx]
-                rows.append(row_dict)
-        
-        # Import each row
-        for row_idx, row in enumerate(rows, start=2):  # Start at 2 for Excel row numbers
-            try:
-                # Skip empty rows
-                if not row.get('Name') and not row.get('name'):
-                    continue
-                
-                # Map columns (case-insensitive)
-                name = row.get('Name') or row.get('name')
-                category_name = row.get('Category') or row.get('category') or row.get('Type') or row.get('type') or ''
-                serial_number = row.get('Serial Number') or row.get('serial_number') or row.get('Serial') or ''
-                model = row.get('Model') or row.get('model') or ''
-                manufacturer = row.get('Manufacturer') or row.get('manufacturer') or ''
-                location = row.get('Location') or row.get('location') or ''
-                raw_status = str(row.get('Status') or row.get('status') or '').strip().upper()
-                valid_statuses = dict(Asset.Status.choices)
-                if raw_status and raw_status in valid_statuses:
-                    status = raw_status
-                else:
-                    status = Asset.Status.IN_STORE
-                    if raw_status:
-                        warnings.append(f"Row {row_idx}: unknown status '{raw_status}', defaulted to In Store.")
-                purchase_date = parse_date(row.get('Purchase Date') or row.get('purchase_date'))
-                warranty_expiry = parse_date(row.get('Warranty Expiry') or row.get('warranty_expiry'))
-                warranty_duration = row.get('Warranty Duration (Years)') or row.get('warranty_duration') or 0
-                notes = row.get('Notes') or row.get('notes') or ''
-                assigned_to_name = row.get('Assigned To') or row.get('assigned_to') or ''
-
-                # Find assigned user by exact email or exact full-name match
-                # (case-insensitive). Ambiguous/ no matches are skipped and
-                # flagged rather than guessing via a fuzzy substring match.
-                assigned_to = None
-                if assigned_to_name:
-                    assigned_to_name = str(assigned_to_name).strip()
-                    if '@' in assigned_to_name:
-                        matches = list(User.objects.filter(email__iexact=assigned_to_name))
-                    else:
-                        matches = list(User.objects.annotate(
-                            full_name=Concat('first_name', Value(' '), 'last_name')
-                        ).filter(full_name__iexact=assigned_to_name))
-                    if len(matches) == 1:
-                        assigned_to = matches[0]
-                    elif len(matches) > 1:
-                        warnings.append(f"Row {row_idx}: '{assigned_to_name}' matched multiple users, left unassigned.")
-                    else:
-                        warnings.append(f"Row {row_idx}: no user found matching '{assigned_to_name}', left unassigned.")
-                
-                # Resolve/create the category by name so imports keep working
-                # with whatever labels the sheet uses (mirrors the get_or_create
-                # pattern used for inline "add new category" on the asset form).
-                category = None
-                if category_name:
-                    category, _ = AssetCategory.objects.get_or_create(name=category_name.strip())
-
-                # Create asset
-                asset = Asset.objects.create(
-                    name=name,
-                    category=category,
-                    serial_number=serial_number,
-                    model=model,
-                    manufacturer=manufacturer,
-                    location=location,
-                    status=status,
-                    purchase_date=purchase_date if purchase_date else None,
-                    warranty_expiry=warranty_expiry if warranty_expiry else None,
-                    warranty_duration_years=int(warranty_duration) if warranty_duration else 0,
-                    notes=notes,
-                    assigned_to=assigned_to,
-                )
-
-                # Every other creation path (manual create, checkout,
-                # fulfillment) logs a CREATED/ASSIGNED AssetLog entry —
-                # imported assets previously had no audit trail at all.
-                AssetLog.objects.create(
-                    asset=asset,
-                    action=AssetLog.Action.CREATED,
-                    actor=request.user,
-                    details={'name': asset.name, 'category': asset.category.name if asset.category else None, 'source': 'import'}
-                )
-                if asset.assigned_to:
-                    AssetLog.objects.create(
-                        asset=asset,
-                        action=AssetLog.Action.ASSIGNED,
-                        actor=request.user,
-                        details={'to': asset.assigned_to.get_full_name(), 'source': 'import'}
-                    )
-
-                imported += 1
-                
-            except Exception as e:
-                errors.append(f"Row {row_idx}: {str(e)}")
-        
+        raw_rows = _read_raw_rows(file)
+        file.seek(0)
+        normalized_rows = transform_raw_rows(raw_rows)
     except Exception as e:
         messages.error(request, f'Error reading file: {str(e)}')
         return redirect('tickets:assets')
-    
-    # Show results
+
+    if not normalized_rows:
+        messages.warning(request, 'No asset rows were recognized in that file. Please check the column headers.')
+        return redirect('tickets:assets')
+
+    batch = AssetImportBatch.objects.create(
+        uploaded_file=file,
+        uploaded_by=request.user,
+        normalized_data=normalized_rows,
+        row_count=len(normalized_rows),
+    )
+    return redirect('tickets:asset_import_preview', pk=batch.pk)
+
+
+@login_required
+def asset_import_preview(request, pk):
+    """Step 2: review the transformed data before anything is created.
+    Annotates each row with what asset_import_commit would actually do
+    (resolved status, any assigned-to lookup problem) so issues are visible
+    up front rather than discovered mid-commit."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    batch = get_object_or_404(AssetImportBatch, pk=pk)
+    if batch.status != AssetImportBatch.Status.PENDING_REVIEW:
+        messages.info(request, f'This import batch has already been {batch.get_status_display().lower()}.')
+        return redirect('tickets:assets')
+
+    preview_rows = []
+    unmatched_dept_names = set()
+    unmatched_loc_names = set()
+    unmatched_category_names = set()
+    for row in batch.normalized_data:
+        assigned_to_name = row.get('assigned_to_name', '')
+        assigned_to, assign_warning = (None, None)
+        if assigned_to_name:
+            assigned_to, assign_warning = _find_assigned_to_by_name_or_email(assigned_to_name)
+
+        department_name = (row.get('department_name') or '').strip()
+        if department_name and _resolve_department_match(department_name) is None:
+            unmatched_dept_names.add(department_name)
+
+        location_name = (row.get('location_name') or '').strip()
+        if location_name and _resolve_location_match(location_name) is None:
+            unmatched_loc_names.add(location_name)
+
+        category_name = (row.get('category_name') or '').strip()
+        if category_name and _resolve_category_match(category_name) is None:
+            unmatched_category_names.add(category_name)
+
+        preview_rows.append({
+            **row,
+            'resolved_status': resolve_status_hint(row.get('status_hint', '')),
+            'assigned_to_resolved': assigned_to.get_full_name() if assigned_to else None,
+            'assign_warning': assign_warning,
+        })
+
+    return render(request, 'tickets/asset_import_preview.html', {
+        'batch': batch,
+        'preview_rows': preview_rows,
+        # Sheet department/location/category text that doesn't exactly
+        # match an existing row — surfaced here so an admin can map it to
+        # the right existing one (or explicitly confirm it's new) instead
+        # of the commit step silently creating a duplicate (see the
+        # 'Account' vs 'Accounting' incident this was built to prevent).
+        'unmatched_departments': sorted(unmatched_dept_names),
+        'unmatched_locations': sorted(unmatched_loc_names),
+        'unmatched_categories': sorted(unmatched_category_names),
+        'existing_departments': AssetDepartment.objects.all().order_by('name'),
+        'existing_locations': Location.objects.filter(parent__isnull=True).order_by('name'),
+        'existing_categories': AssetCategory.objects.filter(parent__isnull=True).order_by('name'),
+        'sidebar_template': get_sidebar_template(request.user),
+    })
+
+
+@login_required
+@require_POST
+def asset_import_commit(request, pk):
+    """Step 3: actually create the Asset rows from the reviewed batch."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    batch = get_object_or_404(AssetImportBatch, pk=pk)
+    if batch.status != AssetImportBatch.Status.PENDING_REVIEW:
+        messages.error(request, f'This import batch has already been {batch.get_status_display().lower()}.')
+        return redirect('tickets:assets')
+
+    imported = 0
+    warnings = []
+    errors = []
+
+    # Admin's choices from the preview page for any department/location/
+    # category text that didn't exactly match an existing row —
+    # 'dept_map:<sheet text>' / 'loc_map:<sheet text>' / 'cat_map:<sheet
+    # text>' -> existing row's pk, or blank/absent to confirm creating a
+    # new one under that name. Keyed by the literal sheet text (not an
+    # index) so it's unambiguous regardless of row order.
+    dept_overrides = {}
+    loc_overrides = {}
+    cat_overrides = {}
+    for key, value in request.POST.items():
+        if not value:
+            continue
+        if key.startswith('dept_map:'):
+            dept_overrides[key[len('dept_map:'):]] = value
+        elif key.startswith('loc_map:'):
+            loc_overrides[key[len('loc_map:'):]] = value
+        elif key.startswith('cat_map:'):
+            cat_overrides[key[len('cat_map:'):]] = value
+
+    for row_idx, row in enumerate(batch.normalized_data, start=1):
+        try:
+            name = row.get('name', '')
+            if not name:
+                continue
+
+            category = None
+            category_name = (row.get('category_name') or '').strip()
+            if category_name:
+                override_pk = cat_overrides.get(category_name)
+                category = AssetCategory.objects.filter(pk=override_pk).first() if override_pk else None
+                if not category:
+                    category = _resolve_category_match(category_name)
+                if not category:
+                    category = AssetCategory.objects.create(name=category_name)
+
+            location = None
+            location_name = (row.get('location_name') or '').strip()
+            if location_name:
+                override_pk = loc_overrides.get(location_name)
+                location = Location.objects.filter(pk=override_pk).first() if override_pk else None
+                if not location:
+                    location = _resolve_location_match(location_name)
+                if not location:
+                    location = Location.objects.create(name=location_name, parent=None)
+
+            department = None
+            department_name = (row.get('department_name') or '').strip()
+            if department_name:
+                override_pk = dept_overrides.get(department_name)
+                department = AssetDepartment.objects.filter(pk=override_pk).first() if override_pk else None
+                if not department:
+                    department = _resolve_department_match(department_name)
+                if not department:
+                    department = AssetDepartment.objects.create(name=department_name)
+
+            assigned_to = None
+            unresolved_assignee_hint = ''
+            assigned_to_name = row.get('assigned_to_name', '')
+            if assigned_to_name:
+                assigned_to, assign_warning = _find_assigned_to_by_name_or_email(assigned_to_name)
+                if assign_warning:
+                    warnings.append(f"Row {row_idx}: {assign_warning}")
+                    # Keep the raw name rather than discarding it — lets an
+                    # admin later match/create the account and assign this
+                    # asset properly instead of it becoming untraceable.
+                    unresolved_assignee_hint = assigned_to_name.strip()[:150]
+
+            tag_slot_number = parse_track_no_slot(row.get('track_no', ''))
+
+            asset = Asset(
+                name=name,
+                category=category,
+                location=location,
+                department=department,
+                status=resolve_status_hint(row.get('status_hint', '')),
+                notes=row.get('notes', ''),
+                assigned_to=assigned_to,
+                unresolved_assignee_hint=unresolved_assignee_hint,
+            )
+            # The org's own physical tag, already affixed to real hardware
+            # — preserved as-is rather than regenerated, same principle as
+            # tracking_id never being touched for existing assets.
+            given_tag = row.get('tracking_id', '')
+            if given_tag:
+                asset.tracking_id = given_tag
+                if tag_slot_number is not None:
+                    asset.tag_slot_number = tag_slot_number
+            asset.save()
+
+            AssetLog.objects.create(
+                asset=asset,
+                action=AssetLog.Action.CREATED,
+                actor=request.user,
+                details={'name': asset.name, 'category': asset.category.name if asset.category else None, 'source': 'import'}
+            )
+            if asset.assigned_to:
+                AssetLog.objects.create(
+                    asset=asset,
+                    action=AssetLog.Action.ASSIGNED,
+                    actor=request.user,
+                    details={'to': asset.assigned_to.get_full_name(), 'source': 'import'}
+                )
+
+            imported += 1
+        except Exception as e:
+            errors.append(f"Row {row_idx}: {str(e)}")
+
+    batch.status = AssetImportBatch.Status.COMMITTED
+    batch.committed_at = timezone.now()
+    batch.save(update_fields=['status', 'committed_at'])
+
     if imported > 0:
         messages.success(request, f'Successfully imported {imported} asset(s).')
     if warnings:
         for w in warnings[:10]:
-            messages.warning(request, f'{w}')
+            messages.warning(request, w)
     if errors:
         messages.warning(request, f'{len(errors)} error(s) occurred.')
     if not imported and not errors:
-        messages.warning(request, 'No assets were imported. Please check your file format.')
-    
+        messages.warning(request, 'No assets were imported.')
+
+    return redirect('tickets:assets')
+
+
+@login_required
+@require_POST
+def asset_import_discard(request, pk):
+    """Cancel a pending review without creating anything. The uploaded
+    file itself is kept (not deleted) per the same policy as a committed
+    batch — only the batch's status changes."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+        return HttpResponse(status=403)
+
+    batch = get_object_or_404(AssetImportBatch, pk=pk)
+    if batch.status == AssetImportBatch.Status.PENDING_REVIEW:
+        batch.status = AssetImportBatch.Status.DISCARDED
+        batch.save(update_fields=['status'])
+        messages.info(request, 'Import discarded — no assets were created.')
     return redirect('tickets:assets')
 
 
@@ -4185,19 +5146,21 @@ def _mark_asset_ticket_fulfilled(ticket, request, summary):
         ticket=ticket,
         author=request.user,
         body=f"**Fulfilled**: {escape(summary)}. Please confirm once received.",
-        visibility='PUBLIC'
+        visibility='PUBLIC',
+        is_receipt_confirmation_prompt=True,
+        is_system_generated=True,
     )
 
     Notification.objects.create(
         recipient=ticket.requester,
         role=role_of(ticket.requester),
-        message=f'Your request {ticket.number} has been fulfilled — please confirm you received it.',
-        url=reverse('tickets:confirm_resolution', args=[ticket.pk]),
+        message=f'Your request {ticket.number} has been fulfilled — please confirm receipt on the ticket page.',
+        url=reverse('tickets:detail', args=[ticket.pk]),
         type=Notification.Type.RESOLUTION_CONFIRMATION,
     )
 
     if ticket.requester.email:
-        confirm_url = request.build_absolute_uri(reverse('tickets:confirm_resolution', args=[ticket.pk]))
+        confirm_url = request.build_absolute_uri(reverse('tickets:detail', args=[ticket.pk]))
         html_message = render_to_string('emails/resolution_confirmation.html', {
             'requester_name': ticket.requester.get_full_name() or ticket.requester.email,
             'ticket_number': ticket.number,
@@ -4256,6 +5219,56 @@ def _maybe_fulfill_mobilization_ticket(mobilization, request):
     TicketActivityLog.objects.create(
         ticket=ticket, action='mobilization_fulfilled', actor=request.user,
         details={'mobilization_id': mobilization.pk, 'asset_count': mobilization.items.count()}
+    )
+
+
+def _maybe_resolve_mobilization_receipt(ticket, actor):
+    """Called after every MobilizationItem accept/dispute. Once every item
+    across every mobilization linked to this ticket has been accepted or
+    disputed, drives the ticket the same way confirm_resolution's
+    all-or-nothing click used to for asset-request tickets: all accepted ->
+    APPROVED (mirrors action='confirm'); any disputed -> PENDING_FULFILLMENT
+    (mirrors action='reopen'). No-op while any item is still pending, or if
+    the ticket isn't a mobilization ticket currently awaiting this at all."""
+    if ticket.status != Ticket.Status.PENDING_USER or not ticket.is_mobilization_request:
+        return
+
+    items = MobilizationItem.objects.filter(mobilization__ticket=ticket).select_related('asset')
+    if not items.exists() or items.filter(acknowledged_at__isnull=True, disputed_at__isnull=True).exists():
+        return  # nothing to aggregate yet, or still waiting on someone
+
+    disputed_items = list(items.filter(disputed_at__isnull=False))
+    if disputed_items:
+        ticket.status = Ticket.Status.PENDING_FULFILLMENT
+        ticket.save(update_fields=['status'])
+
+        names = ', '.join(i.asset.tracking_id for i in disputed_items)
+        TicketActivityLog.objects.create(
+            ticket=ticket, action='resolution_rejected', actor=actor,
+            details={'disputed_items': names, 'source': 'mobilization_item_dispute'}
+        )
+        TicketComment.objects.create(
+            ticket=ticket, author=actor, visibility='PUBLIC',
+            body=f"**Not received**: the requester disputes receiving {escape(names)}. Sent back for review.",
+            is_system_generated=True,
+        )
+        if ticket.fulfilled_by:
+            Notification.objects.create(
+                recipient=ticket.fulfilled_by, role=role_of(ticket.fulfilled_by),
+                message=f"{ticket.requester.get_full_name()} disputes receiving mobilized item(s) for {ticket.number}.",
+                url=reverse('tickets:conversation', args=[ticket.pk])
+            )
+        return
+
+    # Every item accepted, none disputed.
+    ticket.resolution_confirmed_at = timezone.now()
+    ticket.resolution_confirmed_by = ticket.requester
+    ticket.status = Ticket.Status.APPROVED
+    ticket.save()
+
+    TicketActivityLog.objects.create(
+        ticket=ticket, action='receipt_confirmed', actor=ticket.requester,
+        details={'confirmed_at': ticket.resolution_confirmed_at.isoformat(), 'source': 'mobilization_items'}
     )
 
 
@@ -4473,7 +5486,8 @@ def procurement_request_create(request, pk):
         body=f"**On order**: {escape(procurement_request.item_name)} x{procurement_request.quantity} requested from "
              f"{escape(procurement_request.vendor.name) if procurement_request.vendor else 'vendor (TBD)'}"
              f"{f', expected {procurement_request.expected_arrival_date}' if procurement_request.expected_arrival_date else ''}.",
-        visibility='PUBLIC'
+        visibility='PUBLIC',
+        is_system_generated=True,
     )
     TicketActivityLog.objects.create(
         ticket=ticket,
@@ -4580,11 +5594,31 @@ def procurement_cancel(request, pk):
     procurement_request.save(update_fields=['status'])
 
     if procurement_request.mobilization_id:
+        mobilization = procurement_request.mobilization
+        if mobilization.ticket_id:
+            # Sum quantities, not row counts — a consumable batch (e.g. 3
+            # laptops from one vendor order) is a single MobilizationItem
+            # row with quantity=3, so .count() would wrongly say 1.
+            fulfilled_count = sum(mobilization.items.values_list('quantity', flat=True))
+            still_open = sum(mobilization.procurement_requests.filter(
+                status__in=[AssetProcurementRequest.Status.REQUESTED, AssetProcurementRequest.Status.ORDERED]
+            ).exclude(pk=procurement_request.pk).values_list('quantity', flat=True))
+            total = fulfilled_count + still_open
+            status_line = f"All {total} items now fulfilled." if total and fulfilled_count == total else f"{fulfilled_count} of {total} items now fulfilled." if total else "Nothing left on order for this mobilization."
+            TicketComment.objects.create(
+                ticket=mobilization.ticket,
+                author=request.user,
+                visibility='PUBLIC',
+                mobilization=mobilization,
+                mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_CANCELLED,
+                body=f"<strong>{escape(procurement_request.item_name)} order cancelled</strong><br>{status_line}",
+                is_system_generated=True,
+            )
         # Cancelling can be what clears the last thing a mobilization's
         # ticket was waiting on (e.g. 2 items ordered, 1 already received,
         # this one cancelled instead of arriving) — recheck the same way
         # receiving does.
-        _maybe_fulfill_mobilization_ticket(procurement_request.mobilization, request)
+        _maybe_fulfill_mobilization_ticket(mobilization, request)
 
     Notification.objects.create(
         recipient=procurement_request.requested_by,
@@ -4698,9 +5732,26 @@ def procurement_receive(request, pk):
         procurement_request.save(update_fields=['status', 'received_at', 'received_by'])
 
         if procurement_request.mobilization_id:
+            mobilization = procurement_request.mobilization
+            if mobilization.ticket_id:
+                fulfilled_count = sum(mobilization.items.values_list('quantity', flat=True))
+                still_open = sum(mobilization.procurement_requests.filter(
+                    status__in=[AssetProcurementRequest.Status.REQUESTED, AssetProcurementRequest.Status.ORDERED]
+                ).exclude(pk=procurement_request.pk).values_list('quantity', flat=True))
+                total = fulfilled_count + still_open
+                status_line = f"All {total} items now fulfilled." if fulfilled_count == total else f"{fulfilled_count} of {total} items now fulfilled."
+                TicketComment.objects.create(
+                    ticket=mobilization.ticket,
+                    author=request.user,
+                    visibility='PUBLIC',
+                    mobilization=mobilization,
+                    mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_ARRIVED,
+                    body=f"<strong>{escape(procurement_request.item_name)} arrived from vendor</strong><br>{status_line}",
+                    is_system_generated=True,
+                )
             # Now that this one's marked RECEIVED, check whether it was the
             # last thing this mobilization's ticket (if any) was waiting on.
-            _maybe_fulfill_mobilization_ticket(procurement_request.mobilization, request)
+            _maybe_fulfill_mobilization_ticket(mobilization, request)
 
     Notification.objects.create(
         recipient=procurement_request.requested_by,
@@ -5011,6 +6062,116 @@ def asset_checkout_dispute(request, pk):
     return redirect('tickets:my_assets')
 
 
+# ==========================================================================
+# MOBILIZATION RECEIPT TWO-STEP CONFIRMATION — the requester-facing
+# counterpart to the asset checkout accept/dispute above: the ticket's
+# requester (not the admin who mobilized the assets) confirms or disputes
+# receipt of each MobilizationItem individually. Reachable only via the
+# receipt_confirm_modal below, embedded in the ticket conversation page.
+# ==========================================================================
+
+@login_required
+@require_POST
+def mobilization_item_accept(request, item_pk):
+    item = get_object_or_404(MobilizationItem.objects.select_related('mobilization__ticket'), pk=item_pk)
+    try:
+        item.acknowledge_receipt(actor=request.user)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('tickets:detail', pk=item.mobilization.ticket_id or item.mobilization_id)
+    if item.mobilization.ticket_id:
+        _maybe_resolve_mobilization_receipt(item.mobilization.ticket, request.user)
+    messages.success(request, f'Confirmed receipt of "{item.asset.name}".')
+    return redirect('tickets:detail', pk=item.mobilization.ticket_id)
+
+
+@login_required
+@require_POST
+def mobilization_item_dispute(request, item_pk):
+    item = get_object_or_404(MobilizationItem.objects.select_related('mobilization__ticket'), pk=item_pk)
+    reason = request.POST.get('reason', '').strip()
+    try:
+        item.dispute_receipt(actor=request.user, reason=reason)
+    except ValueError as e:
+        messages.error(request, str(e))
+        return redirect('tickets:detail', pk=item.mobilization.ticket_id or item.mobilization_id)
+    if item.mobilization.ticket_id:
+        _maybe_resolve_mobilization_receipt(item.mobilization.ticket, request.user)
+    messages.success(request, f'Reported — an admin will follow up on "{item.asset.name}".')
+    return redirect('tickets:detail', pk=item.mobilization.ticket_id)
+
+
+@login_required
+def receipt_confirm_modal(request, pk):
+    """Modal shown from the ticket conversation page's compact "confirm
+    receipt" signifier — the single UI entry point for both the per-item
+    mobilization handshake and the single-asset asset-request confirmation.
+    Reachable only by the ticket's own requester while it's actually
+    awaiting their response."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.user != ticket.requester:
+        return HttpResponse(status=403)
+    if ticket.status != Ticket.Status.PENDING_USER or not ticket.is_asset_request:
+        return HttpResponse("There's nothing awaiting your confirmation for this ticket.", status=400)
+
+    context = {'ticket': ticket}
+    if ticket.is_mobilization_request:
+        items = MobilizationItem.objects.filter(mobilization__ticket=ticket).select_related('asset', 'mobilization')
+        context['pending_items'] = items.filter(acknowledged_at__isnull=True, disputed_at__isnull=True)
+        context['actioned_items'] = items.exclude(acknowledged_at__isnull=True, disputed_at__isnull=True)
+    return render(request, 'partials/receipt_confirm_modal.html', context)
+
+
+@login_required
+@require_POST
+def mobilization_items_confirm_batch(request, pk):
+    """Single submit for the receipt-confirm modal's item checklist. The
+    requester marks each item Accept/Dispute locally in the modal (no
+    per-click page reload, no per-item message) and only this one submit —
+    behind a single 'Done' confirmation — actually applies every decision,
+    in one batch, then runs the usual aggregation once at the end."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if request.user != ticket.requester:
+        return HttpResponse(status=403)
+
+    accept_ids = request.POST.getlist('accept_ids')
+    dispute_ids = request.POST.getlist('dispute_ids')
+    items = MobilizationItem.objects.filter(
+        pk__in=accept_ids + dispute_ids, mobilization__ticket=ticket
+    ).select_related('asset', 'mobilization')
+    items_by_pk = {str(item.pk): item for item in items}
+
+    accepted_count = disputed_count = 0
+    for item_pk in accept_ids:
+        item = items_by_pk.get(item_pk)
+        if not item:
+            continue
+        try:
+            item.acknowledge_receipt(actor=request.user)
+            accepted_count += 1
+        except ValueError:
+            pass
+    for item_pk in dispute_ids:
+        item = items_by_pk.get(item_pk)
+        if not item:
+            continue
+        try:
+            item.dispute_receipt(actor=request.user, reason=request.POST.get(f'reason_{item_pk}', '').strip())
+            disputed_count += 1
+        except ValueError:
+            pass
+
+    _maybe_resolve_mobilization_receipt(ticket, request.user)
+
+    parts = []
+    if accepted_count:
+        parts.append(f'{accepted_count} confirmed')
+    if disputed_count:
+        parts.append(f'{disputed_count} disputed')
+    messages.success(request, (', '.join(parts) + '.') if parts else 'No changes recorded.')
+    return redirect('tickets:detail', pk=ticket.pk)
+
+
 @login_required
 def asset_request_return_modal(request, pk):
     """Confirmation modal for relinquishing an asset — reachable only by
@@ -5119,6 +6280,7 @@ def mobilizations(request):
     if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
         return HttpResponse(status=403)
 
+    tab = request.GET.get('tab', 'all')
     job_filter = request.GET.get('filter_job', '')
     vessel_filter = request.GET.get('filter_vessel', '')
     system_filter = request.GET.get('filter_system', '')
@@ -5135,7 +6297,22 @@ def mobilizations(request):
     if status_filter:
         mobilizations_list = mobilizations_list.filter(status=status_filter)
 
-    mobilizations_list = mobilizations_list.distinct()
+    mobilizations_list = mobilizations_list.annotate(
+        pending_demob_count=Count(
+            'items',
+            filter=Q(items__return_requested_at__isnull=False, items__demobilized_at__isnull=True),
+            distinct=True,
+        )
+    ).distinct()
+
+    # Counted before the tab split so the tab label always reflects the
+    # true total, not just what's on the current tab's page.
+    needs_confirmation_count = mobilizations_list.filter(pending_demob_count__gt=0).count()
+
+    if tab == 'needs_confirmation':
+        mobilizations_list = mobilizations_list.filter(pending_demob_count__gt=0)
+
+    mobilizations_list = mobilizations_list.order_by('-mobilized_at')
 
     paginator = Paginator(mobilizations_list, 10)
     page_number = request.GET.get('page')
@@ -5143,6 +6320,8 @@ def mobilizations(request):
 
     context = {
         'mobilizations': page_obj,
+        'tab': tab,
+        'needs_confirmation_count': needs_confirmation_count,
         'job_numbers': JobNumber.objects.filter(is_active=True),
         'vessels': Vessel.objects.filter(is_active=True),
         'dive_systems': DiveSystem.objects.filter(is_active=True),
@@ -5181,42 +6360,79 @@ def mobilization_detail(request, pk):
 
 
 @login_required
+def mobilization_audit_report(request, pk):
+    """Full mobilize-to-demobilize audit trail for one mobilization —
+    linked from mobilization_detail, same access control. Built for an
+    IT admin/agent auditing how a specific batch of assets moved out and
+    back into inventory (not the requester-facing demobilization page,
+    which only covers self-report status)."""
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
+        return HttpResponse(status=403)
+
+    mobilization = get_object_or_404(
+        Mobilization.objects.select_related('job_number', 'mobilized_by', 'ticket', 'ticket__requester').prefetch_related(
+            'vessels', 'dive_systems'
+        ),
+        pk=pk
+    )
+
+    from .report_registry import mobilization_audit_sections
+    context = mobilization_audit_sections(mobilization)
+    context['sidebar_template'] = get_sidebar_template(request.user)
+    return render(request, 'reports/mobilization_audit_report.html', context)
+
+
+@login_required
+def mobilization_audit_export(request, pk):
+    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN', 'AGENT', 'TEAM_LEAD'] or request.user.department != 'IT':
+        return HttpResponse(status=403)
+
+    mobilization = get_object_or_404(
+        Mobilization.objects.select_related('job_number', 'mobilized_by', 'ticket', 'ticket__requester'),
+        pk=pk
+    )
+    from .report_exporters import export_mobilization_audit_pdf
+    return export_mobilization_audit_pdf(mobilization, request)
+
+
+@login_required
 def mobilization_create_page(request):
     if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
-    form = MobilizationForm()
     ticket_id = request.GET.get('ticket_id')
     ticket = Ticket.objects.filter(pk=ticket_id).first() if ticket_id else None
+    if not ticket or not ticket.is_mobilization_request:
+        messages.error(request, 'Mobilizing assets requires a linked mobilization request ticket.')
+        return redirect('tickets:mobilizations')
 
+    form = MobilizationForm(initial={
+        'job_number': ticket.job_number_id,
+        'vessels': ticket.vessels.values_list('id', flat=True),
+        'dive_systems': ticket.dive_systems.values_list('id', flat=True),
+        'notes': ticket.purpose,
+    })
+
+    # Carry over what the request itself already said it needed — the
+    # ASSET field group's asset_type/number_of_assets — into the Quick
+    # Add by Quantity picker, so the admin isn't retyping what the
+    # requester already specified. No expected_return_date prefill:
+    # nothing on the request captures a target return date today.
     prefill_category = None
     prefill_quantity = None
-    if ticket:
-        form = MobilizationForm(initial={
-            'job_number': ticket.job_number_id,
-            'vessels': ticket.vessels.values_list('id', flat=True),
-            'dive_systems': ticket.dive_systems.values_list('id', flat=True),
-            'notes': ticket.purpose,
-        })
-
-        # Carry over what the request itself already said it needed — the
-        # ASSET field group's asset_type/number_of_assets — into the Quick
-        # Add by Quantity picker, so the admin isn't retyping what the
-        # requester already specified. No expected_return_date prefill:
-        # nothing on the request captures a target return date today.
-        if ticket.service_category and ticket.service_category.field_group == ServiceCategory.FieldGroup.ASSET:
-            details = ticket.service_request_details or {}
-            asset_type = details.get('asset_type')
-            if asset_type:
-                for f in fields_for_group(ServiceCategory.FieldGroup.ASSET):
-                    if f.key == 'asset_type':
-                        label = display_value_for_field(f, asset_type)
-                        prefill_category = AssetCategory.objects.filter(name__iexact=label).first()
-                        break
-            try:
-                prefill_quantity = int(details.get('number_of_assets') or 0) or None
-            except (TypeError, ValueError):
-                prefill_quantity = None
+    if ticket.service_category and ticket.service_category.field_group == ServiceCategory.FieldGroup.ASSET:
+        details = ticket.service_request_details or {}
+        asset_type = details.get('asset_type')
+        if asset_type:
+            for f in fields_for_group(ServiceCategory.FieldGroup.ASSET):
+                if f.key == 'asset_type':
+                    label = display_value_for_field(f, asset_type)
+                    prefill_category = AssetCategory.objects.filter(name__iexact=label).first()
+                    break
+        try:
+            prefill_quantity = int(details.get('number_of_assets') or 0) or None
+        except (TypeError, ValueError):
+            prefill_quantity = None
 
     return render(request, 'tickets/mobilization_create.html', {
         'form': form,
@@ -5236,9 +6452,14 @@ def mobilization_create(request):
     if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
 
+    ticket_id = request.POST.get('ticket_id')
+    ticket = Ticket.objects.filter(pk=ticket_id).first() if ticket_id else None
+    if not ticket or not ticket.is_mobilization_request:
+        messages.error(request, 'Mobilizing assets requires a linked mobilization request ticket.')
+        return redirect('tickets:mobilizations')
+
     form = MobilizationForm(request.POST)
     asset_ids = request.POST.getlist('asset_ids')
-    ticket_id = request.POST.get('ticket_id')
 
     # Vendor-request rows: item name / category / quantity / vendor /
     # expected date, one set of parallel arrays per row — same
@@ -5255,6 +6476,24 @@ def mobilization_create(request):
         messages.error(request, 'Select at least one asset to mobilize, or add a vendor-request line item.')
         return redirect('tickets:mobilizations')
 
+    # Category is required per vendor-request row (it's what the receiving
+    # step uses to file the item once it arrives) — checked up front, before
+    # the mobilization is created below, so a row missing it is rejected
+    # outright instead of being silently dropped after the rest of the
+    # mobilization has already been saved.
+    missing_category_items = []
+    for i, item_name in enumerate(procurement_item_names):
+        item_name = item_name.strip()
+        if not item_name:
+            continue
+        category_id = procurement_category_ids[i] if i < len(procurement_category_ids) else None
+        if not category_id or not AssetCategory.objects.filter(pk=category_id).exists():
+            missing_category_items.append(item_name)
+    if missing_category_items:
+        names = ', '.join(missing_category_items)
+        messages.error(request, f'Select a category for: {names}.')
+        return redirect('tickets:mobilizations')
+
     if not form.is_valid():
         for field_errors in form.errors.values():
             for error in field_errors:
@@ -5263,7 +6502,12 @@ def mobilization_create(request):
 
     with transaction.atomic():
         assets_qs = Asset.objects.select_for_update().filter(pk__in=asset_ids)
-        unavailable = [a for a in assets_qs if not a.is_available]
+        # assigned_to check is separate from is_available (which is
+        # deliberately assigned_to-agnostic, shared with checkout) — an
+        # asset permanently assigned to someone must not be pickable for an
+        # unrelated job mobilization, mirroring the guard already applied
+        # at ticket-fulfillment time (asset_id branch above).
+        unavailable = [a for a in assets_qs if not a.is_available or a.assigned_to_id]
         if unavailable:
             names = ', '.join(a.tracking_id for a in unavailable)
             messages.error(request, f'These assets are not available to mobilize: {names}.')
@@ -5290,8 +6534,6 @@ def mobilization_create(request):
             names = ', '.join(a.name for a in insufficient_stock)
             messages.error(request, f'Not enough stock to mobilize the requested quantity for: {names}.')
             return redirect('tickets:mobilizations')
-
-        ticket = Ticket.objects.filter(pk=ticket_id).first() if ticket_id else None
 
         mobilization = form.save(commit=False)
         mobilization.mobilized_by = request.user
@@ -5383,12 +6625,31 @@ def mobilization_create(request):
             )
 
     if ticket:
-        TicketComment.objects.create(
-            ticket=ticket,
-            author=request.user,
-            body=f"**Assets mobilized**: {', '.join(a.tracking_id for a in assets_qs)} sent to {escape(mobilization.destination_display)}.",
-            visibility='PUBLIC'
-        )
+        # One itemized summary per line (stock pick or vendor order),
+        # grouped by name+quantity — not per-asset-per-tracking-ID, this is
+        # a lightweight manifest, distinct from the confirm-receipt card
+        # which still lists each physical unit individually. Mixed
+        # mobilizations (some stock, some vendor) get one coherent comment
+        # instead of two disconnected ones.
+        stock_groups = {}
+        for asset in assets_qs:
+            stock_groups[asset.name] = stock_groups.get(asset.name, 0) + quantities[asset.pk]
+        procurement_rows = list(mobilization.procurement_requests.all())
+
+        if stock_groups or procurement_rows:
+            lines = [f"{qty}× {escape(name)} — mobilized from stock" for name, qty in stock_groups.items()]
+            lines += [f"{pr.quantity}× {escape(pr.item_name)} — ordered from vendor" for pr in procurement_rows]
+            total = sum(stock_groups.values()) + sum(pr.quantity for pr in procurement_rows)
+            title = f"{total} item{'s' if total != 1 else ''} requested for {escape(mobilization.destination_display)}"
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                visibility='PUBLIC',
+                mobilization=mobilization,
+                mobilization_event=TicketComment.MobilizationEvent.CREATED,
+                body=f"<strong>{title}</strong><br>" + "<br>".join(lines),
+                is_system_generated=True,
+            )
         # Only actually fulfills the ticket (and prompts the requester to
         # confirm receipt) once nothing on this mobilization is still on
         # order from a vendor — a procurement-only mobilization instead
@@ -5432,6 +6693,7 @@ def mobilization_available_assets(request):
     assets_qs = Asset.objects.filter(
         status__in=[Asset.Status.IN_STORE, Asset.Status.READY],
         checked_out_to__isnull=True,
+        assigned_to__isnull=True,
     ).exclude(
         category__is_consumable=True, quantity_in_stock__lte=0,
     ).select_related('category').order_by('name')
@@ -5478,6 +6740,7 @@ def mobilization_autopick_assets(request):
         category__is_consumable=False,
         status__in=[Asset.Status.IN_STORE, Asset.Status.READY],
         checked_out_to__isnull=True,
+        assigned_to__isnull=True,
     ).order_by('tracking_id')[:quantity]
 
     return JsonResponse({
@@ -5497,17 +6760,36 @@ def mobilization_item_demobilize_modal(request, item_pk):
     if not item.is_active:
         return HttpResponse('<div class="p-4 text-center text-warning">This asset has already been demobilized.</div>', status=400)
 
+    has_ticket = bool(item.mobilization.ticket_id)
     return render(request, 'partials/mobilization_demobilize_modal.html', {
         'item': item,
         'condition_choices': Asset.Condition.choices,
+        'has_ticket': has_ticket,
+        'is_blocked': has_ticket and not item.return_requested_at,
     })
 
 
-def _demobilize_item(item, return_condition, return_notes, actor, return_quantity=None):
+def _demobilize_item(item, return_condition, return_notes, actor, return_quantity=None, override_reason=''):
     """Core of returning one MobilizationItem's asset to inventory — shared
     by the single-item demobilize view and the batch "Demobilize All" view.
     Does not call item.mobilization.refresh_status(); callers do that once
-    after all items in a batch are processed, to avoid redundant recomputes."""
+    after all items in a batch are processed, to avoid redundant recomputes.
+
+    Requires the requester to have self-reported this item as returned
+    (item.return_requested_at) whenever the mobilization has a linked
+    ticket — the whole point of the demobilization handshake is that the
+    return leg stays traceable through the system, not just admin say-so.
+    The only carve-out is a legacy mobilization with no linked ticket (no
+    requester ever could self-report it), which requires a typed
+    override_reason instead. Both call sites validate this up front too;
+    raising here is a safety net, not the primary guard."""
+    if item.mobilization.ticket_id:
+        if not item.return_requested_at:
+            raise ValueError(f'"{item.asset.name}" has not been reported returned by the requester yet.')
+    else:
+        if not override_reason.strip():
+            raise ValueError(f'"{item.asset.name}" needs a reason — this mobilization has no linked ticket/requester to report a return.')
+
     asset = item.asset
 
     item.demobilized_at = timezone.now()
@@ -5541,15 +6823,23 @@ def _demobilize_item(item, return_condition, return_notes, actor, return_quantit
         asset.status_updated_by = actor
         asset.save(update_fields=['status', 'condition', 'status_updated_at', 'status_updated_by'])
 
+    details = {
+        'mobilization_id': item.mobilization_id,
+        'condition': return_condition,
+        'notes': return_notes,
+    }
+    if item.return_requested_at:
+        details['self_reported_at'] = item.return_requested_at.isoformat()
+        details['self_reported_by'] = item.return_requested_by.get_full_name() if item.return_requested_by else None
+        details['self_reported_notes'] = item.return_requested_notes
+    if override_reason:
+        details['override_reason'] = override_reason
+
     AssetLog.objects.create(
         asset=asset,
         action=AssetLog.Action.DEMOBILIZED,
         actor=actor,
-        details={
-            'mobilization_id': item.mobilization_id,
-            'condition': return_condition,
-            'notes': return_notes,
-        }
+        details=details,
     )
 
 
@@ -5561,6 +6851,7 @@ def mobilization_item_demobilize(request, item_pk):
 
     return_condition = request.POST.get('return_condition')
     return_notes = request.POST.get('return_notes', '').strip()
+    override_reason = request.POST.get('override_reason', '').strip()
 
     with transaction.atomic():
         item = get_object_or_404(
@@ -5582,7 +6873,14 @@ def mobilization_item_demobilize(request, item_pk):
 
         asset_name = item.asset.name
         mobilization_id = item.mobilization_id
-        _demobilize_item(item, return_condition, return_notes, request.user, return_quantity=return_quantity)
+        try:
+            _demobilize_item(
+                item, return_condition, return_notes, request.user,
+                return_quantity=return_quantity, override_reason=override_reason,
+            )
+        except ValueError as e:
+            messages.error(request, str(e))
+            return redirect('tickets:mobilization_detail', pk=mobilization_id)
         item.mobilization.refresh_status()
 
     messages.success(request, f'Asset "{asset_name}" demobilized and returned to inventory.')
@@ -5599,10 +6897,13 @@ def mobilization_demobilize_all_modal(request, pk):
     if not active_items.exists():
         return HttpResponse('<div class="p-4 text-center text-warning">Every asset on this mobilization has already been demobilized.</div>', status=400)
 
+    has_ticket = bool(mobilization.ticket_id)
     return render(request, 'partials/mobilization_demobilize_all_modal.html', {
         'mobilization': mobilization,
         'items': active_items,
         'condition_choices': Asset.Condition.choices,
+        'has_ticket': has_ticket,
+        'unreported_items': active_items.filter(return_requested_at__isnull=True) if has_ticket else [],
     })
 
 
@@ -5615,6 +6916,7 @@ def mobilization_demobilize_all(request, pk):
     mobilization = get_object_or_404(Mobilization, pk=pk)
     return_condition = request.POST.get('return_condition')
     return_notes = request.POST.get('return_notes', '').strip()
+    override_reason = request.POST.get('override_reason', '').strip()
 
     if not return_condition:
         messages.error(request, 'Please select the returned condition.')
@@ -5628,8 +6930,20 @@ def mobilization_demobilize_all(request, pk):
             messages.warning(request, 'Every asset on this mobilization has already been demobilized.')
             return redirect('tickets:mobilization_detail', pk=pk)
 
+        # Validate the whole batch up front — all-or-nothing, so we never
+        # demobilize some items and then bail out partway through.
+        if mobilization.ticket_id:
+            unreported = [i for i in items if not i.return_requested_at]
+            if unreported:
+                names = ', '.join(i.asset.tracking_id for i in unreported)
+                messages.error(request, f'Not yet reported returned by the requester: {names}.')
+                return redirect('tickets:mobilization_detail', pk=pk)
+        elif not override_reason:
+            messages.error(request, 'Please provide a reason — this mobilization has no linked ticket/requester.')
+            return redirect('tickets:mobilization_detail', pk=pk)
+
         for item in items:
-            _demobilize_item(item, return_condition, return_notes, request.user)
+            _demobilize_item(item, return_condition, return_notes, request.user, override_reason=override_reason)
 
         mobilization.refresh_status()
 

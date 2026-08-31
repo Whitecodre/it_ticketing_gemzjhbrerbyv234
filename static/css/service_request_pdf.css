@@ -1,48 +1,110 @@
-@import url('https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap');
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  background-color: #e5e7eb;
+}
 
-  body {
-    font-family: Arial, Helvetica, sans-serif;
-    background-color: #e5e7eb;
-  }
+.page {
+  width: 850px;
+  max-width: 100%;
+  margin: 40px auto;
+  background: #ffffff;
+  padding: 45px 55px;
+  box-shadow: 0 0 12px rgba(0,0,0,0.15);
+}
 
+.logo-text {
+  font-family: 'Brush Script MT', cursive;
+  font-size: 26px;
+  font-weight: bold;
+  font-style: italic;
+  background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 0.5px;
+}
+
+.logo-underline {
+  height: 3px;
+  width: 100%;
+  background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
+  border-radius: 2px;
+  margin-top: 2px;
+}
+
+.section-box {
+  border: 2px solid #000;
+}
+
+.section-title {
+  font-weight: bold;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #000;
+}
+
+.cell {
+  border-top: 1px solid #000;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.cell:first-child {
+  border-top: none;
+}
+
+.cell-label {
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.field-line {
+  border-bottom: 1px solid #000;
+  display: inline-block;
+}
+
+.dotted-line {
+  border-bottom: 1px solid #000;
+  display: inline-block;
+}
+
+.chk {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1.3px solid #000;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.chk-filled {
+  background: #000;
+}
+
+table.grid td, table.grid th {
+  border: 1px solid #000;
+  padding: 6px 8px;
+  font-size: 12px;
+  vertical-align: top;
+}
+
+@page { size: A4; margin: 10mm 12mm; }
+
+@media print {
+  body { background: #ffffff; }
   .page {
-    width: 850px;
+    width: auto;
     max-width: 100%;
-    margin: 40px auto;
-    background: #ffffff;
-    padding: 50px 60px;
-    box-shadow: 0 0 12px rgba(0,0,0,0.15);
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+    page-break-after: always;
+    break-after: page;
   }
+  .page:last-child { page-break-after: auto; break-after: auto; }
 
-  /* underline fields */
-  .field-line {
-    border-bottom: 1px solid #000;
-    display: inline-block;
+  .section-box, .cell, table.grid, table.grid tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
-
-  .logo-text {
-    font-family: 'Brush Script MT', cursive;
-    font-size: 30px;
-    font-weight: bold;
-    font-style: italic;
-    background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    letter-spacing: 0.5px;
-  }
-
-  .logo-underline {
-    height: 3px;
-    width: 100%;
-    background: linear-gradient(90deg, #1e3a8a 0%, #0ea5e9 50%, #10b981 100%);
-    border-radius: 2px;
-    margin-top: 2px;
-  }
-
-  @page { size: A4; margin: 10mm 12mm; }
-
-  @media print {
-    body { background: #ffffff; }
-    .page { width: auto; max-width: 100%; margin: 0; padding: 0; box-shadow: none; }
-  }
+}

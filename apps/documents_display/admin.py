@@ -1,7 +1,7 @@
 # apps/documents_display/admin.py
 
 from django.contrib import admin
-from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare
+from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, ShareAuditLog
 
 
 class DisplayVersionInline(admin.TabularInline):
@@ -40,6 +40,20 @@ class DocumentShareAdmin(admin.ModelAdmin):
     search_fields = ['document__title', 'recipient__email', 'external_email']
     readonly_fields = ['token', 'created_at', 'accepted_at']
     autocomplete_fields = ['document', 'recipient', 'shared_by']
+
+
+@admin.register(ShareAuditLog)
+class ShareAuditLogAdmin(admin.ModelAdmin):
+    list_display = ['event', 'content_type', 'object_id', 'actor', 'detail', 'created_at']
+    list_filter = ['event', 'content_type']
+    search_fields = ['detail']
+    readonly_fields = ['content_type', 'object_id', 'event', 'actor', 'detail', 'created_at']
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(DisplayVersion)

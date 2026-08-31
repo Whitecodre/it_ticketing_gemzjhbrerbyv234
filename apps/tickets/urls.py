@@ -82,8 +82,11 @@ urlpatterns = [
     path('sla/<int:pk>/delete/', views.sla_delete, name='sla_delete'),
     path('sla/trigger/', views.trigger_sla_processing, name='trigger_sla'),
     path('sla/cleanup/', views.trigger_cleanup, name='trigger_cleanup'),
-    # External trigger (optional - for cron jobs)
-    # path('sla/trigger-external/', views.trigger_sla_processing_external, name='trigger_sla_external'),
+    # External triggers for a scheduled caller with no long-lived process of
+    # its own (e.g. a Cloudflare Cron Trigger) — see the views' docstrings
+    # for the shared-secret auth pattern (SLA_TRIGGER_SECRET env var).
+    path('cron/trigger-sla/', views.trigger_sla_processing_external, name='trigger_sla_external'),
+    path('cron/trigger-periodic-jobs/', views.trigger_periodic_jobs_external, name='trigger_periodic_jobs_external'),
     path('calendar/create/', views.calendar_create, name='calendar_create'),
     path('calendar/add-modal/', views.calendar_add_modal, name='calendar_add_modal'),
     path('calendar/<int:pk>/edit-modal/', views.calendar_edit_modal, name='calendar_edit_modal'),
@@ -99,10 +102,14 @@ urlpatterns = [
     path('manager/review/', views.manager_review_queue, name='manager_review_queue'),
     path('manager/review/<int:pk>/', views.manager_review_ticket, name='manager_review_ticket'),
     path('manager/review/count/', views.manager_review_count, name='manager_review_count'),
+    path('manager/review/history/', views.manager_review_history, name='manager_review_history'),
 
-    # ASSET IMPORT
+    # ASSET IMPORT (upload -> preview -> commit)
     path('assets/import/', views.asset_import, name='asset_import'),
-    
+    path('assets/import/<int:pk>/preview/', views.asset_import_preview, name='asset_import_preview'),
+    path('assets/import/<int:pk>/commit/', views.asset_import_commit, name='asset_import_commit'),
+    path('assets/import/<int:pk>/discard/', views.asset_import_discard, name='asset_import_discard'),
+
     # ASSET FULFILLMENT
     path('assets/pending-fulfillment/', views.pending_asset_fulfillment_list, name='pending_asset_fulfillment'),
     path('assets/pending-fulfillment-count/', views.pending_asset_fulfillment_count, name='pending_asset_fulfillment_count'),
@@ -125,6 +132,7 @@ urlpatterns = [
     # Deliberately NOT under /reports/ — the Analytics "Reports" sidebar link
     # active-checks on '/reports/' in request.path, so sharing that prefix
     # made it light up on every Exportables page too.
+    path('exportables/', views_reports.report_hub, name='report_hub'),
     path('exportables/<slug:report_type>/', views_reports.report_builder, name='report_builder'),
     path('exportables/<slug:report_type>/download/', views_reports.export_report, name='export_report'),
     path('exportables/<slug:report_type>/<int:pk>/', views_reports.report_record_detail, name='report_record_detail'),
@@ -170,11 +178,27 @@ urlpatterns = [
     path('mobilizations/autopick-assets/', views.mobilization_autopick_assets, name='mobilization_autopick_assets'),
     path('mobilizations/job-lookup/', views.job_mobilization_lookup, name='job_mobilization_lookup'),
     path('mobilizations/<int:pk>/', views.mobilization_detail, name='mobilization_detail'),
+    path('mobilizations/<int:pk>/audit/', views.mobilization_audit_report, name='mobilization_audit_report'),
+    path('mobilizations/<int:pk>/audit/export/', views.mobilization_audit_export, name='mobilization_audit_export'),
     path('mobilizations/items/<int:item_pk>/demobilize-modal/', views.mobilization_item_demobilize_modal, name='mobilization_item_demobilize_modal'),
     path('mobilizations/items/<int:item_pk>/demobilize/', views.mobilization_item_demobilize, name='mobilization_item_demobilize'),
+
+    # MOBILIZATION REQUESTER RECEIPT TWO-STEP CONFIRMATION
+    path('mobilizations/items/<int:item_pk>/accept/', views.mobilization_item_accept, name='mobilization_item_accept'),
+    path('mobilizations/items/<int:item_pk>/dispute/', views.mobilization_item_dispute, name='mobilization_item_dispute'),
+    path('<int:pk>/receipt-confirm-modal/', views.receipt_confirm_modal, name='receipt_confirm_modal'),
+    path('<int:pk>/receipt-confirm-batch/', views.mobilization_items_confirm_batch, name='mobilization_items_confirm_batch'),
     path('mobilizations/<int:pk>/demobilize-all-modal/', views.mobilization_demobilize_all_modal, name='mobilization_demobilize_all_modal'),
     path('mobilizations/<int:pk>/demobilize-all/', views.mobilization_demobilize_all, name='mobilization_demobilize_all'),
     path('mobilizations/<int:pk>/extend-date-modal/', views.mobilization_extend_date_modal, name='mobilization_extend_date_modal'),
     path('mobilizations/<int:pk>/extend-date/', views.mobilization_extend_date, name='mobilization_extend_date'),
+
+    # DEMOBILIZATION (requester self-report handshake)
+    path('demobilizations/', views.demobilization_list, name='demobilization_list'),
+    path('demobilizations/pending-count/', views.demobilization_pending_count, name='demobilization_pending_count'),
+    path('demobilizations/request-batch/', views.mobilization_items_request_demobilize_batch, name='mobilization_items_request_demobilize_batch'),
+    path('mobilizations/items/<int:item_pk>/cancel-demobilize-request/', views.mobilization_item_cancel_demobilize_request, name='mobilization_item_cancel_demobilize_request'),
+    path('mobilizations/pending/', views.pending_demobilizations_list, name='pending_demobilizations_list'),
+    path('mobilizations/pending/count/', views.pending_demobilizations_count, name='pending_demobilizations_count'),
 
 ]

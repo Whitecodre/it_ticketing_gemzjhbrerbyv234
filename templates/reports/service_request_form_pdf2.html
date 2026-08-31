@@ -1,12 +1,12 @@
-{% load static %}
+{% load static tailwind_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 {% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
-<title>HydroDive Service Request Form — {{ ticket.number }}</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="{% static 'css/service_request_pdf.css' %}?v=2">
+<title>{{ client_settings.company_name|default:"HydroDive" }} Service Request Form — {{ ticket.number }}</title>
+{% tailwind_css %}
+<link rel="stylesheet" href="{% static 'css/service_request_pdf.css' %}?v=3">
 
 </head>
 <body>
@@ -14,14 +14,14 @@
 <div class="page">
 
   <!-- Header Table -->
-  <table class="w-full border-collapse border-2 border-black mb-10">
+  <table class="w-full border-collapse border-2 border-black mb-8">
     <tr>
       <!-- Logo cell -->
       <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
         {% if client_settings.logo_url %}
-            <img src="{{ client_settings.logo_url }}">
+            <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
         {% else %}
-            <div class="logo-text">HydroDive</div>
+            <div class="logo-text">{{ client_settings.company_name|default:"HydroDive" }}</div>
             <div class="logo-underline"></div>
         {% endif %}
       </td>
@@ -50,112 +50,156 @@
     </tr>
   </table>
 
-  <!-- Form Body -->
-  <div class="space-y-6 text-[15px]">
+  <!-- SECTION 1 -->
+  <div class="section-box mb-5">
+    <div class="section-title">SECTION 1 &mdash; REQUEST DETAILS</div>
 
-    <!-- Requester's Name / Date -->
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Requester's Name:</span>
-      <span class="field-line flex-1 px-1">{{ requester_name }}</span>
-      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
-      <span class="field-line w-48 px-1">{{ ticket.created_at|date:"M d, Y" }}</span>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Requester's Name:</div>
+        <div>{{ requester_name }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Date Submitted:</div>
+        <div>{{ ticket.created_at|date:"M d, Y" }}</div>
+      </div>
     </div>
 
-    <!-- Department / Location -->
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Department:</span>
-      <span class="field-line w-64 px-1">{{ requester_department }}</span>
-      <span class="font-bold whitespace-nowrap ml-16 mr-2">Location:</span>
-      <span class="field-line flex-1 px-1">{% if location.display %}{{ location.display }}{% else %}<span class="italic text-gray-400">Not available</span>{% endif %}</span>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Department:</div>
+        <div>{{ requester_department }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Location:</div>
+        <div>{% if location.display %}{{ location.display }}{% else %}<span class="italic text-gray-400">Not available</span>{% endif %}</div>
+      </div>
     </div>
 
-    <!-- Reported To -->
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Reported To:</span>
-      <span class="field-line w-72 px-1">{{ reported_to|default:"Unassigned" }}</span>
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Reported To:</div>
+        <div>{{ reported_to|default:"Unassigned" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Service Category:</div>
+        <div>{{ service_category_name|default:"—" }}</div>
+      </div>
     </div>
 
-    {% if vessels or job_number %}
-    <!-- Vessel / Job Number -->
-    <div class="flex items-end pt-6">
-      <span class="font-bold whitespace-nowrap mr-2">Vessel:</span>
-      <span class="field-line w-64 px-1">{% if vessels %}{% for v in vessels %}{{ v.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}<span class="italic text-gray-400">&mdash;</span>{% endif %}</span>
-      <span class="font-bold whitespace-nowrap ml-16 mr-2">Job Number:</span>
-      <span class="field-line flex-1 px-1">{% if job_number %}{{ job_number.number }}{% else %}<span class="italic text-gray-400">&mdash;</span>{% endif %}</span>
+    <div class="cell">
+      <div class="cell-label mb-1">Purpose:</div>
+      <div>{{ purpose|default:"—" }}</div>
+    </div>
+
+    {% if vessels or job_number or dive_systems %}
+    <div class="cell grid grid-cols-2 gap-4">
+      {% if vessels or job_number %}
+      <div>
+        <div class="cell-label mb-1">Vessel:</div>
+        <div>{% if vessels %}{% for v in vessels %}{{ v.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}<span class="italic text-gray-400">&mdash;</span>{% endif %}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Job Number:</div>
+        <div>{% if job_number %}{{ job_number.number }}{% else %}<span class="italic text-gray-400">&mdash;</span>{% endif %}</div>
+      </div>
+      {% endif %}
+      {% if dive_systems %}
+      <div>
+        <div class="cell-label mb-1">Dive System:</div>
+        <div>{% for s in dive_systems %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+      </div>
+      {% endif %}
     </div>
     {% endif %}
 
-    {% if dive_systems %}
-    <!-- Dive System -->
-    <div class="flex items-end">
-      <span class="font-bold whitespace-nowrap mr-2">Dive System:</span>
-      <span class="field-line flex-1 px-1">{% for s in dive_systems %}{{ s.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+    {% if dynamic_fields %}
+    <div class="cell grid grid-cols-2 gap-4">
+      {% for label, value in dynamic_fields %}
+      <div>
+        <div class="cell-label mb-1">{{ label }}:</div>
+        <div>{{ value }}</div>
+      </div>
+      {% endfor %}
     </div>
     {% endif %}
-
-    <!-- Description -->
-    <div class="pt-6">
-      <span class="font-bold">Description of Work Order Request:</span>
-    </div>
-    <div class="pt-6">
-      <span class="field-line w-full block px-1">{{ ticket.description|linebreaksbr }}</span>
-    </div>
-
-    <!-- Requester's Confirmation Signature -->
-    <div class="flex items-end pt-8">
-      <span class="font-bold whitespace-nowrap mr-2">Requester's Confirmation Signature:</span>
-      <span class="field-line flex-1 px-1">{% if requester_signoff.signature_url %}<img src="{{ requester_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ requester_signoff.captured_text }}</span>{% endif %}</span>
-      {% if requester_signoff.signature_url %}
-      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
-      <span class="field-line w-48 px-1">{{ requester_signoff.date|date:"M d, Y H:i" }}</span>
-      {% endif %}
-    </div>
-
-    <!-- IT Officer Signature -->
-    <div class="flex items-end pt-8">
-      <span class="font-bold whitespace-nowrap mr-2">IT Officer Signature:</span>
-      <span class="field-line flex-1 px-1">{% if it_officer_signoff.captured_text %}{% if it_officer_signoff.signature_url %}<img src="{{ it_officer_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ it_officer_signoff.captured_text }}</span>{% endif %}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</span>
-      {% if it_officer_signoff.signature_url %}
-      <span class="font-bold whitespace-nowrap ml-16 mr-2">Date:</span>
-      <span class="field-line w-48 px-1">{{ it_officer_signoff.date|date:"M d, Y H:i" }}</span>
-      {% endif %}
-    </div>
-
-    <!-- Requester's Feedback -->
-    <div class="flex items-end pt-8">
-      <span class="font-bold whitespace-nowrap mr-2">Requester's Feedback:</span>
-      <span class="field-line flex-1 px-1">{% if feedback_comment or feedback_rating %}{{ feedback_comment|default:"—" }}{% if feedback_rating %} (Rating: {{ feedback_rating }}/5){% endif %}{% else %}<span class="italic text-gray-400">No feedback submitted yet.</span>{% endif %}</span>
-    </div>
-
-    <!-- Requester's Signature -->
-    <div class="flex items-end pt-8">
-      <span class="font-bold whitespace-nowrap mr-2">Requester's Signature:</span>
-      <span class="field-line flex-1 px-1">{% if requester_feedback_signoff.captured_text %}{% if requester_feedback_signoff.signature_url %}<img src="{{ requester_feedback_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ requester_feedback_signoff.captured_text }}</span>{% endif %}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</span>
-      {% if requester_feedback_signoff.signature_url %}
-      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
-      <span class="field-line w-48 px-1">{{ requester_feedback_signoff.date|date:"M d, Y H:i" }}</span>
-      {% endif %}
-    </div>
-
-    <!-- IT Manager Signature -->
-    <div class="flex items-end pt-8">
-      <span class="font-bold whitespace-nowrap mr-2">IT Manager Signature:</span>
-      <span class="field-line flex-1 px-1">{% if it_manager_signoff.captured_text %}{% if it_manager_signoff.signature_url %}<img src="{{ it_manager_signoff.signature_url }}" alt="signature" style="height:22px;">{% else %}<span class="italic">{{ it_manager_signoff.captured_text }}</span>{% endif %}{% else %}<span class="italic text-gray-400">Pending</span>{% endif %}</span>
-      {% if it_manager_signoff.signature_url %}
-      <span class="font-bold whitespace-nowrap ml-10 mr-2">Date:</span>
-      <span class="field-line w-48 px-1">{{ it_manager_signoff.date|date:"M d, Y H:i" }}</span>
-      {% endif %}
-    </div>
-
   </div>
 
-  <!-- Footer -->
-  {% comment %} <div class="text-center text-sm mt-16 leading-relaxed">
-    <p>The IT department receives and processes service requests and work orders daily.</p>
-    <p class="mt-2">Our overall goal is to schedule and complete these services on time. A requester is expected to complete the service<br>
-    request form and return it to the IT officer for action.</p>
-    <p class="mt-2">Thank you for your cooperation.</p>
-  </div> {% endcomment %}
+  <!-- SECTION 2 -->
+  <div class="section-box mb-5">
+    <div class="section-title">SECTION 2 &mdash; DESCRIPTION OF WORK ORDER REQUEST</div>
+    <div class="cell">
+      <div>{{ ticket.description|linebreaksbr }}</div>
+    </div>
+  </div>
+
+  <!-- SECTION 3 -->
+  <div class="section-box mb-5">
+    <div class="section-title">SECTION 3 &mdash; REQUESTER'S FEEDBACK</div>
+    <div class="cell">
+      {% if feedback_comment or feedback_rating %}
+        <div>{{ feedback_comment|default:"—" }}{% if feedback_rating %} (Rating: {{ feedback_rating }}/5){% endif %}</div>
+      {% else %}
+        <div class="italic text-gray-400">No feedback submitted yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- SECTION 4 -->
+  <div class="mb-2">
+    <div class="font-bold text-[13px] mb-1">SECTION 4 &mdash; CONFIRMATION &amp; SIGN-OFF</div>
+  </div>
+  <table class="grid w-full border-collapse mb-3">
+    <tr>
+      <th class="text-center bg-white font-bold w-1/3">Role</th>
+      <th class="text-center bg-white font-bold w-1/2">Name &amp; Signature</th>
+      <th class="text-center bg-white font-bold w-1/6">Date</th>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:45px;">Requester (Submission Confirmation)</td>
+      <td class="italic">
+        {% if requester_signoff.signature_url %}<img src="{{ requester_signoff.signature_url }}" alt="signature" style="height:22px; margin-bottom:2px;">{% else %}{{ requester_signoff.captured_text }}{% endif %}
+      </td>
+      <td class="text-center">{% if requester_signoff.signature_url %}{{ requester_signoff.date|date:"d/m/Y" }}{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:45px;">IT Officer (Fulfillment)</td>
+      <td class="italic{% if not it_officer_signoff.captured_text %} text-gray-400{% endif %}">
+        {% if it_officer_signoff.captured_text %}
+          {% if it_officer_signoff.signature_url %}<img src="{{ it_officer_signoff.signature_url }}" alt="signature" style="height:22px; margin-bottom:2px;">{% else %}{{ it_officer_signoff.captured_text }}{% endif %}
+        {% else %}
+          Pending
+        {% endif %}
+      </td>
+      <td class="text-center">{% if it_officer_signoff.signature_url %}{{ it_officer_signoff.date|date:"d/m/Y" }}{% else %}&nbsp;{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:45px;">Reviewed &amp; Approved By (Manager)</td>
+      <td class="italic{% if not it_manager_signoff.captured_text %} text-gray-400{% endif %}">
+        {% if it_manager_signoff.captured_text %}
+          {% if it_manager_signoff.signature_url %}<img src="{{ it_manager_signoff.signature_url }}" alt="signature" style="height:22px; margin-bottom:2px;">{% else %}{{ it_manager_signoff.captured_text }}{% endif %}
+        {% else %}
+          Pending / Not Applicable
+        {% endif %}
+      </td>
+      <td class="text-center">{% if it_manager_signoff.signature_url %}{{ it_manager_signoff.date|date:"d/m/Y" }}{% else %}&nbsp;{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="font-bold" style="height:45px;">Requester (Feedback Confirmation)</td>
+      <td class="italic{% if not requester_feedback_signoff.captured_text %} text-gray-400{% endif %}">
+        {% if requester_feedback_signoff.captured_text %}
+          {% if requester_feedback_signoff.signature_url %}<img src="{{ requester_feedback_signoff.signature_url }}" alt="signature" style="height:22px; margin-bottom:2px;">{% else %}{{ requester_feedback_signoff.captured_text }}{% endif %}
+        {% else %}
+          Pending
+        {% endif %}
+      </td>
+      <td class="text-center">{% if requester_feedback_signoff.signature_url %}{{ requester_feedback_signoff.date|date:"d/m/Y" }}{% else %}&nbsp;{% endif %}</td>
+    </tr>
+  </table>
+
+  <p class="text-center text-xs italic mt-4">
+    This report is classified CONFIDENTIAL. Distribution is restricted to authorised personnel only.
+  </p>
 
 </div>
 

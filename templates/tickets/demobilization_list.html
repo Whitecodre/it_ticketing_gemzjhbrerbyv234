@@ -1,0 +1,205 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Demobilization{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full max-w-4xl">
+    <div class="flex items-center gap-3 mb-6">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "log-in" size=19 %}</span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">Demobilization</h2>
+            <p class="text-sm text-text-secondary">Report assets you've finished with and sent back — an admin will confirm receipt before they're returned to inventory.</p>
+        </div>
+    </div>
+
+    {# ---------- Tabs ---------- #}
+    <div class="flex items-center gap-2 mb-4 border-b border-border">
+        <button type="button" id="demobTabBtnActive" onclick="switchDemobTab('active')"
+                class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition"
+                style="border-color: var(--color-primary); color: var(--color-primary);">
+            Active{% if active_count %} <span class="ml-0.5">({{ active_count }})</span>{% endif %}
+        </button>
+        <button type="button" id="demobTabBtnHistory" onclick="switchDemobTab('history')"
+                class="px-3 py-2 text-sm font-medium border-b-2 -mb-px border-transparent text-text-secondary transition">
+            History{% if history_count %} <span class="ml-0.5">({{ history_count }})</span>{% endif %}
+        </button>
+    </div>
+
+    {# ================= ACTIVE TAB ================= #}
+    <div id="demobPanelActive">
+        {% if active_groups %}
+        <div class="space-y-4">
+            {% for group in active_groups %}
+            <div class="dashboard-card p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+                    <div>
+                        <p class="text-sm font-semibold text-text-primary">{{ group.mobilization.destination_display }}</p>
+                        <p class="text-xs text-text-secondary mt-0.5">
+                            Mobilized {{ group.mobilization.mobilized_at|date:"M d, Y" }}
+                            {% if group.mobilization.ticket %} · <a href="{% url 'tickets:detail' group.mobilization.ticket.pk %}" class="text-primary hover:underline">{{ group.mobilization.ticket.number }}</a>{% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                {% if group.pending %}
+                <div class="space-y-2 mb-3">
+                    {% for item in group.pending %}
+                    <div class="rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3" style="background-color: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface)); border-color: var(--color-warning);">
+                        <div class="flex items-center gap-2 min-w-0">
+                            {% lucide "log-out" size=14 class="text-warning shrink-0" %}
+                            <div class="min-w-0">
+                                <p class="text-sm text-text-primary">
+                                    <span class="font-semibold">{{ item.asset.name }}</span>{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}
+                                    <span class="text-xs font-mono text-text-secondary ml-1">({{ item.asset.tracking_id }})</span>
+                                    — reported <span class="font-semibold">{{ item.return_requested_at|date:"M d, Y" }}</span>, awaiting admin confirmation.
+                                </p>
+                                {% if item.return_requested_notes %}
+                                <p class="text-xs text-text-secondary mt-0.5">"{{ item.return_requested_notes }}"</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <form method="post" action="{% url 'tickets:mobilization_item_cancel_demobilize_request' item.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-ghost text-xs px-3 py-1.5 rounded shrink-0">Cancel Report</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if group.ready %}
+                <form method="post" action="{% url 'tickets:mobilization_items_request_demobilize_batch' %}" class="space-y-2">
+                    {% csrf_token %}
+                    {% for item in group.ready %}
+                    <label class="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-black/5 transition" style="border-color: var(--color-border);">
+                        <input type="checkbox" name="item_ids" value="{{ item.pk }}" class="shrink-0">
+                        <span class="text-sm text-text-primary"><span class="font-semibold">{{ item.asset.name }}</span><span class="text-xs font-mono text-primary ml-1">({{ item.asset.tracking_id }})</span>{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}</span>
+                    </label>
+                    {% endfor %}
+                    <textarea name="notes" rows="2" placeholder="Any details for the admin arranging pickup..."
+                              class="w-full text-sm rounded-lg border p-2 bg-background border-border text-text-primary mt-2"></textarea>
+                    <button type="submit" class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-1">
+                        {% lucide "log-in" size=12 %} Report Demobilization
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="dashboard-card p-8 text-center">
+            <p class="text-sm text-text-secondary">Nothing currently out for you to demobilize.</p>
+            {% if history_count %}
+            <button type="button" onclick="switchDemobTab('history')" class="text-xs text-primary hover:underline mt-2">View your demobilization history</button>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# ================= HISTORY TAB ================= #}
+    <div id="demobPanelHistory" class="hidden">
+        {% if history_groups %}
+        <input type="text" id="demobHistorySearch" oninput="filterDemobHistory()" placeholder="Search by asset or tracking ID..."
+               class="w-full text-sm rounded-lg border px-3 py-1.5 bg-background border-border text-text-primary mb-3">
+
+        <div class="space-y-3" id="demobHistoryList">
+            {% for group in history_groups %}
+            <details class="dashboard-card demob-history-group">
+                <summary class="flex flex-wrap items-start justify-between gap-3 p-4 cursor-pointer list-none">
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold text-text-primary">
+                            {% if group.mobilization.job_number %}Job {{ group.mobilization.job_number.number }}{% else %}Job — not set{% endif %}
+                        </p>
+                        <div class="text-xs text-text-secondary mt-1 space-y-0.5">
+                            {% if group.vessel_names %}<p>Vessel{{ group.vessel_names|length|pluralize }}: {{ group.vessel_names|join:", " }}</p>{% endif %}
+                            {% if group.dive_system_names %}<p>Dive System{{ group.dive_system_names|length|pluralize }}: {{ group.dive_system_names|join:", " }}</p>{% endif %}
+                            <p>
+                                Mobilized {{ group.mobilization.mobilized_at|date:"M d, Y" }}
+                                {% if group.mobilization.ticket %} · <a href="{% url 'tickets:detail' group.mobilization.ticket.pk %}" class="text-primary hover:underline">{{ group.mobilization.ticket.number }}</a>{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <span class="status-chip success text-[0.65rem] shrink-0">{{ group.items|length }} item{{ group.items|length|pluralize }}</span>
+                </summary>
+                <div class="px-4 pb-4 space-y-2">
+                    {% for item in group.items %}
+                    <div class="demob-history-row rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3 border-border"
+                         data-search="{{ item.asset.name|lower }} {{ item.asset.tracking_id|lower }}">
+                        <div class="flex items-center gap-2 min-w-0">
+                            {% lucide "check" size=14 class="text-success shrink-0" %}
+                            <div class="min-w-0">
+                                <p class="text-sm text-text-primary">
+                                    <span class="font-semibold">{{ item.asset.name }}</span>{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}
+                                    <span class="text-xs font-mono text-text-secondary ml-1">({{ item.asset.tracking_id }})</span>
+                                    — demobilized <span class="font-semibold">{{ item.demobilized_at|date:"M d, Y H:i" }}</span>.
+                                </p>
+                                <p class="text-xs text-text-secondary mt-0.5">
+                                    {% if item.return_requested_at %}Self-reported returned <span class="font-semibold">{{ item.return_requested_at|date:"M d, Y H:i" }}</span>.{% endif %}
+                                    {% if item.return_condition %} Condition on return: {{ item.get_return_condition_display }}.{% endif %}
+                                </p>
+                                {% if item.return_notes %}
+                                <p class="text-xs text-text-secondary mt-0.5">"{{ item.return_notes }}"</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endfor %}
+            <p id="demobHistoryEmpty" class="hidden dashboard-card p-6 text-center text-sm text-text-secondary">No matching items.</p>
+        </div>
+        {% else %}
+        <div class="dashboard-card p-8 text-center">
+            <p class="text-sm text-text-secondary">No demobilizations reported yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function switchDemobTab(tab) {
+    const activePanel = document.getElementById('demobPanelActive');
+    const historyPanel = document.getElementById('demobPanelHistory');
+    const activeBtn = document.getElementById('demobTabBtnActive');
+    const historyBtn = document.getElementById('demobTabBtnHistory');
+    const isActive = tab === 'active';
+    activePanel.classList.toggle('hidden', !isActive);
+    historyPanel.classList.toggle('hidden', isActive);
+    [[activeBtn, isActive], [historyBtn, !isActive]].forEach(([btn, on]) => {
+        btn.style.borderColor = on ? 'var(--color-primary)' : 'transparent';
+        btn.style.color = on ? 'var(--color-primary)' : 'var(--color-text-secondary)';
+    });
+}
+
+function filterDemobHistory() {
+    const search = document.getElementById('demobHistorySearch').value.trim().toLowerCase();
+    const groups = document.querySelectorAll('.demob-history-group');
+    let anyVisible = false;
+    groups.forEach(function(group) {
+        let groupHasMatch = false;
+        group.querySelectorAll('.demob-history-row').forEach(function(row) {
+            const show = !search || row.dataset.search.includes(search);
+            row.classList.toggle('hidden', !show);
+            if (show) groupHasMatch = true;
+        });
+        group.classList.toggle('hidden', !groupHasMatch);
+        if (search) {
+            group.open = groupHasMatch;
+        }
+        if (groupHasMatch) anyVisible = true;
+    });
+    const emptyEl = document.getElementById('demobHistoryEmpty');
+    if (emptyEl) emptyEl.classList.toggle('hidden', anyVisible);
+}
+</script>
+{% endblock %}

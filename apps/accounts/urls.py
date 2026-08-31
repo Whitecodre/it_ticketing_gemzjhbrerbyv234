@@ -3,7 +3,7 @@ from django.contrib.auth import views as auth_views
 from django.http import HttpResponseNotFound
 from . import views
 from .views.admin_users import (
-    admin_user_list, admin_user_create, admin_user_edit, admin_user_toggle_active,
+    admin_user_list, admin_user_detail, admin_user_create, admin_user_edit, admin_user_toggle_active,
     admin_user_bulk_toggle_active, admin_user_change_password, client_logo_upload
 )
 from .views.impersonate import impersonate_start, impersonate_stop, impersonation_banner, impersonate_modal, impersonate_token
@@ -19,6 +19,7 @@ urlpatterns = [
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
     path('validate-email/', views.validate_email_ajax, name='validate_email'),
     path('validate-password/', views.validate_password_ajax, name='validate_password'),
+    path('validate-current-password/', views.validate_current_password_ajax, name='validate_current_password'),
     path('force-password-change/', views.force_password_change, name='force_password_change'), 
     # path('register/', views.register, name='register'),
     path('register/', registration_disabled, name='register'),
@@ -43,6 +44,7 @@ urlpatterns = [
     path('resend-verification/', views.resend_verification, name='resend_verification'),
     path('profile/', views.profile, name='profile'),
     path('admin/users/', admin_user_list, name='admin_users'),
+    path('admin/users/<int:pk>/', admin_user_detail, name='admin_user_detail'),
     path('admin/users/create/', admin_user_create, name='admin_user_create'),
     path('admin/users/<int:pk>/edit/', admin_user_edit, name='admin_user_edit'),
     path('admin/users/<int:pk>/toggle-active/', admin_user_toggle_active, name='admin_user_toggle_active'),

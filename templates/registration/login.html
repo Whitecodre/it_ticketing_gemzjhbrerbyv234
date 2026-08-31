@@ -5,89 +5,119 @@
 {% block title %}Login - TicketSwipe{% endblock %}
 
 {% block content %}
-<div class="flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-    <div class="w-full max-w-md md:max-w-sm space-y-6">
-        
-        <!-- Logo and Heading -->
-        <div class="text-center mb-6">
-            {% comment %} <img src="{% static 'img/gemz-logo.png' %}" alt="Gemz Software Logo" class="mx-auto h-10 w-auto"> {% endcomment %}
-            <h2 class="mt-3 text-center text-3xl font-bold tracking-wide text-primary">
-                Sign in your account
-            </h2>
+<div class="min-h-screen flex">
+
+    <!-- Brand panel -->
+    <div class="hidden md:flex md:w-[420px] lg:w-[460px] flex-shrink-0 flex-col justify-between bg-slate-900 text-white px-10 py-12 relative overflow-hidden">
+        <div class="absolute inset-0" style="background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px); background-size: 22px 22px;"></div>
+
+        <div class="relative z-10">
+            {% if client_settings.logo_url %}
+            <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" class="h-12 max-w-[220px] w-auto object-contain object-left">
+            {% else %}
+            <span class="text-xl font-semibold tracking-tight">{{ client_settings.company_name|default:"TicketSwipe" }}</span>
+            {% endif %}
         </div>
 
-        <!-- Login Card -->
-        <form class="space-y-5" method="post">
-            {% csrf_token %}
+        {% comment %} {# Deliberately no product description/feature list here — this panel
+        is reachable by anyone who lands on the login page (e.g. via a link
+        on the public marketing site), not just staff, so it must not
+        disclose what internal systems the company runs. #} {% endcomment %}
+        <div class="relative z-10">
+            <p class="text-xs font-semibold uppercase tracking-widest text-white/40">IT Service Management</p>
+            <p class="mt-3 text-3xl font-medium leading-snug">Sign in to continue.</p>
+        </div>
 
-            {% if form.non_field_errors %}
-            <div class="rounded-lg bg-error/10 border border-error/30 p-4 alert-message alert-error">
-                {% for error in form.non_field_errors %}
-                    <p class="text-sm text-error">{{ error|safe }}</p>
-                {% endfor %}
+        <div class="relative z-10 text-xs text-white/40">
+            &copy; {% now "Y" %} {{ client_settings.company_name|default:"TicketSwipe" }}
+        </div>
+    </div>
+
+    <!-- Form panel -->
+    <div class="flex flex-1 items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div class="w-full max-w-sm space-y-8">
+
+            <!-- Mobile-only compact brand mark -->
+            <div class="md:hidden">
+                {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" class="h-10 max-w-[180px] w-auto object-contain object-left">
+                {% else %}
+                <span class="text-base font-semibold text-primary">{{ client_settings.company_name|default:"TicketSwipe" }}</span>
+                {% endif %}
             </div>
-            {% endif %}
-            
-            <!-- Email or Username Input -->
+
             <div>
-                <label for="username" class="sr-only">Email or username</label>
-                <div class="relative">
-                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-text-secondary">
-                        {% lucide "user" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}
-                    </div>
-                    <input id="username" name="username" type="text" autocomplete="username" required
-                           value="{{ username|default:'' }}"
-                           class="block w-full rounded-lg border py-4 pl-11 pr-4 text-base placeholder-gray-400 transition duration-200 focus:outline-none focus:ring-2 sm:py-3 sm:text-sm bg-background border-border text-text-primary ring-primary"
-                           placeholder="Email or username">
+                <h1 class="text-2xl font-semibold text-text-primary">Welcome back</h1>
+                <p class="mt-1 text-sm text-text-secondary">Sign in to your account to continue.</p>
+            </div>
+
+            <form class="space-y-5" method="post">
+                {% csrf_token %}
+
+                {% if form.non_field_errors %}
+                <div class="rounded-lg bg-error/10 border border-error/30 p-4 alert-message alert-error">
+                    {% for error in form.non_field_errors %}
+                        <p class="text-sm text-error">{{ error|safe }}</p>
+                    {% endfor %}
                 </div>
-            </div>
+                {% endif %}
 
-            <!-- Password Input (with toggle) -->
-            <div>
-                <label for="password" class="sr-only">Password</label>
-                <div class="relative">
-                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-text-secondary">
-                        {% lucide "lock" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}
+                <!-- Email or Username Input -->
+                <div>
+                    <label for="username" class="sr-only">Email or username</label>
+                    <div class="relative">
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-text-secondary">
+                            {% lucide "user" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}
+                        </div>
+                        <input id="username" name="username" type="text" autocomplete="username" required
+                               value="{{ username|default:'' }}"
+                               class="block w-full rounded-lg border py-4 pl-11 pr-4 text-base placeholder-gray-400 transition duration-200 focus:outline-none focus:ring-2 sm:py-3 sm:text-sm bg-background border-border text-text-primary ring-primary"
+                               placeholder="Email or username">
                     </div>
-                    <input id="password" name="password" type="password" autocomplete="current-password" required 
-                           class="block w-full rounded-lg border py-4 pl-11 pr-12 text-base placeholder-gray-400 transition duration-200 focus:outline-none focus:ring-2 sm:py-3 sm:text-sm bg-background border-border text-text-primary ring-primary"
-                           placeholder="Password">
-                    <button type="button" id="togglePasswordBtn"
-                            class="absolute inset-y-0 right-3 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
-                            aria-label="Toggle password visibility">
-                        <span id="eyeIcon">{% lucide "eye" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}</span>
-                        <span id="eyeOffIcon" class="hidden">{% lucide "eye-off" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}</span>
-                    </button>
                 </div>
-            </div>
 
-            <!-- Remember Me + Forgot Password -->
-            <div class="flex items-center justify-between">
-                <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
-                    <input type="checkbox" name="remember_me" class="rounded border-border text-primary focus:ring-primary">
-                    Remember me
-                </label>
-                <a href="{% url 'accounts:password_reset' %}" class="text-sm font-medium transition hover:opacity-80 text-primary">
-                    Forgot password?
-                </a>
-            </div>
+                <!-- Password Input (with toggle) -->
+                <div>
+                    <label for="password" class="sr-only">Password</label>
+                    <div class="relative">
+                        <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-text-secondary">
+                            {% lucide "lock" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}
+                        </div>
+                        <input id="password" name="password" type="password" autocomplete="current-password" required
+                               class="block w-full rounded-lg border py-4 pl-11 pr-12 text-base placeholder-gray-400 transition duration-200 focus:outline-none focus:ring-2 sm:py-3 sm:text-sm bg-background border-border text-text-primary ring-primary"
+                               placeholder="Password">
+                        <button type="button" id="togglePasswordBtn"
+                                class="absolute inset-y-0 right-3 flex items-center cursor-pointer text-text-secondary hover:text-primary transition"
+                                aria-label="Toggle password visibility">
+                            <span id="eyeIcon">{% lucide "eye" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}</span>
+                            <span id="eyeOffIcon" class="hidden">{% lucide "eye-off" size=20 class="h-5 w-5 sm:h-4 sm:w-4" %}</span>
+                        </button>
+                    </div>
+                </div>
 
-            <!-- Terms and Policy Consent -->
-            <div class="text-xs text-start text-text-secondary">
-                <p>By logging in, you consent to Gemz's Terms of Use and Privacy Policy.</p>
-            </div>
+                <!-- Remember Me + Forgot Password -->
+                <div class="flex items-center justify-between">
+                    <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer">
+                        <input type="checkbox" name="remember_me" class="rounded border-border text-primary focus:ring-primary">
+                        Remember me
+                    </label>
+                    <a href="{% url 'accounts:password_reset' %}" class="text-sm font-medium transition hover:opacity-80 text-primary">
+                        Forgot password?
+                    </a>
+                </div>
 
-            <!-- Submit Button -->
-            <button type="submit" 
-                    class="flex w-full justify-center rounded-lg px-4 py-4 text-base font-semibold text-white shadow-sm transition duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 btn-login cursor-pointer sm:py-3 sm:text-sm ring-primary ring-offset-surface">
-                Log in
-            </button>
-        </form>
+                <!-- Submit Button -->
+                <button type="submit"
+                        class="flex w-full justify-center rounded-lg px-4 py-4 text-base font-semibold text-white shadow-sm transition duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 btn-login cursor-pointer sm:py-3 sm:text-sm ring-primary ring-offset-surface">
+                    Log in
+                </button>
 
-        <p class="text-center text-sm text-text-secondary">
-            Don't have an account? 
-            <a href="{% url 'accounts:register' %}" class="font-medium text-primary hover:opacity-80">Sign up</a>
-        </p>
+                <!-- Terms and Policy Consent -->
+                <p class="text-xs text-text-secondary">
+                    By continuing, you agree to {{ client_settings.company_name|default:"TicketSwipe" }}'s Terms of Use and Privacy Policy.
+                </p>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}
@@ -96,32 +126,32 @@
 {{ block.super }}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Password visibility toggle
         const btn = document.getElementById('togglePasswordBtn');
         const pwd = document.getElementById('password');
         const eye = document.getElementById('eyeIcon');
         const eyeOff = document.getElementById('eyeOffIcon');
-        if (!btn || !pwd || !eye || !eyeOff) return;
+        if (btn && pwd && eye && eyeOff) {
+            btn.addEventListener('click', function() {
+                if (pwd.type === 'password') {
+                    pwd.type = 'text';
+                    eye.classList.add('hidden');
+                    eyeOff.classList.remove('hidden');
+                } else {
+                    pwd.type = 'password';
+                    eye.classList.remove('hidden');
+                    eyeOff.classList.add('hidden');
+                }
+            });
+        }
 
-        btn.addEventListener('click', function() {
-            if (pwd.type === 'password') {
-                pwd.type = 'text';
-                eye.classList.add('hidden');
-                eyeOff.classList.remove('hidden');
-            } else {
-                pwd.type = 'password';
-                eye.classList.remove('hidden');
-                eyeOff.classList.add('hidden');
-            }
-        });
-    });
-    // Spinner on form submit
-    document.addEventListener('DOMContentLoaded', function() {
+        // Spinner on form submit
         document.querySelectorAll('form[method="post"]').forEach(function(form) {
             form.addEventListener('submit', function() {
                 const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
                 if (submitBtn) {
                     submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="inline-flex items-center"><svg class="animate-spin h-4 w-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> </span>';
+                    submitBtn.innerHTML = '<span class="inline-flex items-center"><svg class="animate-spin h-4 w-4 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></span>';
                     submitBtn.classList.add('opacity-70');
                 }
             });

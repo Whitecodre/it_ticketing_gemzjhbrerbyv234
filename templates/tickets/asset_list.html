@@ -14,20 +14,20 @@
 
 {% block dashboard_content %}
 {% url 'tickets:export_report' 'assets' as asset_export_url %}
-{% build_qs q=query category=selected_category status=selected_status location=selected_location filter_low_stock=selected_low_stock filter_renewal_due=selected_renewal_due as asset_export_qs %}
+{% build_qs q=query category=selected_category status=selected_status location=selected_location filter_low_stock=selected_low_stock as asset_export_qs %}
 <div class="w-full">
     <!-- Header with Import, Add, Export buttons -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div class="flex items-center gap-3">
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "monitor-cog" size=19 %}</span>
             <div>
-                <h2 class="text-lg font-semibold text-text-primary">Asset management</h2>
+                <h2 class="text-lg font-semibold text-text-primary capitalize">asset management</h2>
                 <p class="text-sm text-text-secondary">Manage hardware, software, and other IT assets.</p>
             </div>
         </div>
         <div class="flex flex-wrap gap-2">
             <!-- Export Dropdown -->
-            {% include "components/export_menu.html" with menu_id="asset" export_url=asset_export_url extra_qs=asset_export_qs formats="csv:CSV:file-spreadsheet,excel:Excel:file-spreadsheet,json:JSON:file-code,pdf:PDF:file-type,docx:Word:file-down" %}
+            {% include "components/export_menu.html" with menu_id="asset" export_url=asset_export_url extra_qs=asset_export_qs formats="excel:Excel:file-spreadsheet,json:JSON:file-code,pdf:PDF:file-type,docx:Word:file-down" column_picker_columns=export_columns column_picker_key="assets" column_picker_descriptions=export_column_help %}
 
             <!-- Import Button -->
             <button class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2"
@@ -45,62 +45,13 @@
         </div>
     </div>
 
-    <!-- Filters -->
-    <form id="assetFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3 bg-surface border-border"
-        hx-get="{% url 'tickets:assets' %}"
-        hx-target="#assetTableContainer"
-        hx-swap="innerHTML"
-        hx-indicator="#assetFilterSpinner"
-        hx-trigger="change, keyup delay:300ms from:input">
-
-        <div class="relative flex-1 min-w-[200px]">
-            <input type="text" name="filter_q" value="{{ query }}"
-                placeholder="Search by name, tracking ID, serial..."
-                class="w-full rounded-lg border py-2 pl-10 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
-            <span id="assetFilterSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
-                {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
-            </span>
-        </div>
-
-        <select name="filter_category" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            <option value="">All Categories</option>
-            {% for cat in categories %}
-            <option value="{{ cat.pk }}" {% if selected_category == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
-            {% endfor %}
-        </select>
-
-        <select name="filter_status" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-            <option value="">All Status</option>
-            {% for value, label in status_choices %}
-            <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-        </select>
-
-        <input type="text" name="filter_location" value="{{ selected_location }}"
-            placeholder="Filter by location"
-            class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-
-        <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
-            <input type="checkbox" name="filter_low_stock" value="1" {% if selected_low_stock %}checked{% endif %}
-                   class="rounded border-border text-primary focus:ring-primary">
-            {% lucide "triangle-alert" size=14 %} Low stock only
-        </label>
-
-        <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
-            <input type="checkbox" name="filter_renewal_due" value="1" {% if selected_renewal_due %}checked{% endif %}
-                   class="rounded border-border text-primary focus:ring-primary">
-            {% lucide "calendar" size=14 %} Renewal due soon
-        </label>
-
-        <button type="reset" class="btn-ghost text-sm"
-                onclick="resetFilters(event)">Reset</button>
-    </form>
-
-    <!-- Asset Table -->
-    <div id="assetTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
-        {% include "partials/asset_table.html" %}
+    <!-- KPI strip (slim: no repeated section heading, page title already covers it) -->
+    <div class="mb-5">
+        {% include "partials/asset_kpi_strip.html" %}
     </div>
+
+    <!-- Equipment / Licenses & Subscriptions tabs + filter bar + results -->
+    {% include "partials/asset_panel.html" %}
 </div>
 
 <!-- Modal Overlay for Create/Edit/Action Modals -->

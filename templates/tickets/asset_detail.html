@@ -27,6 +27,8 @@
                     <span class="status-chip status-chip-{{ asset.status_display.color }} text-xs">
                         {{ asset.status_display.label }}
                     </span>
+                    {% if not asset.is_renewable %}
+                    {# Condition (Excellent/Good/Fair/...) describes physical wear — meaningless for a subscription. #}
                     <span class="status-chip
                         {% if asset.condition == 'EXCELLENT' %}status-chip-success
                         {% elif asset.condition == 'GOOD' %}status-chip-info
@@ -36,6 +38,7 @@
                         {% else %}status-chip-neutral{% endif %} text-xs">
                         {{ asset.get_condition_display }}
                     </span>
+                    {% endif %}
                     {% if asset.is_consumable %}
                     <span class="status-chip status-chip-info text-xs">{{ asset.quantity_in_stock }} in stock</span>
                     {% endif %}
@@ -72,17 +75,14 @@
                     {% lucide "shopping-cart" size=14 %} Reorder
                 </button>
                 {% endif %}
-                {% if asset.is_renewable and active_role_name in 'ADMIN,SUPERADMIN' %}
-                <form method="post" action="{% url 'tickets:asset_mark_renewed' asset.pk %}" id="markRenewedForm" class="inline-flex">
-                    {% csrf_token %}
-                    <input type="hidden" name="new_cost" id="markRenewedCostInput" value="">
-                    <button type="button" class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1"
-                            onclick="promptMarkRenewed()">
-                        {% lucide "refresh-cw" size=14 %} Mark as Renewed
-                    </button>
-                </form>
+                {% if asset.is_renewable and not asset.auto_renews and active_role_name in 'ADMIN,SUPERADMIN' %}
+                <button type="button" class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-1"
+                        onclick="openMarkRenewedModal()">
+                    {% lucide "refresh-cw" size=14 %} Mark as Renewed
+                </button>
                 {% endif %}
-                {% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' %}
+                {% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' and not asset.is_renewable %}
+                {# Scrapping is a physical-disposal workflow — a subscription is cancelled/let lapse, not scrapped. #}
                 <button class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-1"
                         onclick="openScrapRequestModal({{ asset.pk }})">
                     {% lucide "trash-2" size=14 %} Request Scrap
@@ -98,6 +98,35 @@
         </div>
 
         <!-- Stats Row -->
+        {% if asset.is_renewable %}
+        {# A subscription is never checked out, has no manufacturer warranty, #}
+        {# and is never serviced — its equivalent "vitals" are its renewal.  #}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold {% if asset.renewal_status == 'OVERDUE' %}text-danger{% elif asset.renewal_status == 'DUE_SOON' %}text-warning{% elif asset.renewal_status == 'SCHEDULED' %}text-success{% else %}text-text-secondary{% endif %}">
+                    {{ asset.next_renewal_date|date:"M d, Y"|default:"—" }}
+                </p>
+                <p class="text-xs text-text-secondary">
+                    {% if asset.renewal_status == 'OVERDUE' %}Renewal Overdue
+                    {% elif asset.renewal_status == 'DUE_SOON' %}Renews Soon
+                    {% elif asset.renewal_status == 'SCHEDULED' %}Next Renewal
+                    {% else %}No Renewal Date{% endif %}
+                </p>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold text-text-primary">
+                    {% if asset.renewal_cost %}{{ asset.renewal_currency }}{{ asset.renewal_cost }}{% else %}—{% endif %}
+                </p>
+                <p class="text-xs text-text-secondary">Renewal Cost</p>
+            </div>
+            <div class="text-center p-3 rounded-lg bg-background">
+                <p class="text-2xl font-bold {% if asset.auto_renews %}text-success{% else %}text-text-secondary{% endif %}">
+                    {% if asset.auto_renews %}{% lucide "check" size=20 %}{% else %}{% lucide "x" size=20 %}{% endif %}
+                </p>
+                <p class="text-xs text-text-secondary">Auto-Renews</p>
+            </div>
+        </div>
+        {% else %}
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
             <div class="text-center p-3 rounded-lg bg-background">
                 <p class="text-2xl font-bold text-info">{{ asset.days_checked_out }}</p>
@@ -122,6 +151,7 @@
                 <p class="text-xs text-text-secondary">Maintenance Records</p>
             </div>
         </div>
+        {% endif %}
 
         <!-- Tabs -->
         <div class="mt-4" id="assetTabs">
@@ -129,15 +159,18 @@
                 <button type="button" data-asset-tab="details" class="px-4 py-2 text-sm font-medium border-b-2 transition border-primary text-primary">
                     Details
                 </button>
-                {% comment %} <button type="button" data-asset-tab="history" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
+                <button type="button" data-asset-tab="history" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     History
                 </button>
+                {% if not asset.is_renewable %}
+                {# A subscription is never scheduled for maintenance or checked out — these tabs would always be empty. #}
                 <button type="button" data-asset-tab="maintenance" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     Maintenance
                 </button>
                 <button type="button" data-asset-tab="checkout" class="px-4 py-2 text-sm font-medium border-b-2 transition text-text-secondary hover:text-text-primary">
                     Checkout History
-                </button> {% endcomment %}
+                </button>
+                {% endif %}
             </div>
 
             <!-- Tab: Details -->
@@ -154,10 +187,12 @@
                                 <dt class="text-text-secondary">Category</dt>
                                 <dd>{{ asset.category.name|default:"—" }}</dd>
                             </div>
+                            {% if not asset.is_renewable %}
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Serial Number</dt>
                                 <dd>{{ asset.serial_number|default:"—" }}</dd>
                             </div>
+                            {% endif %}
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Model</dt>
                                 <dd>{{ asset.model|default:"—" }}</dd>
@@ -172,7 +207,7 @@
                             </div>
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Department</dt>
-                                <dd>{{ asset.get_department_display|default:"—" }}</dd>
+                                <dd>{{ asset.department.name|default:"—" }}</dd>
                             </div>
                         </dl>
                     </div>
@@ -181,23 +216,56 @@
                         <dl class="space-y-2 text-sm">
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Assigned To</dt>
-                                <dd>{{ asset.assigned_to.get_full_name|default:"Unassigned" }}</dd>
+                                <dd>
+                                    {% if asset.assigned_to %}{{ asset.assigned_to.get_full_name }}
+                                    {% elif asset.is_renewable and asset.department %}Org-wide &mdash; {{ asset.department.name }}
+                                    {% elif asset.is_renewable %}Org-wide (Entire Organization)
+                                    {% else %}Unassigned{% endif %}
+                                </dd>
                             </div>
+                            {% if not asset.is_renewable %}
                             <div class="flex justify-between border-b py-1 border-border">
-                                <dt class="text-text-secondary">Department</dt>
-                                <dd>{{ asset.assigned_to_department|default:"—" }}</dd>
+                                <dt class="text-text-secondary">Assignee's Department</dt>
+                                <dd>{{ asset.assigned_to.get_department_display|default:"—" }}</dd>
                             </div>
+                            {% endif %}
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Purchase Date</dt>
                                 <dd>{{ asset.purchase_date|date:"M d, Y"|default:"—" }}</dd>
                             </div>
+                            {% if not asset.is_renewable %}
                             <div class="flex justify-between border-b py-1 border-border">
                                 <dt class="text-text-secondary">Warranty Expiry</dt>
                                 <dd>{{ asset.warranty_expiry|date:"M d, Y"|default:"—" }}</dd>
                             </div>
+                            {% endif %}
                         </dl>
                     </div>
                 </div>
+
+                {% if not asset.is_renewable %}
+                {# A subscription has no operating system to back up. #}
+                <div class="pt-4 border-t border-border">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-semibold text-text-secondary">OS Backup Status</h4>
+                        <button type="button" class="btn-ghost text-xs px-3 py-1.5 rounded-lg"
+                                onclick="openBackupStatusModal()">Edit</button>
+                    </div>
+                    <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Status</dt>
+                            <dd>{{ asset.backup_status.get_status_display|default:"Not Backed Up" }}</dd>
+                        </div>
+                        <div class="flex justify-between border-b py-1 border-border">
+                            <dt class="text-text-secondary">Method</dt>
+                            <dd>{{ asset.backup_status.method|default:"—" }}</dd>
+                        </div>
+                    </dl>
+                    {% if asset.backup_status.notes %}
+                    <p class="text-xs text-text-secondary mt-2">{{ asset.backup_status.notes }}</p>
+                    {% endif %}
+                </div>
+                {% endif %}
 
                 {% if asset.is_renewable %}
                 <div class="pt-4 border-t border-border">
@@ -213,7 +281,7 @@
                         </div>
                         <div class="flex justify-between border-b py-1 border-border">
                             <dt class="text-text-secondary">Renewal Cost</dt>
-                            <dd>{% if asset.renewal_cost %}{{ client_settings.currency_symbol }}{{ asset.renewal_cost }}{% else %}—{% endif %}</dd>
+                            <dd>{% if asset.renewal_cost %}{{ asset.renewal_currency }}{{ asset.renewal_cost }}{% else %}—{% endif %}</dd>
                         </div>
                         <div class="flex justify-between border-b py-1 border-border">
                             <dt class="text-text-secondary">Vendor</dt>
@@ -238,7 +306,7 @@
                         <div class="flex justify-between text-sm py-1 border-b border-border">
                             <span class="text-text-secondary">
                                 Renewed until {{ log.details.renewed_until|default:"—" }}
-                                {% if log.details.cost %} — {{ client_settings.currency_symbol }}{{ log.details.cost }}{% endif %}
+                                {% if log.details.cost %} — {{ asset.renewal_currency }}{{ log.details.cost }}{% endif %}
                             </span>
                             <span class="text-text-secondary text-xs">{{ log.created_at|date:"M d, Y" }}</span>
                         </div>
@@ -310,7 +378,7 @@
                     <div class="flex justify-between text-sm py-2 border-b border-border">
                         <span>
                             <span class="font-medium text-text-primary">{{ log.get_action_display }}</span>
-                            <span class="text-text-secondary ml-2">{{ log.details|default:"" }}</span>
+                            <span class="text-text-secondary ml-2">{{ log.get_details_display }}</span>
                         </span>
                         <span class="text-text-secondary text-xs">{{ log.created_at|date:"M d, Y H:i" }}</span>
                     </div>
@@ -321,40 +389,38 @@
                 {% endif %}
             </div>
 
-            <!-- Tab: Maintenance -->
+            <!-- Tab: Maintenance (physical assets only — see tab button above) -->
+            {% if not asset.is_renewable %}
             <div data-asset-panel="maintenance" class="hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <h4 class="text-sm font-semibold text-text-secondary">Maintenance Records</h4>
-                    {% if active_role_name in 'ADMIN,SUPERADMIN' %}
-                    <button onclick="openMaintenanceModal({{ asset.pk }})"
-                            class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
-                        {% lucide "plus" size=12 %} Add Record
-                    </button>
-                    {% endif %}
-                </div>
-                {% if maintenance_logs %}
+                <h4 class="text-sm font-semibold text-text-secondary mb-4">Maintenance History</h4>
+                {% if maintenance_confirmations %}
                 <div class="space-y-3">
-                    {% for log in maintenance_logs %}
+                    {% for row in maintenance_confirmations %}
                     <div class="p-3 rounded-lg border border-border bg-background">
-                        <div class="flex justify-between items-start">
-                            <div>
-                                <span class="font-medium text-sm text-text-primary">{{ log.title }}</span>
-                                <span class="status-chip info text-xs ml-2">{{ log.get_maintenance_type_display }}</span>
+                        <div class="flex justify-between items-start gap-3">
+                            <div class="min-w-0">
+                                <a href="{% url 'maintenance:detail' row.schedule.pk %}" class="font-medium text-sm text-text-primary hover:underline truncate">
+                                    {{ row.schedule.title }}
+                                </a>
+                                {% include "maintenance/partials/asset_confirmation_badge.html" with status=row.status %}
                             </div>
-                            <span class="text-xs text-text-secondary">{{ log.performed_at|date:"M d, Y" }}</span>
+                            <span class="text-xs text-text-secondary shrink-0">{{ row.technician_completed_at|date:"M d, Y" }}</span>
                         </div>
-                        <p class="text-sm text-text-secondary mt-1">{{ log.description|truncatechars:100 }}</p>
-                        {% if log.cost %}
-                        <p class="text-xs text-text-secondary mt-1">Cost: {{ client_settings.currency_symbol }}{{ log.cost|floatformat:2 }}</p>
+                        {% if row.status != 'PENDING' %}
+                        <p class="text-xs text-text-secondary mt-1">
+                            {{ row.get_status_display }} by {{ row.confirmed_by.get_full_name|default:row.confirmed_by.email }} · {{ row.confirmed_at|date:"M d, Y g:i A" }}
+                        </p>
                         {% endif %}
-                        {% if log.next_maintenance_date %}
-                        <p class="text-xs text-text-secondary mt-1">Next Maintenance: {{ log.next_maintenance_date|date:"M d, Y" }}</p>
+                        {% if row.status == 'DISPUTED' and row.dispute_reason %}
+                        <p class="text-xs text-error mt-1">Dispute reason: {{ row.dispute_reason }}</p>
+                        {% elif row.notes %}
+                        <p class="text-xs text-text-secondary mt-1">Notes: {{ row.notes }}</p>
                         {% endif %}
                     </div>
                     {% endfor %}
                 </div>
                 {% else %}
-                <p class="text-sm text-text-secondary text-center py-4">No maintenance records.</p>
+                <p class="text-sm text-text-secondary text-center py-4">No maintenance recorded for this asset yet.</p>
                 {% endif %}
             </div>
 
@@ -407,6 +473,7 @@
                 <p class="text-sm text-text-secondary text-center py-4">No checkout history.</p>
                 {% endif %}
             </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -422,12 +489,69 @@
     // Base URLs for actions
     const scrapApproveUrl = "{% url 'tickets:asset_scrap_approve' 0 %}";
     const scrapRequestUrl = "{% url 'tickets:asset_scrap_request' 0 %}";
-    
+
+    // Asset detail tabs — switches which [data-asset-panel] is visible to
+    // match the clicked [data-asset-tab] button.
+    document.addEventListener('DOMContentLoaded', function () {
+        const tabsContainer = document.getElementById('assetTabs');
+        if (!tabsContainer) return;
+        const tabButtons = tabsContainer.querySelectorAll('[data-asset-tab]');
+        tabButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                const target = button.dataset.assetTab;
+                tabButtons.forEach(function (b) {
+                    b.classList.toggle('border-primary', b === button);
+                    b.classList.toggle('text-primary', b === button);
+                    b.classList.toggle('text-text-secondary', b !== button);
+                });
+                document.querySelectorAll('[data-asset-panel]').forEach(function (panel) {
+                    panel.classList.toggle('hidden', panel.dataset.assetPanel !== target);
+                });
+            });
+        });
+    });
+
     function closeModal() {
         setTimeout(function() {
             document.getElementById('modalOverlay').classList.add('hidden');
             document.getElementById('modalContainer').innerHTML = '';
         }, 100);
+    }
+
+    function openBackupStatusModal() {
+        const modal = document.getElementById('modalContainer');
+        const actionUrl = "{% url 'maintenance:asset_backup_status_update' asset.pk %}";
+        const currentStatus = "{{ asset.backup_status.status|default:'NOT_BACKED_UP' }}";
+        const currentMethod = "{{ asset.backup_status.method|default:''|escapejs }}";
+        const currentNotes = "{{ asset.backup_status.notes|default:''|escapejs }}";
+        const statusOptions = {{ backup_status_choices|default:'[]'|safe }}
+            .map(([value, label]) => `<option value="${value}" ${value === currentStatus ? 'selected' : ''}>${label}</option>`)
+            .join('');
+        modal.innerHTML = `
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-4">OS Backup Status</h3>
+                <form method="post" action="${actionUrl}">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Status</label>
+                        <select name="status" class="w-full rounded-lg border p-2 text-sm">${statusOptions}</select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Method</label>
+                        <input type="text" name="method" value="${currentMethod}" placeholder="e.g. OneDrive, External HDD" class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Notes (optional)</label>
+                        <textarea name="notes" rows="2" class="w-full rounded-lg border p-2 text-sm">${currentNotes}</textarea>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
+                        <button type="submit" class="btn-primary text-sm">Save</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.getElementById('modalOverlay').classList.remove('hidden');
     }
 
     function openScrapApproveModal(assetId) {
@@ -454,13 +578,42 @@
         document.getElementById('modalOverlay').classList.remove('hidden');
     }
 
-    function promptMarkRenewed() {
-        const newCost = prompt('New renewal cost (leave blank to keep the current cost):', '');
-        if (newCost === null) return;
-        document.getElementById('markRenewedCostInput').value = newCost.trim();
-        confirmRenewAsset('{{ asset.name|escapejs }}', function() {
-            document.getElementById('markRenewedForm').submit();
-        });
+    function openMarkRenewedModal() {
+        const modal = document.getElementById('modalContainer');
+        const actionUrl = "{% url 'tickets:asset_mark_renewed' asset.pk %}";
+        const currentCost = {{ asset.renewal_cost|default:"null" }};
+        const today = new Date().toISOString().slice(0, 10);
+        const intervalMonths = {{ asset.renewal_interval_months|default:0 }};
+        modal.innerHTML = `
+            <div class="p-6">
+                <h3 class="text-lg font-semibold mb-1">Mark as Renewed</h3>
+                <p class="text-sm text-text-secondary mb-4">Confirm "{{ asset.name|escapejs }}" has been renewed for the organization. This is logged for audit and budget tracking.</p>
+                <form method="post" action="${actionUrl}">
+                    {% csrf_token %}
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">This date is the</label>
+                        <select name="date_type" class="w-full rounded-lg border p-2 text-sm">
+                            <option value="LAST" selected>Last Renewed Date (today, or whenever it was paid)</option>
+                            <option value="NEXT">Next Renewal Date</option>
+                        </select>
+                    </div>
+                    <div class="mb-1">
+                        <label class="block text-sm font-medium mb-1">Date</label>
+                        <input type="date" name="renewal_date" required value="${today}" class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <p class="text-xs text-text-secondary mb-4">Subscription renews every ${intervalMonths} month(s) — the next renewal date is calculated automatically from whichever date you enter above.</p>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-1">Renewal cost (optional — leave blank to keep current${currentCost !== null ? `, ${currentCost}` : ''})</label>
+                        <input type="number" step="0.01" min="0" name="new_cost" placeholder="e.g. 20000.00" class="w-full rounded-lg border p-2 text-sm">
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" onclick="closeModal()" class="btn-ghost text-sm">Cancel</button>
+                        <button type="submit" class="btn-success text-sm">Confirm Renewal</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.getElementById('modalOverlay').classList.remove('hidden');
     }
 
     function openScrapRequestModal(assetId) {
@@ -544,11 +697,6 @@
             </div>
         `;
         document.getElementById('modalOverlay').classList.remove('hidden');
-    }
-
-    function openMaintenanceModal(assetId) {
-        // You'll need to implement this - could use HTMX or a separate view
-        showToast('Maintenance logging coming soon!', 'info');
     }
 
     function markMaintenanceComplete(assetId) {

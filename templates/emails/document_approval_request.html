@@ -1,43 +1,133 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-        .content { padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 8px 8px; }
-        .button { background: #0D9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; }
-        .footer { margin-top: 20px; font-size: 12px; color: #64748B; }
-        .detail { background: #F8FAFC; padding: 15px; border-radius: 6px; margin: 15px 0; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Document Approval Request</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body>
-    <div class="header">
-        <h2>📄 Document Approval Request</h2>
-    </div>
-    <div class="content">
-        <p>Dear {{ admin_name }},</p>
-        <p>A document has been submitted for your approval.</p>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        <div class="detail">
-            <h3>{{ document.title }}</h3>
-            <p><strong>Version:</strong> {{ document.version }}</p>
-            <p><strong>Category:</strong> {{ document.category.name }}</p>
-            <p><strong>Uploaded By:</strong> {{ document.uploaded_by.get_full_name|default:document.uploaded_by.email }}</p>
-            <p><strong>Description:</strong> {{ document.description|default:"No description provided." }}</p>
-        </div>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    A document "{{ document.title }}" needs your approval.
+  </div>
 
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="{{ approval_url }}" class="button">Review Document</a>
-        </p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
 
-        <p>You can also view and approve the document directly:</p>
-        <p style="word-break: break-all;"><a href="{{ document_url }}" style="color: #0D9488;">{{ document_url }}</a></p>
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
 
-        <div class="footer">
-            <p>This is an automated notification from TicketSwipe.</p>
-            <p>Please do not reply to this email.</p>
-        </div>
-    </div>
+          <!-- Top accent bar -->
+          <tr>
+            <td style="background-color:#0D9488; height:3px; line-height:3px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
+
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+              {% else %}
+                <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#0D9488; font-weight:600; margin:0 0 10px;">Document approval</p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:27px; font-weight:400; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                Approval required
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Dear <strong>{{ admin_name }}</strong>,<br>
+                A document has been submitted for your review.
+              </p>
+
+              <!-- Document details box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin:16px 0;">
+                <tr>
+                  <td style="padding:16px; font-size:14px; color:#0F172A; line-height:1.6;">
+                    <strong style="font-size:16px; color:#0F172A;">{{ document.title }}</strong><br>
+                    <span style="color:#475569;"><strong>Version:</strong> {{ document.version }}</span><br>
+                    <span style="color:#475569;"><strong>Category:</strong> {{ document.category.name }}</span><br>
+                    <span style="color:#475569;"><strong>Uploaded By:</strong> {{ document.uploaded_by.get_full_name|default:document.uploaded_by.email }}</span><br>
+                    <span style="color:#475569;"><strong>Description:</strong> {{ document.description|default:"No description provided." }}</span>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 30px;">
+                Please review the document and take appropriate action.
+              </p>
+
+              <!-- Button (with Outlook VML fallback) -->
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background-color:#0D9488;">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ approval_url }}" style="height:46px;v-text-anchor:middle;width:200px;" fillcolor="#0D9488" stroke="false">
+                    <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">Review Document</center>
+                    </v:rect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="{{ approval_url }}" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; background-color:#0D9488; border-radius:8px;">Review Document</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Fallback link -->
+              <div style="border-top:1px solid #EEF0F2; margin:34px 0 20px;"></div>
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 8px;">Button not working? Paste this link into your browser:</p>
+              <p style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size:12px; color:#0D9488; background-color:#F8FAFC; border:1px solid #EEF0F2; border-radius:6px; padding:10px 12px; margin:0 0 8px; word-break:break-all;">
+                {{ approval_url }}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  This is an automated notification from {{ client_settings.company_name }}. Please do not reply to this email.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

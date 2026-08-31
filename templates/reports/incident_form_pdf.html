@@ -1,11 +1,11 @@
-{% load static %}
+{% load static tailwind_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 {% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
 <title>HydroDive IT Incident Report Form — {{ ticket.number }}</title>
-<script src="https://cdn.tailwindcss.com"></script>
+{% tailwind_css %}
 <link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
 </head>
 <body>

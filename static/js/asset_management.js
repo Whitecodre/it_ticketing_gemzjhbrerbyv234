@@ -209,11 +209,23 @@ function resetFilters(event) {
     if (event) event.preventDefault();
     const form = document.getElementById('assetFilters');
     if (!form) return;
-    
+
+    // The Licenses & Subscriptions tab reuses this same form id/reset
+    // button but has its own filter set — its hidden filter_tab field (see
+    // asset_license_panel.html) is how we tell the two apart and keep
+    // Reset scoped to whichever tab's form is currently on screen instead
+    // of always falling back to Equipment.
+    const tabField = form.querySelector('input[name="filter_tab"]');
+    const tab = tabField ? tabField.value : null;
+
     form.querySelectorAll('input, select').forEach(function(el) {
+        if (el.name === 'filter_tab') return;
         if (el.tagName === 'INPUT') {
             if (el.type === 'checkbox' || el.type === 'radio') {
-                el.checked = false;
+                // Group by owner defaults to ON (unlike the other filter
+                // checkboxes, which default to off/unfiltered) — Reset
+                // should return to that default, not force it off.
+                el.checked = el.name === 'filter_group_by_owner';
             } else {
                 el.value = '';
             }
@@ -221,9 +233,10 @@ function resetFilters(event) {
             el.selectedIndex = 0;
         }
     });
-    
+
     if (assetsUrl) {
-        htmx.ajax('GET', assetsUrl, {
+        const url = tab ? (assetsUrl + '?filter_tab=' + encodeURIComponent(tab)) : assetsUrl;
+        htmx.ajax('GET', url, {
             target: '#assetTableContainer',
             swap: 'innerHTML'
         });

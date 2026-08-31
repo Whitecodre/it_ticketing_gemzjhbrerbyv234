@@ -1,0 +1,129 @@
+{% load static tailwind_tags %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+{% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
+<title>Mobilization Audit Report — #{{ mobilization.pk }}</title>
+{% tailwind_css %}
+<link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
+</head>
+<body>
+
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-4">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="3">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"TicketSwipe" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="3">
+        <span class="font-bold text-lg tracking-wide">MOBILIZATION AUDIT REPORT</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">Mobilization #{{ mobilization.pk }}</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Mobilized:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ mobilization.mobilized_at|date:"d/m/Y" }}</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Report Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"d/m/Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 1 — JOB DETAILS -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 1 &mdash; JOB DETAILS</div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Job Number:</div>
+        <div class="mb-2">{{ mobilization.job_number.number|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Status:</div>
+        <div class="mb-2">{{ mobilization.get_status_display }}</div>
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Vessel(s):</div>
+        <div class="mb-2">{{ vessel_names|join:", "|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Dive System(s):</div>
+        <div class="mb-2">{{ dive_system_names|join:", "|default:"—" }}</div>
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Linked Ticket:</div>
+        <div class="mb-2">{% if mobilization.ticket %}{{ mobilization.ticket.number }} — {{ mobilization.ticket.requester.get_full_name|default:mobilization.ticket.requester.email }}{% else %}—{% endif %}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Mobilized By:</div>
+        <div class="mb-2">{{ mobilization.mobilized_by.get_full_name|default:mobilization.mobilized_by.email }}</div>
+      </div>
+    </div>
+
+    {% if mobilization.notes %}
+    <div class="cell">
+      <div class="cell-label mb-1">Notes:</div>
+      <div class="mb-2">{{ mobilization.notes|linebreaksbr }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- SECTION 2 — ASSET AUDIT TRAIL -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 2 &mdash; ASSET AUDIT TRAIL</div>
+    {% if audit_rows %}
+    <table class="grid w-full border-collapse">
+      <tr>
+        <th class="text-left bg-white font-bold">Asset</th>
+        <th class="text-left bg-white font-bold">Receipt Confirmed</th>
+        <th class="text-left bg-white font-bold">Self-Reported</th>
+        <th class="text-left bg-white font-bold">Demobilized</th>
+        <th class="text-left bg-white font-bold">Condition</th>
+        <th class="text-left bg-white font-bold">Inventory Effect</th>
+      </tr>
+      {% for row in audit_rows %}
+      {% with item=row.item %}
+      <tr>
+        <td>{{ item.asset.name }}{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %} ({{ item.asset.tracking_id }})</td>
+        <td>
+          {% if item.disputed_at %}Disputed{% if item.dispute_reason %} — "{{ item.dispute_reason }}"{% endif %}
+          {% elif item.acknowledged_at %}{{ item.acknowledged_at|date:"d/m/Y H:i" }} by {{ item.acknowledged_by.get_full_name|default:item.acknowledged_by.email }}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if item.return_requested_at %}{{ item.return_requested_at|date:"d/m/Y H:i" }} by {{ item.return_requested_by.get_full_name|default:item.return_requested_by.email }}{% if item.return_requested_notes %} — "{{ item.return_requested_notes }}"{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if item.demobilized_at %}{{ item.demobilized_at|date:"d/m/Y H:i" }} by {{ item.demobilized_by.get_full_name|default:item.demobilized_by.email }}{% if item.return_notes %} — "{{ item.return_notes }}"{% endif %}
+          {% else %}—{% endif %}
+        </td>
+        <td>{{ item.get_return_condition_display|default:"—" }}</td>
+        <td>{{ row.inventory_effect }}</td>
+      </tr>
+      {% endwith %}
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="cell italic text-gray-400">No assets on this mobilization.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -1,0 +1,118 @@
+{% load lucide %}
+{% load asset_filters %}
+{% load badge_tags %}
+
+{# ================================================================ #}
+{# ONE ASSET ROW — shared by the flat table (asset_table.html) and    #}
+{# each expanded seat card (asset_seat_card.html), so the per-row     #}
+{# action dropdown/click-to-detail behavior only has to be wired once. #}
+{# Expects `asset` in context.                                        #}
+{# ================================================================ #}
+<tr class="asset-row border-b hover:bg-black/5 transition-colors cursor-pointer"
+    style="border-color: var(--color-border);"
+    data-detail-url="{% url 'tickets:asset_detail' asset.pk %}">
+
+    <td class="py-3 px-4" @click.stop>
+        <input type="checkbox" class="bulk-row-checkbox rounded border-border text-primary focus:ring-primary"
+               value="{{ asset.pk }}"
+               :checked="selected.includes('{{ asset.pk }}')"
+               @change="toggleRow('{{ asset.pk }}', $event.target.checked)"
+               aria-label="Select {{ asset.name }}">
+    </td>
+
+    {# Asset (pinned) #}
+    <td class="py-3 px-4" style="left: 40px;">
+        <div class="font-medium text-sm truncate" style="color: var(--color-text-primary); max-width: 190px;">{{ asset.name }}</div>
+        <div class="text-xs font-semibold tracking-tight text-primary">{{ asset.tracking_id }}</div>
+    </td>
+
+    {# Type #}
+    <td class="py-3 px-3">
+        <span class="text-sm" style="color: var(--color-text-primary);">{{ asset.category.name|default:"—" }}</span>
+    </td>
+
+    {# Serial #}
+    <td class="py-3 px-3">
+        <span class="text-sm font-mono text-text-secondary">{{ asset.serial_number|default:"—" }}</span>
+    </td>
+
+    {# Status — one badge, one label. Secondary line only ever adds new #}
+    {# info (a date, a stock count) — it never repeats the badge word. #}
+    <td class="py-3 px-3">
+        <div class="flex flex-col gap-0.5">
+            {% if asset.is_checked_out and asset.checked_out_at %}
+                {% status_badge 'asset_status' asset.status secondary=asset.checked_out_at|date:"\s\i\n\c\e M d" %}
+            {% elif asset.is_checked_out %}
+                {% status_badge 'asset_status' asset.status %}
+            {% elif asset.is_consumable %}
+                {% status_badge 'asset_status' asset.status secondary=asset.quantity_in_stock|stringformat:"s"|add:" in stock" %}
+            {% else %}
+                {% status_badge 'asset_status' asset.status %}
+            {% endif %}
+            {% if asset.is_low_stock %}
+                <span class="status-chip status-chip-danger text-[0.55rem] w-fit flex items-center gap-0.5">{% lucide "triangle-alert" size=10 %} Low Stock</span>
+            {% endif %}
+            {% if asset.is_renewal_due_soon %}
+                <span class="status-chip {% if asset.next_renewal_date < today %}status-chip-danger{% else %}status-chip-warning{% endif %} text-[0.55rem] w-fit flex items-center gap-0.5">{% lucide "calendar" size=10 %} Renews {{ asset.next_renewal_date|date:"M j" }}</span>
+            {% endif %}
+        </div>
+    </td>
+
+    {# Assigned To #}
+    <td class="py-3 px-3">
+        {% if asset.assigned_to %}
+            <div class="text-sm" style="color: var(--color-text-primary);">{{ asset.assigned_to.get_full_name|default:asset.assigned_to.email }}</div>
+            {% if asset.assigned_to.department %}
+            <div class="text-xs text-text-secondary">{{ asset.assigned_to.get_department_display }}</div>
+            {% endif %}
+            {% if asset|has_reassignment_indicator %}
+            <span class="reassign-indicator cursor-pointer inline-flex items-center gap-0.5 px-1 py-0.5 mt-0.5 rounded text-[0.55rem] hover:bg-primary/10 transition-colors"
+                data-tooltip-html="{{ asset|format_assignment_history }}"
+                data-has-tooltip="true"
+                title="View reassign history">
+                <span style="color: var(--color-warning);">{% lucide "rotate-cw" size=11 %}</span>
+                <span class="font-bold px-1 rounded-full"
+                    style="background-color: var(--color-warning); color: white; min-width: 11px; text-align: center; font-size: 0.45rem;">
+                    {{ asset|reassign_count }}
+                </span>
+            </span>
+            {% endif %}
+        {% elif asset.unresolved_assignee_hint %}
+            <span class="text-sm" style="color: var(--color-warning);" title="Imported with an 'assigned to' name that hasn't been linked to a user account yet">
+                {% lucide "user-round-x" size=12 class="inline -mt-0.5" %} Needs review: {{ asset.unresolved_assignee_hint }}
+            </span>
+        {% else %}
+            <span class="text-sm text-text-secondary opacity-60">Unassigned</span>
+        {% endif %}
+    </td>
+
+    {# Condition #}
+    <td class="py-3 px-3">
+        {% if asset.condition %}
+            {% status_badge 'asset_condition' asset.condition %}
+        {% else %}
+            <span class="text-sm text-text-secondary opacity-60">—</span>
+        {% endif %}
+    </td>
+
+    {# Actions (pinned) #}
+    <td class="py-3 px-3 text-center">
+        <button type="button" class="asset-action-btn p-2 rounded-full hover:bg-black/5 transition"
+                style="color: var(--color-text-secondary);"
+                onclick="assetActionBtnClick(this)"
+                data-asset-id="{{ asset.pk }}"
+                data-asset-name="{{ asset.name }}"
+                data-detail-url="{% url 'tickets:asset_detail' asset.pk %}"
+                data-is-checked-out="{{ asset.is_checked_out|yesno:'true,false' }}"
+                data-can-checkout="{{ asset.is_available_for_assignment|yesno:'true,false' }}"
+                data-can-reassign="{{ asset.can_reassign|yesno:'true,false' }}"
+                data-can-request-scrap="{% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' and not asset.active_mobilization_item %}true{% else %}false{% endif %}"
+                data-can-approve-scrap="{% if asset.status == 'DAMAGED' and asset.pending_scrap_requested_by != user %}true{% else %}false{% endif %}"
+                {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                data-edit-url="{% url 'tickets:asset_edit_page' asset.pk %}?source=list&filter_q={{ query }}&filter_category={{ selected_category }}&filter_status={{ selected_status }}&filter_location={{ selected_location }}&filter_group_by_owner={{ group_by_owner_param }}&filter_tab={{ active_tab }}&sort={{ active_sort }}&page={{ assets.number }}"
+                {% endif %}
+                aria-label="Actions for {{ asset.name }}">
+            {% lucide "more-vertical" size=18 %}
+        </button>
+    </td>
+</tr>

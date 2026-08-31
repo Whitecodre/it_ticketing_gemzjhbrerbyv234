@@ -1,0 +1,67 @@
+{% load lucide %}
+{# Filters #}
+<form id="assetFilters" class="flex flex-wrap items-center gap-3 mb-5 rounded-xl border p-3 bg-surface border-border"
+    hx-get="{% url 'tickets:assets' %}"
+    hx-target="#assetTableContainer"
+    hx-swap="innerHTML"
+    hx-indicator="#assetFilterSpinner"
+    hx-trigger="change, keyup delay:300ms from:input">
+
+    <div class="relative flex-1 min-w-[200px]">
+        <input type="text" name="filter_q" value="{{ query }}"
+            placeholder="Search by name of asset. name of owner, tracking ID, serial..."
+            class="w-full rounded-lg border py-2 pl-10 pr-9 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=16 %}</span>
+        <span id="assetFilterSpinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
+            {% lucide "loader-circle" size=14 class="animate-spin text-text-secondary" %}
+        </span>
+    </div>
+
+    <select name="filter_category" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <option value="">All Categories</option>
+        {% for cat in categories %}
+        <option value="{{ cat.pk }}" {% if selected_category == cat.pk|stringformat:"s" %}selected{% endif %}>{{ cat.name }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="filter_status" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <option value="">All Status</option>
+        {% for value, label in status_choices %}
+        <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="filter_location" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <option value="">All Locations</option>
+        {% for value, label in location_choices %}
+        <option value="{{ value }}" {% if selected_location == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+    </select>
+
+    <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
+        <input type="checkbox" name="filter_low_stock" value="1" {% if selected_low_stock %}checked{% endif %}
+               class="rounded border-border text-primary focus:ring-primary">
+        {% lucide "triangle-alert" size=14 %} Low stock only
+    </label>
+
+    {# Hidden "0" fallback before the checkbox so an unchecked box still #}
+    {# submits an explicit value (browsers omit unchecked checkboxes    #}
+    {# entirely) — lets the view default to grouped-on on first load    #}
+    {# while still honoring an explicit un-group. #}
+    <label class="flex items-center gap-1.5 text-sm text-text-primary cursor-pointer whitespace-nowrap">
+        <input type="hidden" name="filter_group_by_owner" value="0">
+        <input type="checkbox" name="filter_group_by_owner" value="1" {% if group_by_owner %}checked{% endif %}
+               class="rounded border-border text-primary focus:ring-primary">
+        {% lucide "users" size=14 %} Group by owner
+    </label>
+
+    {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort %}
+
+    <button type="reset" class="btn-ghost text-sm"
+            onclick="resetFilters(event)">Reset</button>
+</form>
+
+{# Asset Table #}
+<div id="assetTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
+    {% include "partials/asset_table.html" %}
+</div>

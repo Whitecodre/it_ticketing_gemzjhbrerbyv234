@@ -1,0 +1,13 @@
+{# ================================================================ #}
+{# SWAP ROOT for the Equipment / Licenses & Subscriptions tabs — the  #}
+{# tab switcher swaps this whole div (filter bar + results), since    #}
+{# the two tabs' filter fields and result shapes are unrelated. #}
+{# ================================================================ #}
+<div id="assetPanel">
+    {% include "partials/asset_tabs.html" %}
+    {% if active_tab == 'licenses' %}
+        {% include "partials/asset_license_panel.html" %}
+    {% else %}
+        {% include "partials/asset_equipment_panel.html" %}
+    {% endif %}
+</div>

@@ -40,7 +40,8 @@ SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 # Database
 DATABASES = {
     'default': dj_database_url.config(
-        default=env('DATABASE_URL', default=None)
+        default=env('DATABASE_URL', default=None),
+        conn_max_age=60,
     )
 }
 if DATABASES['default'] is None:
@@ -73,7 +74,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [os.environ.get("REDIS_URL", "redis://localhost:6379")],
+            "hosts": [os.environ.get("REDIS_URL", "redis://127.0.0.1:6379")],
         },
     },
 }
@@ -81,7 +82,7 @@ CHANNEL_LAYERS = {
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': env('REDIS_URL', default='redis://localhost:6379'),
+        'LOCATION': env('REDIS_URL', default='redis://127.0.0.1:6379'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }

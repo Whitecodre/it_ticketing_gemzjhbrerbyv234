@@ -17,23 +17,23 @@
             {{ schedule.title }}
         </p>
         
-        <form method="post" 
+        <form method="post"
               hx-post="{% url 'maintenance:update_status' schedule.pk %}"
               hx-target="#statusModalContainer"
-              hx-swap="outerHTML"
-              hx-on::after-request="if(event.detail.successful) { setTimeout(() => location.reload(), 300); }">
+              hx-swap="outerHTML">
             
             {% csrf_token %}
             
             <div class="space-y-3">
+                {% if can_set_execution_status %}
                 <label class="block">
-                    <input type="radio" name="status" value="SCHEDULED" 
+                    <input type="radio" name="status" value="SCHEDULED"
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'SCHEDULED' %}checked{% endif %}>
                     <span class="text-sm text-text-primary">Scheduled</span>
                 </label>
                 <label class="block">
-                    <input type="radio" name="status" value="IN_PROGRESS" 
+                    <input type="radio" name="status" value="IN_PROGRESS"
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'IN_PROGRESS' %}checked{% endif %}>
                     <span class="text-sm text-text-primary">In Progress</span>
@@ -44,12 +44,15 @@
                            {% if schedule.status == 'COMPLETED' %}checked{% endif %}>
                     <span class="text-sm text-text-primary">Mark complete (pending owner confirmation)</span>
                 </label>
+                {% endif %}
+                {% if can_cancel_status %}
                 <label class="block">
-                    <input type="radio" name="status" value="CANCELLED" 
+                    <input type="radio" name="status" value="CANCELLED"
                            class="mr-2" style="accent-color: var(--color-primary);"
                            {% if schedule.status == 'CANCELLED' %}checked{% endif %}>
                     <span class="text-sm text-text-primary">Cancelled</span>
                 </label>
+                {% endif %}
             </div>
             
             <div class="mt-4">

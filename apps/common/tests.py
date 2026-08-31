@@ -1,9 +1,43 @@
-from django.test import TestCase
+from django.test import TestCase, RequestFactory
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from apps.common.models import Category, Tag, Notification, PushSubscription
+from apps.common.utils import resolve_sort
 
 User = get_user_model()
+
+
+class ResolveSortTests(TestCase):
+    """apps.common.utils.resolve_sort — the shared whitelist-based sort
+    param resolver used by every list view's 'Sort by' dropdown."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.options = {
+            'name': (('name',), 'Name (A-Z)'),
+            '-updated_at': (('-updated_at',), 'Recently Updated'),
+        }
+
+    def test_valid_key_is_honored(self):
+        request = self.factory.get('/', {'sort': '-updated_at'})
+        order_args, active_key, display_options = resolve_sort(request, self.options, 'name')
+        self.assertEqual(order_args, ('-updated_at',))
+        self.assertEqual(active_key, '-updated_at')
+        self.assertEqual(display_options, [('name', 'Name (A-Z)'), ('-updated_at', 'Recently Updated')])
+
+    def test_missing_key_falls_back_to_default(self):
+        request = self.factory.get('/')
+        order_args, active_key, _ = resolve_sort(request, self.options, 'name')
+        self.assertEqual(active_key, 'name')
+        self.assertEqual(order_args, ('name',))
+
+    def test_unrecognized_key_falls_back_to_default_not_passed_through(self):
+        # Whitelist enforcement: an arbitrary field name a user could try to
+        # inject via ?sort= must never reach order_by() directly.
+        request = self.factory.get('/', {'sort': 'password'})
+        order_args, active_key, _ = resolve_sort(request, self.options, '-updated_at')
+        self.assertEqual(active_key, '-updated_at')
+        self.assertEqual(order_args, ('-updated_at',))
 
 
 class CategoryModelTests(TestCase):

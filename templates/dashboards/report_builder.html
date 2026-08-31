@@ -3,7 +3,7 @@
 {% load lucide %}
 {% load badge_tags %}
 
-{% block dashboard_title %}{{ config.label }} Report{% endblock %}
+{% block dashboard_title %}{% if asset_history_facets %}Asset History{% else %}{{ config.label }} Report{% endif %}{% endblock %}
 {% block page_title_area %}{% endblock %}
 {% block role_label %}{{ request.user.get_role_display }}{% endblock %}
 {% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
@@ -15,6 +15,14 @@
 {% block dashboard_content %}
 <div class="w-full space-y-6">
 
+    {% url 'dashboard' as dash_url %}
+    {% url 'tickets:report_hub' as reports_hub_url %}
+    {% if asset_history_facets %}
+    {% breadcrumbs "Dashboard" dash_url "Reports" reports_hub_url "Asset History" %}
+    {% else %}
+    {% breadcrumbs "Dashboard" dash_url "Reports" reports_hub_url config.label %}
+    {% endif %}
+
     {# Header #}
     <div class="flex items-start justify-between gap-3 flex-wrap">
         <div class="flex items-start gap-3">
@@ -22,15 +30,39 @@
                 {% lucide config.icon size=20 %}
             </div>
             <div>
-                <h2 class="text-base font-semibold text-text-primary">{{ config.label }}</h2>
+                <h2 class="text-base font-semibold text-text-primary">{% if asset_history_facets %}Asset History{% else %}{{ config.label }}{% endif %}</h2>
                 <p class="text-xs text-text-secondary mt-0.5" id="reportRecordCount">{{ total_count }} record{{ total_count|pluralize }} match your filters</p>
             </div>
         </div>
         <div class="flex flex-wrap gap-2">
             {% url 'tickets:export_report' report_type=report_type as report_export_url %}
-            {% include "components/export_menu.html" with menu_id="report" export_url=report_export_url extra_qs=querystring formats="csv:CSV:file-spreadsheet,excel:Excel:file-spreadsheet,json:JSON:file-code,pdf:PDF:file-type,docx:Word:file-down" button_label="Export" %}
+            {# Assets export drops CSV — a flat-text format can't carry the #}
+            {# branded letterhead (logo/title/control number) every other  #}
+            {# asset export format now shares, so it's excluded there.     #}
+            {% if report_type == 'assets' %}
+            {% include "components/export_menu.html" with menu_id="report" export_url=report_export_url extra_qs=querystring formats="excel:Excel:file-spreadsheet,json:JSON:file-code,pdf:PDF:file-type,docx:Word:file-down" button_label="Export" column_picker_columns=config.columns column_picker_key=report_type column_picker_descriptions=config.column_help %}
+            {% else %}
+            {% include "components/export_menu.html" with menu_id="report" export_url=report_export_url extra_qs=querystring formats="csv:CSV:file-spreadsheet,excel:Excel:file-spreadsheet,json:JSON:file-code,pdf:PDF:file-type,docx:Word:file-down" button_label="Export" column_picker_columns=config.columns column_picker_key=report_type column_picker_descriptions=config.column_help %}
+            {% endif %}
         </div>
     </div>
+
+    {# Asset History facet tabs — Asset Activity Logs / Asset Checkout       #}
+    {# History / Asset Maintenance History are three separate ReportTypes   #}
+    {# (different columns/filters/exports each) but read as one "what       #}
+    {# happened with this asset" question, so the Reports Hub links here as #}
+    {# a single card and this strip switches between the three facets.      #}
+    {% if asset_history_facets %}
+    <div class="flex gap-1 border-b -mb-2" style="border-color: var(--color-border);">
+        {% for facet_slug, facet_label, facet_icon in asset_history_facets %}
+        <a href="{% url 'tickets:report_builder' report_type=facet_slug %}"
+           class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition"
+           style="{% if report_type == facet_slug %}border-color: var(--color-primary); color: var(--color-primary);{% else %}border-color: transparent; color: var(--color-text-secondary);{% endif %}">
+            {% lucide facet_icon size=14 %} {{ facet_label }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     {# Filter Panel #}
     <div class="dashboard-card p-5">
@@ -70,6 +102,11 @@
                 </div>
                 {% endfor %}
 
+                <div>
+                    <label class="block text-xs font-medium mb-1 text-text-secondary">Sort</label>
+                    {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort %}
+                </div>
+
                 {# Clears every filter on this page (not just dates) — kept separate #}
                 {# from the date range component's own Reset, which only clears dates. #}
                 <div class="flex items-center gap-1.5 pb-0.5">
@@ -84,6 +121,16 @@
         <div id="reportPreviewContainer">
             {% include "partials/report_preview_table.html" %}
         </div>
+    </div>
+</div>
+
+{# Record detail modal — used for report types with no bespoke "paper #}
+{# form" detail template (see partials/report_record_modal.html); the #}
+{# five form-styled ones still navigate to their own full page. #}
+<div id="reportRecordModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeReportRecordModal()">
+    <div id="reportRecordModalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
     </div>
 </div>
 {% endblock %}
@@ -103,6 +150,34 @@
 
     function clearReportFilters() {
         window.location.href = window.location.pathname;
+    }
+
+    // Record detail modal (see partials/report_record_modal.html) — swaps
+    // the fetched partial into #reportRecordModalContainer and shows the
+    // overlay, rather than navigating to a whole new page for what's just
+    // a handful of key-value fields.
+    function openReportRecordModal(url) {
+        const overlay = document.getElementById('reportRecordModalOverlay');
+        const container = document.getElementById('reportRecordModalContainer');
+        if (!overlay || !container) return;
+
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+
+        htmx.ajax('GET', url, {
+            target: '#reportRecordModalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load record. Please try again.</div>';
+            }
+        });
+    }
+
+    function closeReportRecordModal() {
+        const overlay = document.getElementById('reportRecordModalOverlay');
+        const container = document.getElementById('reportRecordModalContainer');
+        if (overlay) overlay.classList.add('hidden');
+        if (container) container.innerHTML = '';
     }
 
     // Bulk row selection now lives in the shared Alpine `bulkSelect()`

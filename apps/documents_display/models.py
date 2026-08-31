@@ -7,6 +7,8 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.validators import FileExtensionValidator
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 from django.utils.text import slugify
 from apps.common.storage import raw_file_storage
@@ -307,6 +309,10 @@ class DocumentShare(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     accepted_at = models.DateTimeField(null=True, blank=True, help_text="First time the recipient opened the emailed link")
+    expiry_reminder_sent = models.BooleanField(
+        default=False,
+        help_text="Set once send_share_expiry_reminders has notified the sharer this grant is about to expire."
+    )
 
     class Meta:
         constraints = [
@@ -356,6 +362,58 @@ class DocumentShare(models.Model):
     def revoke(self):
         self.revoked_at = timezone.now()
         self.save(update_fields=['revoked_at'])
+
+
+class ShareAuditLog(models.Model):
+    """Detailed event trail for a single DocumentShare or FolderShare - one
+    row per notable stage (created, emailed, opened, viewed, downloaded,
+    revoked, expiry-reminder-sent), rather than just the single
+    `accepted_at` timestamp those models track. A generic FK lets both
+    share types log to one table instead of duplicating it."""
+
+    class Event(models.TextChoices):
+        CREATED = 'CREATED', 'Created'
+        EMAIL_SENT = 'EMAIL_SENT', 'Email sent'
+        EMAIL_FAILED = 'EMAIL_FAILED', 'Email failed'
+        OPENED = 'OPENED', 'Link opened'
+        VIEWED = 'VIEWED', 'File viewed'
+        DOWNLOADED = 'DOWNLOADED', 'File downloaded'
+        REVOKED = 'REVOKED', 'Revoked'
+        EXPIRY_REMINDER_SENT = 'EXPIRY_REMINDER_SENT', 'Expiry reminder sent'
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    share = GenericForeignKey('content_type', 'object_id')
+
+    event = models.CharField(max_length=30, choices=Event.choices)
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Who triggered this event, if a logged-in user did (blank for token-based external actions)."
+    )
+    detail = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['content_type', 'object_id', '-created_at'])]
+
+    def __str__(self):
+        return f"{self.get_event_display()} - {self.share}"
+
+
+def log_share_event(share, event, actor=None, detail=''):
+    """Append one ShareAuditLog row for `share` (a DocumentShare or
+    FolderShare instance)."""
+    ShareAuditLog.objects.create(
+        content_type=ContentType.objects.get_for_model(share),
+        object_id=share.pk,
+        event=event,
+        actor=actor,
+        detail=detail,
+    )
 
 
 class DisplayVersion(models.Model):
@@ -450,6 +508,10 @@ class FolderShare(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     revoked_at = models.DateTimeField(null=True, blank=True)
     accepted_at = models.DateTimeField(null=True, blank=True, help_text="First time the recipient opened the emailed link")
+    expiry_reminder_sent = models.BooleanField(
+        default=False,
+        help_text="Set once send_share_expiry_reminders has notified the sharer this grant is about to expire."
+    )
 
     class Meta:
         constraints = [

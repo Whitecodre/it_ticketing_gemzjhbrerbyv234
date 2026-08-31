@@ -1,0 +1,79 @@
+{% load lucide %}
+{# ================================================================ #}
+{# ASSET INVENTORY KPI STRIP — shared by the Admin/Superadmin        #}
+{# dashboard and the asset inventory page, backed by the same        #}
+{# apps.tickets.views.get_asset_kpis() counts (always global/         #}
+{# unfiltered) so the two never show different numbers.               #}
+{# Pass show_heading=True on the dashboard (section title + total);   #}
+{# omit it on the inventory page, which already has its own header.  #}
+{# ================================================================ #}
+{% if show_heading %}
+<div class="flex items-center gap-2 mb-3">
+    {% lucide "hard-drive" size=16 class="text-primary" %}
+    <h2 class="text-sm font-semibold text-text-primary">Asset Inventory</h2>
+    <span class="text-xs text-text-secondary">({{ total_assets|default:0 }} total)</span>
+</div>
+{% endif %}
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="kpi-card border-l-4 border-success">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Active</p>
+            {% lucide "check-circle" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value text-success">{{ active_assets|default:0 }}</p>
+        <p class="kpi-trend up">In use</p>
+    </div>
+    <div class="kpi-card border-l-4 border-info">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">In Store</p>
+            {% lucide "package" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value text-info">{{ in_store_assets|default:0 }}</p>
+        <p class="kpi-trend up">Available</p>
+    </div>
+    <div class="kpi-card border-l-4 border-error">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Damaged</p>
+            {% lucide "alert-triangle" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value text-error">{{ damaged_assets|default:0 }}</p>
+        <p class="kpi-trend down">Needs review</p>
+    </div>
+    <div class="kpi-card border-l-4 border-warning">
+        <div class="flex items-center justify-between">
+            <p class="kpi-label">Warranty Expiring</p>
+            {% lucide "calendar-clock" size=14 class="text-text-secondary" %}
+        </div>
+        <p class="kpi-value text-warning">{{ expiring_warranty|default:0 }}</p>
+        <p class="kpi-trend down">Next 90 days</p>
+    </div>
+</div>
+
+{# Full asset status breakdown (small, below KPI cards) #}
+<div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-secondary">
+    <span class="font-medium text-text-primary">All statuses:</span>
+    <span class="flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-success"></span>
+        Active: {{ active_assets|default:0 }}
+    </span>
+    <span class="flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-info"></span>
+        In Store: {{ in_store_assets|default:0 }}
+    </span>
+    <span class="flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-warning"></span>
+        Maintenance: {{ maintenance_assets|default:0 }}
+    </span>
+    <span class="flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-error"></span>
+        Damaged: {{ damaged_assets|default:0 }}
+    </span>
+    <span class="flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-text-secondary"></span>
+        Scrapped: {{ scrapped_assets|default:0 }}
+    </span>
+    <span class="flex items-center gap-1">
+        <span class="inline-block w-2 h-2 rounded-full bg-primary"></span>
+        Recently Added: {{ recently_added|default:0 }}
+    </span>
+</div>

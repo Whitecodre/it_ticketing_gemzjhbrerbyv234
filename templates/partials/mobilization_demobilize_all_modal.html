@@ -17,12 +17,33 @@
         <ul class="space-y-1">
             {% for item in items %}
             <li class="flex items-center justify-between text-text-primary text-sm">
-                <span>{{ item.asset.name }} <span class="text-text-secondary font-mono text-xs">({{ item.asset.tracking_id }})</span></span>
+                <span>{{ item.asset.name }} <span class="text-text-secondary font-mono text-xs">({{ item.asset.tracking_id }})</span>{% if not item.return_requested_at %} <span class="text-error text-xs">— not reported</span>{% endif %}</span>
                 {% if item.asset.is_consumable %}<span class="text-text-secondary text-xs">{{ item.quantity }} unit(s)</span>{% endif %}
             </li>
             {% endfor %}
         </ul>
     </div>
+
+    {% if unreported_items %}
+    <div class="mb-4 p-3 rounded-lg border text-sm" style="background-color: color-mix(in srgb, var(--color-error) 6%, var(--color-surface)); border-color: var(--color-error);">
+        <p class="text-text-primary font-medium flex items-center gap-2">{% lucide "alert-triangle" size=14 class="text-error" %} Some items haven't been reported returned</p>
+        <p class="text-text-secondary text-xs mt-0.5">
+            Items marked "not reported" above have no self-reported return from the requester. The whole batch is blocked until every item has been reported — ask the requester to report them, or demobilize the already-reported ones individually.
+        </p>
+    </div>
+    <div class="flex justify-end pt-2 border-t border-border">
+        <button type="button" onclick="closeMobilizationModal()" class="btn-primary text-sm px-6 py-2 rounded-lg">Close</button>
+    </div>
+    {% else %}
+
+    {% if not has_ticket %}
+    <div class="mb-4 p-3 rounded-lg border text-sm" style="background-color: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface)); border-color: var(--color-warning);">
+        <p class="text-text-primary font-medium flex items-center gap-2">{% lucide "alert-triangle" size=14 class="text-warning" %} No linked ticket/requester</p>
+        <p class="text-text-secondary text-xs mt-0.5">
+            This mobilization has no linked ticket, so there's no requester to report a return. Type a reason below to demobilize it anyway.
+        </p>
+    </div>
+    {% endif %}
 
     <form method="post" action="{% url 'tickets:mobilization_demobilize_all' mobilization.pk %}" data-guard-submit>
         {% csrf_token %}
@@ -45,6 +66,15 @@
                       placeholder="Optional notes about the return..."></textarea>
         </div>
 
+        {% if not has_ticket %}
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1 text-text-primary">Reason <span class="text-error">*</span></label>
+            <textarea name="override_reason" rows="2" required
+                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      placeholder="Why is this being demobilized without a self-reported return?"></textarea>
+        </div>
+        {% endif %}
+
         <div class="flex justify-end gap-2 pt-2 border-t border-border">
             <button type="button" onclick="closeMobilizationModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
             <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
@@ -52,4 +82,5 @@
             </button>
         </div>
     </form>
+    {% endif %}
 </div>

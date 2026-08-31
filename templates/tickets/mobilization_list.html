@@ -23,12 +23,27 @@
         </div>
         <div class="flex flex-wrap gap-2">
             {% if active_role_name in 'ADMIN,SUPERADMIN' %}
-            <button onclick="openMobilizationCreateModal()"
-                    class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                {% lucide "package-plus" size=16 %} Mobilize Assets
-            </button>
+            <span class="text-xs text-text-secondary italic">Mobilizations are created from a mobilization-request ticket.</span>
             {% endif %}
         </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex items-center gap-2 mb-4 border-b border-border">
+        <a href="?tab=all" id="mobTabBtnAll" onclick="switchMobilizationTab('all')"
+           hx-get="{% url 'tickets:mobilizations' %}?tab=all"
+           hx-target="#mobilizationTableContainer" hx-swap="innerHTML" hx-push-url="true"
+           class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition"
+           style="{% if tab != 'needs_confirmation' %}border-color: var(--color-primary); color: var(--color-primary);{% else %}border-color: transparent; color: var(--color-text-secondary);{% endif %}">
+            All Mobilizations
+        </a>
+        <a href="?tab=needs_confirmation" id="mobTabBtnNeedsConfirmation" onclick="switchMobilizationTab('needs_confirmation')"
+           hx-get="{% url 'tickets:mobilizations' %}?tab=needs_confirmation"
+           hx-target="#mobilizationTableContainer" hx-swap="innerHTML" hx-push-url="true"
+           class="px-3 py-2 text-sm font-medium border-b-2 -mb-px transition"
+           style="{% if tab == 'needs_confirmation' %}border-color: var(--color-primary); color: var(--color-primary);{% else %}border-color: transparent; color: var(--color-text-secondary);{% endif %}">
+            Needs Confirmation{% if needs_confirmation_count %} <span class="ml-0.5">({{ needs_confirmation_count }})</span>{% endif %}
+        </a>
     </div>
 
     <!-- Filters -->
@@ -37,6 +52,8 @@
         hx-target="#mobilizationTableContainer"
         hx-swap="innerHTML"
         hx-trigger="change">
+
+        <input type="hidden" name="tab" id="mobilizationFilterTab" value="{{ tab }}">
 
         <select name="filter_job" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
             <option value="">All Jobs</option>
@@ -79,4 +96,23 @@
 {% block scripts %}
 {{ block.super }}
 {# Mobilize Assets uses the global openMobilizationCreateModal() (static/js/global.js) — too long for a modal/slideover, so it navigates to its own page (tickets/mobilization_create.html) instead. #}
+<script>
+// The tab buttons live outside #mobilizationTableContainer (the hx-swap target),
+// so the server-rendered active/inactive styling on them is frozen at whatever
+// `tab` was on the last full page load -- clicking a tab only updates the table
+// via htmx, not the tab bar itself. Toggle the active style here immediately
+// on click so it doesn't wait on a refresh, and keep the filter form's hidden
+// `tab` field in sync so a filter change afterward doesn't silently reset it.
+function switchMobilizationTab(tab) {
+    const allBtn = document.getElementById('mobTabBtnAll');
+    const needsBtn = document.getElementById('mobTabBtnNeedsConfirmation');
+    const isAll = tab === 'all';
+    [[allBtn, isAll], [needsBtn, !isAll]].forEach(function([btn, on]) {
+        btn.style.borderColor = on ? 'var(--color-primary)' : 'transparent';
+        btn.style.color = on ? 'var(--color-primary)' : 'var(--color-text-secondary)';
+    });
+    const tabField = document.getElementById('mobilizationFilterTab');
+    if (tabField) tabField.value = tab;
+}
+</script>
 {% endblock %}

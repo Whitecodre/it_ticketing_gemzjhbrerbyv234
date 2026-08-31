@@ -1,0 +1,123 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+
+{% block dashboard_title %}Pending Demobilizations{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-warning/10 text-warning">{% lucide "log-in" size=19 %}</span>
+            <div>
+                <h2 class="text-lg font-semibold text-text-primary">Pending Demobilizations</h2>
+                <p class="text-sm text-text-secondary">Requesters who've reported sending assets back — confirm only once you've physically received them.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        {% if items %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Job</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Reported By</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Notes</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Reported</th>
+                        <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                        <td class="py-3 px-4">
+                            <span class="text-text-primary">{{ item.asset.name }}</span>
+                            <div class="font-mono text-xs text-text-secondary">{{ item.asset.tracking_id }}</div>
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">
+                            <a href="{% url 'tickets:mobilization_detail' item.mobilization.pk %}" class="text-primary hover:underline">{{ item.mobilization.destination_display }}</a>
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">{{ item.return_requested_by.get_full_name|default:item.return_requested_by.email }}</td>
+                        <td class="py-3 px-4 text-text-secondary truncate max-w-xs">{{ item.return_requested_notes|default:"—" }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ item.return_requested_at|date:"M d, Y" }}</td>
+                        <td class="py-3 px-4 text-right">
+                            <button onclick="openDemobilizeModal({{ item.pk }})"
+                                    class="btn-success text-xs px-3 py-1.5 rounded inline-flex items-center gap-1">
+                                {% lucide "log-in" size=12 %} Confirm Demobilization
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if items.paginator.num_pages > 1 %}
+        <div class="flex items-center justify-between gap-3 px-4 py-3 border-t border-border text-xs text-text-secondary">
+            <span>Showing <strong>{{ items.start_index }}–{{ items.end_index }}</strong> of <strong>{{ items.paginator.count }}</strong></span>
+            <div class="flex items-center gap-2">
+                {% if items.has_previous %}
+                <a href="?page={{ items.previous_page_number }}" class="btn-ghost px-3 py-1.5 rounded">Previous</a>
+                {% endif %}
+                <span>Page {{ items.number }} of {{ items.paginator.num_pages }}</span>
+                {% if items.has_next %}
+                <a href="?page={{ items.next_page_number }}" class="btn-ghost px-3 py-1.5 rounded">Next</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="p-8 text-center">
+            <div class="flex justify-center mb-2">
+                {% lucide "check-circle" size=28 class="text-success" %}
+            </div>
+            <p class="text-sm font-medium text-text-primary">No pending demobilizations</p>
+            <p class="text-xs text-text-secondary">Nobody's currently waiting on a demobilization confirmation.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+     onclick="if(event.target===this) closeMobilizationModal()">
+    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+        <!-- Content loaded via HTMX -->
+    </div>
+</div>
+
+<script>
+    function openDemobilizeModal(itemPk) {
+        const url = `/tickets/mobilizations/items/${itemPk}/demobilize-modal/`;
+        const container = document.getElementById('modalContainer');
+        const overlay = document.getElementById('modalOverlay');
+        if (!container || !overlay) return;
+        container.innerHTML = '<div class="p-6 text-center text-text-secondary">Loading...</div>';
+        overlay.classList.remove('hidden');
+        htmx.ajax('GET', url, {
+            target: '#modalContainer',
+            swap: 'innerHTML',
+            onError: function() {
+                container.innerHTML = '<div class="p-6 text-center text-error">Failed to load form.</div>';
+            }
+        });
+    }
+
+    function closeMobilizationModal() {
+        const overlay = document.getElementById('modalOverlay');
+        const container = document.getElementById('modalContainer');
+        if (overlay) overlay.classList.add('hidden');
+        if (container) container.innerHTML = '';
+    }
+</script>
+{% endblock %}

@@ -58,12 +58,12 @@
     </span>
     <div class="pagination-controls">
         <button class="pagination-step{% if not tickets.has_previous %} is-disabled{% endif %}"
-                {% if tickets.has_previous %}hx-get="{% url 'tickets:resolved_service_requests' %}?page={{ tickets.previous_page_number }}&q={{ q }}&department={{ department_filter }}"
+                {% if tickets.has_previous %}hx-get="{% url 'tickets:resolved_service_requests' %}?page={{ tickets.previous_page_number }}&q={{ q }}&department={{ department_filter }}&sort={{ active_sort }}"
                 hx-target="#resolvedRequestsTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             {% lucide "chevron-left" size=14 %} Prev
         </button>
         <button class="pagination-step{% if not tickets.has_next %} is-disabled{% endif %}"
-                {% if tickets.has_next %}hx-get="{% url 'tickets:resolved_service_requests' %}?page={{ tickets.next_page_number }}&q={{ q }}&department={{ department_filter }}"
+                {% if tickets.has_next %}hx-get="{% url 'tickets:resolved_service_requests' %}?page={{ tickets.next_page_number }}&q={{ q }}&department={{ department_filter }}&sort={{ active_sort }}"
                 hx-target="#resolvedRequestsTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             Next {% lucide "chevron-right" size=14 %}
         </button>

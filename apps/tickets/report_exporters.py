@@ -32,8 +32,25 @@ PRIMARY_RGB = RGBColor(0x0D, 0x94, 0x88)
 META_GRAY_RGB = RGBColor(0x47, 0x55, 0x69)
 
 
-def _filename(base):
-    return f"{base}_{timezone.now().strftime('%Y%m%d_%H%M%S')}"
+def _filename(base, include_timestamp=True):
+    """Every exported file's name — the one place this is formatted, so
+    every export format/report type gets it for free. Shape:
+    {COMPANY-INITIALS}-{CONTEXT}-{DATE}-{TIME}, e.g.
+    "HDG-ASSETS-BY-PERSON-20260827-143022" — company_initials is
+    blank-safe (no prefix/leading hyphen if unset). `include_timestamp`
+    is dropped for single-record form exports (incident/service
+    request/maintenance/asset/procurement), since the record's own
+    number/tracking_id already makes the filename unique — e.g.
+    "HDG-INCIDENT-INC-2026-00001". List/report exports (CSV/Excel/PDF/
+    DOCX of a filtered set) keep the timestamp, since re-running the same
+    filter has no other unique identifier."""
+    from apps.accounts.models import ClientSettings
+    prefix = ClientSettings.objects.get_or_create(id=1)[0].company_initials.strip().upper()
+    context = base.upper().replace('_', '-').replace(' ', '-')
+    parts = [prefix, context]
+    if include_timestamp:
+        parts.append(timezone.now().strftime('%Y%m%d-%H%M%S'))
+    return '-'.join(part for part in parts if part)
 
 
 def _pdf_link_callback(uri, rel):
@@ -62,37 +79,169 @@ def _csv_safe(value):
     return value
 
 
-def export_csv(rows, columns, title, filename_base, **kwargs):
+def export_csv(rows, columns, title, filename_base, control_number='', **kwargs):
+    from apps.accounts.models import ClientSettings
+    client_settings = ClientSettings.objects.first()
+
     response = HttpResponse(content_type='text/csv')
     response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base)}.csv"'
-    writer = csv.DictWriter(response, fieldnames=columns)
-    writer.writeheader()
+    writer = csv.writer(response)
+    # Document header block, same info every other export format carries in
+    # its letterhead — company name, a plain-language title so the file's
+    # contents are obvious without opening it, and the org's document
+    # control number for audit/filing purposes.
+    writer.writerow([client_settings.company_name if client_settings else 'My Company'])
+    writer.writerow([f'{(title or "Report").upper()} - DATA EXPORT REPORT'])
+    if control_number:
+        writer.writerow([f'Control No: {control_number}'])
+    writer.writerow([f'Generated: {timezone.now().strftime("%B %d, %Y %H:%M")}'])
+    writer.writerow([f'Records: {len(rows)}'])
+    writer.writerow([])
+
+    # extrasaction='ignore': `rows` dicts always carry every field from
+    # row_from_obj(), but `columns` may be a caller-narrowed subset (the
+    # export_menu.html column picker) — DictWriter otherwise raises on the
+    # extra keys instead of just dropping them.
+    dict_writer = csv.DictWriter(response, fieldnames=columns, extrasaction='ignore')
+    dict_writer.writeheader()
     for row in rows:
-        writer.writerow({key: _csv_safe(value) for key, value in row.items()})
+        dict_writer.writerow({key: _csv_safe(value) for key, value in row.items()})
     return response
 
 
-def export_excel(rows, columns, title, filename_base, **kwargs):
+_EXCEL_FONT = 'Calibri'  # matches every DOCX export's body font (report_exporters._docx_*)
+_EXCEL_HEADER_FILL = PatternFill(start_color='0D9488', end_color='0D9488', fill_type='solid')
+_EXCEL_BANDED_FILL = PatternFill(start_color='F8FAFC', end_color='F8FAFC', fill_type='solid')
+_EXCEL_BORDER_COLOR = 'CBD5E1'
+
+
+def export_excel(rows, columns, title, filename_base, control_number='', **kwargs):
+    from openpyxl.styles import Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from apps.accounts.models import ClientSettings
+
     wb = Workbook()
     ws = wb.active
     ws.title = (title or 'Report')[:31]
+
+    thin = Side(style='thin', color=_EXCEL_BORDER_COLOR)
+    cell_border = Border(top=thin, bottom=thin, left=thin, right=thin)
+    last_col_letter = get_column_letter(len(columns))
+
+    # Document letterhead — a boxed 3-zone banner (logo | title | control
+    # number) over a meta line, matching the org's actual paper-form layout
+    # (logo box, centered title, highlighted control-number box) rather than
+    # a few bare unstyled text rows. Same visual language as the PDF/DOCX
+    # exports' own boxed letterheads (report_pdf.html, _docx_report_letterhead).
+    client_settings = ClientSettings.objects.first()
+    total_cols = len(columns)
+    logo_cols = max(1, min(3, total_cols // 6))
+    control_cols = max(1, min(3, total_cols // 6))
+    title_cols = max(1, total_cols - logo_cols - control_cols)
+    logo_end = get_column_letter(logo_cols)
+    title_start = get_column_letter(logo_cols + 1)
+    title_end = get_column_letter(logo_cols + title_cols)
+    control_start = get_column_letter(logo_cols + title_cols + 1)
+
+    black_thin = Side(style='thin', color='000000')
+    box_border = Border(top=black_thin, bottom=black_thin, left=black_thin, right=black_thin)
+    BANNER_ROWS = 3  # logo/title/control zone height, in sheet rows
+
+    for row in range(1, BANNER_ROWS + 1):
+        ws.row_dimensions[row].height = 22
+
+    ws.merge_cells(f'A1:{logo_end}{BANNER_ROWS}')
+    logo_cell = ws['A1']
+    logo_cell.border = box_border
+    logo_cell.alignment = Alignment(horizontal='center', vertical='center')
+    logo_source = _docx_image_source(client_settings.logo) if client_settings and client_settings.logo else None
+    if logo_source:
+        try:
+            from openpyxl.drawing.image import Image as XLImage
+            img = XLImage(logo_source)
+            img.height, img.width = 40, int(40 * img.width / img.height)
+            img.anchor = 'A1'
+            ws.add_image(img)
+        except Exception:
+            logo_source = None
+    if not logo_source:
+        logo_cell.value = client_settings.company_name if client_settings else 'My Company'
+        logo_cell.font = Font(name=_EXCEL_FONT, size=11, bold=True, color='0D9488')
+
+    ws.merge_cells(f'{title_start}1:{title_end}{BANNER_ROWS}')
+    title_cell = ws[f'{title_start}1']
+    title_cell.value = f'{(title or "Report").upper()}\nDATA EXPORT REPORT'
+    title_cell.font = Font(name=_EXCEL_FONT, size=15, bold=True)
+    title_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    title_cell.border = box_border
+    # Border every cell in the merged range too — Excel only draws the
+    # anchor cell's border by default, leaving the rest of a merged box
+    # looking unbordered.
+    for col_idx in range(logo_cols + 1, logo_cols + title_cols + 1):
+        ws.cell(row=1, column=col_idx).border = box_border
+        ws.cell(row=BANNER_ROWS, column=col_idx).border = box_border
+
+    ws.merge_cells(f'{control_start}1:{last_col_letter}{BANNER_ROWS}')
+    control_cell = ws[f'{control_start}1']
+    control_cell.value = f'CONTROL NO.\n{control_number}' if control_number else 'CONTROL NO.\n—'
+    control_cell.font = Font(name=_EXCEL_FONT, size=11, bold=True, color='FFFFFF')
+    control_cell.fill = _EXCEL_HEADER_FILL
+    control_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    control_cell.border = box_border
+    for col_idx in range(logo_cols + title_cols + 1, total_cols + 1):
+        ws.cell(row=1, column=col_idx).border = box_border
+        ws.cell(row=BANNER_ROWS, column=col_idx).border = box_border
+        ws.cell(row=1, column=col_idx).fill = _EXCEL_HEADER_FILL
+
+    meta_row = BANNER_ROWS + 1
+    ws.merge_cells(f'A{meta_row}:{last_col_letter}{meta_row}')
+    meta_cell = ws[f'A{meta_row}']
+    meta_cell.value = f'Generated: {timezone.now().strftime("%B %d, %Y %H:%M")}   |   Records: {len(rows)}'
+    meta_cell.font = Font(name=_EXCEL_FONT, size=9, color='475569')
+    meta_cell.alignment = Alignment(horizontal='left', vertical='center')
+
+    header_row = meta_row + 2  # one blank spacer row before the data table
+
+    # Header row: bold white-on-brand-teal, matching the PDF/DOCX table
+    # exports' own header styling (report_pdf.html, _docx_report_letterhead)
+    # so every export format reads as the same product.
     for col, header in enumerate(columns, 1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.font = Font(bold=True)
-        cell.fill = PatternFill(start_color="E2E8F0", end_color="E2E8F0", fill_type="solid")
-    for row_idx, row_data in enumerate(rows, 2):
+        cell = ws.cell(row=header_row, column=col, value=header)
+        cell.font = Font(name=_EXCEL_FONT, size=11, bold=True, color='FFFFFF')
+        cell.fill = _EXCEL_HEADER_FILL
+        cell.alignment = Alignment(horizontal='left', vertical='center')
+        cell.border = cell_border
+    ws.row_dimensions[header_row].height = 20
+
+    # Data rows: consistent font/size throughout, thin borders, and light
+    # banding on alternating rows — the same "professional inventory sheet"
+    # look a reader would expect, not a bare unstyled dump of values.
+    for offset, row_data in enumerate(rows):
+        row_idx = header_row + 1 + offset
+        banded = offset % 2 == 1
         for col_idx, key in enumerate(columns, 1):
-            ws.cell(row=row_idx, column=col_idx, value=_csv_safe(row_data.get(key, '')))
+            cell = ws.cell(row=row_idx, column=col_idx, value=_csv_safe(row_data.get(key, '')))
+            cell.font = Font(name=_EXCEL_FONT, size=10.5)
+            cell.alignment = Alignment(horizontal='left', vertical='center')
+            cell.border = cell_border
+            if banded:
+                cell.fill = _EXCEL_BANDED_FILL
 
     # Auto-size each column from its header/content length so the sheet is
     # readable without the user manually resizing every column first.
     for col_idx, header in enumerate(columns, 1):
-        letter = ws.cell(row=1, column=col_idx).column_letter
+        letter = get_column_letter(col_idx)
         max_len = len(str(header))
         for row_data in rows[:500]:
             value = row_data.get(header, '')
             max_len = max(max_len, len(str(value)) if value is not None else 0)
-        ws.column_dimensions[letter].width = min(max_len + 2, 50)
+        ws.column_dimensions[letter].width = min(max(max_len + 2, 10), 50)
+
+    # Frozen header row + AutoFilter dropdowns — standard spreadsheet
+    # conveniences for a table a reader will scroll and filter through.
+    ws.freeze_panes = f'A{header_row + 1}'
+    if rows:
+        ws.auto_filter.ref = f'A{header_row}:{last_col_letter}{header_row + len(rows)}'
 
     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base)}.xlsx"'
@@ -106,7 +255,7 @@ def export_json(rows, columns, title, filename_base, **kwargs):
     return response
 
 
-def export_pdf(rows, columns, title, filename_base, request=None, filter_summary='', **kwargs):
+def export_pdf(rows, columns, title, filename_base, request=None, filter_summary='', control_number='', **kwargs):
     html = render_to_string('reports/report_pdf.html', {
         'title': title,
         'columns': columns,
@@ -114,6 +263,7 @@ def export_pdf(rows, columns, title, filename_base, request=None, filter_summary
         'generated_at': timezone.now(),
         'filter_summary': filter_summary,
         'record_count': len(rows),
+        'control_number': control_number,
     }, request=request)
 
     pdf_bytes = _html_to_pdf(html, request, paginate=True)
@@ -127,7 +277,7 @@ def _render_form_pdf(template_name, context, request, filename_base):
     result = BytesIO()
     pisa.CreatePDF(src=html, dest=result, encoding='utf-8', link_callback=_pdf_link_callback)
     response = HttpResponse(result.getvalue(), content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base)}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base, include_timestamp=False)}.pdf"'
     return response
 
 
@@ -175,7 +325,7 @@ def _render_form_pdf_chromium(template_name, context, request, filename_base):
     html = render_to_string(template_name, {**context, 'generated_at': timezone.now()}, request=request)
     pdf_bytes = _html_to_pdf(html, request)
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
-    response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base)}.pdf"'
+    response['Content-Disposition'] = f'attachment; filename="{_filename(filename_base, include_timestamp=False)}.pdf"'
     return response
 
 
@@ -215,6 +365,56 @@ def _docx_field(doc, label, value):
     p = doc.add_paragraph()
     p.add_run(f'{label}: ').bold = True
     p.add_run(str(value) if value not in (None, '') else '—')
+
+
+def _docx_form_section(doc, title, fields, body_paragraph=None):
+    """Boxed section matching the paper-form PDFs' `.section-box`/`.cell`
+    styling: a shaded title bar followed by one bordered label|value row per
+    field, inside a single outer-bordered table — instead of a plain heading
+    with unboxed 'Label: value' paragraphs. `fields` is a list of
+    (label, value) pairs; a falsy value renders as '—'. Pass `body_paragraph`
+    (free text, e.g. a description) to render it as one full-width row below
+    the fields, still inside the same box, instead of a separate field row."""
+    rows = 1 + len(fields) + (1 if body_paragraph is not None else 0)
+    table = doc.add_table(rows=rows, cols=2)
+    table.autofit = False
+    table.columns[0].width = Inches(2.1)
+    table.columns[1].width = Inches(5.7)
+
+    title_cell = table.rows[0].cells[0].merge(table.rows[0].cells[1])
+    title_cell.text = ''
+    title_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
+    run = title_cell.paragraphs[0].add_run(title)
+    run.bold = True
+    run.font.size = Pt(10.5)
+    run.font.color.rgb = PRIMARY_RGB
+    _shade_cell(title_cell, 'F0FDFA')
+    _set_cell_border(title_cell, top={'sz': 16, 'val': 'single', 'color': '0F172A'},
+                      bottom={'sz': 8, 'val': 'single', 'color': '0F172A'},
+                      left={'sz': 16, 'val': 'single', 'color': '0F172A'},
+                      right={'sz': 16, 'val': 'single', 'color': '0F172A'})
+
+    row_edge = {'sz': 4, 'val': 'single', 'color': '94A3B8'}
+    outer_edge = {'sz': 16, 'val': 'single', 'color': '0F172A'}
+    for idx, (label, value) in enumerate(fields, start=1):
+        label_cell, value_cell = table.rows[idx].cells
+        label_cell.text = ''
+        label_cell.paragraphs[0].add_run(label).bold = True
+        value_cell.text = str(value) if value not in (None, '') else '—'
+        is_last = idx == len(fields) and body_paragraph is None
+        for cell in (label_cell, value_cell):
+            _set_cell_border(cell, top=row_edge,
+                              left=outer_edge if cell is label_cell else row_edge,
+                              right=outer_edge if cell is value_cell else row_edge,
+                              bottom=outer_edge if is_last else None)
+
+    if body_paragraph is not None:
+        body_cell = table.rows[-1].cells[0].merge(table.rows[-1].cells[1])
+        body_cell.text = str(body_paragraph) if body_paragraph else '—'
+        _set_cell_border(body_cell, top=row_edge, left=outer_edge, right=outer_edge, bottom=outer_edge)
+
+    doc.add_paragraph()
+    return table
 
 
 def _set_cell_border(cell, **edges):
@@ -314,24 +514,42 @@ def _docx_letterhead(doc, form_code, rev, form_date, title, page):
     doc.add_paragraph()
 
 
-def _docx_report_letterhead(doc, title, generated_at, filter_summary, record_count, usable_width_in=7.8):
+def _docx_report_letterhead(doc, title, generated_at, filter_summary, record_count, usable_width_in=7.8, control_number=''):
     """Boxed letterhead for the generic tabular exports (group/batch report
-    exports), matching the same visual language as `_docx_letterhead` but
-    with Generated/Filters/Records meta instead of a numbered paper form's
-    Page/Rev/Date. Spans `usable_width_in` so its border aligns with the
-    data table beneath it."""
+    exports), matching the same visual language as `_docx_letterhead` and
+    the Excel/PDF exports' own letterheads: logo | title | a distinctly
+    highlighted Control No. box | Generated/Filters/Records meta. Spans
+    `usable_width_in` so its border aligns with the data table beneath it."""
     from apps.accounts.models import ClientSettings
 
-    logo_w, title_w = 1.6, 3.6
-    meta_w = max(usable_width_in - logo_w - title_w, 2.0)
+    logo_w, title_w, control_w = 1.5, 3.2, 1.5
+    meta_w = max(usable_width_in - logo_w - title_w - control_w, 1.6)
 
-    table = doc.add_table(rows=1, cols=3)
+    table = doc.add_table(rows=1, cols=4)
     table.autofit = False
-    logo_cell, title_cell, meta_cell = table.rows[0].cells
-    for cell, width in zip((logo_cell, title_cell, meta_cell), (Inches(logo_w), Inches(title_w), Inches(meta_w))):
+    logo_cell, title_cell, control_cell, meta_cell = table.rows[0].cells
+    widths = (Inches(logo_w), Inches(title_w), Inches(control_w), Inches(meta_w))
+    for cell, width in zip((logo_cell, title_cell, control_cell, meta_cell), widths):
         cell.width = width
         cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
         _box_cell(cell)
+
+    # Control No. gets its own filled box — same brand-teal highlight the
+    # Excel/PDF letterheads use — rather than sitting as just another line
+    # in the meta cell, so it can't be missed at a glance.
+    _shade_cell(control_cell, '0D9488')
+    control_p = control_cell.paragraphs[0]
+    control_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    control_label_run = control_p.add_run('CONTROL NO.')
+    control_label_run.bold = True
+    control_label_run.font.size = Pt(7)
+    control_label_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    control_value_p = control_cell.add_paragraph()
+    control_value_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    control_value_run = control_value_p.add_run(control_number or '—')
+    control_value_run.bold = True
+    control_value_run.font.size = Pt(9)
+    control_value_run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
 
     client_settings = ClientSettings.objects.first()
     logo_p = logo_cell.paragraphs[0]
@@ -442,47 +660,50 @@ def export_incident_docx(ticket):
         run.font.color.rgb = PRIMARY_RGB
     doc.add_paragraph(ticket.title).runs[0].italic = True
 
-    _docx_heading(doc, 'Section 1 — Incident Details')
-    _docx_field(doc, 'Incident Reference No.', ticket.number)
-    _docx_field(doc, 'Date & Time of Incident', ticket.incident_datetime.strftime('%Y-%m-%d %H:%M') if ticket.incident_datetime else None)
-    _docx_field(doc, 'Incident Category', ctx['incident_category_display'])
-    _docx_field(doc, 'Severity', ticket.get_urgency_display())
-    _docx_field(doc, 'Business Impact', ticket.get_business_impact_display() if ticket.business_impact else None)
-    _docx_field(doc, 'How Discovered', ctx['how_discovered_display'])
-    _docx_field(doc, 'Location / IP / Hostname', ticket.location_hostname)
-    _docx_field(doc, 'System / Service / Asset Affected', ticket.location_hostname)
+    _docx_form_section(doc, 'Section 1 — Incident Details', [
+        ('Incident Reference No.', ticket.number),
+        ('Date & Time of Incident', ticket.incident_datetime.strftime('%Y-%m-%d %H:%M') if ticket.incident_datetime else None),
+        ('Incident Category', ctx['incident_category_display']),
+        ('Severity', ticket.get_urgency_display()),
+        ('Business Impact', ticket.get_business_impact_display() if ticket.business_impact else None),
+        ('How Discovered', ctx['how_discovered_display']),
+        ('Location / IP / Hostname', ticket.location_hostname),
+        ('System / Service / Asset Affected', ticket.location_hostname),
+    ])
 
-    _docx_heading(doc, 'Section 2 — Reporter Information')
-    _docx_field(doc, 'Reported By', ticket.requester.get_full_name() or ticket.requester.email)
-    _docx_field(doc, 'Department / Unit', ticket.requester.get_department_display())
-    _docx_field(doc, 'Job Title / Role', ticket.requester.position)
-    _docx_field(doc, 'Email', ticket.requester.email)
-    _docx_field(doc, 'Submitted', ticket.created_at.strftime('%Y-%m-%d %H:%M'))
+    _docx_form_section(doc, 'Section 2 — Reporter Information', [
+        ('Reported By', ticket.requester.get_full_name() or ticket.requester.email),
+        ('Department / Unit', ticket.requester.get_department_display()),
+        ('Job Title / Role', ticket.requester.position),
+        ('Email', ticket.requester.email),
+        ('Submitted', ticket.created_at.strftime('%Y-%m-%d %H:%M')),
+    ])
 
-    _docx_heading(doc, 'Section 3 — Detailed Incident Description')
-    doc.add_paragraph(ticket.description)
-    if ticket.immediate_actions:
-        _docx_field(doc, 'Immediate/Initial Actions', ticket.immediate_actions)
+    fields_3 = [('Immediate/Initial Actions', ticket.immediate_actions)] if ticket.immediate_actions else []
+    _docx_form_section(doc, 'Section 3 — Detailed Incident Description', fields_3, body_paragraph=ticket.description)
 
-    _docx_heading(doc, 'Section 5 — Root Cause Analysis')
-    _docx_field(doc, 'Root Cause Category', ', '.join(ctx['root_cause_category_display']) or None)
-    _docx_field(doc, 'Detailed Root Cause / Contributing Factors', ctx['resolution_root_cause'])
+    _docx_form_section(doc, 'Section 5 — Root Cause Analysis', [
+        ('Root Cause Category', ', '.join(ctx['root_cause_category_display']) or None),
+        ('Detailed Root Cause / Contributing Factors', ctx['resolution_root_cause']),
+    ])
 
     _docx_heading(doc, 'Section 4 — Systems / Users Affected')
     _docx_simple_table(doc, ['System / Application / Device', 'No. of Users / Devices Impacted', 'Nature of Impact'], [])
 
-    _docx_heading(doc, 'Section 6 — Resolution & Corrective Actions')
     resolved = ticket.status in ('RESOLVED', 'CLOSED')
-    _docx_field(doc, 'Resolution Status', 'Fully Resolved' if resolved else 'Pending / Escalated')
-    _docx_field(doc, 'Date & Time of Resolution', ticket.resolution_confirmed_at.strftime('%Y-%m-%d %H:%M') if ticket.resolution_confirmed_at else 'Pending')
-    _docx_field(doc, 'Steps Taken to Resolve the Incident', ctx['resolution_steps'])
+    _docx_form_section(doc, 'Section 6 — Resolution & Corrective Actions', [
+        ('Resolution Status', 'Fully Resolved' if resolved else 'Pending / Escalated'),
+        ('Date & Time of Resolution', ticket.resolution_confirmed_at.strftime('%Y-%m-%d %H:%M') if ticket.resolution_confirmed_at else 'Pending'),
+        ('Steps Taken to Resolve the Incident', ctx['resolution_steps']),
+    ])
 
     _docx_heading(doc, 'Section 7 — Recommendations & Preventive Actions')
     _docx_simple_table(doc, ['Recommended Action', 'Responsible Person', 'Target Date', 'Status'], [])
 
-    _docx_heading(doc, 'Section 8 — Communication & Distribution')
-    _docx_field(doc, 'Report Communicated To', 'IT Manager')
-    _docx_field(doc, 'Method of Communication', 'IT Helpdesk Ticket')
+    _docx_form_section(doc, 'Section 8 — Communication & Distribution', [
+        ('Report Communicated To', 'IT Manager'),
+        ('Method of Communication', 'IT Helpdesk Ticket'),
+    ])
 
     _docx_heading(doc, 'Section 9 — Supporting Documentation Attached')
     if ctx['attachments'] or ctx['image_attachments']:
@@ -509,7 +730,7 @@ def export_incident_docx(ticket):
     buf = BytesIO()
     doc.save(buf)
     response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    response['Content-Disposition'] = f'attachment; filename="{_filename("incident_" + ticket.number)}.docx"'
+    response['Content-Disposition'] = f'attachment; filename="{_filename("incident_" + ticket.number, include_timestamp=False)}.docx"'
     return response
 
 
@@ -534,26 +755,28 @@ def export_service_request_docx(ticket):
         run.font.color.rgb = PRIMARY_RGB
     doc.add_paragraph(ticket.title).runs[0].italic = True
 
-    _docx_field(doc, "Requester's Name", ctx['requester_name'])
-    _docx_field(doc, 'Date', ticket.created_at.strftime('%Y-%m-%d'))
-    _docx_field(doc, 'Department', ctx['requester_department'])
-    _docx_field(doc, 'Location', ctx['location']['display'] or 'Not available')
-    _docx_field(doc, 'Reported To', ctx['reported_to'] or 'Unassigned')
-    _docx_field(doc, 'Service Category', ctx['service_category_name'] or '—')
-    _docx_field(doc, 'Purpose', ctx['purpose'] or '—')
-    for label, value in ctx['dynamic_fields']:
-        _docx_field(doc, label, value)
+    request_fields = [
+        ("Requester's Name", ctx['requester_name']),
+        ('Date', ticket.created_at.strftime('%Y-%m-%d')),
+        ('Department', ctx['requester_department']),
+        ('Location', ctx['location']['display'] or 'Not available'),
+        ('Reported To', ctx['reported_to'] or 'Unassigned'),
+        ('Service Category', ctx['service_category_name'] or '—'),
+        ('Purpose', ctx['purpose'] or '—'),
+    ] + list(ctx['dynamic_fields'])
+    _docx_form_section(doc, 'Request Details', request_fields)
 
-    _docx_heading(doc, 'Description of Work Order Request')
-    doc.add_paragraph(ticket.description)
+    _docx_form_section(doc, 'Description of Work Order Request', [], body_paragraph=ticket.description)
 
     if ctx['vessels'] or ctx['job_number'] or ctx['dive_systems']:
+        vessel_fields = []
         if ctx['vessels']:
-            _docx_field(doc, 'Vessel(s)', ', '.join(v.name for v in ctx['vessels']))
+            vessel_fields.append(('Vessel(s)', ', '.join(v.name for v in ctx['vessels'])))
         if ctx['job_number']:
-            _docx_field(doc, 'Job Number', ctx['job_number'].number)
+            vessel_fields.append(('Job Number', ctx['job_number'].number))
         if ctx['dive_systems']:
-            _docx_field(doc, 'Dive System(s)', ', '.join(s.name for s in ctx['dive_systems']))
+            vessel_fields.append(('Dive System(s)', ', '.join(s.name for s in ctx['dive_systems'])))
+        _docx_form_section(doc, 'Marine / Job Details', vessel_fields)
 
     _docx_heading(doc, 'Confirmation & Sign-off')
     _docx_signoff_field(doc, "Requester's Confirmation", ctx['requester_signoff'])
@@ -572,12 +795,72 @@ def export_service_request_docx(ticket):
     buf = BytesIO()
     doc.save(buf)
     response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    response['Content-Disposition'] = f'attachment; filename="{_filename("service_request_" + ticket.number)}.docx"'
+    response['Content-Disposition'] = f'attachment; filename="{_filename("service_request_" + ticket.number, include_timestamp=False)}.docx"'
     return response
 
 
 def export_procurement_request_pdf(procurement_request, request):
-    context = {'procurement_request': procurement_request}
+    # The item's own ticket, or — if it's routed through a mobilization —
+    # the mobilization-request ticket that originally justified sending it
+    # out (legacy ad-hoc mobilizations have no ticket, and a standalone
+    # restock request has neither, in which case there's nothing to pull
+    # background/delivery context from).
+    source_ticket = procurement_request.ticket or (
+        procurement_request.mobilization.ticket if procurement_request.mobilization_id else None
+    )
+
+    if source_ticket:
+        origin_display = f'Service Request {source_ticket.number}'
+        contact = source_ticket.requester
+        destination_display = contact.get_department_display() or '—'
+    elif procurement_request.mobilization_id:
+        origin_display = f'Mobilization — {procurement_request.mobilization.destination_display}'
+        contact = procurement_request.mobilization.mobilized_by
+        destination_display = procurement_request.mobilization.destination_display
+    else:
+        origin_display = 'Stock replenishment (no linked request)'
+        contact = procurement_request.requested_by
+        destination_display = '—'
+
+    # Split like the incident report does: photos get embedded so a vendor
+    # reading the PDF standalone can actually see them — a login-gated
+    # download link is useless to someone with no account on this system.
+    # Anything else is just named, since it can't be inlined. Two photos
+    # share each appended page (rather than one-per-page) purely to keep
+    # the page count — and so the print cost — down.
+    all_attachments = list(source_ticket.attachments.all()) if source_ticket else []
+    image_attachments = [a for a in all_attachments if a.content_type.startswith('image/')]
+    other_attachments = [a for a in all_attachments if a not in image_attachments]
+    image_attachment_pairs = [image_attachments[i:i + 2] for i in range(0, len(image_attachments), 2)]
+
+    # Sections 3 (background) and 4 (notes) are each only shown when there's
+    # actually something to put in them — numbered on the fly so the ones
+    # that do appear stay in unbroken sequence instead of e.g. jumping from
+    # "Section 2" straight to "Section 5" when both are skipped.
+    next_section = 3
+    background_section = None
+    if source_ticket:
+        background_section = next_section
+        next_section += 1
+    notes_section = None
+    if procurement_request.notes:
+        notes_section = next_section
+        next_section += 1
+    documentation_section = next_section
+
+    context = {
+        'procurement_request': procurement_request,
+        'source_ticket': source_ticket,
+        'origin_display': origin_display,
+        'contact': contact,
+        'destination_display': destination_display,
+        'attachments': other_attachments,
+        'image_attachments': image_attachments,
+        'image_attachment_pairs': image_attachment_pairs,
+        'background_section': background_section,
+        'notes_section': notes_section,
+        'documentation_section': documentation_section,
+    }
     return _render_form_pdf_chromium(
         'reports/procurement_request_form_pdf.html', context, request,
         f'procurement_request_{procurement_request.pk}'
@@ -605,20 +888,21 @@ def export_maintenance_docx(schedule):
         run.font.color.rgb = PRIMARY_RGB
     doc.add_paragraph(schedule.title).runs[0].italic = True
 
-    _docx_heading(doc, 'Section 1 — Schedule Details')
-    _docx_field(doc, 'Target Department(s)', ctx['department_display'])
-    _docx_field(doc, 'Status', ctx['status_display'])
-    _docx_field(doc, 'Scheduled Date', schedule.scheduled_date.strftime('%Y-%m-%d'))
+    schedule_fields = [
+        ('Target Department(s)', ctx['department_display']),
+        ('Status', ctx['status_display']),
+        ('Scheduled Date', schedule.scheduled_date.strftime('%Y-%m-%d')),
+    ]
     if schedule.start_time:
-        _docx_field(doc, 'Time', f'{schedule.start_time.strftime("%H:%M")}' + (f' – {schedule.end_time.strftime("%H:%M")}' if schedule.end_time else ''))
-    _docx_field(doc, 'Facility / Location', schedule.facility_location)
+        schedule_fields.append(('Time', f'{schedule.start_time.strftime("%H:%M")}' + (f' – {schedule.end_time.strftime("%H:%M")}' if schedule.end_time else '')))
+    schedule_fields.append(('Facility / Location', schedule.facility_location))
     if ctx['target_assets']:
-        _docx_field(doc, 'Target Asset(s)', ', '.join(f'{a.name} ({a.tracking_id})' for a in ctx['target_assets']))
+        schedule_fields.append(('Target Asset(s)', ', '.join(f'{a.name} ({a.tracking_id})' for a in ctx['target_assets'])))
     if ctx['vendors']:
-        _docx_field(doc, 'Third-Party Vendor(s)', ', '.join(v.name for v in ctx['vendors']))
+        schedule_fields.append(('Third-Party Vendor(s)', ', '.join(v.name for v in ctx['vendors'])))
+    _docx_form_section(doc, 'Section 1 — Schedule Details', schedule_fields)
 
-    _docx_heading(doc, 'Section 2 — Description')
-    doc.add_paragraph(schedule.description or '—')
+    _docx_form_section(doc, 'Section 2 — Description', [], body_paragraph=schedule.description or '—')
 
     _docx_heading(doc, 'Section 3 — Assigned Personnel')
     if ctx['assignees']:
@@ -673,14 +957,6 @@ def export_maintenance_docx(schedule):
                     row_cells[1].text = c.get_status_display()
                     row_cells[2].text = c.confirmed_by.get_full_name() if c.confirmed_by else '—'
                     row_cells[3].text = c.confirmed_at.strftime('%Y-%m-%d %H:%M') if c.confirmed_at else '—'
-                    if c.status == 'DISPUTED' and c.dispute_reason:
-                        note_row = conf_table.add_row().cells
-                        note_row[0].merge(note_row[3])
-                        note_row[0].text = f'Dispute reason: {c.dispute_reason}'
-                    elif c.notes:
-                        note_row = conf_table.add_row().cells
-                        note_row[0].merge(note_row[3])
-                        note_row[0].text = f'Notes: {c.notes}'
                 doc.add_paragraph()
             else:
                 doc.add_paragraph('No target assets in this department.').runs[0].italic = True
@@ -690,7 +966,99 @@ def export_maintenance_docx(schedule):
     buf = BytesIO()
     doc.save(buf)
     response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-    response['Content-Disposition'] = f'attachment; filename="{_filename("maintenance_" + ctx["schedule_code"])}.docx"'
+    response['Content-Disposition'] = f'attachment; filename="{_filename("maintenance_" + ctx["schedule_code"], include_timestamp=False)}.docx"'
+    return response
+
+
+def export_asset_pdf(asset, request):
+    from .report_registry import asset_form_sections
+    context = asset_form_sections(asset)
+    return _render_form_pdf_chromium('reports/asset_form_pdf.html', context, request, f'asset_{asset.tracking_id}')
+
+
+def export_mobilization_audit_pdf(mobilization, request):
+    from .report_registry import mobilization_audit_sections
+    context = mobilization_audit_sections(mobilization)
+    return _render_form_pdf_chromium(
+        'reports/mobilization_audit_pdf.html', context, request, f'mobilization_{mobilization.pk}_audit'
+    )
+
+
+def export_asset_docx(asset):
+    from .report_registry import asset_form_sections
+    ctx = asset_form_sections(asset)
+
+    doc = Document()
+    doc.styles['Normal'].font.name = 'Calibri'
+    doc.styles['Normal'].font.size = Pt(10)
+
+    _docx_letterhead(doc, f'Asset {asset.tracking_id}', '1', timezone.now().strftime('%d %B %Y'), 'ASSET RECORD', page='1 of 1')
+
+    title = doc.add_heading(f'Asset Record — {asset.tracking_id}', level=1)
+    for run in title.runs:
+        run.font.color.rgb = PRIMARY_RGB
+    doc.add_paragraph(asset.name).runs[0].italic = True
+
+    _docx_form_section(doc, 'Section 1 — Identification', [
+        ('Tracking ID', asset.tracking_id),
+        ('Name', asset.name),
+        ('Category', asset.category.name if asset.category else None),
+        ('Serial Number', asset.serial_number),
+        ('Model', asset.model),
+        ('Manufacturer', asset.manufacturer),
+    ])
+
+    custody_fields = [
+        ('Status', asset.get_status_display()),
+        ('Condition', asset.get_condition_display()),
+        ('Location', asset.location.full_name() if asset.location else None),
+        ('Department', asset.department.name if asset.department else None),
+    ]
+    if asset.is_consumable:
+        custody_fields.append(('Quantity In Stock', asset.quantity_in_stock))
+    else:
+        custody_fields.append(('Assigned To', asset.assigned_to.get_full_name() if asset.assigned_to else None))
+        if asset.checked_out_to_id:
+            custody_fields.append(('Checked Out To', asset.checked_out_to.get_full_name()))
+            custody_fields.append(('Checked Out At', asset.checked_out_at.strftime('%Y-%m-%d %H:%M') if asset.checked_out_at else None))
+            custody_fields.append(('Expected Return', asset.expected_return_date.strftime('%Y-%m-%d') if asset.expected_return_date else None))
+    _docx_form_section(doc, 'Section 2 — Status & Custody', custody_fields)
+
+    lifecycle_fields = [
+        ('Purchase Date', asset.purchase_date.strftime('%Y-%m-%d') if asset.purchase_date else None),
+        ('Warranty Expiry', asset.warranty_expiry.strftime('%Y-%m-%d') if asset.warranty_expiry else None),
+    ]
+    if asset.warranty_provider:
+        lifecycle_fields.append(('Warranty Provider', asset.warranty_provider))
+    if asset.is_renewable:
+        lifecycle_fields.append(('Next Renewal Date', asset.next_renewal_date.strftime('%Y-%m-%d') if asset.next_renewal_date else None))
+        lifecycle_fields.append(('Renewal Vendor', asset.renewal_vendor.name if asset.renewal_vendor else None))
+        lifecycle_fields.append(('Auto-Renews', 'Yes' if asset.auto_renews else 'No'))
+    _docx_form_section(doc, 'Section 3 — Lifecycle', lifecycle_fields)
+
+    if ctx['notes_section']:
+        _docx_form_section(doc, f'Section {ctx["notes_section"]} — Notes', [], body_paragraph=asset.notes)
+
+    _docx_heading(doc, f'Section {ctx["activity_section"]} — Recent Activity')
+    _docx_simple_table(
+        doc,
+        ['Date', 'Action', 'By', 'Details'],
+        [
+            (
+                log.created_at.strftime('%Y-%m-%d %H:%M'),
+                log.get_action_display(),
+                log.actor.get_full_name() if log.actor else 'System',
+                log.get_details_display() or '—',
+            )
+            for log in ctx['recent_activity']
+        ],
+        placeholder='No activity recorded.',
+    )
+
+    buf = BytesIO()
+    doc.save(buf)
+    response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    response['Content-Disposition'] = f'attachment; filename="{_filename("asset_" + asset.tracking_id, include_timestamp=False)}.docx"'
     return response
 
 
@@ -720,7 +1088,7 @@ def _weighted_column_widths(columns, rows, usable_width_in, min_in=0.75, max_in=
     return [Inches(w * scale) for w in clipped]
 
 
-def export_docx(rows, columns, title, filename_base, filter_summary='', **kwargs):
+def export_docx(rows, columns, title, filename_base, filter_summary='', control_number='', **kwargs):
     doc = Document()
     normal = doc.styles['Normal']
     normal.font.name = 'Calibri'
@@ -735,7 +1103,7 @@ def export_docx(rows, columns, title, filename_base, filter_summary='', **kwargs
     usable_width_in = (section.page_width - section.left_margin - section.right_margin) / 914400
 
     generated_at = timezone.now()
-    _docx_report_letterhead(doc, title, generated_at, filter_summary, len(rows), usable_width_in)
+    _docx_report_letterhead(doc, title, generated_at, filter_summary, len(rows), usable_width_in, control_number=control_number)
 
     table = doc.add_table(rows=1, cols=max(len(columns), 1))
     table.style = 'Table Grid'
@@ -807,11 +1175,26 @@ def build_export_response(report_config, request, export_format, filter_summary=
     rows = [report_config.row_from_obj(obj) for obj in queryset]
     columns = report_config.columns
 
+    # Column picker (list exports only — see components/export_menu.html):
+    # `cols` is a comma-separated subset of report_config.columns chosen in
+    # the modal. Applies to every flat/table export format here (CSV, Excel,
+    # the generic PDF table, the generic DOCX table) — this function is only
+    # ever reached from the bundled list export endpoint, never a single-
+    # record letterhead form export, so there's no form layout to break.
+    # Re-filtered against the real column list (never trust the querystring
+    # as-is) and re-ordered to match it, so a tampered/garbled value just
+    # falls back to every column rather than erroring.
+    if export_format in ('csv', 'excel', 'pdf', 'docx') and request.GET.get('cols'):
+        requested = set(c.strip() for c in request.GET['cols'].split(','))
+        selected = [c for c in report_config.columns if c in requested]
+        if selected:
+            columns = selected
+
     exporter = EXPORTERS.get(export_format)
     if not exporter:
         return HttpResponse('Invalid format', status=400)
 
     return exporter(
         rows, columns, report_config.label, report_config.slug,
-        request=request, filter_summary=filter_summary,
+        request=request, filter_summary=filter_summary, control_number=report_config.control_number,
     )

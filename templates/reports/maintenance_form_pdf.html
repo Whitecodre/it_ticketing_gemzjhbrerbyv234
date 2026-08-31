@@ -1,18 +1,18 @@
-{% load static %}
+{% load static tailwind_tags %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 {% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
 <title>Maintenance Schedule Report — {{ schedule_code }}</title>
-<script src="https://cdn.tailwindcss.com"></script>
+{% tailwind_css %}
 <link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
 </head>
 <body>
 
 <div class="page">
 
-  <table class="w-full border-collapse border-2 border-black mb-6">
+  <table class="w-full border-collapse border-2 border-black mb-2">
     <tr>
       <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="4">
         {% if client_settings.logo_url %}
@@ -49,7 +49,7 @@
     <div class="cell grid grid-cols-2 gap-4">
       <div>
         <div class="cell-label mb-1">Schedule Reference No.:</div>
-        <div class="dotted-line w-full">{{ schedule_code }}</div>
+        <div class="w-full">{{ schedule_code }}</div>
       </div>
       <div>
         <span class="cell-label">Status:</span>
@@ -65,11 +65,11 @@
     <div class="cell grid grid-cols-2 gap-4">
       <div>
         <div class="cell-label mb-1">Target Department(s):</div>
-        <div class="mb-6">{{ department_display }}</div>
+        <div class="mb-2">{{ department_display }}</div>
       </div>
       <div>
         <div class="cell-label mb-1">Scheduled Date &amp; Time:</div>
-        <div class="mb-6">
+        <div class="mb-2">
           {{ schedule.scheduled_date|date:"d/m/Y" }}
           {% if schedule.start_time %}&nbsp;&nbsp;Time: {{ schedule.start_time|time:"H:i" }}{% if schedule.end_time %} – {{ schedule.end_time|time:"H:i" }}{% endif %}{% endif %}
         </div>
@@ -78,12 +78,12 @@
 
     <div class="cell">
       <div class="cell-label mb-1">Facility / Location:</div>
-      <div class="mb-6">{{ schedule.facility_location|default:"—" }}</div>
+      <div class="mb-2">{{ schedule.facility_location|default:"—" }}</div>
     </div>
 
     <div class="cell">
       <div class="cell-label mb-1">Target Asset(s):</div>
-      <div class="mb-6">
+      <div class="mb-2">
         {% for asset in target_assets %}{{ asset.name }} ({{ asset.tracking_id }}){% if not forloop.last %}, {% endif %}{% empty %}<span class="italic text-gray-400">&mdash;</span>{% endfor %}
       </div>
     </div>
@@ -113,7 +113,7 @@
 
   <!-- SECTION 2 — CHECKLIST -->
   <div class="section-box mb-4">
-    <div class="section-title">SECTION 2 &mdash; CHECKLIST ({{ checklist_progress }}% COMPLETE)</div>
+    <div class="section-title">SECTION 2 &mdash; CHECKLIST{% if checklist %} ({{ checklist_progress }}% COMPLETE){% else %} (NOT APPLICABLE){% endif %}</div>
     <div class="cell">
       {% for item, done in checklist %}
       <div class="mb-1"><span class="chk{% if done %} chk-filled{% endif %}"></span>{{ item }}</div>
@@ -124,70 +124,84 @@
   </div>
 
   <!-- SECTION 3 — TIMELINE -->
-  <div class="mb-1">
-    <div class="font-bold text-[13px] mb-1">SECTION 3 &mdash; TIMELINE</div>
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 3 &mdash; TIMELINE</div>
+    <table class="grid w-full border-collapse">
+      <tr>
+        <th class="text-left bg-white font-bold w-1/3">Stage</th>
+        <th class="text-left bg-white font-bold">Timestamp</th>
+      </tr>
+      <tr>
+        <td class="font-bold">Created</td>
+        <td>{{ schedule.created_at|date:"d/m/Y H:i" }}</td>
+      </tr>
+      <tr>
+        <td class="font-bold">Started</td>
+        <td>{% if started_at %}{{ started_at|date:"d/m/Y H:i" }}{% else %}<span class="italic text-gray-400">Not started</span>{% endif %}</td>
+      </tr>
+      <tr>
+        <td class="font-bold">Completed</td>
+        <td>{% if schedule.completed_at %}{{ schedule.completed_at|date:"d/m/Y H:i" }}{% else %}<span class="italic text-gray-400">Not completed</span>{% endif %}</td>
+      </tr>
+    </table>
   </div>
-  <table class="grid w-full border-collapse mb-6">
-    <tr>
-      <th class="text-left bg-white font-bold w-1/3">Stage</th>
-      <th class="text-left bg-white font-bold">Timestamp</th>
-    </tr>
-    <tr>
-      <td class="font-bold">Created</td>
-      <td>{{ schedule.created_at|date:"d/m/Y H:i" }}</td>
-    </tr>
-    <tr>
-      <td class="font-bold">Started</td>
-      <td>{% if started_at %}{{ started_at|date:"d/m/Y H:i" }}{% else %}<span class="italic text-gray-400">Not started</span>{% endif %}</td>
-    </tr>
-    <tr>
-      <td class="font-bold">Completed</td>
-      <td>{% if schedule.completed_at %}{{ schedule.completed_at|date:"d/m/Y H:i" }}{% else %}<span class="italic text-gray-400">Not completed</span>{% endif %}</td>
-    </tr>
-  </table>
 
   <!-- SECTION 4 — OWNER CONFIRMATION -->
-  <div class="section-break-before">
-  <div class="mb-2">
-    <div class="font-bold text-[13px] mb-1">
+  <div class="section-box mb-4">
+    <div class="section-title">
       {% if department_sections|length > 1 %}SECTION 4 &mdash; OWNER CONFIRMATION BY DEPARTMENT{% else %}SECTION 4 &mdash; OWNER CONFIRMATION{% endif %}
     </div>
+    <div class="cell">
+      {% if confirmation_state == 'NOT_APPLICABLE' %}
+        <span class="italic text-gray-400">Confirmation has not been requested yet — owners are notified once the schedule is marked complete.</span>
+      {% else %}
+        {% if confirmation_state == 'ALL_CONFIRMED' %}
+          <span style="display:inline-block; padding:3px 12px; border-radius:10px; font-size:12px; font-weight:bold; background:#dcfce7; color:#166534; border:1px solid #166534;">All Confirmed</span>
+        {% elif confirmation_state == 'HAS_DISPUTE' %}
+          <span style="display:inline-block; padding:3px 12px; border-radius:10px; font-size:12px; font-weight:bold; background:#fee2e2; color:#991b1b; border:1px solid #991b1b;">Disputed Item(s) — Needs Attention</span>
+        {% elif confirmation_state == 'ALL_PENDING' %}
+          <span style="display:inline-block; padding:3px 12px; border-radius:10px; font-size:12px; font-weight:bold; background:#f3f4f6; color:#374151; border:1px solid #6b7280;">Awaiting Confirmation</span>
+        {% else %}
+          <span style="display:inline-block; padding:3px 12px; border-radius:10px; font-size:12px; font-weight:bold; background:#fef9c3; color:#854d0e; border:1px solid #854d0e;">Partially Confirmed</span>
+        {% endif %}
+        <span class="text-xs ml-3">{{ confirmation_counts.confirmed }} Confirmed &nbsp;&middot;&nbsp; {{ confirmation_counts.pending }} Pending &nbsp;&middot;&nbsp; {{ confirmation_counts.disputed }} Disputed</span>
+      {% endif %}
+    </div>
   </div>
+
   {% for section in department_sections %}
-  {% if department_sections|length > 1 %}
-  <div class="mb-1">
-    <div class="font-bold text-[12px] mb-1">{{ section.department_display }}</div>
-  </div>
-  {% endif %}
-  {% if section.confirmations %}
-  <table class="grid w-full border-collapse mb-4">
-    <tr>
-      <th class="text-left bg-white font-bold">Asset</th>
-      <th class="text-left bg-white font-bold">Status</th>
-      <th class="text-left bg-white font-bold">Confirmed By</th>
-      <th class="text-left bg-white font-bold">Confirmed At</th>
-    </tr>
-    {% for c in section.confirmations %}
-    <tr>
-      <td>{{ c.asset.name }} ({{ c.asset.tracking_id }})</td>
-      <td>{{ c.get_status_display }}</td>
-      <td class="{% if not c.confirmed_by %}italic text-gray-400{% endif %}">{{ c.confirmed_by.get_full_name|default:"Pending" }}</td>
-      <td>{% if c.confirmed_at %}{{ c.confirmed_at|date:"d/m/Y H:i" }}{% else %}&nbsp;{% endif %}</td>
-    </tr>
-    {% if c.status == 'DISPUTED' and c.dispute_reason %}
-    <tr><td colspan="4" class="italic">Dispute reason: {{ c.dispute_reason }}</td></tr>
-    {% elif c.notes %}
-    <tr><td colspan="4" class="italic">Notes: {{ c.notes }}</td></tr>
+  <div class="section-box mb-4">
+    <div class="section-title flex items-center justify-between">
+      <span>{{ section.department_display }}</span>
+      {% if section.counts.total %}<span class="text-xs font-normal">{{ section.counts.confirmed }}/{{ section.counts.total }} confirmed</span>{% endif %}
+    </div>
+    {% if section.confirmations %}
+      {% for c in section.confirmations %}
+      <div class="cell">
+        <div class="flex items-center justify-between">
+          <span class="font-bold">{{ c.asset.name }} ({{ c.asset.tracking_id }})</span>
+          {% if c.status == 'CONFIRMED' %}
+            <span style="display:inline-block; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold; background:#dcfce7; color:#166534; border:1px solid #166534;">Confirmed</span>
+          {% elif c.status == 'DISPUTED' %}
+            <span style="display:inline-block; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold; background:#fee2e2; color:#991b1b; border:1px solid #991b1b;">Disputed</span>
+          {% else %}
+            <span style="display:inline-block; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold; background:#f3f4f6; color:#374151; border:1px solid #6b7280;">Pending</span>
+          {% endif %}
+        </div>
+        <div class="text-xs mt-1{% if not c.confirmed_by %} italic text-gray-400{% endif %}">
+          {% if c.confirmed_by %}Confirmed by {{ c.confirmed_by.get_full_name|default:c.confirmed_by.email }} on {{ c.confirmed_at|date:"d/m/Y H:i" }}{% else %}Awaiting owner confirmation.{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="cell italic text-gray-400">No target assets in this department.</div>
     {% endif %}
-    {% endfor %}
-  </table>
-  {% else %}
-  <div class="mb-4 italic text-gray-400">No target assets in this department.</div>
-  {% endif %}
-  {% empty %}
-  <div class="mb-4 italic text-gray-400">No target assets recorded for this schedule.</div>
-  {% endfor %}
   </div>
+  {% empty %}
+  <div class="section-box mb-4">
+    <div class="cell italic text-gray-400">No target assets recorded for this schedule.</div>
+  </div>
+  {% endfor %}
 
 </div>
 

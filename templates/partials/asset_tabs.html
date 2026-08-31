@@ -1,0 +1,24 @@
+{% load lucide %}
+{# ================================================================ #}
+{# EQUIPMENT / LICENSES & SUBSCRIPTIONS TAB SWITCHER — HTMX-swaps the  #}
+{# whole #assetPanel (filter bar + results), same pattern as every    #}
+{# other filter control on this page, just targeting a bigger region  #}
+{# since the two tabs have entirely different filter fields/columns.  #}
+{# ================================================================ #}
+<div class="flex items-center gap-1 mb-4 border-b" style="border-color: var(--color-border);">
+    <button type="button"
+            class="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style="{% if active_tab == 'equipment' %}color: var(--color-primary); border-color: var(--color-primary);{% else %}color: var(--color-text-secondary); border-color: transparent;{% endif %}"
+            hx-get="{% url 'tickets:assets' %}?filter_tab=equipment"
+            hx-target="#assetPanel" hx-swap="innerHTML" hx-push-url="true">
+        {% lucide "monitor" size=15 %} Equipment
+    </button>
+    <button type="button"
+            class="flex items-center gap-2 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors"
+            style="{% if active_tab == 'licenses' %}color: var(--color-primary); border-color: var(--color-primary);{% else %}color: var(--color-text-secondary); border-color: transparent;{% endif %}"
+            hx-get="{% url 'tickets:assets' %}?filter_tab=licenses"
+            hx-target="#assetPanel" hx-swap="innerHTML" hx-push-url="true">
+        {% lucide "receipt" size=15 %} Licenses &amp; Subscriptions
+        {% if license_total_count %}<span class="status-chip status-chip-neutral text-[0.65rem]">{{ license_total_count }}</span>{% endif %}
+    </button>
+</div>

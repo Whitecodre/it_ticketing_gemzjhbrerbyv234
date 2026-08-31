@@ -16,11 +16,15 @@
     {% url 'dashboard' as dash_url %}
     {% url 'tickets:reports' as reports_url %}
     {% breadcrumbs "Dashboard" dash_url "Reports" reports_url heading %}
-    <div class="flex items-center gap-3 mb-4">
+    <div class="flex items-center justify-between gap-3 mb-4">
         <div>
             <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">{{ heading }}</h2>
             <p class="text-xs text-text-secondary">{{ tickets.paginator.count }} ticket{{ tickets.paginator.count|pluralize }}</p>
         </div>
+        <form method="get">
+            <input type="hidden" name="kpi" value="{{ request.GET.kpi }}">
+            {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort auto_submit=True %}
+        </form>
     </div>
 
     <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
@@ -40,14 +44,22 @@
             Showing <strong>{{ tickets.start_index }}–{{ tickets.end_index }}</strong> of <strong>{{ tickets.paginator.count }}</strong> tickets
         </span>
         <div class="pagination-controls">
-            <a class="pagination-step{% if not tickets.has_previous %} is-disabled{% endif %}"
-               href="?{% if request.GET.kpi %}kpi={{ request.GET.kpi }}&{% endif %}page={{ tickets.previous_page_number }}">
+            {% if tickets.has_previous %}
+            <a class="pagination-step"
+               href="?{% if request.GET.kpi %}kpi={{ request.GET.kpi }}&{% endif %}page={{ tickets.previous_page_number }}&sort={{ active_sort }}">
                 {% lucide "chevron-left" size=14 %} Prev
             </a>
-            <a class="pagination-step{% if not tickets.has_next %} is-disabled{% endif %}"
-               href="?{% if request.GET.kpi %}kpi={{ request.GET.kpi }}&{% endif %}page={{ tickets.next_page_number }}">
+            {% else %}
+            <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
+            {% endif %}
+            {% if tickets.has_next %}
+            <a class="pagination-step"
+               href="?{% if request.GET.kpi %}kpi={{ request.GET.kpi }}&{% endif %}page={{ tickets.next_page_number }}&sort={{ active_sort }}">
                 Next {% lucide "chevron-right" size=14 %}
             </a>
+            {% else %}
+            <span class="pagination-step is-disabled">Next {% lucide "chevron-right" size=14 %}</span>
+            {% endif %}
         </div>
     </div>
     {% endif %}

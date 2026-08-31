@@ -1,44 +1,164 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remote Session Requested</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Remote Session Request</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body style="margin: 0; padding: 20px; background-color: #F8FAFC; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-    <div style="max-width: 480px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; padding: 32px 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-        
-        <div style="text-align: center; margin-bottom: 24px;">
-            <img src="https://demo-it-ticketing.onrender.com/static/img/gemz-logo.png" alt="Gemz Software" style="height: 40px; width: auto;">
-            <h1 style="font-size: 22px; font-weight: 600; color: #0D9488; margin: 12px 0 0 0;">Remote Session Request</h1>
-        </div>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        <p style="font-size: 16px; color: #1E293B; margin: 0 0 12px 0;">Hi <strong>{{ requester_name }}</strong>,</p>
-        
-        <p style="font-size: 15px; color: #334155; line-height: 1.5; margin: 0 0 12px 0;">
-            An agent has requested a remote session to help you with ticket <strong>{{ ticket_number }}</strong>.
-        </p>
-        
-        <p style="font-size: 15px; color: #334155; line-height: 1.5; margin: 0 0 24px 0;">
-            Click the button below to accept or reject the session request.
-        </p>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    An agent has requested a remote session for ticket {{ ticket_number }}. Accept or reject now.
+  </div>
 
-        <div style="text-align: center; margin: 0 0 24px 0;">
-            <a href="{{ accept_url }}" style="display: inline-block; background-color: #0D9488; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 9999px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-right: 12px;">Accept Session</a>
-            <a href="{{ reject_url }}" style="display: inline-block; background-color: #EF4444; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 9999px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">Reject</a>
-        </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
 
-        <p style="font-size: 13px; color: #64748B; text-align: center; margin: 0 0 20px 0;">
-            Or copy and paste this link:<br>
-            <a href="{{ accept_url }}" style="color: #0D9488; word-break: break-all;">{{ accept_url }}</a>
-        </p>
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
 
-        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 24px 0 16px 0;">
+          <!-- Top accent bar (teal) -->
+          <tr>
+            <td style="background-color:#0D9488; height:4px; line-height:4px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
 
-        <p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0;">
-            If you didn't request this, please ignore this email.<br>
-            &copy; 2025 Gemz Software
-        </p>
-    </div>
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="width:50%; vertical-align:middle;">
+                    {% if client_settings.logo_url %}
+                      <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+                    {% else %}
+                      <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+                    {% endif %}
+                  </td>
+                  <td style="width:50%; text-align:right; vertical-align:middle;">
+                    <span style="font-size:11px; color:#94A3B8; text-transform:uppercase; letter-spacing:0.05em;">Secure Session</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#0D9488; font-weight:600; margin:0 0 10px; text-transform:uppercase; letter-spacing:0.05em;">Remote assistance</p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:28px; font-weight:700; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                Request to connect
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Hi <strong>{{ requester_name }}</strong>,<br>
+                An agent has requested a remote session to help you with ticket <strong>{{ ticket_number }}</strong>.
+              </p>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 28px;">
+                Please accept the request to begin, or decline if you're not ready.
+              </p>
+
+              <!-- Ticket summary box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border-left:4px solid #0D9488; border-radius:6px; margin:16px 0 28px; width:100%;">
+                <tr>
+                  <td style="padding:14px 16px; font-size:14px; color:#0F172A; line-height:1.5;">
+                    <strong style="color:#0F172A;">Ticket:</strong> {{ ticket_number }}<br>
+                    <span style="color:#64748B;">{{ ticket_title|default:"Remote assistance requested" }}</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Buttons (Accept/Reject) - Premium styling -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px; width:100%;">
+                <tr>
+                  <!-- Accept button -->
+                  <td align="center" style="width:50%; padding-right:6px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+                      <tr>
+                        <td style="border-radius:8px; background-color:#0D9488; background:linear-gradient(135deg, #0D9488 0%, #0F766E 100%); border:1px solid #0D9488;">
+                          <!--[if mso]>
+                          <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ accept_url }}" style="height:46px;v-text-anchor:middle;width:100%;" fillcolor="#0D9488" stroke="false">
+                          <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">✓ Accept Session</center>
+                          </v:rect>
+                          <![endif]-->
+                          <!--[if !mso]><!-->
+                          <a href="{{ accept_url }}" style="display:block; padding:14px 20px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; border-radius:8px; text-align:center;">✓ Accept Session</a>
+                          <!--<![endif]-->
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <!-- Reject button -->
+                  <td align="center" style="width:50%; padding-left:6px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+                      <tr>
+                        <td style="border-radius:8px; background-color:#FFFFFF; border:1px solid #DC2626;">
+                          <!--[if mso]>
+                          <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ reject_url }}" style="height:46px;v-text-anchor:middle;width:100%;" fillcolor="#FFFFFF" stroke="false">
+                          <center style="color:#DC2626;font-family:sans-serif;font-size:15px;font-weight:600;">✗ Reject</center>
+                          </v:rect>
+                          <![endif]-->
+                          <!--[if !mso]><!-->
+                          <a href="{{ reject_url }}" style="display:block; padding:14px 20px; font-size:15px; font-weight:600; color:#DC2626; text-decoration:none; -webkit-text-size-adjust:none; border-radius:8px; text-align:center; border:1px solid #DC2626;">✗ Reject</a>
+                          <!--<![endif]-->
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Fallback link (accept) -->
+              <div style="border-top:1px solid #EEF0F2; margin:24px 0 20px;"></div>
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 8px; text-align:center;">
+                Or paste this link to accept:
+              </p>
+              <p style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size:12px; color:#0D9488; background-color:#F8FAFC; border:1px solid #EEF0F2; border-radius:6px; padding:10px 12px; margin:0 0 20px; word-break:break-all; text-align:center;">
+                {{ accept_url }}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px; text-align:center;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  This is an automated notification from {{ client_settings.company_name }}. Please do not reply to this email.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

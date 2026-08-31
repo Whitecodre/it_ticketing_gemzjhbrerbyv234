@@ -28,7 +28,9 @@
                 {% if ticket.status == 'ESCALATED' %}border-l-4 border-l-red-500{% endif %}"
                 style="border-color: var(--color-border);"
                 data-ticket-id="{{ ticket.pk }}"
-                data-conversation-url="{% url 'tickets:conversation' ticket.pk %}">
+                data-conversation-url="{% url 'tickets:conversation' ticket.pk %}"
+                data-slideover-url="{% url 'tickets:slideover' ticket.pk %}"
+                data-is-assigned="{{ ticket.assigned_to|yesno:'true,false' }}">
                 {# Only show checkbox if tickets are unassigned #}
                 {% if not hide_checkboxes %}
                 <td class="py-3 px-2" onclick="event.stopPropagation();">
@@ -441,6 +443,13 @@
             };
 
             if (claimBtn) claimBtn.style.display = activeData.isAssigned ? 'none' : 'flex';
+            // An unclaimed ticket has no owner, so replying here would move
+            // its status while it's still sitting in the unassigned queue —
+            // the backend already blocks this (agent_ticket_conversation /
+            // add_comment_conversation both 403 until the ticket is
+            // assigned), so hide the dead-end action instead of letting the
+            // agent hit that wall after navigating away.
+            if (conversationBtn) conversationBtn.style.display = activeData.isAssigned ? 'flex' : 'none';
             if (viewBtn) viewBtn.setAttribute('data-slideover-url', activeData.slideoverUrl || '');
         },
     };
@@ -474,7 +483,10 @@
     });
 
     // ================================================================
-    // ROW CLICK - navigate straight to the conversation page
+    // ROW CLICK - assigned tickets go straight to the conversation page;
+    // unassigned ones open the read-only details slideover instead, since
+    // the conversation page is a dead end for them (see conversationBtn
+    // visibility above — the backend rejects replies/opens until claimed).
     // ================================================================
     if (tableBody) {
         tableBody.addEventListener('click', function(e) {
@@ -482,8 +494,12 @@
             if (e.target.closest('a, button, input, label')) return;
             var row = e.target.closest('.ticket-row');
             if (!row || !tableBody.contains(row)) return;
-            var url = row.getAttribute('data-conversation-url');
-            if (url) window.location.href = url;
+            if (row.getAttribute('data-is-assigned') === 'true') {
+                var url = row.getAttribute('data-conversation-url');
+                if (url) window.location.href = url;
+            } else {
+                window.loadTicketSlideoverFromDropdown(row.getAttribute('data-slideover-url'));
+            }
         });
     }
 

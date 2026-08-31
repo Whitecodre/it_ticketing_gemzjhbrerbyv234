@@ -14,6 +14,12 @@
 //       initialSelectedId: '', initialNewText: '',  // single-create mode
 //       placeholder: 'Search vessels…',
 //   })"
+//
+// Optional group filter (multi mode): give options a `group` value
+// (e.g. a department code) and bind a <select> to `groupFilter` — see
+// templates/documents_display/document_share.html for an example. Options
+// with no `group` always match, so this is a no-op for callers that don't
+// use it.
 
 document.addEventListener('alpine:init', () => {
     Alpine.data('searchableSelect', (config) => ({
@@ -26,6 +32,7 @@ document.addEventListener('alpine:init', () => {
 
         // multi mode
         selected: (config.initialSelected || []).slice(),
+        groupFilter: '',
 
         // single-create mode
         selectedId: config.initialSelectedId || '',
@@ -47,6 +54,9 @@ document.addEventListener('alpine:init', () => {
             let list = this.options;
             if (this.mode === 'multi') {
                 list = list.filter((o) => !this.selected.includes(o.id));
+                if (this.groupFilter) {
+                    list = list.filter((o) => o.group === this.groupFilter);
+                }
             }
             if (!q) return list;
             return list.filter((o) => o.label.toLowerCase().includes(q));
@@ -72,6 +82,7 @@ document.addEventListener('alpine:init', () => {
                 this.selected = this.selected.concat([id]);
             }
             this.query = '';
+            this.open = false;
         },
 
         remove(id) {

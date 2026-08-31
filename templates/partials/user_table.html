@@ -1,4 +1,5 @@
 {% load lucide %}
+{% load badge_tags %}
 
 {% if users %}
 {# ================================================================ #}
@@ -20,7 +21,7 @@
                 <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 220px;">Roles</th>
                 <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 150px;">Department</th>
                 <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 110px;">Status</th>
-                <th class="sticky-col-th sticky-col-edge-left sticky right-0 z-10 text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs"
+                <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs"
                     style="width: 90px;">Actions</th>
             </tr>
         </thead>
@@ -52,7 +53,7 @@
                 <td class="py-3 px-4">
                     <div class="flex items-center gap-3">
                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-sm font-medium"
-                             style="background-color: var(--color-primary);">
+                             style="background-color: var(--color-primary-solid);">
                             {% if user.avatar %}
                                 <img src="{{ user.avatar.url }}" alt="{{ user.get_full_name }}" class="h-9 w-9 rounded-full object-cover">
                             {% else %}
@@ -61,9 +62,11 @@
                         </div>
                         <div class="min-w-0">
                             <div class="flex items-center gap-2">
-                                <span class="text-sm font-medium truncate max-w-[140px]" style="color: var(--color-text-primary);">
+                                <a href="{% url 'accounts:admin_user_detail' user.pk %}"
+                                   class="text-sm font-medium truncate max-w-[140px] hover:underline"
+                                   style="color: var(--color-text-primary);">
                                     {{ user.get_full_name|default:"—" }}
-                                </span>
+                                </a>
                                 {% if user.position %}
                                 <span class="text-[0.6rem] px-2 py-0.5 rounded-full bg-surface-secondary text-text-secondary border border-border truncate max-w-[70px]">
                                     {{ user.position }}
@@ -164,6 +167,7 @@
 </p>
 
 {# Pagination #}
+{% build_qs q=query role=role_filter department=department_filter sort=active_sort as pagination_qs %}
 {% if users.has_other_pages %}
 <div class="pagination-bar">
     <span class="pagination-summary">
@@ -171,7 +175,7 @@
     </span>
     <div class="pagination-controls">
         <button class="pagination-step{% if not users.has_previous %} is-disabled{% endif %}"
-                {% if users.has_previous %}hx-get="{% url 'accounts:admin_users' %}?page={{ users.previous_page_number }}"
+                {% if users.has_previous %}hx-get="{% url 'accounts:admin_users' %}?page={{ users.previous_page_number }}&{{ pagination_qs }}"
                 hx-target="#userTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             {% lucide "chevron-left" size=14 %} Prev
         </button>
@@ -181,13 +185,13 @@
                 <span class="pagination-number is-current">{{ page_num }}</span>
                 {% elif page_num > users.number|add:'-3' and page_num < users.number|add:'3' %}
                 <button class="pagination-number"
-                        hx-get="{% url 'accounts:admin_users' %}?page={{ page_num }}"
+                        hx-get="{% url 'accounts:admin_users' %}?page={{ page_num }}&{{ pagination_qs }}"
                         hx-target="#userTableContainer" hx-swap="innerHTML">{{ page_num }}</button>
                 {% endif %}
             {% endfor %}
         </div>
         <button class="pagination-step{% if not users.has_next %} is-disabled{% endif %}"
-                {% if users.has_next %}hx-get="{% url 'accounts:admin_users' %}?page={{ users.next_page_number }}"
+                {% if users.has_next %}hx-get="{% url 'accounts:admin_users' %}?page={{ users.next_page_number }}&{{ pagination_qs }}"
                 hx-target="#userTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             Next {% lucide "chevron-right" size=14 %}
         </button>
@@ -231,11 +235,29 @@
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    // Runs immediately (not gated behind DOMContentLoaded) — this partial,
+    // dropdown div included, gets HTMX-swapped on every search/filter/
+    // pagination/bulk-action refresh, and htmx re-executes this script tag
+    // each time. DOMContentLoaded only ever fires once for the whole page,
+    // so gating setup behind it meant every swap after the first left
+    // window.userActionBtnClick bound to the just-detached previous
+    // #globalUserDropdown node — the dropdown toggled but was invisible.
+    //
+    // window.createActionDropdown itself (static/js/global.js) is NOT
+    // guaranteed to exist yet the moment this runs, though — global.js is
+    // loaded near the end of base_dashboard.html, and this partial's inline
+    // script can execute (on first page load, and identically on every
+    // later htmx swap) before that blocking <script src> has finished
+    // *fetching*, even though the two appear in the right order in the
+    // HTML. A single setTimeout(fn, 0) isn't reliable either for the same
+    // reason — so this retries every 20ms until the helper is really there,
+    // same pattern as asset_table.html/agent_ticket_table.html's dropdowns.
+    (function() {
         const dropdown = document.getElementById('globalUserDropdown');
         let activeUserId = null;
         let activeUserName = '';
         let activeUserIsActive = false;
+        let actionDropdown = null;
 
         if (!dropdown) {
             console.error('globalUserDropdown not found!');
@@ -247,25 +269,29 @@
         const toggleLabel = toggleBtn.querySelector('.toggle-label');
         const passwordBtn = dropdown.querySelector('.dropdown-password');
 
-        // Shared toggle-to-close/positioning behavior (static/js/global.js) —
-        // the same helper the asset inventory table's Actions dropdown uses.
-        const actionDropdown = window.createActionDropdown(dropdown, {
-            align: 'right',
-            onOpen: function(btn) {
-                activeUserId = btn.dataset.userId;
-                const isActive = btn.dataset.isActive === 'true';
-                activeUserName = `${btn.dataset.firstName} ${btn.dataset.lastName}`.trim() || btn.dataset.email;
-                activeUserIsActive = isActive;
-                toggleLabel.textContent = isActive ? 'Deactivate' : 'Activate';
-            },
-        });
+        (function initUserActionDropdown() {
+            if (typeof window.createActionDropdown === 'function') {
+                actionDropdown = window.createActionDropdown(dropdown, {
+                    align: 'right',
+                    onOpen: function(btn) {
+                        activeUserId = btn.dataset.userId;
+                        const isActive = btn.dataset.isActive === 'true';
+                        activeUserName = `${btn.dataset.firstName} ${btn.dataset.lastName}`.trim() || btn.dataset.email;
+                        activeUserIsActive = isActive;
+                        toggleLabel.textContent = isActive ? 'Deactivate' : 'Activate';
+                    },
+                });
+            } else {
+                setTimeout(initUserActionDropdown, 20);
+            }
+        })();
 
         window.userActionBtnClick = function(btn) {
-            actionDropdown.toggle(btn);
+            if (actionDropdown) actionDropdown.toggle(btn);
         };
 
         function closeDropdown() {
-            actionDropdown.close();
+            if (actionDropdown) actionDropdown.close();
         }
 
         editBtn.addEventListener('click', function() {
@@ -290,5 +316,5 @@
             if (activeUserId) openPasswordModal(activeUserId);
             closeDropdown();
         });
-    });
+    })();
 </script>

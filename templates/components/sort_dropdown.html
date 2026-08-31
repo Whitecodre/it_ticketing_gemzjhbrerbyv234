@@ -1,0 +1,24 @@
+{# ================================================================ #}
+{# SORT DROPDOWN — a single "Sort by" <select>, parameterized by a    #}
+{# view-supplied whitelist of (key, label) options (see              #}
+{# apps.common.utils.resolve_sort, which builds `sort_options` /      #}
+{# `active_sort` together). Usage:                                    #}
+{#                                                                     #}
+{# {% include "components/sort_dropdown.html" with                    #}
+{#    sort_options=sort_options active_sort=active_sort %}             #}
+{#                                                                     #}
+{# Dropped inside an existing HTMX filter <form> (e.g.                #}
+{# asset_equipment_panel.html) it needs no extra wiring — those forms  #}
+{# already auto-submit on `change` from any input inside them. For a   #}
+{# plain (non-HTMX) GET form, pass `auto_submit=True` to add           #}
+{# onchange="this.form.submit()" — don't combine the two, since an     #}
+{# HTMX form's own change-triggered request would double up with a     #}
+{# manual form.submit() call.                                          #}
+{# ================================================================ #}
+<select name="sort" aria-label="Sort by"
+        {% if auto_submit %}onchange="this.form.submit()"{% endif %}
+        class="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+    {% for key, label in sort_options %}
+    <option value="{{ key }}" {% if key == active_sort %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+</select>

@@ -102,10 +102,9 @@ class ServiceCategory(models.Model):
     field_group = models.CharField(max_length=20, choices=FieldGroup.choices, default=FieldGroup.GENERAL)
     icon = models.CharField(max_length=40, blank=True, help_text="lucide icon name")
     is_active = models.BooleanField(default=True)
-    order = models.PositiveSmallIntegerField(default=0)
 
     class Meta:
-        ordering = ['order', 'name']
+        ordering = ['name']
         verbose_name_plural = 'Service categories'
 
     def __str__(self):
@@ -148,9 +147,14 @@ class Ticket(models.Model):
         response_due = self.response_due_at or (
             self.created_at + datetime.timedelta(minutes=sla.response_minutes)
         )
-        total_secs = (response_due - self.created_at).total_seconds()
-        elapsed_secs = (now - self.created_at).total_seconds()
-        pct = min(100, (elapsed_secs / total_secs) * 100) if total_secs > 0 else 100
+        # Elapsed is measured in business-time minutes against the SLA's
+        # own budget (sla.response_minutes), not a naive wall-clock ratio
+        # against (due_at - created_at) — when a calendar is attached,
+        # that window can span a weekend/holiday that wall-clock elapsed
+        # time would wrongly count as "progress," making the 75% warning
+        # threshold fire far too late (or not until right at the breach).
+        elapsed_minutes = business_minutes_elapsed(self.created_at, now, sla.calendar)
+        pct = min(100, (elapsed_minutes / sla.response_minutes) * 100) if sla.response_minutes > 0 else 100
         result['response_pct'] = round(pct, 1)
         if now >= response_due:
             result['response'] = 'breached'
@@ -161,9 +165,7 @@ class Ticket(models.Model):
         resolution_due = self.resolution_due_at or (
             self.created_at + datetime.timedelta(minutes=sla.resolution_minutes)
         )
-        total_secs = (resolution_due - self.created_at).total_seconds()
-        elapsed_secs = (now - self.created_at).total_seconds()
-        pct = min(100, (elapsed_secs / total_secs) * 100) if total_secs > 0 else 100
+        pct = min(100, (elapsed_minutes / sla.resolution_minutes) * 100) if sla.resolution_minutes > 0 else 100
         result['resolution_pct'] = round(pct, 1)
         if now >= resolution_due:
             result['resolution'] = 'breached'
@@ -442,11 +444,53 @@ class TicketComment(models.Model):
         PUBLIC = 'PUBLIC', 'Public'
         INTERNAL = 'INTERNAL', 'Internal'
 
+    class MobilizationEvent(models.TextChoices):
+        CREATED = 'CREATED', 'Created'
+        VENDOR_ITEM_ARRIVED = 'VENDOR_ITEM_ARRIVED', 'Vendor Item Arrived'
+        VENDOR_ITEM_CANCELLED = 'VENDOR_ITEM_CANCELLED', 'Vendor Item Cancelled'
+
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='comments')
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
-    body = models.TextField()
+    body = models.TextField(blank=True)
     visibility = models.CharField(max_length=10, choices=Visibility.choices, default=Visibility.PUBLIC)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    # Marks the system comment _mark_asset_ticket_fulfilled posts when an
+    # asset request (single-asset or mobilization) is fulfilled and the
+    # requester needs to confirm receipt. The conversation timeline renders
+    # this one comment as an interactive card (with a Confirm Receipt
+    # trigger) instead of a plain bubble — the single place in the thread
+    # the requester actually sees and acts on the request, rather than a
+    # side panel or notification-only link.
+    is_receipt_confirmation_prompt = models.BooleanField(default=False)
+
+    # Per-line-item fulfillment narrative for a mobilization: one CREATED
+    # comment itemizing every line (stock picks + vendor orders) as of
+    # creation, then a VENDOR_ITEM_ARRIVED/CANCELLED comment each time a
+    # vendor line individually resolves — read together as one coherent
+    # story instead of a single mobilization-wide "mobilized" vs "ordered"
+    # binary. Each comment's `body` is a frozen snapshot rendered at write
+    # time (MobilizationItem has no created_at, so a later render can't
+    # tell which items existed at creation vs arrived afterward) — these
+    # comments are never edited in place, only ever created, matching how
+    # every other system comment in this app already works.
+    mobilization = models.ForeignKey(
+        'Mobilization', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ticket_comments'
+    )
+    mobilization_event = models.CharField(max_length=25, choices=MobilizationEvent.choices, blank=True)
+
+    # Display-only: the app composed this comment's text as a side effect
+    # of a workflow action (reassignment, remote session lifecycle, vendor
+    # receipt, etc.) rather than a human typing it — the conversation
+    # timeline renders it as a "System" card instead of attributing it to
+    # whichever admin/agent happened to trigger the action. `author` still
+    # records the real actor for audit purposes; only the rendered byline
+    # changes. `system_icon` is an optional lucide icon name for a
+    # topic-appropriate card icon (e.g. 'monitor' for remote-session
+    # events) — blank falls back to a generic icon in the template.
+    is_system_generated = models.BooleanField(default=False)
+    system_icon = models.CharField(max_length=30, blank=True)
 
     class Meta:
         ordering = ['created_at']
@@ -490,7 +534,24 @@ class TicketActivityLog(models.Model):
 
     def __str__(self):
         return f"{self.action} on {self.ticket} by {self.actor}"
-    
+
+    def get_action_display(self):
+        return self.action.replace('_', ' ').capitalize()
+
+    def get_details_display(self):
+        """Human-readable rendering of `details` for activity feeds — the
+        raw JSON has different keys per action, so this renders whatever
+        keys are present as "Label: value" pairs instead of the dict repr."""
+        if not self.details:
+            return ''
+        parts = []
+        for key, value in self.details.items():
+            if value in (None, ''):
+                continue
+            label = key.replace('_', ' ').capitalize()
+            parts.append(f'{label}: {value}')
+        return ' · '.join(parts)
+
 
 class BusinessCalendar(models.Model):
     name = models.CharField(max_length=100)
@@ -601,6 +662,60 @@ def add_business_minutes(start, minutes, business_calendar):
     return current
 
 
+def business_minutes_elapsed(start, end, business_calendar):
+    """Business-time minutes between start and end per business_calendar —
+    the inverse of add_business_minutes(). Used to measure how much of an
+    SLA's business-time budget has actually been consumed, so percentage-
+    elapsed math stays correct against a calendar-aware due date (which may
+    span a weekend/holiday the naive (end-start) wall-clock delta would
+    wrongly count as "elapsed"). Falls back to flat wall-clock minutes when
+    there's no calendar, matching add_business_minutes' own fallback.
+    """
+    if end <= start:
+        return 0.0
+    if business_calendar is None:
+        return (end - start).total_seconds() / 60
+
+    try:
+        workdays = {int(d) for d in business_calendar.workdays}
+    except (TypeError, ValueError):
+        workdays = set()
+    holidays = set(business_calendar.holidays or [])
+    work_start = business_calendar.work_start
+    work_end = business_calendar.work_end
+
+    daily_window_minutes = (
+        datetime.datetime.combine(datetime.date.min, work_end)
+        - datetime.datetime.combine(datetime.date.min, work_start)
+    ).total_seconds() / 60
+    if not workdays or daily_window_minutes <= 0:
+        return (end - start).total_seconds() / 60
+
+    current = timezone.localtime(start)
+    end = timezone.localtime(end)
+
+    def is_business_day(dt):
+        return dt.weekday() in workdays and dt.date().isoformat() not in holidays
+
+    def at_time(dt, t):
+        return dt.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+
+    total = 0.0
+    while current < end:
+        if not is_business_day(current):
+            current = at_time(current + datetime.timedelta(days=1), work_start)
+            continue
+        day_start = at_time(current, work_start)
+        day_end = at_time(current, work_end)
+        window_start = max(current, day_start)
+        window_end = min(end, day_end)
+        if window_start < window_end:
+            total += (window_end - window_start).total_seconds() / 60
+        current = at_time(current + datetime.timedelta(days=1), work_start)
+
+    return total
+
+
 class EscalationRule(models.Model):
     TIMER_CHOICES = [('response', 'Response'), ('resolution', 'Resolution')]
     ACTION_CHOICES = [
@@ -688,10 +803,16 @@ class AssetCategory(models.Model):
     # the renewal date/cost/vendor field group below.
     is_renewable = models.BooleanField(default=False)
 
+    # Short code for this category used when auto-generating an Asset's
+    # physical tracking_id tag (e.g. "MNT" for Monitor) — see Asset.save().
+    # Blank means tag generation falls back to the legacy AST-{year}-{seq}
+    # scheme for assets in this category.
+    tag_code = models.CharField(max_length=10, blank=True)
+
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     class Meta:
         verbose_name_plural = "Asset Categories"
         ordering = ['name']
@@ -728,6 +849,81 @@ def _add_months(start_date, months):
     return datetime.date(year, month, day)
 
 
+class Location(models.Model):
+    """Hierarchical, admin-manageable asset location (Building -> Floor ->
+    Section/Room), replacing the old free-text Asset.location field. Same
+    self-referential shape as AssetCategory."""
+
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True, blank=True)
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children'
+    )
+    # Short code used when auto-generating an Asset's tracking_id tag (e.g.
+    # "GF" for Ground Floor) — see Asset.save(). Blank falls back to the
+    # legacy AST-{year}-{seq} scheme for assets at this location.
+    tag_code = models.CharField(max_length=10, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.full_name()
+
+    def full_name(self):
+        if self.parent:
+            return f"{self.parent.full_name()} → {self.name}"
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            self.slug = slugify(f'{self.parent_id or ""}-{self.name}')
+        super().save(*args, **kwargs)
+
+
+class AssetDepartment(models.Model):
+    """Admin-manageable department list for Assets — deliberately separate
+    from User.DEPARTMENT_CHOICES (that list is fanned out across org-chart,
+    documents_display, maintenance checklists, and HR/reporting; keeping
+    asset departments on their own model avoids every client's real-world
+    asset departments needing to also be valid HR departments, and vice
+    versa)."""
+
+    name = models.CharField(max_length=100, unique=True)
+    # Short code used when auto-generating an Asset's tracking_id tag (e.g.
+    # "ACC" for Accounting) — see Asset.save().
+    tag_code = models.CharField(max_length=10, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    # Maps this asset-department back to a apps.accounts.User.DEPARTMENT_CHOICES
+    # code, when one exists — lets maintenance's department-scoped features
+    # (Team Lead visibility, target-asset picker; see apps/maintenance/views.py)
+    # keep matching assets against a user's `department` after Asset.department
+    # became its own model. Left blank for departments that only exist in the
+    # asset taxonomy (e.g. client-specific ones with no HR-department
+    # equivalent) — those simply aren't matched by those maintenance filters.
+    legacy_user_department_code = models.CharField(
+        max_length=30, choices=User.DEPARTMENT_CHOICES, blank=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 # ==========================================================================
 # ASSET MODEL (UPDATED)
 # ==========================================================================
@@ -755,43 +951,27 @@ def _notify_it_admins(message, url):
 
 class Asset(models.Model):
     # ================================================================
-    # LOCATIONS
-    # ================================================================
-    class Location(models.TextChoices):
-        HQ = 'HQ', 'Headquarters'
-        BRANCH_A = 'BRANCH_A', 'Branch A - Lagos'
-        BRANCH_B = 'BRANCH_B', 'Branch B - Abuja'
-        BRANCH_C = 'BRANCH_C', 'Branch C - Port Harcourt'
-        WAREHOUSE = 'WAREHOUSE', 'Warehouse'
-        DATA_CENTER = 'DATA_CENTER', 'Data Center'
-        OTHER = 'OTHER', 'Other'
-
-    # ================================================================
     # STATUS (Enhanced workflow)
     # ================================================================
     class Status(models.TextChoices):
-        # Procurement
-        REQUESTED = 'REQUESTED', 'Requested'
-        APPROVED = 'APPROVED', 'Approved'
-        ORDERED = 'ORDERED', 'Ordered'
-        RECEIVED = 'RECEIVED', 'Received'
-        
         # Availability
         IN_STORE = 'IN_STORE', 'In Store'
         READY = 'READY', 'Ready for Deployment'
-        
-        # Active Use
-        CHECKED_OUT = 'CHECKED_OUT', 'Checked Out'
+
+        # Active Use — a single IN_USE status covers both "handed to
+        # someone" and "in active use"; the old separate CHECKED_OUT value
+        # was confusing on the holder's own My Assets page (it reads as
+        # "away from me" rather than "in my hands") and was never a
+        # functionally distinct state — merged 2026-08-30.
         IN_USE = 'IN_USE', 'In Use'
         MOBILIZED = 'MOBILIZED', 'Mobilized'
-        
+
         # Maintenance
         MAINTENANCE = 'MAINTENANCE', 'Maintenance'
         REPAIR = 'REPAIR', 'Repair'
         DAMAGED = 'DAMAGED', 'Damaged'
 
         # End of Life
-        RETURNED = 'RETURNED', 'Returned'
         RETIRED = 'RETIRED', 'Retired'
         SCRAPPED = 'SCRAPPED', 'Scrapped'
         LOST = 'LOST', 'Lost'
@@ -842,7 +1022,9 @@ class Asset(models.Model):
     serial_number = models.CharField(max_length=100, blank=True)
     model = models.CharField(max_length=100, blank=True)
     manufacturer = models.CharField(max_length=100, blank=True)
-    location = models.CharField(max_length=200, blank=True, default=Location.HQ)
+    location = models.ForeignKey(
+        Location, on_delete=models.PROTECT, null=True, blank=True, related_name='assets'
+    )
 
     # Meaningful only when category.is_consumable — the number of units
     # currently in stock for this bulk/consumable SKU. Individually-tracked
@@ -863,9 +1045,28 @@ class Asset(models.Model):
     # meaningful only when category.is_renewable. Same "flag-gated field
     # group" shape as the consumable-stock fields above.
     # ================================================================
+    # Common billing cycles — a plain free-number field let someone type an
+    # arbitrary interval like "7 months", which no real vendor bills on.
+    RENEWAL_INTERVAL_CHOICES = [
+        (1, '1 Month'), (2, '2 Months'), (3, '3 Months'), (4, '4 Months'),
+        (5, '5 Months'), (6, '6 Months'), (12, '12 Months (Annual)'),
+    ]
+    # Fixed symbol list, no live conversion — this is the only place the
+    # app deals in currency at all, so a full ISO-4217 list + FX rates
+    # would be solving a problem this product doesn't have.
+    CURRENCY_CHOICES = [
+        ('$', '$ USD'), ('€', '€ EUR'), ('£', '£ GBP'), ('₦', '₦ NGN'), ('₹', '₹ INR'),
+    ]
+
     next_renewal_date = models.DateField(null=True, blank=True)
-    renewal_interval_months = models.PositiveIntegerField(null=True, blank=True)
+    renewal_interval_months = models.PositiveIntegerField(null=True, blank=True, choices=RENEWAL_INTERVAL_CHOICES)
     renewal_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # Per-asset currency symbol for renewal_cost — set here rather than as a
+    # single org-wide ClientSettings field, since different subscriptions
+    # (e.g. a US-billed SaaS tool vs. a locally-invoiced support contract)
+    # can legitimately be priced in different currencies on the same
+    # tenant's books.
+    renewal_currency = models.CharField(max_length=5, blank=True, default='$', choices=CURRENCY_CHOICES)
     renewal_vendor = models.ForeignKey(
         'maintenance.Vendor', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='asset_renewals'
@@ -905,18 +1106,35 @@ class Asset(models.Model):
     # ASSIGNMENT
     # ================================================================
     assigned_to = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name='assigned_assets'
     )
-    assigned_to_department = models.CharField(max_length=50, blank=True)
+    # The raw "assigned to" name from an import row that didn't resolve to a
+    # real User account (see asset_import_commit) — kept so an admin can
+    # later match/create the account and assign properly, instead of the
+    # name being silently discarded. Cleared automatically by assign_to()
+    # the moment a real assignment happens.
+    unresolved_assignee_hint = models.CharField(max_length=150, blank=True, default='')
+    # The asset's owning department — NOT whichever department the current
+    # holder happens to be in (read that live via assigned_to.department /
+    # assigned_to.get_department_display() wherever needed; there is no
+    # separate snapshot field for it, removed to avoid a confusing second
+    # "department" field on the asset form). Used to scope assets to a
+    # department elsewhere (e.g. maintenance target-asset picker).
+    department = models.ForeignKey(
+        AssetDepartment, on_delete=models.PROTECT, null=True, blank=True, related_name='assets'
+    )
 
-    # The asset's owning department — distinct from assigned_to_department
-    # (free text describing whoever currently holds it). Used to scope
-    # assets to a department elsewhere (e.g. maintenance target-asset picker).
-    department = models.CharField(max_length=30, choices=User.DEPARTMENT_CHOICES, blank=True)
+    # The per-department, per-person/workstation "slot" number embedded in
+    # an auto-generated tag (e.g. the trailing "008" in "HD GF ACC MNT
+    # 008") — shared by every device belonging to the same assigned_to +
+    # department combination, so a new device for someone who already has
+    # assets can reuse their existing slot instead of getting a new one.
+    # Null for assets using the legacy AST-{year}-{seq} tracking_id scheme.
+    tag_slot_number = models.PositiveIntegerField(null=True, blank=True, editable=False)
 
     # ================================================================
     # STATUS & WORKFLOW (Enhanced)
@@ -1066,15 +1284,56 @@ class Asset(models.Model):
         )
 
     @property
+    def active_mobilization_item(self):
+        """The open (not yet demobilized) MobilizationItem for this asset,
+        if any. Mobilization is a second, parallel custody-tracking
+        mechanism that does NOT route through assign_to()/release() (it
+        sets Asset.status directly) — so release() has no way to close it.
+        Reassigning or checking out an asset while this is open would clear
+        checked_out_to/assigned_to and reset status out from under the open
+        MobilizationItem, leaving it silently orphaned (still claiming the
+        asset is out at the job) while the asset simultaneously shows a new
+        holder elsewhere. Must be demobilized first."""
+        return self.mobilization_items.filter(demobilized_at__isnull=True).select_related('mobilization').first()
+
+    @property
+    def mobilization_blocked_reason(self):
+        """Shared 'demobilize it first' fact for any custody-changing action
+        (reassign, scrap request, and any future one) — centralizes the
+        active_mobilization_item check + destination text so a new action
+        can't forget it the way reassign/scrap originally did (see
+        active_mobilization_item's docstring for the orphaning risk this
+        guards against). Returns None when not mobilized. Callers append
+        their own action-specific suffix, e.g. f'{reason} before scrapping.'"""
+        active = self.active_mobilization_item
+        if not active:
+            return None
+        return f'"{self.name}" is currently mobilized to {active.mobilization.destination_display} — demobilize it first'
+
+    @property
     def can_reassign(self):
-        """Reassign only makes sense when someone actually has the asset —
-        gating it on 'status is IN_STORE/READY' too (like is_available_for_
-        assignment does) would let Reassign silently double as a second
-        Checkout for an asset nobody holds, which defeats the point of the
-        two being separate actions."""
+        """Reassign is offered whenever someone actually has the asset, OR
+        the asset's status implies someone should (anything other than
+        IN_STORE/READY) but nobody currently does — a state the app's own
+        checkout/reassign flows never produce on their own (they always set
+        status and holder together), but that asset_import_commit can, when
+        an imported row's Active/Not Active status resolved while its
+        'assigned to' name didn't match a real user. Without this, such a
+        row would have neither Checkout (wrong status) nor Reassign (no
+        holder) available — no way to ever claim it. Plain 'status is
+        IN_STORE/READY with no holder' (genuinely available stock) still
+        correctly returns False here — that's Checkout's job, not
+        Reassign's, to avoid the two actions overlapping. Also False while
+        mobilization_blocked_reason is set — see that property's docstring."""
         if self.is_consumable:
             return False
-        return self.checked_out_to_id is not None or self.assigned_to_id is not None
+        if self.mobilization_blocked_reason:
+            return False
+        return (
+            self.checked_out_to_id is not None
+            or self.assigned_to_id is not None
+            or self.status not in (self.Status.IN_STORE, self.Status.READY)
+        )
 
     @property
     def pending_scrap_requested_by(self):
@@ -1128,7 +1387,8 @@ class Asset(models.Model):
         self.returned_at = None
         self.returned_by = None
         self.assigned_to = user
-        self.status = self.Status.CHECKED_OUT
+        self.unresolved_assignee_hint = ''
+        self.status = self.Status.IN_USE
         self.status_updated_at = now
         self.status_updated_by = actor
         if expected_return_date:
@@ -1295,7 +1555,7 @@ class Asset(models.Model):
     @property
     def is_active(self):
         """Check if asset is actively in use."""
-        return self.status in [self.Status.CHECKED_OUT, self.Status.IN_USE, self.Status.MOBILIZED]
+        return self.status in [self.Status.IN_USE, self.Status.MOBILIZED]
 
     @property
     def is_low_stock(self):
@@ -1406,17 +1666,47 @@ class Asset(models.Model):
             and self.next_renewal_date <= timezone.now().date() + datetime.timedelta(days=30)
         )
 
-    def mark_renewed(self, actor, new_cost=None):
+    @property
+    def renewal_status(self):
+        """'NO_DATE' | 'OVERDUE' | 'DUE_SOON' (within 30 days) | 'SCHEDULED' —
+        same shape as warranty_status, drives the renewal chip on the
+        Licenses & Subscriptions tab."""
+        if not self.next_renewal_date:
+            return 'NO_DATE'
+        days_remaining = (self.next_renewal_date - timezone.now().date()).days
+        if days_remaining < 0:
+            return 'OVERDUE'
+        if days_remaining <= 30:
+            return 'DUE_SOON'
+        return 'SCHEDULED'
+
+    def mark_renewed(self, actor, new_cost=None, auto=False, renewal_date=None, date_type='LAST'):
         """Record that this renewal was actually paid/actioned — advances
         next_renewal_date forward by renewal_interval_months, resets the
         reminder flags so the next cycle can notify again, and logs an
-        audit-trail AssetLog entry."""
+        audit-trail AssetLog entry. `auto=True` marks a system-driven
+        auto-renewal (auto_renews=True assets, no actor) rather than an
+        admin clicking "Mark as Renewed" — both feed the same renewal-cost
+        audit trail a budget summary would later be compiled from.
+
+        `renewal_date` lets the caller supply the date the subscription was
+        actually last paid/renewed (date_type='LAST', the common manual
+        case) or the date it next renews on (date_type='NEXT') — the other
+        is derived from renewal_interval_months rather than making the
+        admin do that math. Omitted entirely by the auto-renew job, which
+        falls back to the old today/existing-next_renewal_date behavior."""
         if not self.is_renewable or not self.renewal_interval_months:
             return
 
-        today = timezone.now().date()
-        base_date = self.next_renewal_date if self.next_renewal_date and self.next_renewal_date > today else today
-        self.next_renewal_date = _add_months(base_date, self.renewal_interval_months)
+        if renewal_date is not None:
+            if date_type == 'NEXT':
+                self.next_renewal_date = renewal_date
+            else:
+                self.next_renewal_date = _add_months(renewal_date, self.renewal_interval_months)
+        else:
+            today = timezone.now().date()
+            base_date = self.next_renewal_date if self.next_renewal_date and self.next_renewal_date > today else today
+            self.next_renewal_date = _add_months(base_date, self.renewal_interval_months)
         if new_cost is not None:
             self.renewal_cost = new_cost
         self.renewal_reminder_90d_sent = False
@@ -1436,6 +1726,7 @@ class Asset(models.Model):
             details={
                 'renewed_until': self.next_renewal_date.isoformat(),
                 'cost': str(self.renewal_cost) if self.renewal_cost is not None else None,
+                'auto': auto,
             }
         )
 
@@ -1497,18 +1788,12 @@ class Asset(models.Model):
         'primary' variant, unlike some other status-chip usages in this
         app."""
         colors = {
-            'REQUESTED': 'info',
-            'APPROVED': 'info',
-            'ORDERED': 'info',
-            'RECEIVED': 'success',
             'IN_STORE': 'success',
             'READY': 'success',
-            'CHECKED_OUT': 'warning',
             'IN_USE': 'accent',
             'MOBILIZED': 'accent',
             'MAINTENANCE': 'warning',
             'REPAIR': 'danger',
-            'RETURNED': 'success',
             'RETIRED': 'neutral',
             'SCRAPPED': 'neutral',
             'LOST': 'danger',
@@ -1577,6 +1862,65 @@ class Asset(models.Model):
             })
         return history
 
+    def _resolve_org_tag_prefix(self):
+        """Whether this asset qualifies for the org's physical-tag tracking_id
+        format (e.g. "HD GF ACC MNT 008") — requires a configured client
+        prefix plus a tag_code on every one of category/location/department,
+        and both assigned_to + department set (no shared-slot concept exists
+        for unassigned/pool stock). Returns (prefix, True) or ('', False) —
+        False means fall back to the legacy AST-{year}-{seq} scheme, which
+        keeps quick-add/no-metadata asset creation working unchanged."""
+        from apps.accounts.models import ClientSettings
+        prefix = ClientSettings.objects.get_or_create(id=1)[0].asset_tag_prefix
+        if (
+            prefix
+            and self.assigned_to_id and self.department_id
+            and self.category_id and self.category.tag_code
+            and self.location_id and self.location.tag_code
+            and self.department.tag_code
+        ):
+            return prefix, True
+        return '', False
+
+    def _resolve_tag_slot_number(self):
+        """The per-department, per-person slot number shared by every
+        device belonging to the same assigned_to + department — reuse an
+        existing slot if this person already has one in this department,
+        otherwise allocate the next unused one for the department."""
+        existing = (
+            Asset.objects.filter(assigned_to_id=self.assigned_to_id, department_id=self.department_id)
+            .exclude(pk=self.pk)
+            .exclude(tag_slot_number__isnull=True)
+            .order_by('-tag_slot_number')
+            .first()
+        )
+        if existing:
+            return existing.tag_slot_number
+        last = (
+            Asset.objects.filter(department_id=self.department_id)
+            .exclude(pk=self.pk)
+            .exclude(tag_slot_number__isnull=True)
+            .order_by('-tag_slot_number')
+            .first()
+        )
+        return (last.tag_slot_number + 1) if last else 1
+
+    def _generate_legacy_tracking_id(self):
+        year = timezone.now().year
+        last_asset = Asset.objects.filter(tracking_id__startswith=f'AST-{year}').order_by('tracking_id').last()
+        if last_asset:
+            parts = last_asset.tracking_id.split('-')
+            if len(parts) == 3:
+                try:
+                    num = int(parts[2]) + 1
+                except ValueError:
+                    num = 1
+            else:
+                num = 1
+        else:
+            num = 1
+        return f'AST-{year}-{num:04d}'
+
     def save(self, *args, **kwargs):
         # Auto-calculate warranty expiry
         if self.purchase_date and self.warranty_duration_years > 0:
@@ -1609,28 +1953,26 @@ class Asset(models.Model):
         # runs in its own savepoint so a collision doesn't poison an
         # outer transaction the caller may be inside.
         from django.db import IntegrityError, transaction
+
+        tag_prefix, use_org_tag_format = self._resolve_org_tag_prefix()
+
         max_attempts = 5
         for attempt in range(1, max_attempts + 1):
-            year = timezone.now().year
-            last_asset = Asset.objects.filter(tracking_id__startswith=f'AST-{year}').order_by('tracking_id').last()
-            if last_asset:
-                parts = last_asset.tracking_id.split('-')
-                if len(parts) == 3:
-                    try:
-                        num = int(parts[2]) + 1
-                    except ValueError:
-                        num = 1
-                else:
-                    num = 1
+            if use_org_tag_format:
+                self.tag_slot_number = self._resolve_tag_slot_number()
+                self.tracking_id = (
+                    f'{tag_prefix} {self.location.tag_code} {self.department.tag_code} '
+                    f'{self.category.tag_code} {self.tag_slot_number:03d}'
+                )
             else:
-                num = 1
-            self.tracking_id = f'AST-{year}-{num:04d}'
+                self.tracking_id = self._generate_legacy_tracking_id()
             try:
                 with transaction.atomic():
                     super().save(*args, **kwargs)
                 return
             except IntegrityError:
                 self.tracking_id = ''
+                self.tag_slot_number = None
                 if attempt == max_attempts:
                     raise
 
@@ -1745,6 +2087,11 @@ class Mobilization(models.Model):
     )
     vessels = models.ManyToManyField(Vessel, blank=True, related_name='mobilizations')
     dive_systems = models.ManyToManyField(DiveSystem, blank=True, related_name='mobilizations')
+    # Required at the form/view layer (mobilization_create) — every new
+    # mobilization must trace back to a mobilization-request ticket. Stays
+    # nullable/SET_NULL at the DB level so historical ad hoc rows (created
+    # before that requirement existed) and rows whose ticket gets deleted
+    # don't need a backfill migration.
     ticket = models.ForeignKey(
         'Ticket', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='mobilizations'
@@ -1823,6 +2170,39 @@ class MobilizationItem(models.Model):
     # individually-tracked assets (quantity is always 1 there anyway).
     return_quantity = models.PositiveIntegerField(null=True, blank=True)
 
+    # ================================================================
+    # TWO-STEP CONFIRMATION — mirrors AssetCheckoutHistory: the ticket's
+    # requester (mobilization.ticket.requester), not the admin who mobilized
+    # it (mobilized_by), confirms this specific item actually reached them
+    # (acknowledged_at) or says it didn't (disputed_at). Both null = still
+    # awaiting the requester's response. No self-initiated-return field here
+    # (unlike AssetCheckoutHistory) — returning a mobilized item is already
+    # its own admin-driven demobilize step above.
+    # ================================================================
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mobilization_items_acknowledged'
+    )
+    disputed_at = models.DateTimeField(null=True, blank=True)
+    dispute_reason = models.TextField(blank=True)
+
+    # ================================================================
+    # DEMOBILIZATION SELF-REPORT — mirrors Asset.request_return(): the
+    # requester (mobilization.ticket.requester) self-reports sending an
+    # item back, but this alone does NOT touch inventory/status. Only the
+    # admin's own Demobilize action (demobilized_at/by/return_condition
+    # above) — after physically verifying the item is back — does that.
+    # Kept separate from return_condition/return_notes/return_quantity,
+    # which are the admin's own assessment at confirm time.
+    # ================================================================
+    return_requested_at = models.DateTimeField(null=True, blank=True)
+    return_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mobilization_items_return_requested'
+    )
+    return_requested_notes = models.TextField(blank=True)
+
     class Meta:
         ordering = ['-mobilization__mobilized_at']
 
@@ -1832,6 +2212,81 @@ class MobilizationItem(models.Model):
     @property
     def is_active(self):
         return self.demobilized_at is None
+
+    def acknowledge_receipt(self, actor):
+        """The ticket requester confirms they physically received this
+        item. Raises ValueError if there's no linked ticket, actor isn't
+        its requester, or the item's already been actioned."""
+        ticket = self.mobilization.ticket
+        if not ticket or ticket.requester_id != actor.id:
+            raise ValueError('You have nothing to confirm for this item.')
+        if self.acknowledged_at or self.disputed_at:
+            raise ValueError('This item has already been confirmed or disputed.')
+        self.acknowledged_at = timezone.now()
+        self.acknowledged_by = actor
+        self.save(update_fields=['acknowledged_at', 'acknowledged_by'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} confirmed receipt of "{self.asset.name}" '
+            f'({self.asset.tracking_id}) from {self.mobilization.destination_display}.',
+            f'/tickets/mobilizations/{self.mobilization_id}/',
+        )
+
+    def dispute_receipt(self, actor, reason=''):
+        """The ticket requester says they did NOT receive this item. Does
+        not touch custody/stock — an admin resolves it manually, same
+        posture as Asset.dispute_checkout."""
+        ticket = self.mobilization.ticket
+        if not ticket or ticket.requester_id != actor.id:
+            raise ValueError('You have nothing to dispute for this item.')
+        if self.acknowledged_at or self.disputed_at:
+            raise ValueError('This item has already been confirmed or disputed.')
+        self.disputed_at = timezone.now()
+        self.dispute_reason = reason
+        self.save(update_fields=['disputed_at', 'dispute_reason'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} disputes receiving "{self.asset.name}" '
+            f'({self.asset.tracking_id}){": " + reason if reason else ""} — needs manual review.',
+            f'/tickets/mobilizations/{self.mobilization_id}/',
+        )
+
+    def request_demobilization(self, actor, notes=''):
+        """Requester self-reports that this mobilized item is being sent
+        back. Does NOT touch inventory/status yet — only the admin's own
+        Demobilize action (after physically verifying the item is back)
+        does that."""
+        ticket = self.mobilization.ticket
+        if not ticket or ticket.requester_id != actor.id:
+            raise ValueError('You have nothing to demobilize for this item.')
+        if not self.is_active:
+            raise ValueError('This item has already been demobilized.')
+        if not self.acknowledged_at:
+            raise ValueError('You can only demobilize an item you confirmed receiving.')
+        if self.return_requested_at:
+            raise ValueError('A demobilization has already been requested for this item.')
+        self.return_requested_at = timezone.now()
+        self.return_requested_by = actor
+        self.return_requested_notes = notes
+        self.save(update_fields=['return_requested_at', 'return_requested_by', 'return_requested_notes'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} reported returning "{self.asset.name}" '
+            f'({self.asset.tracking_id}) from {self.mobilization.destination_display} — awaiting pickup/confirmation.',
+            f'/tickets/mobilizations/{self.mobilization_id}/',
+        )
+
+    def cancel_demobilization_request(self, actor):
+        """Withdraw a self-reported return before an admin has confirmed it."""
+        ticket = self.mobilization.ticket
+        if not ticket or ticket.requester_id != actor.id or not self.return_requested_at or not self.is_active:
+            raise ValueError('There is no pending demobilization request for this item.')
+        self.return_requested_at = None
+        self.return_requested_by = None
+        self.return_requested_notes = ''
+        self.save(update_fields=['return_requested_at', 'return_requested_by', 'return_requested_notes'])
+        _notify_it_admins(
+            f'{actor.get_full_name()} cancelled their demobilization request for "{self.asset.name}" '
+            f'({self.asset.tracking_id}).',
+            f'/tickets/mobilizations/{self.mobilization_id}/',
+        )
 
 
 class MobilizationDateExtension(models.Model):
@@ -2005,6 +2460,21 @@ class AssetLog(models.Model):
     def __str__(self):
         return f"{self.action} on {self.asset.tracking_id} by {self.actor}"
 
+    def get_details_display(self):
+        """Human-readable rendering of `details` for the activity log UI —
+        the raw JSON has different keys per action type, so this renders
+        whatever keys are present as "Label: value" pairs instead of
+        dumping the dict repr."""
+        if not self.details:
+            return ''
+        parts = []
+        for key, value in self.details.items():
+            if value in (None, ''):
+                continue
+            label = key.replace('_', ' ').capitalize()
+            parts.append(f'{label}: {value}')
+        return ' · '.join(parts)
+
 
 class AssetAttachment(models.Model):
     """Optional file attached to an asset — license agreements, renewal
@@ -2025,6 +2495,37 @@ class AssetAttachment(models.Model):
 
     def __str__(self):
         return self.filename
+
+
+class AssetImportBatch(models.Model):
+    """One bulk-asset-import attempt: the originally uploaded file (kept
+    permanently, never deleted — see apps.tickets.views.asset_import_commit)
+    plus the flattened, one-row-per-asset data produced from it by the
+    transform step, staged here so an admin can review it (HTML preview)
+    before anything is actually created."""
+
+    class Status(models.TextChoices):
+        PENDING_REVIEW = 'PENDING_REVIEW', 'Pending Review'
+        COMMITTED = 'COMMITTED', 'Committed'
+        DISCARDED = 'DISCARDED', 'Discarded'
+
+    uploaded_file = models.FileField(upload_to='asset_imports/%Y/%m/%d/', storage=raw_file_storage())
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    # The transformed, flat list of row-dicts ready for asset creation —
+    # what the preview page renders and what asset_import_commit consumes.
+    normalized_data = models.JSONField(default=list, blank=True)
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING_REVIEW)
+    committed_at = models.DateTimeField(null=True, blank=True)
+    row_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f"Import batch #{self.pk} ({self.get_status_display()}, {self.row_count} rows)"
 
 
 class RemoteConnector(models.Model):

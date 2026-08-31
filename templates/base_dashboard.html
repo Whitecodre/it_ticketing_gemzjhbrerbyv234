@@ -20,8 +20,9 @@
 
         {# Left: Brand + Collapse button + Hamburger #}
         <div class="flex items-center gap-3">
-            <span class="inline-flex items-center gap-2">
-                <span class="text-lg font-poppins font-semibold text-primary">TicketSwipe</span>
+            <span class="inline-flex items-center justify-center gap-2">
+                <img src="{% static "img/hydro-dive-color.png" %}" alt="Hydrodive Logo" class="h-14 max-w-[180px] w-auto object-contain object-left">
+                {% comment %} <span class="text-lg font-poppins font-semibold text-primary">TicketSwipe</span> {% endcomment %}
             </span>
             
             <button id="sidebarToggleBtn"
@@ -61,8 +62,12 @@
                     <div class="p-3 border-b" style="border-color: var(--color-border);">
                         <div class="flex items-center justify-between">
                             <span class="text-sm font-semibold" style="color: var(--color-text-primary);">Notifications</span>
-                            <a href="{% url 'notifications:page' %}"
-                               class="text-xs text-primary hover:underline">View all</a>
+                            <div class="flex items-center gap-3">
+                                <button type="button" onclick="markAllReadAndRefresh()"
+                                        class="text-xs text-primary hover:underline">Mark all as read</button>
+                                <a href="{% url 'notifications:page' %}"
+                                   class="text-xs text-primary hover:underline">View all</a>
+                            </div>
                         </div>
                     </div>
                     <div id="notificationDropdownContent" 
@@ -81,14 +86,14 @@
             {% if available_roles|length > 1 %}
             <div class="relative">
                 <button onclick="toggleRoleDropdown()"
-                        class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition hover:bg-black/5"
+                        class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition hover:bg-black/5 -z-0"
                         style="background-color: var(--color-surface); border-color: var(--color-border); color: var(--color-text-primary);"
                         aria-label="Switch role">
                     <span class="role-switcher-label">{{ active_role_display|default:user.get_role_display }}</span>
                     <span>{% lucide "chevron-down" size=14 %}</span>
                 </button>
                 
-                <div id="roleDropdown" class="w-48 rounded-md shadow-lg border py-1 z-50 hidden"
+                <div id="roleDropdown" class="w-48 rounded-md shadow-lg border py-1 z-70 hidden"
                      style="background-color: var(--color-surface); border-color: var(--color-border);">
                     
                     {% for role in available_roles %}
@@ -171,7 +176,7 @@
                         <img src="{{ user.avatar.url }}" alt="Avatar" class="h-9 w-9 rounded-full object-cover">
                     {% else %}
                         <div class="flex h-9 w-9 items-center justify-center rounded-full text-white text-sm font-medium"
-                            style="background-color: var(--color-primary);">
+                            style="background-color: var(--color-primary-solid);">
                             {{ user.email.0|upper }}
                         </div>
                     {% endif %}

@@ -1,42 +1,86 @@
 {% load lucide %}
 
-<div class="p-6 max-h-[90vh] overflow-y-auto">
-    <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
-            {% lucide "user" size=20 %}
+<script>
+    // #modalContainer defaults to a wide box sized for attachment previews.
+    // This card supplies its own background/shadow/width, so shrink the
+    // shared container down to a bare centering wrapper — closeAttachmentModal()
+    // resets it back to the default className so other modals aren't affected.
+    (function () {
+        var c = document.getElementById('modalContainer');
+        if (c) c.className = 'w-full max-w-md mx-4';
+    })();
+</script>
+
+<div class="relative max-w-xs mx-auto rounded-md overflow-hidden py-2"
+     style="background-color: var(--color-surface); box-shadow: var(--shadow-lg);">
+
+    <button onclick="closeAttachmentModal()"
+            class="absolute top-3 right-3 btn-ghost p-1 rounded-full z-10" aria-label="Close">
+        {% lucide "x" size=16 %}
+    </button>
+
+    <div class="flex flex-col items-center text-center px-6 pt-8 pb-5">
+        <div class="relative inline-block h-20 w-20">
+            {% if profile_user.avatar %}
+                <img src="{{ profile_user.avatar.url }}" alt="{{ profile_user.get_full_name }}"
+                     class="h-20 w-20 rounded-full object-cover block">
+            {% else %}
+                <div class="h-20 w-20 rounded-full flex items-center justify-center text-white text-2xl font-semibold bg-primary">
+                    {{ profile_user.email.0|upper }}
+                </div>
+            {% endif %}
+            <span class="absolute bottom-0 right-0 h-4 w-4 rounded-full"
+                  style="background-color: {% if profile_user.is_online %}var(--color-success){% else %}var(--color-text-secondary){% endif %}; border: 2.5px solid var(--color-surface); box-shadow: 0 0 0 1px var(--color-border);"
+                  title="{% if profile_user.is_online %}Online{% else %}Offline{% endif %}"></span>
+        </div>
+
+        <h3 class="mt-3 text-lg font-semibold text-text-primary">
             {{ profile_user.get_full_name|default:profile_user.email }}
         </h3>
-        <button onclick="closeAttachmentModal()" class="btn-ghost p-1">
-            {% lucide "x" size=20 %}
-        </button>
+        <p class="text-xs mt-0.5" style="color: {% if profile_user.is_online %}var(--color-success){% else %}var(--color-text-secondary){% endif %};">
+            {% if profile_user.is_online %}Online now{% elif profile_user.last_seen %}Last seen {{ profile_user.last_seen|timesince }} ago{% else %}Offline{% endif %}
+        </p>
+
+        <span class="mt-2 text-[0.65rem] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full text-primary"
+              style="background: color-mix(in oklch, var(--color-primary) 12%, transparent);">
+            {{ profile_user.get_active_role_display|default:profile_user.get_role_display }}
+        </span>
+        {% if not profile_user.is_active %}
+        <span class="mt-1.5 text-[0.65rem] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full text-error"
+              style="background: color-mix(in oklch, var(--color-error) 12%, transparent);">
+            Deactivated
+        </span>
+        {% endif %}
     </div>
 
-    <div class="border-t pt-4 border-border space-y-3">
-        <div class="flex items-center gap-2 text-sm">
-            {% lucide "shield" size=14 class="text-text-secondary" %}
-            <span class="text-text-primary">{{ profile_user.get_active_role_display|default:profile_user.get_role_display }}</span>
-        </div>
-        <div class="flex items-center gap-2 text-sm">
-            {% lucide "mail" size=14 class="text-text-secondary" %}
-            <span class="text-primary">{{ profile_user.email }}</span>
+    <div class="mx-6 border-t" style="border-color: var(--color-border);"></div>
+
+    <div class="px-6 py-4 space-y-3">
+        <div class="flex items-center gap-3 text-sm">
+            {% lucide "mail" size=15 class="text-text-secondary shrink-0" %}
+            <a href="mailto:{{ profile_user.email }}" class="text-text-primary truncate hover:text-primary">{{ profile_user.email }}</a>
         </div>
         {% if profile_user.department %}
-        <div class="flex items-center gap-2 text-sm">
-            {% lucide "building-2" size=14 class="text-text-secondary" %}
-            <span class="text-text-primary">{{ profile_user.get_department_display }}</span>
+        <div class="flex items-center gap-3 text-sm">
+            {% lucide "building-2" size=15 class="text-text-secondary shrink-0" %}
+            <span class="text-text-primary truncate">{{ profile_user.get_department_display }}</span>
         </div>
         {% endif %}
         {% if profile_user.position %}
-        <div class="flex items-center gap-2 text-sm">
-            {% lucide "briefcase" size=14 class="text-text-secondary" %}
-            <span class="text-text-primary">{{ profile_user.position }}</span>
+        <div class="flex items-center gap-3 text-sm">
+            {% lucide "briefcase" size=15 class="text-text-secondary shrink-0" %}
+            <span class="text-text-primary truncate">{{ profile_user.position }}</span>
         </div>
         {% endif %}
         {% if profile_user.manager %}
-        <div class="flex items-center gap-2 text-sm">
-            {% lucide "user-check" size=14 class="text-text-secondary" %}
-            <span class="text-text-primary">Reports to {{ profile_user.manager.get_full_name|default:profile_user.manager.email }}</span>
+        <div class="flex items-center gap-3 text-sm">
+            {% lucide "user-check" size=15 class="text-text-secondary shrink-0" %}
+            <span class="text-text-primary truncate">Reports to {{ profile_user.manager.get_full_name|default:profile_user.manager.email }}</span>
         </div>
         {% endif %}
+        <div class="flex items-center gap-3 text-sm">
+            {% lucide "calendar" size=15 class="text-text-secondary shrink-0" %}
+            <span class="text-text-primary">Member since {{ profile_user.date_joined|date:"M Y" }}</span>
+        </div>
     </div>
 </div>

@@ -1,0 +1,92 @@
+{# templates/documents_display/shared_with_me.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load badge_tags %}
+
+{% block dashboard_title %}Shared with me{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full">
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url "Shared with me" %}
+
+    <div class="flex items-center gap-3 mb-6 mt-4">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {% lucide "users" size=19 %}
+        </span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">Shared with me</h2>
+            <p class="text-sm text-text-secondary">Documents and folders other people have individually shared with you.</p>
+        </div>
+    </div>
+
+    {% if items %}
+    <div class="space-y-2">
+        {% for item in items %}
+        <a href="{{ item.open_url }}" class="block rounded-lg border p-4 hover:shadow-md transition hover:border-primary border-border bg-surface">
+            <div class="flex items-start gap-4">
+                <span class="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    {% if item.kind == 'folder' %}
+                        {% lucide "folder" size=18 %}
+                    {% elif item.file_extension == 'pdf' %}
+                        {% lucide "file-text" size=18 %}
+                    {% elif item.file_extension in 'png,jpg,jpeg,gif,webp' %}
+                        {% lucide "image" size=18 %}
+                    {% else %}
+                        {% lucide "file" size=18 %}
+                    {% endif %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-sm font-semibold text-text-primary">{{ item.title }}</span>
+                        {% if item.kind == 'folder' %}
+                        <span class="status-chip info text-xs">Folder</span>
+                        {% else %}
+                        <span class="status-chip info text-xs">Document</span>
+                        {% endif %}
+                        {% if not item.accepted_at %}<span class="status-chip warning text-xs">New</span>{% endif %}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 text-xs text-text-secondary mt-1">
+                        {% if item.kind == 'folder' %}
+                        <span>{{ item.document_count }} document{{ item.document_count|pluralize }}</span>
+                        {% else %}
+                        <span>{{ item.category }}</span>
+                        <span>•</span>
+                        <span>{{ item.file_name }}</span>
+                        {% endif %}
+                        <span>•</span>
+                        <span>Shared by {{ item.shared_by_label }}</span>
+                        <span>•</span>
+                        <span>{{ item.created_at|timesince }} ago</span>
+                        {% if item.expires_at %}
+                        <span>•</span>
+                        <span>Expires {{ item.expires_at|date:"M d, Y" }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="flex items-center gap-1.5 mt-2">
+                        <span class="status-chip info text-xs">Read</span>
+                        {% if item.can_edit %}<span class="status-chip info text-xs">Edit</span>{% endif %}
+                        {% if item.can_download %}<span class="status-chip info text-xs">Download</span>{% endif %}
+                    </div>
+                </div>
+                <span class="text-primary shrink-0">{% lucide "chevron-right" size=16 %}</span>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        {% lucide "users" size=40 %}
+        <p class="empty-state-title">Nothing shared with you yet</p>
+        <p class="empty-state-subtext">Documents or folders someone shares with you directly will show up here.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

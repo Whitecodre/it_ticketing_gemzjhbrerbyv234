@@ -16,6 +16,7 @@ from .models import Ticket
 from .settings_registry import SETTINGS_RESOURCES
 from .views import get_sidebar_template
 from apps.common.permissions import is_admin as _is_admin
+from apps.common.models import AdminActionLog, log_admin_action
 
 WIDGET_KIND_MAP = {
     'textarea': forms.Textarea(attrs={'rows': 3, 'class': 'block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary'}),
@@ -76,6 +77,10 @@ def system_settings(request):
     return render(request, 'dashboards/system_settings.html', context)
 
 
+def _obj_label(obj):
+    return getattr(obj, 'name', None) or getattr(obj, 'number', None) or str(obj)
+
+
 @login_required
 @require_POST
 def settings_resource_create(request, resource):
@@ -93,6 +98,9 @@ def settings_resource_create(request, resource):
         instance.slug = _unique_slug(config.model, getattr(instance, 'name', 'item'))
     instance.save()
     form.save_m2m()
+    log_admin_action(
+        request.user, AdminActionLog.Category.SYSTEM_SETTINGS, f'Created {config.singular_label}', _obj_label(instance),
+    )
     return JsonResponse({'status': 'ok'})
 
 
@@ -109,6 +117,11 @@ def settings_resource_update(request, resource, pk):
     if not form.is_valid():
         return JsonResponse({'error': 'Invalid data', 'errors': form.errors}, status=400)
     form.save()
+    if form.changed_data:
+        log_admin_action(
+            request.user, AdminActionLog.Category.SYSTEM_SETTINGS, f'Updated {config.singular_label}', _obj_label(obj),
+            details=f'Fields changed: {", ".join(form.changed_data)}',
+        )
     return JsonResponse({'status': 'ok'})
 
 
@@ -132,8 +145,14 @@ def settings_resource_delete(request, resource, pk):
         return JsonResponse({'error': 'This dive system is referenced by existing service requests and cannot be deleted. Deactivate it instead.'}, status=400)
     if config.model.__name__ == 'JobNumber' and obj.tickets.exists():
         return JsonResponse({'error': 'This job number is referenced by existing service requests and cannot be deleted. Deactivate it instead.'}, status=400)
+    if config.model.__name__ == 'Location' and obj.assets.exists():
+        return JsonResponse({'error': 'This location is used by existing assets and cannot be deleted. Deactivate it instead.'}, status=400)
+    if config.model.__name__ == 'AssetDepartment' and obj.assets.exists():
+        return JsonResponse({'error': 'This department is used by existing assets and cannot be deleted. Deactivate it instead.'}, status=400)
 
+    obj_label = _obj_label(obj)
     obj.delete()
+    log_admin_action(request.user, AdminActionLog.Category.SYSTEM_SETTINGS, f'Deleted {config.singular_label}', obj_label)
     return JsonResponse({'status': 'ok'})
 
 
@@ -155,6 +174,10 @@ def settings_resource_activate(request, resource, pk):
 
     obj.is_active = True
     obj.save(update_fields=['is_active'])
+
+    log_admin_action(
+        request.user, AdminActionLog.Category.SYSTEM_SETTINGS, f'Activated {config.singular_label}', _obj_label(obj),
+    )
 
     proposer = getattr(obj, 'proposed_by', None)
     if proposer:
@@ -180,13 +203,31 @@ def branding_update(request):
     from apps.accounts.models import ClientSettings
     client_settings, _ = ClientSettings.objects.get_or_create(id=1)
 
-    company_name = request.POST.get('company_name', '').strip()
-    if company_name:
-        client_settings.company_name = company_name
+    changed_fields = []
+    if 'logo' in request.FILES:
+        changed_fields.append('logo')
 
-    currency_symbol = request.POST.get('currency_symbol', '').strip()
-    if currency_symbol:
-        client_settings.currency_symbol = currency_symbol
+    company_name = request.POST.get('company_name', '').strip()
+    if company_name and company_name != client_settings.company_name:
+        client_settings.company_name = company_name
+        changed_fields.append('company_name')
+
+    # Org prefix for auto-generated asset tags (e.g. "HD") — blank is valid
+    # (falls back to the legacy AST-{year}-{seq} scheme, see Asset.save()),
+    # so this always accepts whatever was submitted, including clearing it.
+    if 'asset_tag_prefix' in request.POST:
+        new_prefix = request.POST.get('asset_tag_prefix', '').strip()
+        if new_prefix != client_settings.asset_tag_prefix:
+            client_settings.asset_tag_prefix = new_prefix
+            changed_fields.append('asset_tag_prefix')
+
+    # Company initials prefixed onto every exported report/document
+    # filename (see report_exporters._filename) — blank is valid (no prefix).
+    if 'company_initials' in request.POST:
+        new_initials = request.POST.get('company_initials', '').strip()
+        if new_initials != client_settings.company_initials:
+            client_settings.company_initials = new_initials
+            changed_fields.append('company_initials')
 
     if 'logo' in request.FILES:
         logo = request.FILES['logo']
@@ -206,5 +247,10 @@ def branding_update(request):
 
     client_settings.updated_by = request.user
     client_settings.save()
+    if changed_fields:
+        log_admin_action(
+            request.user, AdminActionLog.Category.SYSTEM_SETTINGS, 'Updated branding', client_settings.company_name,
+            details=f'Fields changed: {", ".join(changed_fields)}',
+        )
     messages.success(request, 'Branding updated successfully.')
     return redirect('tickets:system_settings')

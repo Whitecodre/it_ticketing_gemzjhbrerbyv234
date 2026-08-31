@@ -59,9 +59,12 @@ class MaintenanceScheduleForm(forms.ModelForm):
         fields = [
             'title', 'description', 'departments', 'scheduled_date',
             'start_time', 'end_time', 'assigned_to', 'additional_assignees',
-            'target_assets', 'facility_location', 'vendors',
+            'target_assets', 'facility_location', 'vendors', 'repeat_interval',
         ]
         widgets = {
+            'repeat_interval': forms.Select(attrs={
+                'class': 'w-full rounded-lg border px-4 py-2.5 text-sm focus:outline-none focus:ring-2'
+            }),
             'facility_location': forms.TextInput(attrs={
                 'class': 'w-full rounded-lg border px-4 py-2.5 text-sm focus:outline-none focus:ring-2',
                 'placeholder': 'e.g., Server Room A, Generator House'
@@ -95,19 +98,25 @@ class MaintenanceScheduleForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        # Filter assigned_to to only IT staff
-        it_roles = ['SUPERADMIN', 'ADMIN', 'TEAM_LEAD', 'AGENT']
+        # Maintenance is carried out by IT's Team Lead and Support Team
+        # (Agent) roles only — never Admin/Superadmin, which are oversight
+        # roles, not hands-on maintenance staff. department='IT' still
+        # matters here since Team Lead exists per department; Agent is
+        # already IT-only by the system's role/department rules.
+        it_roles = ['TEAM_LEAD', 'AGENT']
         self.fields['assigned_to'].queryset = User.objects.filter(
             role__in=it_roles,
+            department='IT',
             is_active=True
         ).order_by('first_name', 'last_name')
-        
+
         self.fields['assigned_to'].label_from_instance = lambda obj: (
             obj.get_full_name() or obj.email
         )
 
         self.fields['additional_assignees'].queryset = User.objects.filter(
             role__in=it_roles,
+            department='IT',
             is_active=True
         ).order_by('first_name', 'last_name')
         self.fields['additional_assignees'].label_from_instance = lambda obj: (
@@ -126,7 +135,10 @@ class MaintenanceScheduleForm(forms.ModelForm):
         assets_qs = Asset.objects.exclude(status__in=excluded_statuses)
         posted_departments = self.data.getlist('departments') if self.data else []
         if posted_departments:
-            assets_qs = assets_qs.filter(department__in=posted_departments)
+            # Asset.department is its own AssetDepartment model now, separate
+            # from the User.DEPARTMENT_CHOICES codes `departments` (this
+            # schedule field) uses — match through the legacy-code mapping.
+            assets_qs = assets_qs.filter(department__legacy_user_department_code__in=posted_departments)
         self.fields['target_assets'].queryset = assets_qs.order_by('name')
         self.fields['target_assets'].label_from_instance = lambda obj: (
             f"{obj.name} ({obj.tracking_id})"

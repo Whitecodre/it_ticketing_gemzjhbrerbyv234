@@ -1,6 +1,6 @@
 # apps/maintenance/management/commands/send_maintenance_reminders.py
 """Single-pass command, meant to run on a schedule (e.g. every few minutes
-via the same scheduler that drives run_sla_scheduler/process_sla), that
+via the same scheduler that drives run_periodic_tasks/process_sla), that
 sends 24-hour, 1-hour, and 10-minute due-date reminders for maintenance
 schedules that haven't started yet, and auto-starts schedules whose
 scheduled date/time has arrived."""
@@ -28,6 +28,22 @@ REMINDER_THRESHOLDS = [
 ]
 
 
+def spawn_due_recurring_schedules():
+    """Clone each recurring schedule forward once its scheduled_date is
+    reached, so a routine reminder (e.g. "Send Security Tips") reappears on
+    the calendar without anyone re-adding it — the "auto-create on due date"
+    behavior chosen for this stopgap, ahead of a full tip-distribution system."""
+    today = timezone.now().date()
+    spawned = 0
+    due = MaintenanceSchedule.objects.exclude(
+        repeat_interval=MaintenanceSchedule.Recurrence.NONE
+    ).filter(next_occurrence_created=False, scheduled_date__lte=today)
+    for schedule in due:
+        if schedule.spawn_next_occurrence():
+            spawned += 1
+    return spawned
+
+
 def auto_start_due_schedules():
     """Transition SCHEDULED schedules to IN_PROGRESS once their scheduled
     date/time has arrived — starting is automatic, unlike Complete/Cancel
@@ -39,7 +55,9 @@ def auto_start_due_schedules():
             continue
 
         schedule.status = MaintenanceSchedule.Status.IN_PROGRESS
-        schedule.save(update_fields=['status', 'updated_at'])
+        if not schedule.started_at:
+            schedule.started_at = now
+        schedule.save(update_fields=['status', 'started_at', 'updated_at'])
 
         log_activity(
             schedule,
@@ -57,6 +75,10 @@ class Command(BaseCommand):
     help = 'Auto-start due maintenance schedules and send 24h/1h/10m due-date reminders for upcoming ones.'
 
     def handle(self, *args, **options):
+        spawned = spawn_due_recurring_schedules()
+        if spawned:
+            self.stdout.write(self.style.SUCCESS(f'Spawned {spawned} recurring maintenance schedule(s).'))
+
         started = auto_start_due_schedules()
         if started:
             self.stdout.write(self.style.SUCCESS(f'Auto-started {started} maintenance schedule(s).'))
@@ -92,15 +114,16 @@ class Command(BaseCommand):
                         type=Notification.Type.GENERAL,
                     )
 
-                # Asset owner (or department Team Lead / Admin fallback)
-                # pre-maintenance heads-up — same cadence/thresholds as the
-                # technician reminder above, in-app + email.
+                # Asset owner (or IT Team Lead / Admin fallback for shared,
+                # ownerless pool inventory) pre-maintenance heads-up — same
+                # cadence/thresholds as the technician reminder above,
+                # in-app + email.
                 for asset in target_assets:
                     if asset.assigned_to_id:
                         owner_recipients = [asset.assigned_to]
                     else:
                         owner_recipients = list(User.objects.filter(
-                            role=User.Role.TEAM_LEAD, department=asset.department, is_active=True,
+                            role=User.Role.TEAM_LEAD, department='IT', is_active=True,
                         ))
                     for recipient in {r.pk: r for r in owner_recipients}.values():
                         Notification.objects.create(

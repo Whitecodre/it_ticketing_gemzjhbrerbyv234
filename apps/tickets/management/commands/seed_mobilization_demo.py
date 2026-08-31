@@ -213,7 +213,7 @@ class Command(BaseCommand):
             ),
         )
         if created_c:
-            asset_for_c.status = Asset.Status.CHECKED_OUT
+            asset_for_c.status = Asset.Status.IN_USE
             asset_for_c.assigned_to = requester
             asset_for_c.save(update_fields=['status', 'assigned_to'])
         self.stdout.write(self.style.SUCCESS('Ticket DEMO#0003 — already fulfilled, PENDING_USER (ready for "Confirm Received")'))

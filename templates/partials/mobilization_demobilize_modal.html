@@ -19,6 +19,35 @@
         {% endif %}
     </div>
 
+    {% if is_blocked %}
+    <div class="mb-4 p-3 rounded-lg border text-sm" style="background-color: color-mix(in srgb, var(--color-error) 6%, var(--color-surface)); border-color: var(--color-error);">
+        <p class="text-text-primary font-medium flex items-center gap-2">{% lucide "alert-triangle" size=14 class="text-error" %} Not yet reported returned</p>
+        <p class="text-text-secondary text-xs mt-0.5">
+            The requester hasn't reported returning this item yet. Ask them to report it on their Demobilization page, or wait for them to — this can't be demobilized until then.
+        </p>
+    </div>
+    <div class="flex justify-end pt-2 border-t border-border">
+        <button type="button" onclick="closeMobilizationModal()" class="btn-primary text-sm px-6 py-2 rounded-lg">Close</button>
+    </div>
+    {% else %}
+
+    {% if has_ticket %}
+    <div class="mb-4 p-3 rounded-lg border text-sm" style="background-color: color-mix(in srgb, var(--color-info) 6%, var(--color-surface)); border-color: var(--color-info);">
+        <p class="text-text-primary font-medium flex items-center gap-2">{% lucide "log-out" size=14 class="text-info" %} Reported returned</p>
+        <p class="text-text-secondary text-xs mt-0.5">
+            By {{ item.return_requested_by.get_full_name|default:item.return_requested_by.email }} on {{ item.return_requested_at|date:"M d, Y" }}
+            {% if item.return_requested_notes %} — "{{ item.return_requested_notes }}"{% endif %}
+        </p>
+    </div>
+    {% else %}
+    <div class="mb-4 p-3 rounded-lg border text-sm" style="background-color: color-mix(in srgb, var(--color-warning) 6%, var(--color-surface)); border-color: var(--color-warning);">
+        <p class="text-text-primary font-medium flex items-center gap-2">{% lucide "alert-triangle" size=14 class="text-warning" %} No linked ticket/requester</p>
+        <p class="text-text-secondary text-xs mt-0.5">
+            This mobilization has no linked ticket, so there's no requester to report a return. Type a reason below to demobilize it anyway.
+        </p>
+    </div>
+    {% endif %}
+
     <form method="post" action="{% url 'tickets:mobilization_item_demobilize' item.pk %}" data-guard-submit>
         {% csrf_token %}
 
@@ -46,8 +75,17 @@
             <label class="block text-sm font-medium mb-1 text-text-primary">Notes</label>
             <textarea name="return_notes" rows="3"
                       class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                      placeholder="Optional notes about the return..."></textarea>
+                      placeholder="Optional notes about the return...">{{ item.return_requested_notes }}</textarea>
         </div>
+
+        {% if not has_ticket %}
+        <div class="mb-4">
+            <label class="block text-sm font-medium mb-1 text-text-primary">Reason <span class="text-error">*</span></label>
+            <textarea name="override_reason" rows="2" required
+                      class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                      placeholder="Why is this being demobilized without a self-reported return?"></textarea>
+        </div>
+        {% endif %}
 
         <div class="flex justify-end gap-2 pt-2 border-t border-border">
             <button type="button" onclick="closeMobilizationModal()" class="btn-ghost text-sm px-4 py-2 rounded-lg">Cancel</button>
@@ -56,4 +94,5 @@
             </button>
         </div>
     </form>
+    {% endif %}
 </div>

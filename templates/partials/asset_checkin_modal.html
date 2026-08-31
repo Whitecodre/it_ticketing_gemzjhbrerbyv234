@@ -44,11 +44,31 @@
 
         <div class="mb-4">
             <label for="id_return_comment" class="block text-sm font-medium mb-1 text-text-primary">
-                Comment <span class="text-text-secondary text-xs font-normal">(optional)</span>
+                Comment <span id="returnCommentHint" class="text-text-secondary text-xs font-normal">(optional)</span>
             </label>
             {{ form.return_comment }}
             {% if form.return_comment.errors %}<p class="text-xs text-error mt-1">{{ form.return_comment.errors.0 }}</p>{% endif %}
         </div>
+
+        <script>
+            (function() {
+                var reasonSelect = document.getElementById('id_return_reason');
+                var hint = document.getElementById('returnCommentHint');
+                function syncOtherHint() {
+                    if (reasonSelect.value === 'OTHER') {
+                        hint.textContent = '(required — please describe)';
+                        hint.classList.add('text-error');
+                        hint.classList.remove('text-text-secondary');
+                    } else {
+                        hint.textContent = '(optional)';
+                        hint.classList.remove('text-error');
+                        hint.classList.add('text-text-secondary');
+                    }
+                }
+                reasonSelect.addEventListener('change', syncOtherHint);
+                syncOtherHint();
+            })();
+        </script>
 
         <div class="flex justify-end gap-2 pt-2">
             <button type="button" onclick="closeModal()"

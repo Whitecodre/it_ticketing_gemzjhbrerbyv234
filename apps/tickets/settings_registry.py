@@ -6,7 +6,7 @@ entry here, not a new hand-written form/view — same shape as report_registry.p
 """
 from dataclasses import dataclass, field
 
-from .models import ServiceCategory, Vessel, AssetCategory, DiveSystem, JobNumber
+from .models import ServiceCategory, Vessel, AssetCategory, DiveSystem, JobNumber, Location, AssetDepartment
 from apps.common.models import Category
 from apps.maintenance.models import MaintenanceChecklistTemplate, Vendor
 
@@ -54,10 +54,9 @@ SETTINGS_RESOURCES = {
             SettingsField('name', 'Name'),
             SettingsField('description', 'Description', 'textarea'),
             SettingsField('field_group', 'Field Group', 'select', choices=ServiceCategory.FieldGroup.choices),
-            SettingsField('order', 'Order', 'number'),
             SettingsField('is_active', 'Active', 'checkbox'),
         ],
-        list_columns=[('name', 'Name'), ('field_group', 'Field Group'), ('order', 'Order'), ('is_active', 'Active')],
+        list_columns=[('name', 'Name'), ('field_group', 'Field Group'), ('is_active', 'Active')],
     ),
     'vessels': SettingsResource(
         slug='vessels',
@@ -109,8 +108,36 @@ SETTINGS_RESOURCES = {
             SettingsField('description', 'Description', 'textarea'),
             SettingsField('is_consumable', 'Bulk/Consumable Stock (quantity-tracked, not individually)', 'checkbox'),
             SettingsField('is_renewable', 'Renewable (tracks recurring renewal dates & cost)', 'checkbox'),
+            SettingsField('tag_code', 'Tag Code (e.g. MNT, CPU, LP — used in auto-generated asset tags)'),
         ],
-        list_columns=[('name', 'Name'), ('is_consumable', 'Consumable'), ('is_renewable', 'Renewable')],
+        list_columns=[('name', 'Name'), ('is_consumable', 'Consumable'), ('is_renewable', 'Renewable'), ('tag_code', 'Tag Code')],
+    ),
+    'locations': SettingsResource(
+        slug='locations',
+        label='Locations',
+        singular_label='Location',
+        icon='map-pin',
+        model=Location,
+        fields=[
+            SettingsField('name', 'Name'),
+            SettingsField('parent', 'Parent Location (leave blank for a top-level Building)', 'select'),
+            SettingsField('tag_code', 'Tag Code (e.g. GF, 1F, AN — used in auto-generated asset tags)'),
+            SettingsField('is_active', 'Active', 'checkbox'),
+        ],
+        list_columns=[('name', 'Name'), ('parent', 'Parent'), ('tag_code', 'Tag Code'), ('is_active', 'Active')],
+    ),
+    'asset-departments': SettingsResource(
+        slug='asset-departments',
+        label='Asset Departments',
+        singular_label='Asset Department',
+        icon='building',
+        model=AssetDepartment,
+        fields=[
+            SettingsField('name', 'Name'),
+            SettingsField('tag_code', 'Tag Code (e.g. ACC, IT, PLD — used in auto-generated asset tags)'),
+            SettingsField('is_active', 'Active', 'checkbox'),
+        ],
+        list_columns=[('name', 'Name'), ('tag_code', 'Tag Code'), ('is_active', 'Active')],
     ),
     'categories': SettingsResource(
         slug='categories',

@@ -20,7 +20,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         # Guard every stdout.write behind verbosity (Windows' cp1252 console
         # codec can't encode the status emoji used here and in process_sla.py
-        # — call_command('...', verbosity=0), as run_sla_scheduler uses,
+        # — call_command('...', verbosity=0), as run_periodic_tasks uses,
         # avoids ever hitting that write at all).
         self.verbosity = options.get('verbosity', 1)
         now = timezone.now()
@@ -74,6 +74,8 @@ class Command(BaseCommand):
             author=system_user,
             body=f"Remote session request expired after {int(EXPIRY_WINDOW.total_seconds() // 3600)} hours without a response.",
             visibility='PUBLIC',
+            is_system_generated=True,
+            system_icon='monitor',
         )
 
         TicketActivityLog.objects.create(

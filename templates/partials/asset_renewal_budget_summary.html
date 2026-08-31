@@ -1,0 +1,57 @@
+{% load lucide %}
+{# Budget summary — per-renewal audit trail (AssetLog RENEWED entries),      #}
+{# auto and manual both included, so at year-end this is the full record of #}
+{# what was actually spent on which subscription and when. Fully open — any #}
+{# admin viewing the Licenses tab sees the whole history, not a filtered    #}
+{# subset.                                                                  #}
+<div class="dashboard-card p-0 overflow-hidden shadow-sm mt-5">
+    <div class="flex items-center gap-2 pb-4">
+        <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "receipt-text" size=14 %}</span>
+        <div>
+            <h3 class="text-sm font-semibold text-text-primary">Renewal Budget Summary</h3>
+            <p class="text-xs text-text-secondary">Every renewal actually paid/actioned — auto and manual — for audit and year-end spend tracking.</p>
+        </div>
+    </div>
+    {% if budget_renewal_logs %}
+    <div class="overflow-x-auto table-scroll-shell">
+        <table class="text-sm w-full">
+            <thead>
+                <tr class="border-b" style="border-color: var(--color-border);">
+                    <th class="text-left py-2.5 px-5 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap">Date & Time</th>
+                    <th class="text-left py-2.5 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Asset</th>
+                    <th class="text-left py-2.5 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Vendor</th>
+                    <th class="text-left py-2.5 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Cost</th>
+                    <th class="text-left py-2.5 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Renewed Until</th>
+                    <th class="text-left py-2.5 px-5 font-semibold text-text-secondary uppercase tracking-wider text-xs">Renewed By</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in budget_renewal_logs %}
+                <tr class="border-b hover:bg-black/5 transition-colors cursor-pointer" style="border-color: var(--color-border);"
+                    onclick="window.location.href='{% url 'tickets:asset_detail' log.asset.pk %}'">
+                    <td class="py-2.5 px-5 text-text-primary whitespace-nowrap">{{ log.created_at|date:"M d, Y g:i A" }}</td>
+                    <td class="py-2.5 px-3">
+                        <div class="font-medium text-text-primary">{{ log.asset.name }}</div>
+                        <div class="text-xs font-semibold tracking-tight text-primary">{{ log.asset.tracking_id }}</div>
+                    </td>
+                    <td class="py-2.5 px-3 text-text-secondary">{{ log.asset.renewal_vendor.name|default:"—" }}</td>
+                    <td class="py-2.5 px-3 text-text-primary whitespace-nowrap">
+                        {% if log.details.cost %}{{ log.asset.renewal_currency }}{{ log.details.cost }}{% else %}—{% endif %}
+                    </td>
+                    <td class="py-2.5 px-3 text-text-secondary whitespace-nowrap">{{ log.details.renewed_until|default:"—" }}</td>
+                    <td class="py-2.5 px-5">
+                        {% if log.details.auto %}
+                        <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background-color: color-mix(in oklch, var(--color-info) 15%, transparent); color: var(--color-info);">{% lucide "refresh-cw" size=10 %} Auto-renewed</span>
+                        {% else %}
+                        <span class="text-xs text-text-secondary">{{ log.actor.get_full_name|default:log.actor.email|default:"—" }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="text-sm text-text-secondary px-5 pb-5 italic">No renewals recorded yet.</p>
+    {% endif %}
+</div>

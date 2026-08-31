@@ -1,49 +1,158 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Remote Session Code</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Your Remote Session Code</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body style="margin: 0; padding: 20px; background-color: #F8FAFC; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-    <div style="max-width: 480px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; padding: 32px 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-        
-        <div style="text-align: center; margin-bottom: 24px;">
-            <img src="https://demo-it-ticketing.onrender.com/static/img/gemz-logo.png" alt="Gemz Software" style="height: 40px; width: auto;">
-            <h1 style="font-size: 22px; font-weight: 600; color: #0D9488; margin: 12px 0 0 0;">Remote Session Code</h1>
-        </div>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        <p style="font-size: 16px; color: #1E293B; margin: 0 0 12px 0;">Hi <strong>{{ requester_name }}</strong>,</p>
-        
-        <p style="font-size: 15px; color: #334155; line-height: 1.5; margin: 0 0 12px 0;">
-            The support agent has started the remote session for ticket <strong>{{ ticket_number }}</strong>.
-        </p>
-        
-        <div style="background-color: #F0F9F0; padding: 16px; border-radius: 12px; text-align: center; margin: 20px 0;">
-            <p style="font-size: 14px; color: #1E293B; margin: 0 0 8px 0;">Your Quick Assist code is:</p>
-            <p style="font-size: 32px; font-weight: 700; letter-spacing: 4px; color: #0D9488; margin: 0;">{{ code }}</p>
-            <p style="font-size: 12px; color: #64748B; margin: 8px 0 0 0;">This code expires in about 10 minutes.</p>
-        </div>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    Your Quick Assist code for ticket {{ ticket_number }} is {{ code }}. Expires in 10 minutes.
+  </div>
 
-        <div class="instructions" style="background-color: #F8FAFC; padding: 16px; border-radius: 12px; margin: 20px 0;">
-            <p style="font-size: 14px; font-weight: 600; margin: 0 0 8px 0;">How to use:</p>
-            <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: #334155;">
-                <li>Open <strong>Quick Assist</strong> on your Windows computer (search in start menu).</li>
-                <li>Click <strong>“Get assistance”</strong>.</li>
-                <li>Enter the code above and click <strong>“Share screen”</strong>.</li>
-                <li>Allow the agent to view your screen (you can also give control).</li>
-            </ol>
-        </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
 
-        <p style="font-size: 13px; color: #64748B; text-align: center; margin: 0 0 20px 0;">
-            If you did not expect this, please ignore the code.
-        </p>
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
 
-        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 24px 0 16px 0;">
+          <!-- Top accent bar (teal) -->
+          <tr>
+            <td style="background-color:#0D9488; height:3px; line-height:3px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
 
-        <p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0;">
-            &copy; 2025 Gemz Software
-        </p>
-    </div>
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+              {% else %}
+                <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#0D9488; font-weight:600; margin:0 0 10px;">Remote session</p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:27px; font-weight:400; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                Your remote session code
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Hi <strong>{{ requester_name }}</strong>,<br>
+                The support agent has started the remote session for ticket <strong>{{ ticket_number }}</strong>.
+              </p>
+
+              <!-- Code box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F0F9F0; border-radius:12px; margin:16px 0; width:100%;">
+                <tr>
+                  <td style="padding:20px; text-align:center; font-size:14px; color:#0F172A;">
+                    <p style="margin:0 0 8px; font-size:14px; color:#0F172A;">Your Quick Assist code is:</p>
+                    <p style="margin:0; font-size:32px; font-weight:700; letter-spacing:4px; color:#0D9488;">{{ code }}</p>
+                    <p style="margin:8px 0 0; font-size:12px; color:#64748B;">This code expires in about 10 minutes.</p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Instructions box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border-radius:12px; margin:16px 0; width:100%;">
+                <tr>
+                  <td style="padding:16px; font-size:14px; color:#0F172A;">
+                    <p style="margin:0 0 8px; font-weight:600; color:#0F172A;">How to use:</p>
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0; padding:0; width:100%;">
+                      <tr>
+                        <td style="padding:3px 0; font-size:13px; color:#475569;">1. Open <strong>Quick Assist</strong> on your Windows computer (search in start menu).</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:3px 0; font-size:13px; color:#475569;">2. Click <strong>“Get assistance”</strong>.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:3px 0; font-size:13px; color:#475569;">3. Enter the code above and click <strong>“Share screen”</strong>.</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:3px 0; font-size:13px; color:#475569;">4. Allow the agent to view your screen (you can also give control).</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 20px; text-align:center;">
+                If you did not expect this, please ignore the code.
+              </p>
+
+              <!-- Optional: View Ticket button (if ticket_url exists) -->
+              {% if ticket_url %}
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+                <tr>
+                  <td style="border-radius:8px; background-color:#0D9488;">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ ticket_url }}" style="height:46px;v-text-anchor:middle;width:200px;" fillcolor="#0D9488" stroke="false">
+                    <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">View Ticket</center>
+                    </v:rect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="{{ ticket_url }}" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; background-color:#0D9488; border-radius:8px;">View Ticket</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+
+              <!-- Fallback link (if ticket_url is provided) -->
+              {% if ticket_url %}
+              <div style="border-top:1px solid #EEF0F2; margin:24px 0 20px;"></div>
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 8px;">Button not working? Paste this link into your browser:</p>
+              <p style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size:12px; color:#0D9488; background-color:#F8FAFC; border:1px solid #EEF0F2; border-radius:6px; padding:10px 12px; margin:0 0 8px; word-break:break-all;">
+                {{ ticket_url }}
+              </p>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  This is an automated notification from {{ client_settings.company_name }}. Please do not reply to this email.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

@@ -15,7 +15,7 @@
 {% block dashboard_content %}
 <div class="max-w-4xl mx-auto space-y-6">
     {% url 'dashboard' as dash_url %}
-    {% url 'tickets:reports' as reports_url %}
+    {% url 'tickets:report_hub' as reports_url %}
     {% url 'tickets:report_builder' report_type=report_type as list_url %}
     {% breadcrumbs "Dashboard" dash_url "Reports" reports_url "Maintenance" list_url schedule_code %}
 
@@ -31,12 +31,8 @@
             </div>
         </div>
         <div class="flex flex-wrap gap-2">
-            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=schedule.pk %}?format=pdf" class="btn-outline text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
-                {% lucide "file-type" size=12 %} Export PDF
-            </a>
-            <a href="{% url 'tickets:export_report_record' report_type=report_type pk=schedule.pk %}?format=docx" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
-                {% lucide "file-down" size=12 %} Export Word
-            </a>
+            {% url 'tickets:export_report_record' report_type=report_type pk=schedule.pk as record_export_url %}
+            {% include "components/export_menu.html" with menu_id="record" export_url=record_export_url formats="pdf:PDF:file-type,docx:Word:file-down" button_label="Export" %}
         </div>
     </div>
 

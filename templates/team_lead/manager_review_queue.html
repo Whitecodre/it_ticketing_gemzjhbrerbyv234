@@ -12,17 +12,21 @@
 {% endblock %}
 
 {% block dashboard_content %}
-{# Django messages already surface as toasts app-wide (see the bridge in
-   base_dashboard.html) — no page-local banner needed here. #}
+
 <div class="w-full">
-    <div class="flex items-center gap-3 mb-4">
-        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning shrink-0">
-            {% lucide "clipboard-check" size=20 %}
+    <div class="flex items-center justify-between gap-3 mb-4">
+        <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10 text-warning shrink-0">
+                {% lucide "clipboard-check" size=20 %}
+            </div>
+            <div>
+                <h2 class="text-base font-semibold text-text-primary">Manager Review <span class="text-text-secondary font-normal">({{ tickets|length }})</span></h2>
+                <p class="text-sm text-text-secondary">Service requests pending your review before they go to the Approver.</p>
+            </div>
         </div>
-        <div>
-            <h2 class="text-base font-semibold text-text-primary">Manager Review <span class="text-text-secondary font-normal">({{ tickets|length }})</span></h2>
-            <p class="text-sm text-text-secondary">Service requests pending your review before they go to the Approver.</p>
-        </div>
+        <form method="get">
+            {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort auto_submit=True %}
+        </form>
     </div>
 
     {% if tickets %}

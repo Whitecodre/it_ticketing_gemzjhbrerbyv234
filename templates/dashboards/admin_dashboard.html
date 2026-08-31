@@ -9,6 +9,23 @@
 
 {% block dashboard_content %}
 
+{# Welcome Banner – modern gradient with avatar #}
+<div class="welcome-banner mb-6 p-5 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-3 sm:gap-4 rounded-xl">
+    <div class="flex items-center gap-4">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 text-white text-lg font-bold">
+            {{ user.first_name|default:user.email|slice:":1"|upper }}
+        </div>
+        <div>
+            <h2 class="text-xl font-bold">{{ greeting|default:"Welcome back" }}, {{ user.first_name|default:"User" }}</h2>
+            <p class="text-sm opacity-90 mt-0.5">Here's a summary of the organization's tickets</p>
+        </div>
+    </div>
+    <div class="flex items-baseline gap-2 sm:block sm:text-right">
+        <p class="text-3xl sm:text-4xl font-bold leading-none">{{ total_tickets_month|default:0 }}</p>
+        <p class="text-xs opacity-80 sm:mt-1">ticket(s) this month</p>
+    </div>
+</div>
+
 {# ========== SECTION 1: TICKET OVERVIEW ========== #}
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
@@ -58,256 +75,167 @@
 
 {# ========== SECTION 2: ASSET INVENTORY ========== #}
 <div class="mb-6">
-    <div class="flex items-center gap-2 mb-3">
-        {% lucide "hard-drive" size=16 class="text-primary" %}
-        <h2 class="text-sm font-semibold text-text-primary">Asset Inventory</h2>
-        <span class="text-xs text-text-secondary">({{ total_assets|default:0 }} total)</span>
-    </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="kpi-card border-l-4 border-success">
-            <div class="flex items-center justify-between">
-                <p class="kpi-label">Active</p>
-                {% lucide "check-circle" size=14 class="text-text-secondary" %}
-            </div>
-            <p class="kpi-value text-success">{{ active_assets|default:0 }}</p>
-            <p class="kpi-trend up">In use</p>
-        </div>
-        <div class="kpi-card border-l-4 border-info">
-            <div class="flex items-center justify-between">
-                <p class="kpi-label">In Store</p>
-                {% lucide "package" size=14 class="text-text-secondary" %}
-            </div>
-            <p class="kpi-value text-info">{{ in_store_assets|default:0 }}</p>
-            <p class="kpi-trend up">Available</p>
-        </div>
-        <div class="kpi-card border-l-4 border-error">
-            <div class="flex items-center justify-between">
-                <p class="kpi-label">Damaged</p>
-                {% lucide "alert-triangle" size=14 class="text-text-secondary" %}
-            </div>
-            <p class="kpi-value text-error">{{ damaged_assets|default:0 }}</p>
-            <p class="kpi-trend down">Needs review</p>
-        </div>
-        <div class="kpi-card border-l-4 border-warning">
-            <div class="flex items-center justify-between">
-                <p class="kpi-label">Warranty Expiring</p>
-                {% lucide "calendar-clock" size=14 class="text-text-secondary" %}
-            </div>
-            <p class="kpi-value text-warning">{{ expiring_warranty|default:0 }}</p>
-            <p class="kpi-trend down">Next 90 days</p>
-        </div>
-    </div>
-
-    {# Full asset status breakdown (small, below KPI cards) #}
-    <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-text-secondary">
-        <span class="font-medium text-text-primary">All statuses:</span>
-        <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-success"></span>
-            Active: {{ active_assets|default:0 }}
-        </span>
-        <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-info"></span>
-            In Store: {{ in_store_assets|default:0 }}
-        </span>
-        <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-warning"></span>
-            Maintenance: {{ maintenance_assets|default:0 }}
-        </span>
-        <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-error"></span>
-            Damaged: {{ damaged_assets|default:0 }}
-        </span>
-        <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-text-secondary"></span>
-            Scrapped: {{ scrapped_assets|default:0 }}
-        </span>
-        <span class="flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-primary"></span>
-            Recently Added: {{ recently_added|default:0 }}
-        </span>
-    </div>
+    {% include "partials/asset_kpi_strip.html" with show_heading=True %}
 </div>
 
-{# ========== SECTION 4: SLA, ESCALATION, QUICK ACTIONS & CONNECTORS ========== #}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-    
-    {# Left: SLA & Escalation (spans 2 columns on large screens) #}
-    <div class="lg:col-span-2 space-y-4">
-        
-        {# SLA Policies #}
-        <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
-                <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
-                    {% lucide "sliders-horizontal" size=14 %} SLA Policies
-                    <span class="text-xs font-normal text-text-secondary">({{ slas|length }})</span>
-                </h3>
-                <a href="{% url 'tickets:sla_management' %}" class="text-xs font-medium text-primary hover:underline">Manage →</a>
-            </div>
-            {% if slas %}
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-border">
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Response</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Resolution</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Calendar</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for sla in slas %}
-                        <tr class="border-b hover:bg-black/5 transition-colors border-border">
-                            <td class="py-3 px-4">
-                                <span class="priority-chip 
-                                    {% if sla.priority == 'P1' %}critical
-                                    {% elif sla.priority == 'P2' %}high
-                                    {% elif sla.priority == 'P3' %}medium
-                                    {% else %}low{% endif %} text-xs">
-                                    {{ sla.get_priority_display }}
-                                </span>
-                            </td>
-                            <td class="py-3 px-4 text-text-secondary">{{ sla.response_minutes }} min</td>
-                            <td class="py-3 px-4 text-text-secondary">{{ sla.resolution_minutes }} min</td>
-                            <td class="py-3 px-4 text-text-secondary">{{ sla.calendar.name|default:"Default" }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="text-center py-6 text-text-secondary text-sm">No SLA policies configured yet.</div>
-            {% endif %}
-        </div>
-
-        {# Escalation Rules #}
-        <div class="dashboard-card p-0 overflow-hidden shadow-sm">
-            <div class="flex items-center justify-between px-5 py-3 border-b border-border">
-                <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
-                    {% lucide "arrow-up-right" size=14 %} Escalation Rules
-                    <span class="text-xs font-normal text-text-secondary">({{ escalation_rules|length }})</span>
-                </h3>
-                <a href="{% url 'tickets:sla_management' %}" class="text-xs font-medium text-primary hover:underline">Manage →</a>
-            </div>
-            {% if escalation_rules %}
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-border">
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Timer</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Threshold</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
-                            <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Target</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for rule in escalation_rules %}
-                        <tr class="border-b hover:bg-black/5 transition-colors border-border">
-                            <td class="py-3 px-4">
-                                <span class="priority-chip 
-                                    {% if rule.priority == 'P1' %}critical
-                                    {% elif rule.priority == 'P2' %}high
-                                    {% elif rule.priority == 'P3' %}medium
-                                    {% else %}low{% endif %} text-xs">
-                                    {{ rule.get_priority_display }}
-                                </span>
-                            </td>
-                            <td class="py-3 px-4 text-text-secondary">{{ rule.get_timer_type_display }}</td>
-                            <td class="py-3 px-4 text-text-secondary">{{ rule.threshold_percent }}%</td>
-                            <td class="py-3 px-4 text-text-secondary">{{ rule.get_action_type_display }}</td>
-                            <td class="py-3 px-4 text-text-secondary">{{ rule.notify_role|default:rule.reassign_to_role|default:"—" }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="text-center py-6 text-text-secondary text-sm">No escalation rules defined.</div>
-            {% endif %}
-        </div>
-    </div>
-
-    {# Right: Quick Actions + Remote Connectors (narrow column) #}
-    <div class="space-y-4">
-        
-        {# Quick Actions #}
-        <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
-                {% lucide "zap" size=14 %} Quick Actions
+{# ========== SECTION 4: SLA POLICIES ========== #}
+<div class="mb-6">
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
+                {% lucide "sliders-horizontal" size=14 %} SLA Policies
+                <span class="text-xs font-normal text-text-secondary">({{ slas|length }})</span>
             </h3>
-            <div class="space-y-2">
-                <a href="{% url 'tickets:asset_create_page' %}" class="btn-primary w-full text-xs flex items-center justify-center gap-2 py-2 px-3 rounded-lg">
-                    {% lucide "plus" size=14 %} Add Asset
-                </a>
-                <a href="{% url 'accounts:admin_users' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
-                    {% lucide "users" size=14 %} User Management
-                </a>
-                <a href="{% url 'tickets:sla_management' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
-                    {% lucide "sliders-horizontal" size=14 %} SLA Config
-                </a>
-                <a href="{% url 'tickets:reports' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
-                    {% lucide "chart-bar" size=14 %} Reports
-                </a>
-            </div>
+            <a href="{% url 'tickets:sla_management' %}" class="text-xs font-medium text-primary hover:underline">Manage →</a>
         </div>
-
-
-        {# Remote Connectors #}
-        <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
-                {% lucide "monitor" size=14 %} Remote Connectors
-            </h3>
-            
-            {% if connectors %}
-            <div class="space-y-2">
-                <select class="priority-dropdown w-full text-xs bg-background border-border text-text-primary"
-                        onchange="window.location.href=this.value">
-                    {% for connector in connectors %}
-                    <option value="{% url 'tickets:connector_edit' connector.pk %}" 
-                            {% if connector.is_active %}selected{% endif %}>
-                        {{ connector.name }} {% if connector.is_active %}Active{% else %}— Inactive{% endif %}
-                    </option>
+        {% if slas %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Response</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Resolution</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Calendar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sla in slas|slice:":4" %}
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                        <td class="py-3 px-4">
+                            <span class="priority-chip
+                                {% if sla.priority == 'P1' %}critical
+                                {% elif sla.priority == 'P2' %}high
+                                {% elif sla.priority == 'P3' %}medium
+                                {% else %}low{% endif %} text-xs">
+                                {{ sla.get_priority_display }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">{{ sla.response_minutes }} min</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ sla.resolution_minutes }} min</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ sla.calendar.name|default:"Default" }}</td>
+                    </tr>
                     {% endfor %}
-                </select>
-                
-                {# Show status #}
-                <div class="flex items-center gap-2 p-2 rounded-lg border border-border bg-background">
-                    {% if connectors|has_active_connector %}
-                        <span class="flex h-2 w-2 rounded-full bg-success"></span>
-                        <span class="text-xs text-text-secondary">Connected</span>
-                        <span class="text-xs font-medium ml-auto text-text-primary">
-                            {{ connectors|active_connector_name }}
-                        </span>
-                    {% else %}
-                        <span class="flex h-2 w-2 rounded-full bg-error"></span>
-                        <span class="text-xs text-text-secondary">No active connector</span>
-                        <a href="{% url 'tickets:connectors' %}" class="text-xs text-primary ml-auto hover:underline">Activate →</a>
-                    {% endif %}
-                </div>
-                
-                <div class="text-center mt-1">
-                    <a href="{% url 'tickets:connectors' %}" class="text-xs text-primary hover:underline">Manage connectors →</a>
-                </div>
-            </div>
-            {% else %}
-            {# No connectors at all #}
-            <div class="text-center py-4">
-                <div class="flex justify-center mb-2">
-                    {% lucide "monitor-off" size=24 class="text-text-secondary opacity-50" %}
-                </div>
-                <p class="text-xs text-text-secondary">No remote connectors configured.</p>
-                <a href="{% url 'tickets:connectors' %}" class="btn-outline w-full text-xs py-1.5 mt-2 flex items-center justify-center gap-1 rounded-lg">
-                    {% lucide "plus" size=12 %} Add Connector
-                </a>
-            </div>
-            {% endif %}
+                </tbody>
+            </table>
         </div>
-
-
+        {% if slas|length > 4 %}
+        <div class="px-5 py-2.5 border-t border-border text-center">
+            <a href="{% url 'tickets:sla_management' %}" class="text-xs font-medium text-primary hover:underline">
+                View all {{ slas|length }} SLA policies →
+            </a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-center py-6 text-text-secondary text-sm">No SLA policies configured yet.</div>
+        {% endif %}
     </div>
 </div>
 
-{# ========== SECTION 5: RECENT ACTIVITY (full width) ========== #}
+{# ========== SECTION 5: ESCALATION RULES ========== #}
+<div class="mb-6">
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold flex items-center gap-2 text-text-primary">
+                {% lucide "arrow-up-right" size=14 %} Escalation Rules
+                <span class="text-xs font-normal text-text-secondary">({{ escalation_rules|length }})</span>
+            </h3>
+            <a href="{% url 'tickets:sla_management' %}" class="text-xs font-medium text-primary hover:underline">Manage →</a>
+        </div>
+        {% if escalation_rules %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Timer</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Threshold</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Target</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rule in escalation_rules|slice:":4" %}
+                    <tr class="border-b hover:bg-black/5 transition-colors border-border">
+                        <td class="py-3 px-4">
+                            <span class="priority-chip
+                                {% if rule.priority == 'P1' %}critical
+                                {% elif rule.priority == 'P2' %}high
+                                {% elif rule.priority == 'P3' %}medium
+                                {% else %}low{% endif %} text-xs">
+                                {{ rule.get_priority_display }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">{{ rule.get_timer_type_display }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ rule.threshold_percent }}%</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ rule.get_action_type_display }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ rule.notify_role|default:rule.reassign_to_role|default:"—" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if escalation_rules|length > 4 %}
+        <div class="px-5 py-2.5 border-t border-border text-center">
+            <a href="{% url 'tickets:sla_management' %}" class="text-xs font-medium text-primary hover:underline">
+                View all {{ escalation_rules|length }} escalation rules →
+            </a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="text-center py-6 text-text-secondary text-sm">No escalation rules defined.</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ========== SECTION 6: REMOTE CONNECTORS ========== #}
+<div class="mb-6">
+    <div class="flex items-center gap-2 mb-3">
+        {% lucide "monitor" size=16 class="text-primary" %}
+        <h2 class="text-sm font-semibold text-text-primary">Remote Connectors</h2>
+        <a href="{% url 'tickets:connectors' %}" class="text-xs font-medium text-primary hover:underline">Manage →</a>
+    </div>
+    <div class="dashboard-card p-4">
+        {% if connectors %}
+        <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+            <select class="priority-dropdown text-xs bg-background border-border text-text-primary sm:w-72"
+                    onchange="window.location.href=this.value">
+                {% for connector in connectors %}
+                <option value="{% url 'tickets:connector_edit' connector.pk %}"
+                        {% if connector.is_active %}selected{% endif %}>
+                    {{ connector.name }} {% if connector.is_active %}Active{% else %}— Inactive{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <div class="flex items-center gap-2 p-2 rounded-lg border border-border bg-background flex-1">
+                {% if connectors|has_active_connector %}
+                    <span class="flex h-2 w-2 rounded-full bg-success"></span>
+                    <span class="text-xs text-text-secondary">Connected</span>
+                    <span class="text-xs font-medium ml-auto text-text-primary">
+                        {{ connectors|active_connector_name }}
+                    </span>
+                {% else %}
+                    <span class="flex h-2 w-2 rounded-full bg-error"></span>
+                    <span class="text-xs text-text-secondary">No active connector</span>
+                    <a href="{% url 'tickets:connectors' %}" class="text-xs text-primary ml-auto hover:underline">Activate →</a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <div class="flex justify-center mb-2">
+                {% lucide "monitor-off" size=24 class="text-text-secondary opacity-50" %}
+            </div>
+            <p class="text-xs text-text-secondary">No remote connectors configured.</p>
+            <a href="{% url 'tickets:connectors' %}" class="btn-outline text-xs py-1.5 mt-2 px-4 inline-flex items-center justify-center gap-1 rounded-lg">
+                {% lucide "plus" size=12 %} Add Connector
+            </a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# ========== SECTION 7: RECENT ACTIVITY (full width) ========== #}
 <div class="mb-6">
     <div class="flex items-center gap-2 mb-3">
         {% lucide "clock" size=16 class="text-primary" %}
@@ -321,8 +249,8 @@
             <div class="flex items-center justify-between px-4 py-2.5 text-sm">
                 <div class="min-w-0 mr-2 flex items-center gap-2 flex-wrap">
                     <span class="font-mono text-xs text-primary">{{ log.ticket.number|default:"—" }}</span>
-                    <span class="text-text-secondary text-xs">{{ log.action }}</span>
-                    <span class="truncate max-w-xs inline-block text-text-secondary text-xs">{{ log.details|truncatechars:80 }}</span>
+                    <span class="text-text-secondary text-xs">{{ log.get_action_display }}</span>
+                    <span class="truncate max-w-xs inline-block text-text-secondary text-xs">{{ log.get_details_display|truncatechars:80 }}</span>
                 </div>
                 <span class="shrink-0 text-xs text-text-secondary">{{ log.created_at|timesince }} ago</span>
             </div>

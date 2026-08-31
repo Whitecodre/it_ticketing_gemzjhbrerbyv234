@@ -1,6 +1,6 @@
 # apps/tickets/management/commands/send_renewal_reminders.py
 """Single-pass command, meant to run on the same schedule as
-run_sla_scheduler/process_sla, that sends 90/30/7-day reminders for
+run_periodic_tasks/process_sla, that sends 90/30/7-day reminders for
 renewable assets (software licenses, subscriptions, support contracts)
 approaching their next_renewal_date. Notifies Admin/Superadmin — an
 org-wide financial/audit concern, same audience as the low-stock alert."""
@@ -38,7 +38,12 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         today = timezone.now().date()
-        upcoming = Asset.objects.filter(category__is_renewable=True, next_renewal_date__isnull=False)
+        # auto_renews=True assets are handled by process_asset_renewals with
+        # no admin action needed — no point nagging about a renewal that
+        # will action itself.
+        upcoming = Asset.objects.filter(
+            category__is_renewable=True, next_renewal_date__isnull=False, auto_renews=False,
+        )
 
         # Narrow via the legacy field or the roles M2M (either can lag
         # right after account creation), then resolve each candidate's

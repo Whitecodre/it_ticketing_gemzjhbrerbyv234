@@ -100,12 +100,12 @@ table.grid td, table.grid th {
   }
   .page:last-child { page-break-after: auto; break-after: auto; }
 
-  /* Forces whatever follows onto a fresh page — used e.g. by the maintenance
-     report's "Owner Confirmation" section, which can otherwise land
-     awkwardly mid-page after a variable-length schedule-details section
-     above it. */
-  .section-break-before {
-    page-break-before: always;
-    break-before: page;
+  /* Never split a boxed section (or one of its rows/cells) across a page
+     boundary — if it doesn't fit on the current page, push the whole thing
+     to the next one instead of drawing half the border on one page and the
+     rest on another. */
+  .section-box, .cell, table.grid, table.grid tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

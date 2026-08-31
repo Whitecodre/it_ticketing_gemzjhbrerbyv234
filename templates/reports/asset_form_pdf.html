@@ -1,0 +1,200 @@
+{% load static tailwind_tags %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+{% if request %}<base href="{{ request.scheme }}://{{ request.get_host }}/">{% endif %}
+<title>Asset Record — {{ asset.tracking_id }}</title>
+{% tailwind_css %}
+<link rel="stylesheet" href="{% static 'css/incident_report_pdf.css' %}?v=1">
+</head>
+<body>
+
+<div class="page">
+
+  <table class="w-full border-collapse border-2 border-black mb-4">
+    <tr>
+      <td class="border-2 border-black w-1/4 text-center align-middle p-4" rowspan="3">
+        {% if client_settings.logo_url %}
+          <img src="{{ client_settings.logo_url }}" style="max-height:40px; max-width:100%; margin:0 auto;">
+        {% else %}
+          <div class="logo-text">{{ client_settings.company_name|default:"TicketSwipe" }}</div>
+          <div class="logo-underline"></div>
+        {% endif %}
+      </td>
+      <td class="border-2 border-black w-1/2 text-center align-middle p-4" rowspan="3">
+        <span class="font-bold text-lg tracking-wide">ASSET RECORD</span>
+      </td>
+      <td class="border-2 border-black text-xs text-center font-bold p-1" colspan="2">Asset {{ asset.tracking_id }}</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2 w-1/12">Added:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ asset.created_at|date:"d/m/Y" }}</td>
+    </tr>
+    <tr>
+      <td class="border-2 border-black text-xs font-bold p-1 pl-2">Report Date:</td>
+      <td class="border-2 border-black text-xs p-1 pl-2">{{ generated_at|date:"d/m/Y" }}</td>
+    </tr>
+  </table>
+
+  <!-- SECTION 1 — IDENTIFICATION -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 1 &mdash; IDENTIFICATION</div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Name:</div>
+      <div class="mb-2">{{ asset.name }}</div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Tracking ID:</div>
+        <div class="mb-2">{{ asset.tracking_id }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Category:</div>
+        <div class="mb-2">{{ asset.category.name|default:"—" }}</div>
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Serial Number:</div>
+        <div class="mb-2">{{ asset.serial_number|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Model:</div>
+        <div class="mb-2">{{ asset.model|default:"—" }}</div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="cell-label mb-1">Manufacturer:</div>
+      <div class="mb-2">{{ asset.manufacturer|default:"—" }}</div>
+    </div>
+  </div>
+
+  <!-- SECTION 2 — STATUS & CUSTODY -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 2 &mdash; STATUS &amp; CUSTODY</div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Status:</div>
+        <div class="mb-2">
+          <span style="display:inline-block; padding:2px 10px; border-radius:10px; font-size:11px; font-weight:bold; background:{{ status_badge.bg }}; color:{{ status_badge.fg }}; border:1px solid {{ status_badge.border }};">{{ status_badge.label }}</span>
+        </div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Condition:</div>
+        <div class="mb-2">{{ asset.get_condition_display }}</div>
+      </div>
+    </div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Location:</div>
+        <div class="mb-2">{{ asset.location.full_name|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Department:</div>
+        <div class="mb-2">{{ asset.department.name|default:"—" }}</div>
+      </div>
+    </div>
+
+    {% if asset.is_consumable %}
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Quantity In Stock:</div>
+        <div class="mb-2">{{ asset.quantity_in_stock }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Low Stock Threshold:</div>
+        <div class="mb-2">{{ asset.low_stock_threshold|default:"—" }}</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Assigned To:</div>
+        <div class="mb-2">{{ asset.assigned_to.get_full_name|default:"—" }}</div>
+      </div>
+      {% if asset.checked_out_to %}
+      <div>
+        <div class="cell-label mb-1">Checked Out To:</div>
+        <div class="mb-2">{{ asset.checked_out_to.get_full_name }} &mdash; {{ asset.checked_out_at|date:"d/m/Y" }}{% if asset.expected_return_date %}, due {{ asset.expected_return_date|date:"d/m/Y" }}{% endif %}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- SECTION 3 — LIFECYCLE -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION 3 &mdash; LIFECYCLE</div>
+
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Purchase Date:</div>
+        <div class="mb-2">{{ asset.purchase_date|date:"d/m/Y"|default:"—" }}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Warranty Expiry:</div>
+        <div class="mb-2">{{ asset.warranty_expiry|date:"d/m/Y"|default:"—" }}{% if asset.warranty_provider %} ({{ asset.warranty_provider }}){% endif %}</div>
+      </div>
+    </div>
+
+    {% if asset.is_renewable %}
+    <div class="cell grid grid-cols-2 gap-4">
+      <div>
+        <div class="cell-label mb-1">Next Renewal Date:</div>
+        <div class="mb-2">{{ asset.next_renewal_date|date:"d/m/Y"|default:"—" }}{% if asset.auto_renews %} (auto-renews){% endif %}</div>
+      </div>
+      <div>
+        <div class="cell-label mb-1">Renewal Vendor:</div>
+        <div class="mb-2">{{ asset.renewal_vendor.name|default:"—" }}</div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- NOTES (only when there actually is one) -->
+  {% if notes_section %}
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION {{ notes_section }} &mdash; NOTES</div>
+    <div class="cell">
+      <div class="mb-2">{{ asset.notes|linebreaksbr }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- RECENT ACTIVITY -->
+  <div class="section-box mb-4">
+    <div class="section-title">SECTION {{ activity_section }} &mdash; RECENT ACTIVITY</div>
+    {% if recent_activity %}
+    <table class="grid w-full border-collapse">
+      <tr>
+        <th class="text-left bg-white font-bold w-1/6">Date</th>
+        <th class="text-left bg-white font-bold w-1/6">Action</th>
+        <th class="text-left bg-white font-bold w-1/6">By</th>
+        <th class="text-left bg-white font-bold">Details</th>
+      </tr>
+      {% for log in recent_activity %}
+      <tr>
+        <td>{{ log.created_at|date:"d/m/Y H:i" }}</td>
+        <td>{{ log.get_action_display }}</td>
+        <td>{{ log.actor.get_full_name|default:"System" }}</td>
+        <td>{{ log.get_details_display|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <div class="cell text-xs italic text-gray-400">Showing the most recent activity — full history is available in the system.</div>
+    {% else %}
+    <div class="cell italic text-gray-400">No activity recorded.</div>
+    {% endif %}
+  </div>
+
+</div>
+
+</body>
+</html>

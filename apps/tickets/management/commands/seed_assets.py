@@ -40,7 +40,7 @@ class Command(BaseCommand):
                 'location': 'Building A, Floor 3, IT Dept',
                 'purchase_date': date.today() - timedelta(days=random.randint(30, 900)),
                 'warranty_expiry': date.today() + timedelta(days=random.randint(100, 500)),
-                'status': Asset.Status.CHECKED_OUT,
+                'status': Asset.Status.IN_USE,
                 'checked_out': True,
                 'notes': 'Standard issue laptop for developers.'
             },

@@ -86,11 +86,16 @@
         <span class="text-xs text-text-secondary">Awaiting fulfillment</span>
         {% endif %}
 
-        {% if ticket.status == 'PENDING_USER' and user == ticket.requester %}
-        <a href="{% url 'tickets:confirm_resolution' ticket.pk %}"
-           class="btn-success text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-3">
-            {% lucide "check-circle" size=13 %} Confirm Received
-        </a>
+        {% if ticket.status == 'PENDING_USER' %}
+        {% comment %} {# This panel only renders for agent/admin roles (see the is_agent
+           guard around its include) — the requester never sees it, so this
+           is an informational note only. The actual Confirm Receipt action
+           lives in the conversation thread itself, visible to the requester
+           there — see conversation_timeline.html's is_receipt_confirmation_prompt
+           card. #} {% endcomment %}
+        <p class="text-xs text-text-secondary mt-3 flex items-center gap-1.5">
+            {% lucide "clock" size=13 class="text-info" %} Awaiting the requester's confirmation in the conversation thread.
+        </p>
         {% elif ticket.resolution_confirmed_at and ticket.status not in 'RESOLVED,CLOSED' %}
         <p class="text-xs text-text-secondary mt-3 flex items-center gap-1.5">
             {% lucide "check" size=13 class="text-success" %} Receipt confirmed by {{ ticket.resolution_confirmed_by.get_full_name|default:ticket.resolution_confirmed_by.email }} — awaiting final resolution.

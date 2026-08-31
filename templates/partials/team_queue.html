@@ -25,6 +25,12 @@
                 </option>
             {% endfor %}
         </select>
+        <select name="sort" class="text-xs rounded-lg border py-1.5 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                onchange="window.location.href='?agent={{ selected_agent }}&sort=' + this.value">
+            {% for key, label in sort_options %}
+            <option value="{{ key }}" {% if key == active_sort %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
     </div>
 
     <div class="dashboard-card p-0 overflow-hidden">

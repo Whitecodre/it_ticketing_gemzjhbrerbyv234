@@ -48,7 +48,13 @@
         </thead>
         <tbody>
             {% for row in rows %}
-            <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
+            {% url 'tickets:report_record_detail' report_type=report_type pk=row|get_item:'_pk' as row_detail_url %}
+            <tr class="border-b hover:bg-black/5 transition-colors cursor-pointer" style="border-color: var(--color-border);"
+                {% if config.detail_template %}
+                onclick="if (!event.target.closest('input, a, button')) { window.location.href = '{{ row_detail_url }}'; }"
+                {% else %}
+                onclick="if (!event.target.closest('input, a, button')) { openReportRecordModal('{{ row_detail_url }}'); }"
+                {% endif %}>
                 <td class="py-3 px-4">
                     <input type="checkbox" class="bulk-row-checkbox rounded border-border text-primary focus:ring-primary"
                            value="{{ row|get_item:'_pk' }}"
@@ -75,10 +81,15 @@
                 {% endwith %}
                 {% endfor %}
                 <td class="py-3 px-4 text-right">
-                    <a href="{% url 'tickets:report_record_detail' report_type=report_type pk=row|get_item:'_pk' %}"
-                       class="btn-ghost btn-icon" aria-label="View">
+                    {% if config.detail_template %}
+                    <a href="{{ row_detail_url }}" class="btn-ghost btn-icon" aria-label="View">
                         {% lucide "eye" size=16 %}
                     </a>
+                    {% else %}
+                    <button type="button" onclick="openReportRecordModal('{{ row_detail_url }}')" class="btn-ghost btn-icon" aria-label="View">
+                        {% lucide "eye" size=16 %}
+                    </button>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

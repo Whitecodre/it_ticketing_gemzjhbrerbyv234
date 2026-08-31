@@ -1,30 +1,35 @@
 {% load lucide %}
-<div class="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end procurement-row">
-    <input type="text" name="procurement_item_name" placeholder="Item name" aria-label="Item name"
-           class="sm:col-span-2 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
-    <select name="procurement_category_id" aria-label="Category" class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
-            onchange="filterVendorSelectByCategory(this, this.closest('.procurement-row').querySelector('select[name=procurement_vendor_id]'))">
-        <option value="">Category</option>
-        {% for cat in asset_categories %}
-        <option value="{{ cat.pk }}">{{ cat.full_name }}</option>
-        {% endfor %}
-    </select>
-    <input type="number" name="procurement_quantity" min="1" value="1" placeholder="Qty" aria-label="Quantity"
-           class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
-    <select name="procurement_vendor_id" aria-label="Vendor" class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
-        <option value="">-- Vendor --</option>
-        {% for vendor in vendors %}
-        <option value="{{ vendor.pk }}" data-categories="{% for c in vendor.categories.all %}{{ c.pk }}{% if not forloop.last %},{% endif %}{% endfor %}">{{ vendor.name }}</option>
-        {% endfor %}
-    </select>
-    <div class="flex items-center gap-2">
-        <input type="date" name="procurement_expected_date" aria-label="Expected arrival date"
-               class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
-        <button type="button" onclick="this.closest('.procurement-row').remove()"
+<div class="rounded-lg border border-border p-3 space-y-2 procurement-row" style="background-color: color-mix(in oklch, var(--color-info) 4%, transparent);">
+    <div class="flex items-center justify-between">
+        <span class="text-xs font-semibold uppercase tracking-wide text-text-secondary">Item <span class="procurement-row-index">1</span></span>
+        <button type="button" onclick="removeProcurementRow(this)"
                 class="p-1 rounded hover:bg-black/5 text-text-secondary" aria-label="Remove this item">
             {% lucide "x" size=16 %}
         </button>
     </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <input type="text" name="procurement_item_name" placeholder="Item name" aria-label="Item name"
+               class="sm:col-span-2 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+        <select name="procurement_category_id" aria-label="Category" class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
+                onchange="filterVendorSelectByCategory(this, this.closest('.procurement-row').querySelector('select[name=procurement_vendor_id]'))">
+            <option value="">Category</option>
+            {% for cat in asset_categories %}
+            <option value="{{ cat.pk }}">{{ cat.full_name }}</option>
+            {% endfor %}
+        </select>
+        <input type="number" name="procurement_quantity" min="1" value="1" placeholder="Qty" aria-label="Quantity"
+               class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <select name="procurement_vendor_id" aria-label="Vendor" class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+            <option value="">-- Vendor --</option>
+            {% for vendor in vendors %}
+            <option value="{{ vendor.pk }}" data-categories="{% for c in vendor.categories.all %}{{ c.pk }}{% if not forloop.last %},{% endif %}{% endfor %}">{{ vendor.name }}</option>
+            {% endfor %}
+        </select>
+        <input type="date" name="procurement_expected_date" aria-label="Expected arrival date"
+               class="rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+    </div>
     <input type="text" name="procurement_vendor_name" placeholder="Or type a new vendor name..." aria-label="Or type a new vendor name"
-           class="sm:col-span-6 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
+           class="w-full rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary">
 </div>

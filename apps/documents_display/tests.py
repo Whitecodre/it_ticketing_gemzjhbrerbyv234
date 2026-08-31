@@ -10,7 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, DocumentFolder, FolderShare
+from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, DocumentFolder, FolderShare, ShareAuditLog
 from .views import get_viewable_documents
 from .forms import ShareDocumentForm
 
@@ -909,3 +909,196 @@ class ExternalFolderShareTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn('attachment', response['Content-Disposition'])
+
+
+class BulkShareAuditTests(TestCase):
+    """The new bulk-sharing modes (multiple internal users in one submit,
+    multiple external emails in one submit) and the ShareAuditLog trail
+    they and single shares generate."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            email='admin2@example.com', password='TestPass123!',
+            first_name='Admin', last_name='Two', department='IT', role=User.Role.ADMIN,
+        )
+        self.user_a = User.objects.create_user(
+            email='usera@example.com', password='TestPass123!',
+            first_name='User', last_name='A', department='LEGAL', role=User.Role.END_USER,
+        )
+        self.user_b = User.objects.create_user(
+            email='userb@example.com', password='TestPass123!',
+            first_name='User', last_name='B', department='LEGAL', role=User.Role.END_USER,
+        )
+        self.category = DisplayCategory.objects.create(name='Bulk Policies')
+        self.document = DisplayDocument.objects.create(
+            title='Bulk Confidential Policy',
+            category=self.category,
+            file=make_pdf(),
+            created_by=self.admin,
+            visibility=DisplayDocument.Visibility.RESTRICTED,
+        )
+        self.client = Client()
+        self.client.login(email='admin2@example.com', password='TestPass123!')
+
+    def test_multiple_internal_users_shared_in_one_submit(self):
+        with patch('apps.documents_display.views.send_email_via_brevo', return_value=(True, {})) as mock_send:
+            response = self.client.post(
+                reverse('documents_display:document_share', args=[self.document.slug]),
+                {
+                    'share_type': 'internal',
+                    'share_mode': 'multiple',
+                    'recipients': [self.user_a.pk, self.user_b.pk],
+                    'can_download': 'on',
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertTrue(self.document.is_downloadable_by(self.user_a))
+        self.assertTrue(self.document.is_downloadable_by(self.user_b))
+        self.assertEqual(DocumentShare.objects.filter(document=self.document).count(), 2)
+
+    def test_multiple_external_emails_shared_in_one_submit(self):
+        with patch('apps.documents_display.views.send_email_via_brevo', return_value=(True, {})) as mock_send:
+            response = self.client.post(
+                reverse('documents_display:document_share', args=[self.document.slug]),
+                {
+                    'share_type': 'external',
+                    'share_mode': 'multiple',
+                    'external_emails': 'ext1@example.com, ext2@example.com\next1@example.com',
+                    'expires_at': '2030-01-01',
+                },
+            )
+        self.assertEqual(response.status_code, 302)
+        # The duplicate (ext1@example.com repeated) must be deduped, not double-shared.
+        self.assertEqual(mock_send.call_count, 2)
+        self.assertEqual(
+            set(DocumentShare.objects.filter(document=self.document).values_list('external_email', flat=True)),
+            {'ext1@example.com', 'ext2@example.com'},
+        )
+
+    def test_multiple_external_emails_without_expiry_is_rejected(self):
+        response = self.client.post(
+            reverse('documents_display:document_share', args=[self.document.slug]),
+            {
+                'share_type': 'external',
+                'share_mode': 'multiple',
+                'external_emails': 'ext1@example.com, ext2@example.com',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(DocumentShare.objects.filter(document=self.document).count(), 0)
+
+    def test_share_creation_writes_audit_log(self):
+        with patch('apps.documents_display.views.send_email_via_brevo', return_value=(True, {})):
+            self.client.post(
+                reverse('documents_display:document_share', args=[self.document.slug]),
+                {'share_type': 'internal', 'share_mode': 'single', 'recipient': self.user_a.pk},
+            )
+        share = DocumentShare.objects.get(document=self.document, recipient=self.user_a)
+        events = list(ShareAuditLog.objects.filter(
+            content_type__model='documentshare', object_id=share.pk,
+        ).values_list('event', flat=True))
+        self.assertIn(ShareAuditLog.Event.CREATED, events)
+        self.assertIn(ShareAuditLog.Event.EMAIL_SENT, events)
+
+    def test_revoke_writes_audit_log(self):
+        with patch('apps.documents_display.views.send_email_via_brevo', return_value=(True, {})):
+            self.client.post(
+                reverse('documents_display:document_share', args=[self.document.slug]),
+                {'share_type': 'internal', 'share_mode': 'single', 'recipient': self.user_a.pk},
+            )
+        share = DocumentShare.objects.get(document=self.document, recipient=self.user_a)
+        self.client.post(reverse('documents_display:document_share_revoke', args=[self.document.slug, share.pk]))
+        events = list(ShareAuditLog.objects.filter(
+            content_type__model='documentshare', object_id=share.pk,
+        ).values_list('event', flat=True))
+        self.assertIn(ShareAuditLog.Event.REVOKED, events)
+
+
+class SharedWithMeTests(TestCase):
+    """The 'Shared with me' landing page - a recipient's persistent list of
+    everything individually shared with them, documents and folders alike."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            email='admin3@example.com', password='TestPass123!',
+            first_name='Admin', last_name='Three', department='IT', role=User.Role.ADMIN,
+        )
+        self.recipient = User.objects.create_user(
+            email='recipient@example.com', password='TestPass123!',
+            first_name='Rec', last_name='Ipient', department='LEGAL', role=User.Role.END_USER,
+        )
+        self.other_user = User.objects.create_user(
+            email='other2@example.com', password='TestPass123!',
+            first_name='Other', last_name='Two', department='LEGAL', role=User.Role.END_USER,
+        )
+        self.category = DisplayCategory.objects.create(name='SWM Policies')
+        self.document = DisplayDocument.objects.create(
+            title='SWM Confidential Policy',
+            category=self.category,
+            file=make_pdf(),
+            created_by=self.admin,
+            visibility=DisplayDocument.Visibility.RESTRICTED,
+        )
+        self.folder = DocumentFolder.objects.create(name='SWM Folder', created_by=self.admin)
+        self.folder.documents.add(self.document)
+        self.client = Client()
+
+    def test_shows_document_and_folder_shares_for_the_recipient_only(self):
+        DocumentShare.objects.create(document=self.document, recipient=self.recipient, shared_by=self.admin)
+        FolderShare.objects.create(folder=self.folder, recipient=self.recipient, shared_by=self.admin)
+
+        self.client.login(email='recipient@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:shared_with_me'))
+        self.assertEqual(response.status_code, 200)
+        items = response.context['items']
+        self.assertEqual(len(items), 2)
+        self.assertEqual({i['kind'] for i in items}, {'document', 'folder'})
+
+        self.client.logout()
+        self.client.login(email='other2@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:shared_with_me'))
+        self.assertEqual(response.context['items'], [])
+
+    def test_revoked_share_does_not_appear(self):
+        share = DocumentShare.objects.create(document=self.document, recipient=self.recipient, shared_by=self.admin)
+        share.revoke()
+
+        self.client.login(email='recipient@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:shared_with_me'))
+        self.assertEqual(response.context['items'], [])
+
+    def test_expired_share_does_not_appear(self):
+        DocumentShare.objects.create(
+            document=self.document, recipient=self.recipient, shared_by=self.admin,
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        self.client.login(email='recipient@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:shared_with_me'))
+        self.assertEqual(response.context['items'], [])
+
+    def test_opening_a_shared_document_from_the_page_marks_it_accepted(self):
+        share = DocumentShare.objects.create(document=self.document, recipient=self.recipient, shared_by=self.admin)
+
+        self.client.login(email='recipient@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:shared_with_me'))
+        open_url = response.context['items'][0]['open_url']
+        self.assertEqual(open_url, reverse('documents_display:document_share_open', args=[share.token]))
+
+        self.client.get(open_url)
+        share.refresh_from_db()
+        self.assertIsNotNone(share.accepted_at)
+
+    def test_shared_by_deleted_user_shows_fallback_label(self):
+        deleter = User.objects.create_user(
+            email='todelete@example.com', password='TestPass123!',
+            first_name='To', last_name='Delete', department='IT', role=User.Role.ADMIN,
+        )
+        DocumentShare.objects.create(document=self.document, recipient=self.recipient, shared_by=deleter)
+        deleter.delete()
+
+        self.client.login(email='recipient@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:shared_with_me'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['items'][0]['shared_by_label'], 'a former user')

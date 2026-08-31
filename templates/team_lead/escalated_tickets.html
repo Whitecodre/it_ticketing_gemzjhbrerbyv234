@@ -15,14 +15,19 @@
 
 {% block dashboard_content %}
 <div class="w-full">
-    <div class="flex items-center gap-3 mb-4">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background-color: color-mix(in oklch, var(--color-error) 15%, transparent); color: var(--color-error);">
-            {% lucide "alert-triangle" size=18 %}
+    <div class="flex items-center justify-between gap-3 mb-4">
+        <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style="background-color: color-mix(in oklch, var(--color-error) 15%, transparent); color: var(--color-error);">
+                {% lucide "alert-triangle" size=18 %}
+            </div>
+            <div>
+                <h2 class="text-base font-semibold text-text-primary">Escalated Tickets <span class="text-text-secondary font-normal">({{ tickets|length }})</span></h2>
+                <p class="text-sm text-text-secondary">These tickets have breached SLA and need immediate attention — reassign to available capacity or return to the pool.</p>
+            </div>
         </div>
-        <div>
-            <h2 class="text-base font-semibold text-text-primary">Escalated Tickets <span class="text-text-secondary font-normal">({{ tickets|length }})</span></h2>
-            <p class="text-sm text-text-secondary">These tickets have breached SLA and need immediate attention — reassign to available capacity or return to the pool.</p>
-        </div>
+        <form method="get">
+            {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort auto_submit=True %}
+        </form>
     </div>
 
     {% if tickets %}

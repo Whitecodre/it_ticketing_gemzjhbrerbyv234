@@ -1,64 +1,192 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #0D9488; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-        .content { padding: 20px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px; }
-        .button { display: inline-block; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; }
-        .btn-confirm { background: #10B981; color: white; }
-        .btn-reopen { background: #EF4444; color: white; }
-        .footer { margin-top: 20px; font-size: 12px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{% if is_asset_request %}Confirm Receipt{% else %}Ticket Resolution Confirmation{% endif %}</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body>
-    <div class="header">
-        <h1>{% if is_asset_request %}Confirm Receipt{% else %}Ticket Resolution Confirmation{% endif %}</h1>
-    </div>
-    <div class="content">
-        <p>Dear {{ requester_name }},</p>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        {% if is_asset_request %}
-        <p>Your request <strong>{{ ticket_number }}</strong> has been fulfilled by the support team.</p>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    {% if is_asset_request %}Confirm receipt for request {{ ticket_number }}{% else %}Confirm resolution for ticket {{ ticket_number }}{% endif %}
+  </div>
 
-        <p><strong>Title:</strong> {{ ticket_title }}</p>
-        <p><strong>Fulfilled by:</strong> {{ agent_name }}</p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
 
-        <p>Please confirm you've received the item(s) you requested:</p>
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
 
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="{{ confirm_url }}" class="button btn-confirm" style="margin-right: 12px;">✅ Yes, I received it</a>
-        </p>
+          <!-- Top accent bar (teal) -->
+          <tr>
+            <td style="background-color:#0D9488; height:4px; line-height:4px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
 
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="{{ confirm_url }}" class="button btn-reopen">❌ No, not yet</a>
-        </p>
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+              {% else %}
+                <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+              {% endif %}
+            </td>
+          </tr>
 
-        <p>If you haven't received it, please provide details after clicking through.</p>
-        {% else %}
-        <p>The support team has resolved ticket <strong>{{ ticket_number }}</strong>.</p>
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#0D9488; font-weight:600; margin:0 0 10px; text-transform:uppercase; letter-spacing:0.05em;">
+                {% if is_asset_request %}Receipt confirmation{% else %}Resolution confirmation{% endif %}
+              </p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:28px; font-weight:700; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                {% if is_asset_request %}Confirm Receipt{% else %}Ticket Resolution{% endif %}
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Dear <strong>{{ requester_name }}</strong>,
+              </p>
 
-        <p><strong>Title:</strong> {{ ticket_title }}</p>
-        <p><strong>Agent:</strong> {{ agent_name }}</p>
+              {% if is_asset_request %}
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Your request <strong>{{ ticket_number }}</strong> has been fulfilled by the support team.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border-left:4px solid #0D9488; border-radius:6px; margin:16px 0; width:100%;">
+                <tr>
+                  <td style="padding:14px 16px; font-size:14px; color:#0F172A; line-height:1.5;">
+                    <strong>Title:</strong> {{ ticket_title }}<br>
+                    <strong>Fulfilled by:</strong> {{ agent_name }}
+                  </td>
+                </tr>
+              </table>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 30px;">
+                Please open the request and confirm you've received the item(s):
+              </p>
 
-        <p>Please confirm if the issue has been fully resolved:</p>
+              <!-- Single button -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+                <tr>
+                  <td style="border-radius:8px; background-color:#0D9488;">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ confirm_url }}" style="height:46px;v-text-anchor:middle;width:200px;" fillcolor="#0D9488" stroke="false">
+                    <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">View Request</center>
+                    </v:rect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="{{ confirm_url }}" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; background-color:#0D9488; border-radius:8px;">View Request</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
 
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="{{ confirm_url }}" class="button btn-confirm" style="margin-right: 12px;">✅ Yes, it's resolved</a>
-        </p>
+              {% else %}
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                The support team has resolved ticket <strong>{{ ticket_number }}</strong>.
+              </p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border-left:4px solid #0D9488; border-radius:6px; margin:16px 0; width:100%;">
+                <tr>
+                  <td style="padding:14px 16px; font-size:14px; color:#0F172A; line-height:1.5;">
+                    <strong>Title:</strong> {{ ticket_title }}<br>
+                    <strong>Agent:</strong> {{ agent_name }}
+                  </td>
+                </tr>
+              </table>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 28px;">
+                Please confirm if the issue has been fully resolved:
+              </p>
 
-        <p style="text-align: center; margin: 24px 0;">
-            <a href="{{ confirm_url }}" class="button btn-reopen">❌ No, still having issues</a>
-        </p>
+              <!-- Two buttons side by side -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px; width:100%;">
+                <tr>
+                  <td align="center" style="width:50%; padding-right:6px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+                      <tr>
+                        <td style="border-radius:8px; background-color:#16A34A;">
+                          <!--[if mso]>
+                          <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ confirm_url }}" style="height:46px;v-text-anchor:middle;width:100%;" fillcolor="#16A34A" stroke="false">
+                          <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">✅ Yes, resolved</center>
+                          </v:rect>
+                          <![endif]-->
+                          <!--[if !mso]><!-->
+                          <a href="{{ confirm_url }}" style="display:block; padding:14px 20px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; border-radius:8px; text-align:center;">✅ Yes, resolved</a>
+                          <!--<![endif]-->
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="center" style="width:50%; padding-left:6px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+                      <tr>
+                        <td style="border-radius:8px; background-color:#FFFFFF; border:1px solid #DC2626;">
+                          <!--[if mso]>
+                          <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ reopen_url }}" style="height:46px;v-text-anchor:middle;width:100%;" fillcolor="#FFFFFF" stroke="false">
+                          <center style="color:#DC2626;font-family:sans-serif;font-size:15px;font-weight:600;">❌ Still having issues</center>
+                          </v:rect>
+                          <![endif]-->
+                          <!--[if !mso]><!-->
+                          <a href="{{ reopen_url }}" style="display:block; padding:14px 20px; font-size:15px; font-weight:600; color:#DC2626; text-decoration:none; -webkit-text-size-adjust:none; border-radius:8px; text-align:center; border:1px solid #DC2626;">❌ Still having issues</a>
+                          <!--<![endif]-->
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
 
-        <p>If the issue is not resolved, please provide details about what's still not working.</p>
-        {% endif %}
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 20px; text-align:center;">
+                If the issue is not resolved, please provide details about what's still not working.
+              </p>
+              {% endif %}
 
-        <p>Best regards,<br>TicketSwipe Support Team</p>
-    </div>
-    <div class="footer">
-        <p>This is an automated message. Please do not reply to this email.</p>
-    </div>
+              <!-- Fallback link -->
+              <div style="border-top:1px solid #EEF0F2; margin:24px 0 20px;"></div>
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 8px; text-align:center;">Button not working? Paste this link into your browser:</p>
+              <p style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size:12px; color:#0D9488; background-color:#F8FAFC; border:1px solid #EEF0F2; border-radius:6px; padding:10px 12px; margin:0 0 20px; word-break:break-all; text-align:center;">
+                {{ confirm_url }}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px; text-align:center;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  This is an automated notification from {{ client_settings.company_name }}. Please do not reply to this email.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

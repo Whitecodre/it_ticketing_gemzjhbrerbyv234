@@ -1,0 +1,3 @@
+from apps.tickets.models import Ticket
+t = Ticket.objects.get(number="SRV#8223")
+print(t.status, t.fulfilled_at, t.mobilizations.count())

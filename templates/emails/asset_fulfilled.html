@@ -1,48 +1,132 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asset Request Fulfilled</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Asset Request Fulfilled</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body style="margin: 0; padding: 20px; background-color: #F8FAFC; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-    <div style="max-width: 480px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; padding: 32px 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-        
-        <div style="text-align: center; margin-bottom: 24px;">
-            {% if logo_url %}
-            <img src="{{ logo_url }}" alt="{{ client_settings.company_name }}" style="height: 40px; width: auto;">
-            {% endif %}
-            <h1 style="font-size: 22px; font-weight: 600; color: #0D9488; margin: 12px 0 0 0;">Asset Request Fulfilled</h1>
-        </div>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        <p style="font-size: 16px; color: #1E293B; margin: 0 0 12px 0;">Hi <strong>{{ requester_name }}</strong>,</p>
-        
-        <p style="font-size: 15px; color: #334155; line-height: 1.5; margin: 0 0 12px 0;">
-            Your asset request <strong>{{ ticket.number }}</strong> has been fulfilled!
-        </p>
-        
-        <div style="background-color: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 16px; margin: 16px 0;">
-            <p style="font-size: 14px; color: #166534; margin: 0;">
-                <strong>Asset:</strong> {{ asset.name }} ({{ asset.tracking_id }})<br>
-                <strong>Category:</strong> {{ asset.category.name|default:"—" }}<br>
-                <strong>Serial:</strong> {{ asset.serial_number|default:"N/A" }}<br>
-                <strong>Location:</strong> {{ asset.location|default:"Not specified" }}
-            </p>
-        </div>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    Your asset request {{ ticket.number }} has been fulfilled! View details below.
+  </div>
 
-        <p style="font-size: 15px; color: #334155; line-height: 1.5; margin: 0 0 24px 0;">
-            You can view your ticket and asset details by clicking the button below.
-        </p>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
 
-        <div style="text-align: center; margin: 0 0 24px 0;">
-            <a href="{{ ticket_url }}" style="display: inline-block; background-color: #0D9488; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 9999px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">View Ticket</a>
-        </div>
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
 
-        <hr style="border: none; border-top: 1px solid #E2E8F0; margin: 24px 0 16px 0;">
+          <!-- Top accent bar -->
+          <tr>
+            <td style="background-color:#0D9488; height:3px; line-height:3px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
 
-        <p style="font-size: 12px; color: #94A3B8; text-align: center; margin: 0;">
-            &copy; {% now "Y" %} {{ client_settings.company_name }}
-        </p>
-    </div>
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              {% if logo_url %}
+                <img src="{{ logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+              {% else %}
+                <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#0D9488; font-weight:600; margin:0 0 10px;">Asset request fulfilled</p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:27px; font-weight:400; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                Your asset is ready
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Hi <strong>{{ requester_name }}</strong>,<br>
+                Your asset request <strong>{{ ticket.number }}</strong> has been fulfilled. Here's a summary of the assigned asset:
+              </p>
+
+              <!-- Asset info box (aligned with success token) -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; margin:16px 0;">
+                <tr>
+                  <td style="padding:16px; font-size:14px; color:#166534; line-height:1.6;">
+                    <strong>Asset:</strong> {{ asset.name }} ({{ asset.tracking_id }})<br>
+                    <strong>Category:</strong> {{ asset.category.name|default:"—" }}<br>
+                    <strong>Serial:</strong> {{ asset.serial_number|default:"N/A" }}<br>
+                    <strong>Location:</strong> {{ asset.location|default:"Not specified" }}
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 30px;">
+                You can view the full ticket and asset details by clicking the button below.
+              </p>
+
+              <!-- Button (with Outlook VML fallback) -->
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background-color:#0D9488;">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ ticket_url }}" style="height:46px;v-text-anchor:middle;width:200px;" fillcolor="#0D9488" stroke="false">
+                    <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">View Ticket</center>
+                    </v:rect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="{{ ticket_url }}" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; background-color:#0D9488; border-radius:8px;">View Ticket</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Fallback link -->
+              <div style="border-top:1px solid #EEF0F2; margin:34px 0 20px;"></div>
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 8px;">Button not working? Paste this link into your browser:</p>
+              <p style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size:12px; color:#0D9488; background-color:#F8FAFC; border:1px solid #EEF0F2; border-radius:6px; padding:10px 12px; margin:0 0 8px; word-break:break-all;">
+                {{ ticket_url }}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  If you have questions, reply to this email or contact support.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

@@ -1,15 +1,31 @@
 {% load lucide %}
+{% load badge_tags %}
+{% latest_receipt_prompt_id ticket as latest_receipt_prompt_id %}
+
+{% if attachment_warnings %}
+<div class="rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs p-3 mb-3">
+    <ul class="list-disc list-inside space-y-0.5">
+        {% for name, reason in attachment_warnings %}
+        <li>"{{ name }}" was not attached — {{ reason }}.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
 
 {# ---------- Ticket description (initial message) ---------- #}
 <div class="flex justify-start mb-3">
-    <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm bubble-theirs bubble-left">
+    <div class="max-w-[70%] xl:max-w-xl rounded-lg px-4 py-2 text-sm break-words bubble-theirs bubble-left">
         <div class="text-xs font-semibold mb-1 opacity-80">
             {{ ticket.requester.get_full_name_with_role }}
         </div>
         <div>{{ ticket.description|linebreaksbr|safe }}</div>
-        {% for att in initial_attachments %}
-        {% include "partials/attachment_chip.html" with att=att %}
-        {% endfor %}
+        {% if initial_attachments %}
+        <div class="mt-1.5 flex flex-wrap gap-1.5">
+            {% for att in initial_attachments %}
+            {% include "partials/attachment_chip.html" with att=att %}
+            {% endfor %}
+        </div>
+        {% endif %}
         <div class="text-[0.6rem] mt-1 opacity-60">
             {{ ticket.created_at|date:"M j, g:i A" }}
         </div>
@@ -17,14 +33,128 @@
 </div>
 
 {% for comment in comments %}
-    {% if comment.visibility == 'INTERNAL' and active_role_name in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
+    {% if comment.mobilization_event %}
+        <div class="flex justify-start mb-3">
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                <div class="flex items-start gap-2.5">
+                    {% if comment.mobilization_event == 'VENDOR_ITEM_ARRIVED' %}
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning);">
+                        {% lucide "truck" size=15 %}
+                    </span>
+                    {% elif comment.mobilization_event == 'VENDOR_ITEM_CANCELLED' %}
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-text-secondary) 15%, transparent); color: var(--color-text-secondary);">
+                        {% lucide "x-circle" size=15 %}
+                    </span>
+                    {% else %}
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary);">
+                        {% lucide "package" size=15 %}
+                    </span>
+                    {% endif %}
+                    <div class="min-w-0">
+                        <div class="text-text-primary">{{ comment.body|safe }}</div>
+                        <p class="text-xs text-text-secondary mt-1">
+                            {% if comment.mobilization_event == 'VENDOR_ITEM_CANCELLED' %}Updated{% else %}Sent{% endif %} by System · {{ comment.created_at|date:"M j, Y g:i A" }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% elif comment.is_receipt_confirmation_prompt and comment.pk == latest_receipt_prompt_id %}
+        <div class="flex justify-start mb-3">
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                {% if ticket.resolution_confirmed_at and ticket.status != 'PENDING_USER' %}
+                    {# ---------- Confirmed ---------- #}
+                    <div class="flex items-start gap-2.5">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success);">
+                            {% lucide "check" size=15 %}
+                        </span>
+                        <div class="min-w-0">
+                            <p class="font-medium text-text-primary">
+                                {% if ticket.is_mobilization_request %}Receipt confirmed for {{ ticket.mobilizations.first.destination_display }}{% else %}Receipt confirmed{% endif %}
+                            </p>
+                            <p class="text-xs text-text-secondary mt-0.5">
+                                Confirmed by {{ ticket.resolution_confirmed_by.get_full_name|default:ticket.resolution_confirmed_by.email }} · {{ ticket.resolution_confirmed_at|date:"M j, Y g:i A" }}
+                            </p>
+                        </div>
+                    </div>
+                {% elif ticket.status == 'PENDING_USER' %}
+                    {# ---------- Pending confirmation ---------- #}
+                    <div class="flex items-start gap-2.5">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-primary) 15%, transparent); color: var(--color-primary);">
+                            {% lucide "package" size=15 %}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            {% if ticket.is_mobilization_request %}
+                            {% with mob=ticket.mobilizations.first %}
+                            {% with mob_total=mob.items.all|sum_quantity %}
+                            <p class="font-medium text-text-primary">
+                                {{ mob_total }} asset{{ mob_total|pluralize }} mobilized for <strong>{{ mob.destination_display }}</strong>
+                            </p>
+                            <p class="text-xs text-text-secondary mt-0.5">
+                                Sent by System · {{ comment.created_at|date:"M j, Y g:i A" }} ·
+                                <button type="button" onclick="document.getElementById('receiptItems{{ comment.pk }}').classList.toggle('hidden')" class="text-primary hover:underline">View items</button>
+                            </p>
+                            <div id="receiptItems{{ comment.pk }}" class="hidden mt-2 space-y-1">
+                                {% for item in mob.items.all %}
+                                <p class="text-xs text-text-secondary">{{ item.asset.name }} <span class="font-mono">({{ item.asset.tracking_id }})</span>{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}</p>
+                                {% endfor %}
+                            </div>
+                            {% endwith %}
+                            {% endwith %}
+                            {% else %}
+                            <p class="font-medium text-text-primary">Your request has been fulfilled</p>
+                            <p class="text-xs text-text-secondary mt-0.5">
+                                Sent by System · {{ comment.created_at|date:"M j, Y g:i A" }}
+                            </p>
+                            {% endif %}
+                            {% if user == ticket.requester %}
+                            <button type="button" onclick="openReceiptConfirmModal({{ ticket.pk }})"
+                                    class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">
+                                {% lucide "check" size=12 %} Confirm receipt
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% else %}
+                    {# ---------- Disputed / sent back — a fresh prompt will replace this once re-fulfilled ---------- #}
+                    <div class="flex items-start gap-2.5">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning);">
+                            {% lucide "alert-triangle" size=15 %}
+                        </span>
+                        <div class="min-w-0">
+                            <p class="font-medium text-text-primary">Receipt disputed — sent back for review</p>
+                            <p class="text-xs text-text-secondary mt-0.5">{{ comment.created_at|date:"M j, Y g:i A" }}</p>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% elif comment.is_system_generated %}
+        <div class="flex justify-start mb-3">
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                <div class="flex items-start gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-text-secondary) 15%, transparent); color: var(--color-text-secondary);">
+                        {% lucide comment.system_icon|default:"bot" size=15 %}
+                    </span>
+                    <div class="min-w-0">
+                        <div class="text-text-primary">{{ comment.body|safe }}</div>
+                        <p class="text-xs text-text-secondary mt-1">System · {{ comment.created_at|date:"M j, Y g:i A" }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% elif comment.visibility == 'INTERNAL' and active_role_name in 'AGENT,TEAM_LEAD,ADMIN,SUPERADMIN' %}
         <div class="flex justify-center mb-3">
-            <div class="max-w-lg rounded-lg px-4 py-2 text-xs border border-warning/20 text-text-primary"
+            <div class="max-w-lg rounded-lg px-4 py-2 text-xs border border-warning/20 text-text-primary break-words"
                  style="background-color: rgba(245, 158, 11, 0.06);">
                 <span class="font-semibold text-warning">Internal Note</span> — {{ comment.body|safe }}
-                {% for attachment in comment.attachment_set.all %}
-                    {% include "partials/attachment_chip.html" with att=attachment %}
-                {% endfor %}
+                {% if comment.attachment_set.all %}
+                <div class="mt-1.5 flex flex-wrap gap-1.5">
+                    {% for attachment in comment.attachment_set.all %}
+                        {% include "partials/attachment_chip.html" with att=attachment %}
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="text-[0.6rem] mt-1 text-text-secondary">
                     {{ comment.author.get_full_name_with_role }} · {{ comment.created_at|date:"M j, g:i A" }}
                 </div>
@@ -32,7 +162,7 @@
         </div>
     {% else %}
         <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
-            <div class="max-w-[70%] rounded-lg px-4 py-2 text-sm
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg px-4 py-2 text-sm break-words
                         {% if comment.author == request.user %}
                             text-white bg-primary bubble-right
                         {% else %}
@@ -42,13 +172,17 @@
                     {{ comment.author.get_full_name_with_role }}
                 </div>
                 <div>{{ comment.body|safe }}</div>
-                {% for attachment in comment.attachment_set.all %}
-                    {% if comment.author == request.user %}
-                        {% include "partials/attachment_chip.html" with att=attachment on_primary=True %}
-                    {% else %}
-                        {% include "partials/attachment_chip.html" with att=attachment on_primary=False %}
-                    {% endif %}
-                {% endfor %}
+                {% if comment.attachment_set.all %}
+                <div class="mt-1.5 flex flex-wrap gap-1.5">
+                    {% for attachment in comment.attachment_set.all %}
+                        {% if comment.author == request.user %}
+                            {% include "partials/attachment_chip.html" with att=attachment on_primary=True %}
+                        {% else %}
+                            {% include "partials/attachment_chip.html" with att=attachment on_primary=False %}
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="text-[0.6rem] mt-1 opacity-60">
                     {{ comment.created_at|date:"M j, g:i A" }}
                 </div>

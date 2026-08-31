@@ -3,178 +3,48 @@
 {% load badge_tags %}
 
 {# ================================================================ #}
-{# ASSET TABLE — a real <table>, horizontally scrollable with the    #}
-{# Asset (identity) column pinned left and Actions pinned right, so  #}
-{# both stay visible while scrolling through the columns in between  #}
-{# on narrower screens. table-layout:fixed + a min-width keeps every #}
-{# column readable instead of squeezing to fit — the table scrolls   #}
-{# instead of compressing. All actions collapse into one dropdown so #}
-{# the Actions column stays a single, uncluttered button.            #}
+{# ASSET LIST — two view modes sharing one bulk-select scope and one  #}
+{# per-row action dropdown/script:                                   #}
+{#   group_by_owner=True  -> collapsible seat/workspace cards         #}
+{#                           (partials/asset_seat_card.html), the     #}
+{#                           default, day-to-day non-technical view.  #}
+{#   group_by_owner=False -> the original flat one-row-per-asset      #}
+{#                           table, for admin bulk work.              #}
+{# Both branches render the same partials/_asset_row.html per asset   #}
+{# so the action dropdown/click-to-detail wiring only exists once.    #}
 {# ================================================================ #}
 <div x-data="bulkSelect()">
-{# Bulk selection bar — appears once at least one row is checked (Fix 3). #}
+{# Bulk selection bar — appears once at least one row is checked. #}
 <div x-show="count > 0" x-cloak x-transition
      class="flex items-center justify-between gap-3 px-4 py-2 bg-primary/5 border-b text-sm" style="border-color: var(--color-border);">
     <span><strong x-text="count"></strong> selected</span>
     <button type="button" class="btn-ghost text-xs px-2 py-1 rounded-lg" @click="clear()">Clear selection</button>
 </div>
+
+{% if group_by_owner %}
+<div>
+    {% for group in assets %}
+        {% include "partials/asset_seat_card.html" %}
+    {% empty %}
+    <div class="text-center py-12 text-text-secondary">
+        <div class="flex flex-col items-center gap-2">
+            <span class="opacity-30 flex items-center justify-center">{% lucide "package" size=36 %}</span>
+            <p class="text-sm font-medium">No assets found</p>
+            <p class="text-xs">Try adjusting your filters or add a new asset.</p>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
 <div class="overflow-x-auto table-scroll-shell">
-    <table class="text-sm" style="width: 100%; min-width: 1224px; table-layout: fixed; border-collapse: separate; border-spacing: 0;">
-        <thead>
-            <tr class="border-b" style="border-color: var(--color-border);">
-                <th class="py-3 px-4" style="width: 40px;">
-                    <input type="checkbox" class="rounded border-border text-primary focus:ring-primary"
-                           :checked="allSelected" @change="toggleAll($event.target.checked)"
-                           aria-label="Select all assets">
-                </th>
-                <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs"
-                    style="width: 220px; left: 40px;">Asset</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 130px;">Type</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 140px;">Serial</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 160px;">Status</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 200px;">Assigned To</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 120px;">Condition</th>
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 150px;">Warranty</th>
-                <th class="text-center py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs"
-                    style="width: 64px;">Actions</th>
-            </tr>
-        </thead>
+    <table class="text-sm" style="width: 100%; min-width: 1074px; table-layout: fixed; border-collapse: separate; border-spacing: 0;">
+        {% include "partials/_asset_table_head.html" with show_select_all=True %}
         <tbody>
             {% for asset in assets %}
-            <tr class="asset-row border-b hover:bg-black/5 transition-colors cursor-pointer"
-                style="border-color: var(--color-border);"
-                data-detail-url="{% url 'tickets:asset_detail' asset.pk %}">
-
-                <td class="py-3 px-4" @click.stop>
-                    <input type="checkbox" class="bulk-row-checkbox rounded border-border text-primary focus:ring-primary"
-                           value="{{ asset.pk }}"
-                           :checked="selected.includes('{{ asset.pk }}')"
-                           @change="toggleRow('{{ asset.pk }}', $event.target.checked)"
-                           aria-label="Select {{ asset.name }}">
-                </td>
-
-                {# Asset (pinned) #}
-                <td class="py-3 px-4" style="left: 40px;">
-                    <div class="font-medium text-sm truncate" style="color: var(--color-text-primary); max-width: 190px;">{{ asset.name }}</div>
-                    <div class="text-xs font-mono text-primary">{{ asset.tracking_id }}</div>
-                </td>
-
-                {# Type #}
-                <td class="py-3 px-3">
-                    <span class="text-sm" style="color: var(--color-text-primary);">{{ asset.category.name|default:"—" }}</span>
-                </td>
-
-                {# Serial #}
-                <td class="py-3 px-3">
-                    <span class="text-sm font-mono text-text-secondary">{{ asset.serial_number|default:"—" }}</span>
-                </td>
-
-                {# Status — one badge, one label. Secondary line only ever adds new #}
-                {# info (a date, a stock count) — it never repeats the badge word. #}
-                <td class="py-3 px-3">
-                    <div class="flex flex-col gap-0.5">
-                        {% if asset.is_checked_out and asset.checked_out_at %}
-                            {% status_badge 'asset_status' asset.status secondary=asset.checked_out_at|date:"\s\i\n\c\e M d" %}
-                        {% elif asset.is_checked_out %}
-                            {% status_badge 'asset_status' asset.status %}
-                        {% elif asset.is_consumable %}
-                            {% status_badge 'asset_status' asset.status secondary=asset.quantity_in_stock|stringformat:"s"|add:" in stock" %}
-                        {% else %}
-                            {% status_badge 'asset_status' asset.status %}
-                        {% endif %}
-                        {% if asset.is_low_stock %}
-                            <span class="status-chip status-chip-danger text-[0.55rem] w-fit flex items-center gap-0.5">{% lucide "triangle-alert" size=10 %} Low Stock</span>
-                        {% endif %}
-                        {% if asset.is_renewal_due_soon %}
-                            <span class="status-chip {% if asset.next_renewal_date < today %}status-chip-danger{% else %}status-chip-warning{% endif %} text-[0.55rem] w-fit flex items-center gap-0.5">{% lucide "calendar" size=10 %} Renews {{ asset.next_renewal_date|date:"M j" }}</span>
-                        {% endif %}
-                    </div>
-                </td>
-
-                {# Assigned To #}
-                <td class="py-3 px-3">
-                    {% if asset.assigned_to %}
-                        <div class="text-sm" style="color: var(--color-text-primary);">{{ asset.assigned_to.get_full_name|default:asset.assigned_to.email }}</div>
-                        {% if asset.assigned_to_department %}
-                        <div class="text-xs text-text-secondary">{{ asset.assigned_to_department }}</div>
-                        {% endif %}
-                        {% if asset|has_reassignment_indicator %}
-                        <span class="reassign-indicator cursor-pointer inline-flex items-center gap-0.5 px-1 py-0.5 mt-0.5 rounded text-[0.55rem] hover:bg-primary/10 transition-colors"
-                            data-tooltip-html="{{ asset|format_assignment_history }}"
-                            data-has-tooltip="true"
-                            title="View reassign history">
-                            <span style="color: var(--color-warning);">{% lucide "rotate-cw" size=11 %}</span>
-                            <span class="font-bold px-1 rounded-full"
-                                style="background-color: var(--color-warning); color: white; min-width: 11px; text-align: center; font-size: 0.45rem;">
-                                {{ asset|reassign_count }}
-                            </span>
-                        </span>
-                        {% endif %}
-                    {% else %}
-                        <span class="text-sm text-text-secondary opacity-60">Unassigned</span>
-                    {% endif %}
-                </td>
-
-                {# Condition #}
-                <td class="py-3 px-3">
-                    {% if asset.condition %}
-                        {% status_badge 'asset_condition' asset.condition %}
-                    {% else %}
-                        <span class="text-sm text-text-secondary opacity-60">—</span>
-                    {% endif %}
-                </td>
-
-                {# Warranty #}
-                <td class="py-3 px-3">
-                    {% if asset.warranty_expiry %}
-                        {% with warranty_status=asset.warranty_status %}
-                        <div class="text-xs font-medium
-                            {% if warranty_status == 'VALID' %}text-success
-                            {% elif warranty_status == 'EXPIRING_SOON' %}text-warning
-                            {% elif warranty_status == 'EXPIRED' %}text-danger
-                            {% else %}text-text-secondary{% endif %}">
-                            {{ asset.warranty_expiry|date:"M d, Y" }}
-                        </div>
-                        <div class="text-[0.6rem]
-                            {% if warranty_status == 'VALID' %}text-success
-                            {% elif warranty_status == 'EXPIRING_SOON' %}text-warning
-                            {% elif warranty_status == 'EXPIRED' %}text-danger
-                            {% else %}text-text-secondary{% endif %}">
-                            {% if warranty_status == 'VALID' %}{% lucide "circle-check" size=11 %} Active
-                            {% elif warranty_status == 'EXPIRING_SOON' %}{% lucide "triangle-alert" size=11 %} {{ asset.warranty_expiry|timeuntil }}
-                            {% elif warranty_status == 'EXPIRED' %}{% lucide "circle-x" size=11 %} Expired
-                            {% else %}—{% endif %}
-                        </div>
-                        {% endwith %}
-                    {% else %}
-                        <span class="text-sm text-text-secondary">—</span>
-                    {% endif %}
-                </td>
-
-                {# Actions (pinned) #}
-                <td class="py-3 px-3 text-center">
-                    <button type="button" class="asset-action-btn p-2 rounded-full hover:bg-black/5 transition"
-                            style="color: var(--color-text-secondary);"
-                            onclick="assetActionBtnClick(this)"
-                            data-asset-id="{{ asset.pk }}"
-                            data-asset-name="{{ asset.name }}"
-                            data-detail-url="{% url 'tickets:asset_detail' asset.pk %}"
-                            data-is-checked-out="{{ asset.is_checked_out|yesno:'true,false' }}"
-                            data-can-checkout="{{ asset.is_available_for_assignment|yesno:'true,false' }}"
-                            data-can-reassign="{{ asset.can_reassign|yesno:'true,false' }}"
-                            data-can-request-scrap="{% if asset.status != 'SCRAPPED' and asset.status != 'RETIRED' %}true{% else %}false{% endif %}"
-                            data-can-approve-scrap="{% if asset.status == 'DAMAGED' and asset.pending_scrap_requested_by != user %}true{% else %}false{% endif %}"
-                            {% if active_role_name in 'ADMIN,SUPERADMIN' %}
-                            data-edit-url="{% url 'tickets:asset_edit_page' asset.pk %}?source=list&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}"
-                            {% endif %}
-                            aria-label="Actions for {{ asset.name }}">
-                        {% lucide "more-vertical" size=18 %}
-                    </button>
-                </td>
-            </tr>
+                {% include "partials/_asset_row.html" %}
             {% empty %}
             <tr>
-                <td colspan="9" class="text-center py-12 text-text-secondary">
+                <td colspan="8" class="text-center py-12 text-text-secondary">
                     <div class="flex flex-col items-center gap-2">
                         <span class="opacity-30 flex items-center justify-center">{% lucide "package" size=36 %}</span>
                         <p class="text-sm font-medium">No assets found</p>
@@ -186,6 +56,7 @@
         </tbody>
     </table>
 </div>
+{% endif %}
 </div>
 <p class="lg:hidden text-[0.7rem] text-text-secondary text-center py-1.5 border-t" style="border-color: var(--color-border);">
     {% lucide "move-horizontal" size=11 class="inline -mt-0.5" %} Scroll sideways for more columns
@@ -357,14 +228,15 @@
 </script>
 
 <!-- Pagination -->
+{% build_qs filter_q=query filter_category=selected_category filter_status=selected_status filter_location=selected_location filter_low_stock=selected_low_stock filter_renewal_due=selected_renewal_due filter_group_by_owner=group_by_owner_param sort=active_sort as pagination_qs %}
 {% if assets.has_other_pages %}
 <div class="pagination-bar">
     <span class="pagination-summary">
-        Showing <strong>{{ assets.start_index }}–{{ assets.end_index }}</strong> of <strong>{{ assets.paginator.count }}</strong> assets
+        Showing <strong>{{ assets.start_index }}–{{ assets.end_index }}</strong> of <strong>{{ assets.paginator.count }}</strong> {% if group_by_owner %}workspaces{% else %}assets{% endif %}
     </span>
     <div class="pagination-controls">
         <button class="pagination-step{% if not assets.has_previous %} is-disabled{% endif %}"
-                {% if assets.has_previous %}hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                {% if assets.has_previous %}hx-get="{% url 'tickets:assets' %}?page={{ assets.previous_page_number }}&{{ pagination_qs }}"
                 hx-target="#assetTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             {% lucide "chevron-left" size=14 %} Prev
         </button>
@@ -374,14 +246,14 @@
                 <span class="pagination-number is-current">{{ num }}</span>
                 {% elif num > assets.number|add:'-3' and num < assets.number|add:'3' %}
                 <button class="pagination-number"
-                        hx-get="{% url 'tickets:assets' %}?page={{ num }}&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                        hx-get="{% url 'tickets:assets' %}?page={{ num }}&{{ pagination_qs }}"
                         hx-target="#assetTableContainer" hx-swap="innerHTML">{{ num }}</button>
                 {% endif %}
             {% endfor %}
         </div>
         {% if assets.has_next %}
         <button class="pagination-step"
-                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&q={{ query }}&category={{ selected_category }}&status={{ selected_status }}&location={{ selected_location }}&condition={{ selected_condition }}&warranty={{ selected_warranty }}"
+                hx-get="{% url 'tickets:assets' %}?page={{ assets.next_page_number }}&{{ pagination_qs }}"
                 hx-target="#assetTableContainer" hx-swap="innerHTML">
             Next {% lucide "chevron-right" size=14 %}
         </button>

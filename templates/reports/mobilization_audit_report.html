@@ -1,0 +1,140 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load badge_tags %}
+
+{% block dashboard_title %}Mobilization Audit Report{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-4xl mx-auto space-y-5">
+    {% url 'dashboard' as dash_url %}
+    {% url 'tickets:mobilizations' as mobs_url %}
+    {% url 'tickets:mobilization_detail' mobilization.pk as detail_url %}
+    {% breadcrumbs "Dashboard" dash_url "Mobilizations" mobs_url mobilization.destination_display detail_url "Audit Report" %}
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <h2 class="text-base font-semibold text-text-primary">{{ mobilization.destination_display }}</h2>
+                <span class="status-chip {% if mobilization.status == 'ACTIVE' %}primary{% else %}success{% endif %} text-xs">{{ mobilization.get_status_display }}</span>
+            </div>
+            <p class="text-xs text-text-secondary mt-1">Mobilized by {{ mobilization.mobilized_by.get_full_name|default:mobilization.mobilized_by.email }} on {{ mobilization.mobilized_at|date:"M d, Y H:i" }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            {% url 'tickets:mobilization_audit_export' mobilization.pk as export_url %}
+            {% include "components/export_menu.html" with menu_id="mobaudit" export_url=export_url formats="pdf:PDF:file-type" button_label="Export" %}
+        </div>
+    </div>
+
+    {# Letterhead #}
+    <div class="dashboard-card p-4 flex items-center gap-4">
+        <div class="h-14 w-24 rounded-lg border flex items-center justify-center flex-shrink-0 bg-white" style="border-color: var(--color-border);">
+            {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" class="max-h-10 max-w-20 object-contain">
+            {% else %}
+                <span class="text-xs font-semibold text-primary">{{ client_settings.company_name }}</span>
+            {% endif %}
+        </div>
+        <div class="flex-1 text-center">
+            <p class="text-sm font-bold text-text-primary tracking-wide">MOBILIZATION AUDIT REPORT</p>
+            <p class="text-[0.65rem] text-text-secondary">Mobilization #{{ mobilization.pk }}</p>
+        </div>
+        <div class="w-24 flex-shrink-0"></div>
+    </div>
+
+    {# Section 1 — Job Details #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "ship" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 1 — Job Details</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Job Number</span><span class="font-medium text-text-primary">{{ mobilization.job_number.number|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Vessel(s)</span><span class="font-medium text-text-primary">{{ vessel_names|join:", "|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Dive System(s)</span><span class="font-medium text-text-primary">{{ dive_system_names|join:", "|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Linked Ticket</span>
+                <span class="font-medium text-text-primary">
+                    {% if mobilization.ticket %}<a href="{% url 'tickets:detail' mobilization.ticket.pk %}" class="text-primary hover:underline">{{ mobilization.ticket.number }}</a> — {{ mobilization.ticket.requester.get_full_name|default:mobilization.ticket.requester.email }}{% else %}— (no linked ticket){% endif %}
+                </span>
+            </div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Mobilized By</span><span class="font-medium text-text-primary">{{ mobilization.mobilized_by.get_full_name|default:mobilization.mobilized_by.email }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Mobilized At</span><span class="font-medium text-text-primary">{{ mobilization.mobilized_at|date:"M d, Y H:i" }}</span></div>
+        </div>
+        {% if mobilization.notes %}
+        <div class="mt-4 pt-4 border-t border-border">
+            <span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Notes</span>
+            <p class="text-sm text-text-primary whitespace-pre-line">{{ mobilization.notes }}</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Section 2 — Asset Audit Trail #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-success);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-success) 12%, transparent); color: var(--color-success);">{% lucide "history" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 2 — Asset Audit Trail</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Asset</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Receipt Confirmed</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Self-Reported</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Demobilized</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5 pr-3">Condition</th>
+                        <th class="text-left font-semibold text-text-primary py-1.5">Inventory Effect</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in audit_rows %}
+                    {% with item=row.item %}
+                    <tr style="border-bottom: 1px solid var(--color-border);">
+                        <td class="py-2 pr-3">
+                            <span class="font-semibold text-text-primary">{{ item.asset.name }}</span>{% if item.quantity > 1 %} x{{ item.quantity }}{% endif %}
+                            <div class="font-mono text-xs text-text-secondary">{{ item.asset.tracking_id }}</div>
+                        </td>
+                        <td class="py-2 pr-3 text-text-secondary">
+                            {% if item.disputed_at %}
+                                <span class="text-error font-semibold">Disputed</span>
+                                {% if item.dispute_reason %}<div class="text-xs">"{{ item.dispute_reason }}"</div>{% endif %}
+                            {% elif item.acknowledged_at %}
+                                <span class="font-semibold">{{ item.acknowledged_at|date:"M d, Y H:i" }}</span>
+                                <div class="text-xs">by {{ item.acknowledged_by.get_full_name|default:item.acknowledged_by.email }}</div>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-2 pr-3 text-text-secondary">
+                            {% if item.return_requested_at %}
+                                <span class="font-semibold">{{ item.return_requested_at|date:"M d, Y H:i" }}</span>
+                                <div class="text-xs">by {{ item.return_requested_by.get_full_name|default:item.return_requested_by.email }}</div>
+                                {% if item.return_requested_notes %}<div class="text-xs">"{{ item.return_requested_notes }}"</div>{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-2 pr-3 text-text-secondary">
+                            {% if item.demobilized_at %}
+                                <span class="font-semibold">{{ item.demobilized_at|date:"M d, Y H:i" }}</span>
+                                <div class="text-xs">by {{ item.demobilized_by.get_full_name|default:item.demobilized_by.email }}</div>
+                                {% if item.return_notes %}<div class="text-xs">"{{ item.return_notes }}"</div>{% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-2 pr-3 text-text-secondary">{{ item.get_return_condition_display|default:"—" }}</td>
+                        <td class="py-2 text-text-secondary">{{ row.inventory_effect }}</td>
+                    </tr>
+                    {% endwith %}
+                    {% empty %}
+                    <tr><td colspan="6" class="text-center py-8 text-text-secondary">No assets on this mobilization.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

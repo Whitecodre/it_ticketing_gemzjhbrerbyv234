@@ -25,7 +25,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING('⚠️ Service categories already exist. Skipping seeding to avoid duplicates.'))
             self.stdout.write(self.style.WARNING(f'   Current category count: {ServiceCategory.objects.count()}'))
             return
-        for order, (name, field_group, icon, description) in enumerate(CATEGORIES):
+        for name, field_group, icon, description in CATEGORIES:
             category, created = ServiceCategory.objects.get_or_create(
                 name=name,
                 defaults={
@@ -33,7 +33,6 @@ class Command(BaseCommand):
                     'field_group': field_group,
                     'icon': icon,
                     'description': description,
-                    'order': order,
                 },
             )
             if created:

@@ -1,54 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-    <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: #10B981; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
-        .content { padding: 20px; border: 1px solid #E2E8F0; border-top: none; border-radius: 0 0 8px 8px; }
-        .detail { background: #F8FAFC; padding: 15px; border-radius: 6px; margin: 15px 0; }
-        .button { background: #10B981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; display: inline-block; }
-        .footer { margin-top: 20px; font-size: 12px; color: #64748B; }
-        ul { margin: 10px 0; padding-left: 20px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>Maintenance Completed</title>
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<style>
+table {border-collapse: collapse;}
+</style>
+<![endif]-->
 </head>
-<body>
-    <div class="header">
-        <h2>✅ Maintenance Completed</h2>
-    </div>
-    <div class="content">
-        <p>Dear Department Manager,</p>
-        <p>The following maintenance has been <strong>completed</strong> by {{ assigned_to }}:</p>
-        
-        <div class="detail">
-            <h3>{{ schedule.title }}</h3>
-            <p><strong>Department:</strong> {{ department }}</p>
-            <p><strong>Date:</strong> {{ date }}</p>
-            <p><strong>Description:</strong></p>
-            <p>{{ schedule.description|default:"No description provided." }}</p>
-            
-            {% if completed_checklist %}
-            <p><strong>Completed Checklist:</strong></p>
-            <ul>
-                {% for item in completed_checklist %}
-                    <li>✅ {{ item }}</li>
-                {% endfor %}
-            </ul>
-            {% endif %}
-        </div>
-        
-        <p>Each target asset's owner will be asked to confirm the work was actually carried out on their asset. You can track confirmation status per asset below.</p>
+<body style="margin:0; padding:0; background-color:#F8FAFC; font-family: 'Noto Sans', Verdana, Arial, sans-serif;">
 
-        <a href="{{ confirm_url }}" class="button">View Confirmation Status</a>
+  <!-- Preheader -->
+  <div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F8FAFC;">
+    Maintenance task "{{ schedule.title }}" has been completed by {{ assigned_to }}.
+  </div>
 
-        <p style="margin-top: 15px; color: #64748B; font-size: 14px;">
-            Click the button above to view. If the button doesn't work, copy and paste this URL into your browser:
-            <br><span style="font-size: 12px; word-break: break-all;">{{ confirm_url }}</span>
-        </p>
-        
-        <div class="footer">
-            <p>This is an automated notification from TicketSwipe.</p>
-            <p>Please do not reply to this email.</p>
-        </div>
-    </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC;">
+    <tr>
+      <td align="center" style="padding: 48px 16px;">
+
+        <!--[if mso]>
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" align="center"><tr><td>
+        <![endif]-->
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px; width:100%; background-color:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px;">
+
+          <!-- Top accent bar (green for success) -->
+          <tr>
+            <td style="background-color:#16A34A; height:3px; line-height:3px; font-size:0; border-radius:12px 12px 0 0;">&nbsp;</td>
+          </tr>
+
+          <!-- Brand -->
+          <tr>
+            <td style="padding: 44px 44px 8px;">
+              {% if client_settings.logo_url %}
+                <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}" height="26" style="height:26px; width:auto; display:block; border:0;">
+              {% else %}
+                <span style="font-family: 'Poppins', Arial, sans-serif; font-size:15px; font-weight:700; color:#0F172A; letter-spacing:-0.01em;">{{ client_settings.company_name }}</span>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 24px 44px 0;">
+              <p style="font-size:13px; color:#16A34A; font-weight:600; margin:0 0 10px;">Maintenance completed</p>
+              <h1 style="font-family: 'Poppins', Arial, sans-serif; font-size:27px; font-weight:400; color:#0F172A; margin:0 0 18px; line-height:1.3;">
+                Work has been completed
+              </h1>
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 14px;">
+                Dear Department Manager,<br>
+                The following maintenance has been <strong>completed</strong> by {{ assigned_to }}:
+              </p>
+
+              <!-- Details box -->
+              <table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; margin:16px 0;">
+                <tr>
+                  <td style="padding:16px; font-size:14px; color:#0F172A; line-height:1.6;">
+                    <strong style="font-size:16px; color:#0F172A;">{{ schedule.title }}</strong><br>
+                    <span style="color:#475569;"><strong>Department:</strong> {{ department }}</span><br>
+                    <span style="color:#475569;"><strong>Date:</strong> {{ date }}</span><br>
+                    <span style="color:#475569;"><strong>Description:</strong></span><br>
+                    <span style="color:#0F172A;">{{ schedule.description|default:"No description provided." }}</span><br>
+
+                    {% if completed_checklist %}
+                      <span style="color:#475569;"><strong>Completed Checklist:</strong></span><br>
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 0 18px; border-collapse:collapse; width:auto;">
+                        {% for item in completed_checklist %}
+                        <tr>
+                          <td style="padding:3px 0; font-size:13px; color:#0F172A;">✅ {{ item }}</td>
+                        </tr>
+                        {% endfor %}
+                      </table>
+                    {% endif %}
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:15px; color:#475569; line-height:1.65; margin:0 0 30px;">
+                Each target asset's owner will be asked to confirm the work was actually carried out on their asset. You can track confirmation status per asset below.
+              </p>
+
+              <!-- Button (with Outlook VML fallback) -->
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:8px; background-color:#16A34A;">
+                    <!--[if mso]>
+                    <v:rect xmlns:v="urn:schemas-microsoft-com:vml" href="{{ confirm_url }}" style="height:46px;v-text-anchor:middle;width:200px;" fillcolor="#16A34A" stroke="false">
+                    <center style="color:#FFFFFF;font-family:sans-serif;font-size:15px;font-weight:600;">View Confirmation Status</center>
+                    </v:rect>
+                    <![endif]-->
+                    <!--[if !mso]><!-->
+                    <a href="{{ confirm_url }}" style="display:inline-block; padding:13px 26px; font-size:15px; font-weight:600; color:#FFFFFF; text-decoration:none; -webkit-text-size-adjust:none; background-color:#16A34A; border-radius:8px;">View Confirmation Status</a>
+                    <!--<![endif]-->
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Fallback link -->
+              <div style="border-top:1px solid #EEF0F2; margin:34px 0 20px;"></div>
+              <p style="font-size:13px; color:#94A3B8; margin:0 0 8px;">Button not working? Paste this link into your browser:</p>
+              <p style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size:12px; color:#0D9488; background-color:#F8FAFC; border:1px solid #EEF0F2; border-radius:6px; padding:10px 12px; margin:0 0 8px; word-break:break-all;">
+                {{ confirm_url }}
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 44px 32px;">
+              <div style="border-top:1px solid #EEF0F2; padding-top:20px;">
+                <p style="font-size:13px; color:#94A3B8; line-height:1.6; margin:0 0 4px;">
+                  This is an automated notification from {{ client_settings.company_name }}. Please do not reply to this email.
+                </p>
+                <p style="font-size:12px; color:#B0B8C1; margin:0;">
+                  {{ client_settings.company_name }}, {% now "Y" %}
+                </p>
+              </div>
+            </td>
+          </tr>
+
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+
+      </td>
+    </tr>
+  </table>
+
 </body>
 </html>

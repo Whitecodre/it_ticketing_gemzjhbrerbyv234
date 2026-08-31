@@ -10,14 +10,21 @@
 
 {% block dashboard_content %}
 
-<div class="flex items-center justify-end mb-3">
-    <span class="text-xs text-text-secondary inline-flex items-center gap-1.5" data-freshness-since="{% now 'U' %}">
-        {% lucide "clock" size=12 %}
-        <span data-freshness-text>Updated just now</span>
-        <button type="button" onclick="location.reload()" class="btn-ghost p-1 rounded-full hover:bg-black/5 transition" aria-label="Refresh dashboard" title="Refresh dashboard">
-            {% lucide "refresh-cw" size=12 %}
-        </button>
-    </span>
+{# Welcome Banner – modern gradient with avatar #}
+<div class="welcome-banner mb-6 p-5 flex flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-3 sm:gap-4 rounded-xl">
+    <div class="flex items-center gap-4">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 text-white text-lg font-bold">
+            {{ user.first_name|default:user.email|slice:":1"|upper }}
+        </div>
+        <div>
+            <h2 class="text-xl font-bold">{{ greeting|default:"Welcome back" }}, {{ user.first_name|default:"User" }}</h2>
+            <p class="text-sm opacity-90 mt-0.5">Here's a summary of your assigned tickets</p>
+        </div>
+    </div>
+    <div class="flex items-baseline gap-2 sm:block sm:text-right">
+        <p class="text-3xl sm:text-4xl font-bold leading-none">{{ my_open_tickets|default:0 }}</p>
+        <p class="text-xs opacity-80 sm:mt-1">open ticket(s) assigned to you</p>
+    </div>
 </div>
 
 {# KPI Row – New recommended cards #}
@@ -68,65 +75,46 @@
     </div>
 </div>
 
-{# Main Two-Column Area – same structure as original #}
-<div class="flex flex-col lg:flex-row gap-6">
+{# Ticket Queues – full width, stacked #}
+<div class="space-y-6 mb-6">
 
-    {# Left Column – Unassigned and Assigned tables stacked #}
-    <div class="flex-1 min-w-0 space-y-6">
-
-        {# Unassigned Queue #}
-        <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
-            <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-                <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Unassigned Queue</h3>
-                <a href="{% url 'tickets:unassigned' %}" class="text-xs font-medium text-primary hover:underline">
-                    See all ({{ unassigned_count }}) →
-                </a>
-            </div>
-            <div id="ticketTable" class="overflow-x-auto">
-                {% include "partials/agent_ticket_table.html" with tickets=recent_unassigned source="dashboard" instance_id="unassigned" %}
-            </div>
-        </div>
-
-        {# Assigned to Me #}
-        <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
-            <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
-                <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Assigned to Me</h3>
-                <a href="{% url 'tickets:assigned_to_me' %}" class="text-xs font-medium text-primary hover:underline">
-                    See all ({{ my_open_tickets }}) →
-                </a>
-            </div>
-            <div id="assignedTicketTable" class="overflow-x-auto">
-                {# ✅ Add hide_checkboxes=True here #}
-                {% include "partials/agent_ticket_table.html" with tickets=assigned_to_me_tickets source="dashboard" hide_checkboxes=True instance_id="assigned" %}
-            </div>
-        </div>
-
-    </div>
-
-    {# Right Rail – Quick Actions & KB (narrow) #}
-    <div class="lg:w-80 shrink-0 space-y-4">
-        <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2" style="color: var(--color-text-primary);">Quick Actions</h3>
-            <div class="space-y-2">
-                <a href="{% url 'tickets:unassigned' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
-                    {% lucide "inbox" size=14 %} Unassigned Queue
-                </a>
-                <a href="{% url 'tickets:assigned_to_me' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
-                    {% lucide "user-check" size=14 %} My Tickets
-                </a>
-                <a href="{% url 'tickets:create' %}" class="btn-outline w-full text-xs flex items-center justify-center gap-2 py-2 px-3">
-                    {% lucide "plus" size=14 %} New Ticket
-                </a>
-            </div>
-        </div>
-        <div class="context-rail p-4">
-            <h3 class="text-sm font-semibold mb-2" style="color: var(--color-text-primary);">Knowledge Base</h3>
-            <p class="text-xs text-text-secondary">Search for solutions or create a new article.</p>
-            <a href="{% url 'kb:management' %}" class="btn-outline w-full text-xs mt-2 py-2 px-3 flex items-center justify-center">
-                Browse KB
+    {# Unassigned Queue #}
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
+        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
+            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Unassigned Queue</h3>
+            <a href="{% url 'tickets:unassigned' %}" class="text-xs font-medium text-primary hover:underline">
+                See all ({{ unassigned_count }}) →
             </a>
         </div>
+        <div id="ticketTable" class="overflow-x-auto">
+            {% include "partials/agent_ticket_table.html" with tickets=recent_unassigned source="dashboard" instance_id="unassigned" %}
+        </div>
     </div>
+
+    {# Assigned to Me #}
+    <div class="dashboard-card p-0 overflow-hidden shadow-sm min-h-[100px]">
+        <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--color-border);">
+            <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Assigned to Me</h3>
+            <a href="{% url 'tickets:assigned_to_me' %}" class="text-xs font-medium text-primary hover:underline">
+                See all ({{ my_open_tickets }}) →
+            </a>
+        </div>
+        <div id="assignedTicketTable" class="overflow-x-auto">
+            {% include "partials/agent_ticket_table.html" with tickets=assigned_to_me_tickets source="dashboard" hide_checkboxes=True instance_id="assigned" %}
+        </div>
+    </div>
+
+</div>
+
+{# Knowledge Base #}
+<div class="dashboard-card p-4 flex items-center justify-between gap-3 flex-wrap">
+    <div>
+        <h3 class="text-sm font-semibold" style="color: var(--color-text-primary);">Knowledge Base</h3>
+        <p class="text-xs text-text-secondary">Search for solutions or create a new article.</p>
+    </div>
+    <a href="{% url 'kb:management' %}" class="btn-outline text-xs py-2 px-4 flex items-center justify-center">
+        Browse KB
+    </a>
 </div>
 
 {% endblock %}

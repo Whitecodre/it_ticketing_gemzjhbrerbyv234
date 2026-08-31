@@ -127,6 +127,12 @@
                         <p class="text-xs text-text-secondary">PNG with a transparent or white background recommended, max 2MB.</p>
                         <p class="text-xs text-text-secondary" id="signatureFileName"></p>
                         {% if form.signature.errors %}<p class="text-xs text-error mt-1">{{ form.signature.errors.0 }}</p>{% endif %}
+                        {% if user.signature %}
+                        <button type="button" onclick="confirmDelete('your signature', 'Signature', function() { document.getElementById('deleteSignatureForm').submit(); })"
+                                class="text-xs text-error hover:underline mt-2 inline-flex items-center gap-1">
+                            {% lucide "trash-2" size=12 %} Remove signature
+                        </button>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -136,6 +142,10 @@
                     {% lucide "save" size=16 %} Save Profile
                 </button>
             </div>
+        </form>
+        <form method="post" id="deleteSignatureForm" class="hidden">
+            {% csrf_token %}
+            <input type="hidden" name="delete_signature" value="1">
         </form>
     </div>
 
@@ -352,21 +362,9 @@
     <div class="dashboard-card shadow-sm p-6">
         <h2 class="text-lg font-semibold mb-4" style="color: var(--color-text-primary);">Security</h2>
 
-        <form method="post" id="passwordForm">
+        <form method="post" id="passwordForm" autocomplete="off">
             {% csrf_token %}
             <input type="hidden" name="change_password" value="1">
-
-            {% if password_form.errors %}
-            <div class="rounded-lg bg-error/10 p-4 border border-error/30 text-error text-sm mb-4">
-                <ul class="list-disc list-inside space-y-0.5">
-                    {% for field in password_form %}
-                        {% for error in field.errors %}
-                            <li>{{ error }}</li>
-                        {% endfor %}
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endif %}
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -380,7 +378,14 @@
                         </button>
                     </div>
                     {% if password_form.old_password.errors %}<p class="text-xs text-error mt-1">{{ password_form.old_password.errors.0 }}</p>{% endif %}
+                    <div class="flex items-center gap-2 mt-1">
+                        <span id="currentPasswordSpinner" class="htmx-indicator text-xs text-text-secondary flex items-center gap-1">
+                            {% lucide "loader-circle" size=14 class="animate-spin inline" %} Checking...
+                        </span>
+                        <div id="currentPasswordStatus"></div>
+                    </div>
                 </div>
+                <div id="newPasswordFields" class="contents hidden" data-has-server-errors="{% if password_form.new_password1.errors or password_form.new_password2.errors %}true{% else %}false{% endif %}">
                 <div>
                     <label for="id_new_password1" class="block text-sm font-medium mb-1 text-text-primary">New Password <span class="text-error">*</span></label>
                     <div class="relative">
@@ -404,11 +409,13 @@
                         </button>
                     </div>
                     {% if password_form.new_password2.errors %}<p class="text-xs text-error mt-1">{{ password_form.new_password2.errors.0 }}</p>{% endif %}
+                    <div id="passwordMatchStatus" class="text-xs mt-1"></div>
+                </div>
                 </div>
             </div>
 
             <div class="flex justify-end mt-4 pt-4 border-t" style="border-color: var(--color-border);">
-                <button type="submit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5 rounded-lg">
+                <button type="submit" id="changePasswordSubmit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5 rounded-lg hidden">
                     {% lucide "key" size=16 %} Change Password
                 </button>
             </div>
@@ -417,9 +424,77 @@
 </div>
 {% endblock %}
 
-
 {% block scripts %}
 {{ block.super }}
+<script>
+(function() {
+    const oldPasswordInput = document.getElementById('id_old_password');
+    const statusContainer = document.getElementById('currentPasswordStatus');
+    const newFields = document.getElementById('newPasswordFields');
+    const submitBtn = document.getElementById('changePasswordSubmit');
+    if (!oldPasswordInput || !statusContainer || !newFields || !submitBtn) return;
+
+    // If the form re-rendered with errors on new_password1/new_password2
+    // (server-side validation failed after a successful staged reveal),
+    // keep the revealed fields visible instead of collapsing back to stage 1.
+    // Driven by a server-rendered data attribute, not a DOM scan — a scan for
+    // ".text-error" elements also matches the "*" required markers on the
+    // New/Confirm labels, which are always present and made the fields show
+    // on every load regardless of whether there were real errors.
+    if (newFields.dataset.hasServerErrors === 'true') {
+        newFields.classList.remove('hidden');
+        submitBtn.classList.remove('hidden');
+    }
+
+    function reveal(show) {
+        newFields.classList.toggle('hidden', !show);
+        submitBtn.classList.toggle('hidden', !show);
+    }
+
+    oldPasswordInput.setAttribute('hx-post', '{% url "accounts:validate_current_password" %}');
+    oldPasswordInput.setAttribute('hx-trigger', 'blur, keyup changed delay:600ms');
+    oldPasswordInput.setAttribute('hx-target', '#currentPasswordStatus');
+    oldPasswordInput.setAttribute('hx-swap', 'innerHTML');
+    oldPasswordInput.setAttribute('hx-indicator', '#currentPasswordSpinner');
+    oldPasswordInput.setAttribute('name', 'old_password');
+    if (window.htmx) htmx.process(oldPasswordInput.closest('form'));
+
+    oldPasswordInput.addEventListener('input', function() {
+        if (!oldPasswordInput.value) reveal(false);
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function(evt) {
+        if (evt.detail.target && evt.detail.target.id === 'currentPasswordStatus') {
+            const inner = document.getElementById('currentPasswordStatusInner');
+            reveal(!!(inner && inner.dataset.valid === 'true'));
+        }
+    });
+
+    // Live "do these match" feedback instead of only finding out after a
+    // full-page submit round trip to the (perfectly correct, but abrupt)
+    // Django SetPasswordForm mismatch error.
+    const newPassword1 = document.getElementById('id_new_password1');
+    const newPassword2 = document.getElementById('id_new_password2');
+    const matchStatus = document.getElementById('passwordMatchStatus');
+    if (newPassword1 && newPassword2 && matchStatus) {
+        function checkMatch() {
+            if (!newPassword2.value) {
+                matchStatus.textContent = '';
+                return;
+            }
+            if (newPassword1.value === newPassword2.value) {
+                matchStatus.textContent = 'Passwords match';
+                matchStatus.className = 'text-xs mt-1 text-success';
+            } else {
+                matchStatus.textContent = 'Passwords do not match';
+                matchStatus.className = 'text-xs mt-1 text-error';
+            }
+        }
+        newPassword1.addEventListener('input', checkMatch);
+        newPassword2.addEventListener('input', checkMatch);
+    }
+})();
+</script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // --- Fix: Prevent auto-scroll to password field ---
@@ -699,7 +774,7 @@
         // ================================================================
         function updatePushToggleUI(checked) {
             if (checked) {
-                pushToggleBtn.style.backgroundColor = 'var(--color-primary)';
+                pushToggleBtn.style.backgroundColor = 'var(--color-primary-solid)';
                 pushToggleThumb.style.transform = 'translateX(1.25rem)';
                 pushToggleBtn.setAttribute('aria-checked', 'true');
                 pushStatusText.textContent = 'On';

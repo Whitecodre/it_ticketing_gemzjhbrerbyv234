@@ -87,7 +87,7 @@
                         {% if form.low_stock_threshold.errors %}<p class="text-xs text-error mt-1">{{ form.low_stock_threshold.errors.0 }}</p>{% endif %}
                         <p class="text-xs mt-1 text-text-secondary">Admins get notified when stock drops to or below this. Leave blank to disable.</p>
                     </div>
-                    <div>
+                    <div id="serial_number_container">
                         <label for="id_serial_number" class="block text-sm font-medium mb-1 text-text-primary">Serial Number</label>
                         {{ form.serial_number }}
                         {% if form.serial_number.errors %}<p class="text-xs text-error mt-1">{{ form.serial_number.errors.0 }}</p>{% endif %}
@@ -97,60 +97,95 @@
                         {{ form.model }}
                         {% if form.model.errors %}<p class="text-xs text-error mt-1">{{ form.model.errors.0 }}</p>{% endif %}
                     </div>
-                    <div>
+                    <div id="manufacturer_container">
                         <label for="id_manufacturer" class="block text-sm font-medium mb-1 text-text-primary">Manufacturer</label>
                         {{ form.manufacturer }}
                         {% if form.manufacturer.errors %}<p class="text-xs text-error mt-1">{{ form.manufacturer.errors.0 }}</p>{% endif %}
                     </div>
-                    <div>
+                    <div id="location_container">
                         <label for="id_location" class="block text-sm font-medium mb-1 text-text-primary">Location</label>
                         {{ form.location }}
                         {% if form.location.errors %}<p class="text-xs text-error mt-1">{{ form.location.errors.0 }}</p>{% endif %}
-                        <datalist id="locationOptions">
-                            {% for loc in locations %}
-                            <option value="{{ loc }}">
-                            {% endfor %}
-                        </datalist>
-                    </div>
-                    <div>
-                        <label for="id_department" class="block text-sm font-medium mb-1 text-text-primary">Department</label>
-                        {{ form.department }}
-                        {% if form.department.errors %}<p class="text-xs text-error mt-1">{{ form.department.errors.0 }}</p>{% endif %}
-                        <p class="text-xs mt-1 text-text-secondary">The asset's owning department (distinct from "Assigned Department" below).</p>
+                        <div id="location_other_container" class="mt-2 hidden">
+                            {{ form.location_other }}
+                            {% if form.location_other.errors %}<p class="text-xs text-error mt-1">{{ form.location_other.errors.0 }}</p>{% endif %}
+                            <p class="text-xs text-text-secondary mt-1">Creates a new location, available for future assets too.</p>
+                        </div>
                     </div>
                     <div>
                         <label for="id_status" class="block text-sm font-medium mb-1 text-text-primary">Status</label>
                         {{ form.status }}
                         {% if form.status.errors %}<p class="text-xs text-error mt-1">{{ form.status.errors.0 }}</p>{% endif %}
                     </div>
-                    <div>
+                    <div id="condition_container">
                         <label for="id_condition" class="block text-sm font-medium mb-1 text-text-primary">Condition</label>
                         {{ form.condition }}
                         {% if form.condition.errors %}<p class="text-xs text-error mt-1">{{ form.condition.errors.0 }}</p>{% endif %}
                     </div>
-                    {% if not form.assigned_to.field.disabled %}
-                    <div>
-                        <label for="id_assignee_department" class="block text-sm font-medium mb-1 text-text-primary">Assignee's Department</label>
-                        {{ form.assignee_department }}
-                        <p class="text-xs mt-1 text-text-secondary">Pick a department to narrow the "Assigned To" list below.</p>
+                </div>
+            </div>
+
+            <!-- Ownership -->
+            <div class="mb-6">
+                <h3 class="flex gap-2 text-sm font-semibold mb-3 text-text-secondary">
+                    {% lucide "users" size=14 %} Ownership
+                </h3>
+
+                <!-- Renewable-only: a plain-language scope picker instead of making -->
+                <!-- someone infer "blank Assigned To + blank Department = org-wide" -->
+                <!-- for themselves. Physical assets skip this — Department there is -->
+                <!-- independent tagging metadata, not a coverage scope. -->
+                <div id="ownership_scope_container" class="hidden mb-4">
+                    <label class="block text-sm font-medium mb-2 text-text-primary">Who is this license/subscription for?</label>
+                    <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Who is this for">
+                        <label class="ownership-scope-option">
+                            <input type="radio" name="ownership_scope" value="person" class="sr-only"
+                                {% if asset.assigned_to_id %}checked{% endif %}>
+                            <span class="flex gap-2 items-center">{% lucide "user" size=13 %} One person</span>
+                        </label>
+                        <label class="ownership-scope-option">
+                            <input type="radio" name="ownership_scope" value="department" class="sr-only"
+                                {% if asset.department_id and not asset.assigned_to_id %}checked{% endif %}>
+                            <span class="flex gap-2 items-center">{% lucide "building-2" size=13 %} A department</span>
+                        </label>
+                        <label class="ownership-scope-option">
+                            <input type="radio" name="ownership_scope" value="org" class="sr-only"
+                                {% if not asset.assigned_to_id and not asset.department_id %}checked{% endif %}>
+                            <span class="flex gap-2 items-center">{% lucide "globe" size=13 %} Everyone (org-wide)</span>
+                        </label>
                     </div>
-                    {% endif %}
-                    <div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div id="department_container">
+                        <label for="id_department" class="block text-sm font-medium mb-1 text-text-primary">Department</label>
+                        {{ form.department }}
+                        {% if form.department.errors %}<p class="text-xs text-error mt-1">{{ form.department.errors.0 }}</p>{% endif %}
+                        <p class="text-xs mt-1 text-text-secondary" id="department_help_physical">The asset's owning department — used for tagging, separate from who currently has it.</p>
+                        <p class="text-xs mt-1 text-text-secondary hidden" id="department_help_renewable">Everyone in this department is covered.</p>
+                        <div id="department_other_container" class="mt-2 hidden">
+                            {{ form.department_other }}
+                            {% if form.department_other.errors %}<p class="text-xs text-error mt-1">{{ form.department_other.errors.0 }}</p>{% endif %}
+                            <p class="text-xs text-text-secondary mt-1">Creates a new department, available for future assets too.</p>
+                        </div>
+                    </div>
+                    <div id="assigned_to_container">
                         <label for="id_assigned_to" class="block text-sm font-medium mb-1 text-text-primary">Assigned To</label>
+                        {% if not form.assigned_to.field.disabled %}
+                        <div class="mb-1.5">
+                            {{ form.assignee_department }}
+                            <p class="text-[0.7rem] mt-0.5 text-text-secondary">Optional — just narrows the list below by department, it isn't saved.</p>
+                        </div>
+                        {% endif %}
                         {{ form.assigned_to }}
                         {% if form.assigned_to.help_text %}<p class="text-xs text-text-secondary mt-1">{{ form.assigned_to.help_text }}</p>{% endif %}
                         {% if form.assigned_to.errors %}<p class="text-xs text-error mt-1">{{ form.assigned_to.errors.0 }}</p>{% endif %}
                     </div>
-                    <div>
-                        <label for="id_assigned_to_department" class="block text-sm font-medium mb-1 text-text-primary">Assigned Department</label>
-                        {{ form.assigned_to_department }}
-                        {% if form.assigned_to_department.errors %}<p class="text-xs text-error mt-1">{{ form.assigned_to_department.errors.0 }}</p>{% endif %}
-                    </div>
                 </div>
             </div>
 
-            <!-- Warranty -->
-            <div class="mb-6">
+            <!-- Warranty (physical assets only — a subscription has no manufacturer warranty) -->
+            <div class="mb-6" id="warranty_section">
                 <h3 class="flex gap-2 text-sm font-semibold mb-3 text-text-secondary">
                     {% lucide "shield-check" size=14 %} Warranty
                 </h3>
@@ -196,13 +231,17 @@
                         {% if form.next_renewal_date.errors %}<p class="text-xs text-error mt-1">{{ form.next_renewal_date.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
-                        <label for="id_renewal_interval_months" class="block text-sm font-medium mb-1 text-text-primary">Renewal Interval (months)</label>
+                        <label for="id_renewal_interval_months" class="block text-sm font-medium mb-1 text-text-primary">Renewal Interval</label>
                         {{ form.renewal_interval_months }}
                         {% if form.renewal_interval_months.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_interval_months.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
                         <label for="id_renewal_cost" class="block text-sm font-medium mb-1 text-text-primary">Renewal Cost</label>
-                        {{ form.renewal_cost }}
+                        <div class="flex">
+                            {{ form.renewal_currency }}
+                            {{ form.renewal_cost }}
+                        </div>
+                        {% if form.renewal_currency.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_currency.errors.0 }}</p>{% endif %}
                         {% if form.renewal_cost.errors %}<p class="text-xs text-error mt-1">{{ form.renewal_cost.errors.0 }}</p>{% endif %}
                     </div>
                     <div>
@@ -276,6 +315,33 @@
     }
 
     // ================================================================
+    // LOCATION / DEPARTMENT "OTHER" TOGGLE — same pattern as category
+    // ================================================================
+
+    function toggleOtherField(selectId, containerId, inputId) {
+        const select = document.getElementById(selectId);
+        const container = document.getElementById(containerId);
+        const input = document.getElementById(inputId);
+        if (!select || !container || !input) return;
+
+        if (select.value === 'OTHER') {
+            container.classList.remove('hidden');
+            input.required = true;
+        } else {
+            container.classList.add('hidden');
+            input.required = false;
+        }
+    }
+
+    function toggleLocationOther() {
+        toggleOtherField('id_location', 'location_other_container', 'id_location_other');
+    }
+
+    function toggleDepartmentOther() {
+        toggleOtherField('id_department', 'department_other_container', 'id_department_other');
+    }
+
+    // ================================================================
     // QUANTITY IN STOCK — only shown for bulk/consumable categories
     // ================================================================
     const CONSUMABLE_CATEGORY_IDS = new Set([
@@ -309,6 +375,75 @@
         section.classList.toggle('hidden', !isRenewable);
     }
 
+    // A renewable asset (software license, subscription, support contract)
+    // has no physical condition, serial number, manufacturer, location, or
+    // warranty — inverse of toggleRenewalSection, hiding the fields that
+    // only make sense for physical hardware once a renewable category is
+    // picked. Manufacturer is redundant with Renewal Vendor for a
+    // subscription (one real "who do we pay" field, not two); Location
+    // doesn't describe most subscriptions the way it describes hardware —
+    // Department + Assigned To already cover ownership (see the "Org-wide"
+    // fallback used on the Licenses tab/detail page for the same reason).
+    function togglePhysicalOnlyFields() {
+        const select = document.getElementById('id_category');
+        if (!select) return;
+        const isRenewable = RENEWABLE_CATEGORY_IDS.has(parseInt(select.value, 10));
+
+        ['serial_number_container', 'condition_container', 'warranty_section', 'manufacturer_container', 'location_container'].forEach(function(id) {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('hidden', isRenewable);
+        });
+    }
+
+    // ================================================================
+    // OWNERSHIP SCOPE — renewable categories get a plain "who is this for"
+    // choice (person / department / everyone) instead of leaving people to
+    // infer that blank Assigned To + blank Department means org-wide.
+    // Physical categories keep Department and Assigned To as two
+    // independent, always-visible fields (Department there is tagging
+    // metadata, not a coverage scope).
+    // ================================================================
+    function toggleOwnershipScope() {
+        const categorySelect = document.getElementById('id_category');
+        const scopeContainer = document.getElementById('ownership_scope_container');
+        const departmentContainer = document.getElementById('department_container');
+        const assignedToContainer = document.getElementById('assigned_to_container');
+        const physicalHelp = document.getElementById('department_help_physical');
+        const renewableHelp = document.getElementById('department_help_renewable');
+        if (!categorySelect || !scopeContainer || !departmentContainer || !assignedToContainer) return;
+
+        const isRenewable = RENEWABLE_CATEGORY_IDS.has(parseInt(categorySelect.value, 10));
+        scopeContainer.classList.toggle('hidden', !isRenewable);
+        if (physicalHelp) physicalHelp.classList.toggle('hidden', isRenewable);
+
+        if (!isRenewable) {
+            departmentContainer.classList.remove('hidden');
+            assignedToContainer.classList.remove('hidden');
+            if (renewableHelp) renewableHelp.classList.add('hidden');
+            return;
+        }
+
+        const checkedInput = scopeContainer.querySelector('input[name="ownership_scope"]:checked');
+        const scope = checkedInput ? checkedInput.value : 'org';
+        const showDepartment = scope === 'department';
+        const showPerson = scope === 'person';
+
+        departmentContainer.classList.toggle('hidden', !showDepartment);
+        if (renewableHelp) renewableHelp.classList.toggle('hidden', !showDepartment);
+        if (!showDepartment) {
+            const departmentSelect = document.getElementById('id_department');
+            if (departmentSelect) departmentSelect.value = '';
+        }
+
+        assignedToContainer.classList.toggle('hidden', !showPerson);
+        if (!showPerson) {
+            const assignedToSelect = document.getElementById('id_assigned_to');
+            const assigneeDeptSelect = document.getElementById('id_assignee_department');
+            if (assignedToSelect) assignedToSelect.value = '';
+            if (assigneeDeptSelect) assigneeDeptSelect.value = '';
+        }
+    }
+
     // ================================================================
     // RENEWAL VENDOR — narrowed to vendors that supply the selected category
     // ================================================================
@@ -326,15 +461,34 @@
             select.addEventListener('change', toggleCategoryOther);
             select.addEventListener('change', toggleQuantityInStock);
             select.addEventListener('change', toggleRenewalSection);
+            select.addEventListener('change', togglePhysicalOnlyFields);
+            select.addEventListener('change', toggleOwnershipScope);
             select.addEventListener('change', filterRenewalVendor);
             toggleCategoryOther();
             toggleQuantityInStock();
             toggleRenewalSection();
+            togglePhysicalOnlyFields();
+            toggleOwnershipScope();
         }
+
+        document.querySelectorAll('input[name="ownership_scope"]').forEach(function(radio) {
+            radio.addEventListener('change', toggleOwnershipScope);
+        });
         // Not filtered on load — an existing asset's renewal_vendor should
         // stay visible/selected even if the category select's initial
         // value doesn't match categorization set later, avoiding a
         // surprise "vendor cleared" on opening the edit page.
+
+        const locationSelect = document.getElementById('id_location');
+        if (locationSelect) {
+            locationSelect.addEventListener('change', toggleLocationOther);
+            toggleLocationOther();
+        }
+        const departmentSelect = document.getElementById('id_department');
+        if (departmentSelect) {
+            departmentSelect.addEventListener('change', toggleDepartmentOther);
+            toggleDepartmentOther();
+        }
     });
 </script>
 {% endblock %}

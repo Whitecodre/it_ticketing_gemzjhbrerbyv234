@@ -1,0 +1,26 @@
+{# Shared <thead> for both the flat asset table and each expanded seat #}
+{# card's inner table — keeps the 8-column layout in exactly one place. #}
+<thead>
+    <tr class="border-b" style="border-color: var(--color-border);">
+        <th class="py-3 px-4" style="width: 40px;">
+            {# show_select_all is False inside an expanded seat card's inner #}
+            {# table — that global "select every asset on the page" checkbox #}
+            {# belongs only to the flat table; a card already has its own    #}
+            {# "select this card's items" checkbox in its collapsed header.  #}
+            {% if show_select_all %}
+            <input type="checkbox" class="rounded border-border text-primary focus:ring-primary"
+                   :checked="allSelected" @change="toggleAll($event.target.checked)"
+                   aria-label="Select all assets">
+            {% endif %}
+        </th>
+        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs"
+            style="width: 220px; left: 40px;">Asset</th>
+        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 130px;">Type</th>
+        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 140px;">Serial</th>
+        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 160px;">Status</th>
+        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 200px;">Assigned To</th>
+        <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 120px;">Condition</th>
+        <th class="text-center py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs"
+            style="width: 64px;">Actions</th>
+    </tr>
+</thead>

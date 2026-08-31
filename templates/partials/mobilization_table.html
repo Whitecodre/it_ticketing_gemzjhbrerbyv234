@@ -4,11 +4,14 @@
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b" style="border-color: var(--color-border);">
-                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Destination</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Job</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Vessel(s)</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Dive System(s)</th>
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Assets</th>
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Mobilized By</th>
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Mobilized At</th>
                 <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                <th class="text-left py-3 px-3 font-semibold text-text-secondary uppercase tracking-wider text-xs">Needs Confirmation</th>
                 <th class="text-center py-3 px-2 font-semibold text-text-secondary uppercase tracking-wider text-xs w-16">Actions</th>
             </tr>
         </thead>
@@ -16,7 +19,13 @@
             {% for mobilization in mobilizations %}
             <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);">
                 <td class="py-3 px-3">
-                    <span class="text-sm font-medium text-text-primary">{{ mobilization.destination_display }}</span>
+                    <span class="text-sm font-medium text-text-primary">{{ mobilization.job_number.number|default:"—" }}</span>
+                </td>
+                <td class="py-3 px-3">
+                    <span class="text-sm text-text-primary">{{ mobilization.vessels.all|join:", "|default:"—" }}</span>
+                </td>
+                <td class="py-3 px-3">
+                    <span class="text-sm text-text-primary">{{ mobilization.dive_systems.all|join:", "|default:"—" }}</span>
                 </td>
                 <td class="py-3 px-3">
                     <span class="text-sm text-text-primary">{{ mobilization.items.count }} item(s)</span>
@@ -27,6 +36,15 @@
                     <span class="status-chip {% if mobilization.status == 'ACTIVE' %}primary{% else %}success{% endif %} text-xs">
                         {{ mobilization.get_status_display }}
                     </span>
+                </td>
+                <td class="py-3 px-3">
+                    {% if mobilization.pending_demob_count %}
+                    <span class="status-chip warning text-xs" title="Self-reported returns awaiting confirmation">
+                        {{ mobilization.pending_demob_count }} item{{ mobilization.pending_demob_count|pluralize }}
+                    </span>
+                    {% else %}
+                    <span class="text-xs text-text-secondary">—</span>
+                    {% endif %}
                 </td>
                 <td class="py-3 px-2 text-center">
                     <a href="{% url 'tickets:mobilization_detail' mobilization.pk %}"
@@ -39,7 +57,7 @@
             </tr>
             {% empty %}
             <tr>
-                <td colspan="6" class="text-center py-12 text-text-secondary">
+                <td colspan="9" class="text-center py-12 text-text-secondary">
                     <div class="flex flex-col items-center gap-2">
                         <span class="opacity-30 flex items-center justify-center">{% lucide "ship" size=36 %}</span>
                         <p class="text-sm font-medium">No mobilizations found</p>
@@ -59,7 +77,7 @@
     </span>
     <div class="pagination-controls">
         <button class="pagination-step{% if not mobilizations.has_previous %} is-disabled{% endif %}"
-                {% if mobilizations.has_previous %}hx-get="{% url 'tickets:mobilizations' %}?page={{ mobilizations.previous_page_number }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}"
+                {% if mobilizations.has_previous %}hx-get="{% url 'tickets:mobilizations' %}?page={{ mobilizations.previous_page_number }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}&tab={{ tab }}"
                 hx-target="#mobilizationTableContainer" hx-swap="innerHTML"{% else %}disabled{% endif %}>
             {% lucide "chevron-left" size=14 %} Prev
         </button>
@@ -69,14 +87,14 @@
                 <span class="pagination-number is-current">{{ num }}</span>
                 {% elif num > mobilizations.number|add:'-3' and num < mobilizations.number|add:'3' %}
                 <button class="pagination-number"
-                        hx-get="{% url 'tickets:mobilizations' %}?page={{ num }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}"
+                        hx-get="{% url 'tickets:mobilizations' %}?page={{ num }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}&tab={{ tab }}"
                         hx-target="#mobilizationTableContainer" hx-swap="innerHTML">{{ num }}</button>
                 {% endif %}
             {% endfor %}
         </div>
         {% if mobilizations.has_next %}
         <button class="pagination-step"
-                hx-get="{% url 'tickets:mobilizations' %}?page={{ mobilizations.next_page_number }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}"
+                hx-get="{% url 'tickets:mobilizations' %}?page={{ mobilizations.next_page_number }}&filter_job={{ selected_job }}&filter_vessel={{ selected_vessel }}&filter_system={{ selected_system }}&filter_status={{ selected_status }}&tab={{ tab }}"
                 hx-target="#mobilizationTableContainer" hx-swap="innerHTML">
             Next {% lucide "chevron-right" size=14 %}
         </button>

@@ -2,6 +2,7 @@ import base64
 import os
 import tempfile
 from decimal import Decimal
+from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client
@@ -11,7 +12,8 @@ from django.utils import timezone
 from django.core.management import call_command
 from datetime import date, timedelta, time as datetime_time, datetime as datetime_dt
 from unittest.mock import patch
-from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, Asset, AssetCategory, AssetLog, SLA, EscalationRule, ServiceCategory, RemoteSession, RemoteConnector, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetProcurementRequest, Attachment
+from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, Asset, AssetCategory, AssetLog, SLA, EscalationRule, ServiceCategory, RemoteSession, RemoteConnector, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetProcurementRequest, Attachment, AssetDepartment, Location, AssetImportBatch
+from apps.tickets.asset_name_matching import match_users_by_name
 from apps.common.models import Category, Notification
 from apps.maintenance.models import MaintenanceSchedule, Vendor
 
@@ -278,6 +280,82 @@ class TicketCommentTests(TestCase):
         self.assertEqual(comment.body, 'Test comment')
         self.assertEqual(comment.author, self.user)
 
+    def test_attachment_only_comment_is_accepted(self):
+        """A reply with no text but a valid attachment should be accepted,
+        not rejected as an empty comment."""
+        file_ = SimpleUploadedFile('note.txt', b'hello world', content_type='text/plain')
+        response = self.client.post(
+            reverse('tickets:detail', args=[self.ticket.pk]),
+            {'body': '', 'attachments': [file_]},
+            HTTP_HX_REQUEST='true'
+        )
+        self.assertEqual(response.status_code, 200)
+        comment = TicketComment.objects.filter(ticket=self.ticket).first()
+        self.assertIsNotNone(comment)
+        self.assertEqual(comment.body, '')
+        self.assertEqual(comment.attachment_set.count(), 1)
+
+    def test_empty_comment_without_attachment_still_rejected(self):
+        """No text and no attachment should still be rejected."""
+        response = self.client.post(
+            reverse('tickets:detail', args=[self.ticket.pk]),
+            {'body': '', 'attachments': []},
+            HTTP_HX_REQUEST='true'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(TicketComment.objects.filter(ticket=self.ticket).count(), 0)
+
+
+class SaveAttachmentsTests(TestCase):
+    """Test the save_attachments() validation/rejection reporting."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='attach@example.com',
+            password='TestPass123!',
+            first_name='Attach',
+            last_name='User',
+            department='IT',
+            is_active=True,
+            email_verified=True
+        )
+        self.category = Category.objects.create(name='Hardware2', slug='hardware2')
+        self.ticket = Ticket.objects.create(
+            number='TK#5555',
+            title='Attachment Ticket',
+            description='Test Description',
+            requester=self.user,
+            category=self.category
+        )
+
+    def test_oversized_file_is_rejected_with_reason(self):
+        from apps.tickets.views import save_attachments, MAX_SIZE_MB
+        big_file = SimpleUploadedFile(
+            'big.jpg',
+            b'x' * (MAX_SIZE_MB * 1024 * 1024 + 1),
+            content_type='image/jpeg'
+        )
+        created, rejected = save_attachments(self.ticket, [big_file], self.user)
+        self.assertEqual(created, [])
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0][0], 'big.jpg')
+        self.assertIn('MB limit', rejected[0][1])
+
+    def test_disallowed_type_is_rejected_with_reason(self):
+        from apps.tickets.views import save_attachments
+        bad_file = SimpleUploadedFile('script.exe', b'MZ...', content_type='application/x-msdownload')
+        created, rejected = save_attachments(self.ticket, [bad_file], self.user)
+        self.assertEqual(created, [])
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0][0], 'script.exe')
+
+    def test_valid_file_is_created_with_no_rejections(self):
+        from apps.tickets.views import save_attachments
+        good_file = SimpleUploadedFile('note.txt', b'hello world', content_type='text/plain')
+        created, rejected = save_attachments(self.ticket, [good_file], self.user)
+        self.assertEqual(len(created), 1)
+        self.assertEqual(rejected, [])
+
 
 class AssetModelTests(TestCase):
     """Test Asset model functionality."""
@@ -425,7 +503,8 @@ class AssetViewTests(TestCase):
             'name': 'New Test Laptop',
             'serial_number': 'SN99999',
             'status': 'IN_STORE',
-            'location': 'HQ',
+            'location': 'OTHER',
+            'location_other': 'HQ',
             'assigned_to': ''
         })
         # Should redirect to asset list
@@ -598,10 +677,24 @@ class MobilizationTests(TestCase):
         self.asset1 = Asset.objects.create(name='Drill A', status=Asset.Status.IN_STORE)
         self.asset2 = Asset.objects.create(name='Drill B', status=Asset.Status.IN_STORE)
 
+        # Mobilizations now require a linked mobilization-request ticket —
+        # a ready-made one for tests that don't care about the ticket
+        # linkage itself, just that creation succeeds.
+        self.mob_requester = User.objects.create_user(
+            email='mob-req@example.com', password='TestPass123!',
+            first_name='Mob', last_name='Req', department='IT', role=User.Role.END_USER,
+        )
+        self.mob_ticket = Ticket.objects.create(
+            number='SRV#8000', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='Need gear mobilized', requester=self.mob_requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
+        )
+
     def test_mobilize_batch_flips_assets_to_mobilized(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
             'job_number': self.job.pk,
             'asset_ids': [self.asset1.pk, self.asset2.pk],
+            'ticket_id': self.mob_ticket.pk,
         })
         self.assertEqual(response.status_code, 302)
 
@@ -621,9 +714,36 @@ class MobilizationTests(TestCase):
         response = self.client.post(reverse('tickets:mobilization_create'), {
             'job_number': self.job.pk,
             'asset_ids': [self.asset1.pk],
+            'ticket_id': self.mob_ticket.pk,
         })
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Mobilization.objects.filter(job_number=self.job).exists())
+
+    def test_mobilization_create_requires_ticket_id(self):
+        response = self.client.post(reverse('tickets:mobilization_create'), {
+            'job_number': self.job.pk,
+            'asset_ids': [self.asset1.pk],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Mobilization.objects.filter(job_number=self.job).exists())
+
+    def test_mobilization_create_rejects_non_mobilization_ticket(self):
+        other_ticket = Ticket.objects.create(
+            number='SRV#8001', type=Ticket.Type.SERVICE_REQUEST, title='Not a mobilization',
+            description='...', requester=self.mob_requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=False,
+        )
+        response = self.client.post(reverse('tickets:mobilization_create'), {
+            'job_number': self.job.pk,
+            'asset_ids': [self.asset1.pk],
+            'ticket_id': other_ticket.pk,
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Mobilization.objects.filter(job_number=self.job).exists())
+
+    def test_mobilization_create_page_requires_ticket_id(self):
+        response = self.client.get(reverse('tickets:mobilization_create_page'))
+        self.assertEqual(response.status_code, 302)
 
     def test_partial_demobilize_keeps_mobilization_active(self):
         mobilization = Mobilization.objects.create(job_number=self.job, mobilized_by=self.admin)
@@ -636,7 +756,7 @@ class MobilizationTests(TestCase):
 
         response = self.client.post(
             reverse('tickets:mobilization_item_demobilize', args=[item1.pk]),
-            {'return_condition': Asset.Condition.GOOD, 'return_notes': 'Back safely'}
+            {'return_condition': Asset.Condition.GOOD, 'return_notes': 'Back safely', 'override_reason': 'No ticket on this legacy mobilization'}
         )
         self.assertEqual(response.status_code, 302)
 
@@ -654,7 +774,7 @@ class MobilizationTests(TestCase):
 
         self.client.post(
             reverse('tickets:mobilization_item_demobilize', args=[item1.pk]),
-            {'return_condition': Asset.Condition.GOOD, 'return_notes': ''}
+            {'return_condition': Asset.Condition.GOOD, 'return_notes': '', 'override_reason': 'No ticket on this legacy mobilization'}
         )
 
         mobilization.refresh_from_db()
@@ -668,7 +788,7 @@ class MobilizationTests(TestCase):
 
         self.client.post(
             reverse('tickets:mobilization_item_demobilize', args=[item1.pk]),
-            {'return_condition': Asset.Condition.DAMAGED, 'return_notes': 'Dropped overboard'}
+            {'return_condition': Asset.Condition.DAMAGED, 'return_notes': 'Dropped overboard', 'override_reason': 'No ticket on this legacy mobilization'}
         )
 
         self.asset1.refresh_from_db()
@@ -724,7 +844,7 @@ class MobilizationTests(TestCase):
 
         response = self.client.post(
             reverse('tickets:mobilization_demobilize_all', args=[mobilization.pk]),
-            {'return_condition': Asset.Condition.GOOD, 'return_notes': 'All back'}
+            {'return_condition': Asset.Condition.GOOD, 'return_notes': 'All back', 'override_reason': 'No ticket on this legacy mobilization'}
         )
         self.assertEqual(response.status_code, 302)
 
@@ -782,6 +902,572 @@ class MobilizationTests(TestCase):
             {'new_date': '2026-09-15'}
         )
         self.assertEqual(response.status_code, 403)
+
+
+class MobilizationReceiptConfirmationTests(TestCase):
+    """Requester-side per-item accept/dispute handshake for mobilized
+    assets, and the aggregation step that drives the linked ticket to
+    APPROVED (all accepted) or back to PENDING_FULFILLMENT (any disputed)
+    once every item has been actioned."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(
+            email='receipt-admin@example.com', password='AdminPass123!',
+            first_name='Receipt', last_name='Admin', department='IT',
+        )
+        self.requester = User.objects.create_user(
+            email='receipt-requester@example.com', password='TestPass123!',
+            first_name='Receipt', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.other_user = User.objects.create_user(
+            email='receipt-other@example.com', password='TestPass123!',
+            first_name='Receipt', last_name='Other', department='IT', role=User.Role.END_USER,
+        )
+        self.job = JobNumber.objects.create(number='JB-900', is_active=True)
+        self.asset1 = Asset.objects.create(name='Camera A', status=Asset.Status.IN_STORE)
+        self.asset2 = Asset.objects.create(name='Camera B', status=Asset.Status.IN_STORE)
+        self.ticket = Ticket.objects.create(
+            number='SRV#9500', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='Need gear mobilized', requester=self.requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
+        )
+        self.client.login(email='receipt-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_create'), {
+            'job_number': self.job.pk,
+            'asset_ids': [self.asset1.pk, self.asset2.pk],
+            'ticket_id': self.ticket.pk,
+        })
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
+        self.mobilization = Mobilization.objects.get(ticket=self.ticket)
+        self.item1 = self.mobilization.items.get(asset=self.asset1)
+        self.item2 = self.mobilization.items.get(asset=self.asset2)
+        self.client.logout()
+
+    def test_pure_stock_mobilization_posts_one_itemized_created_comment(self):
+        created_comment = self.ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.CREATED)
+        self.assertIn('2 items requested', created_comment.body)
+        self.assertIn('Camera A', created_comment.body)
+        self.assertIn('Camera B', created_comment.body)
+        self.assertIn('mobilized from stock', created_comment.body)
+        self.assertNotIn('ordered from vendor', created_comment.body)
+        self.assertTrue(created_comment.is_system_generated)
+
+    def test_mobilization_cards_attributed_to_system_not_admin(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:detail', args=[self.ticket.pk]))
+        self.assertContains(response, 'System')
+        self.assertNotContains(response, 'Receipt Admin')
+
+    def test_confirmed_card_still_shows_real_requester_name(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item2.pk]))
+
+        response = self.client.get(reverse('tickets:detail', args=[self.ticket.pk]))
+        self.assertContains(response, 'Confirmed by Receipt Requester')
+
+    def test_accept_sets_acknowledged_fields_and_notifies_admins(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.assertEqual(response.status_code, 302)
+
+        self.item1.refresh_from_db()
+        self.assertIsNotNone(self.item1.acknowledged_at)
+        self.assertEqual(self.item1.acknowledged_by, self.requester)
+        self.assertTrue(Notification.objects.filter(recipient=self.admin).exists())
+
+    def test_dispute_sets_disputed_fields(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:mobilization_item_dispute', args=[self.item1.pk]), {'reason': 'Never arrived'})
+        self.assertEqual(response.status_code, 302)
+
+        self.item1.refresh_from_db()
+        self.assertIsNotNone(self.item1.disputed_at)
+        self.assertEqual(self.item1.dispute_reason, 'Never arrived')
+
+    def test_non_requester_cannot_accept(self):
+        self.client.login(email='receipt-other@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.acknowledged_at)
+
+    def test_double_confirm_rejected(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+
+        self.item1.refresh_from_db()
+        # Still the same single confirmation — a second attempt is a no-op,
+        # not an error that corrupts the timestamp.
+        self.assertIsNotNone(self.item1.acknowledged_at)
+
+    def test_ticket_stays_pending_user_while_items_outstanding(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
+
+    def test_ticket_resolves_when_all_items_accepted(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item2.pk]))
+
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.APPROVED)
+        self.assertIsNotNone(self.ticket.resolution_confirmed_at)
+        self.assertEqual(self.ticket.resolution_confirmed_by, self.requester)
+
+    def test_ticket_reopens_when_any_item_disputed(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_dispute', args=[self.item2.pk]), {'reason': 'Missing'})
+
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_FULFILLMENT)
+        self.assertTrue(
+            TicketActivityLog.objects.filter(ticket=self.ticket, action='resolution_rejected').exists()
+        )
+
+    def test_receipt_confirm_modal_lists_pending_items(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:receipt_confirm_modal', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Camera A')
+        self.assertContains(response, 'Camera B')
+
+    def test_receipt_confirm_modal_forbidden_for_non_requester(self):
+        self.client.login(email='receipt-other@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:receipt_confirm_modal', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_confirm_resolution_get_redirects_for_mobilization_ticket(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:confirm_resolution', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 302)
+
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
+
+    def test_batch_confirm_applies_all_decisions_in_one_submit(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:mobilization_items_confirm_batch', args=[self.ticket.pk]), {
+            'accept_ids': [self.item1.pk, self.item2.pk],
+        })
+        self.assertEqual(response.status_code, 302)
+
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.assertIsNotNone(self.item1.acknowledged_at)
+        self.assertIsNotNone(self.item2.acknowledged_at)
+
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.APPROVED)
+
+    def test_batch_confirm_mixed_accept_and_dispute(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:mobilization_items_confirm_batch', args=[self.ticket.pk]), {
+            'accept_ids': [self.item1.pk],
+            'dispute_ids': [self.item2.pk],
+            f'reason_{self.item2.pk}': 'Box was empty',
+        })
+        self.assertEqual(response.status_code, 302)
+
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.assertIsNotNone(self.item1.acknowledged_at)
+        self.assertIsNotNone(self.item2.disputed_at)
+        self.assertEqual(self.item2.dispute_reason, 'Box was empty')
+
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_FULFILLMENT)
+
+    def test_batch_confirm_forbidden_for_non_requester(self):
+        self.client.login(email='receipt-other@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:mobilization_items_confirm_batch', args=[self.ticket.pk]), {
+            'accept_ids': [self.item1.pk],
+        })
+        self.assertEqual(response.status_code, 403)
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.acknowledged_at)
+
+    def test_requester_sees_confirm_receipt_card_on_conversation_page(self):
+        # Regression coverage for the actual bug: the requester must see the
+        # confirm action in the shared conversation thread (tickets:detail),
+        # not only in the agent-only side panel that renders on the exact
+        # same page but is invisible to a non-agent viewer.
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:detail', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Confirm receipt')
+        self.assertContains(response, 'mobilized for')
+
+    def test_agent_conversation_view_shows_pending_card_without_action_button(self):
+        self.client.login(email='receipt-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:conversation', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'mobilized for')
+        self.assertNotContains(response, 'Confirm receipt')
+
+    def test_confirm_receipt_card_replaced_by_confirmed_state_once_all_items_accepted(self):
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item2.pk]))
+
+        response = self.client.get(reverse('tickets:detail', args=[self.ticket.pk]))
+        self.assertContains(response, 'Receipt confirmed for')
+        self.assertNotContains(response, 'Confirm receipt')
+
+    def test_mobilization_item_status_label_reflects_confirmation_state(self):
+        self.client.login(email='receipt-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:mobilization_detail', args=[self.mobilization.pk]))
+        self.assertContains(response, 'Pending Confirmation')
+
+        self.client.logout()
+        self.client.login(email='receipt-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item2.pk]))
+
+        self.client.logout()
+        self.client.login(email='receipt-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:mobilization_detail', args=[self.mobilization.pk]))
+        self.assertNotContains(response, 'Pending Confirmation')
+        self.assertContains(response, 'Mobilized')
+
+
+class MobilizationDemobilizationRequestTests(TestCase):
+    """Requester-initiated demobilization handshake: the requester
+    self-reports sending mobilized-and-acknowledged assets back, an admin
+    then confirms physical receipt via the existing Demobilize action."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(
+            email='demob-admin@example.com', password='AdminPass123!',
+            first_name='Demob', last_name='Admin', department='IT',
+        )
+        self.requester = User.objects.create_user(
+            email='demob-requester@example.com', password='TestPass123!',
+            first_name='Demob', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.other_user = User.objects.create_user(
+            email='demob-other@example.com', password='TestPass123!',
+            first_name='Demob', last_name='Other', department='IT', role=User.Role.END_USER,
+        )
+        self.job = JobNumber.objects.create(number='JB-901', is_active=True)
+        self.asset1 = Asset.objects.create(name='Drill A', status=Asset.Status.IN_STORE)
+        self.asset2 = Asset.objects.create(name='Drill B', status=Asset.Status.IN_STORE)
+        self.ticket = Ticket.objects.create(
+            number='SRV#9600', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='Need gear mobilized', requester=self.requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
+        )
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_create'), {
+            'job_number': self.job.pk,
+            'asset_ids': [self.asset1.pk, self.asset2.pk],
+            'ticket_id': self.ticket.pk,
+        })
+        self.mobilization = Mobilization.objects.get(ticket=self.ticket)
+        self.item1 = self.mobilization.items.get(asset=self.asset1)
+        self.item2 = self.mobilization.items.get(asset=self.asset2)
+        self.client.logout()
+
+        # Requester confirms receipt of both items — the prerequisite for
+        # self-reporting a demobilization.
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item1.pk]))
+        self.client.post(reverse('tickets:mobilization_item_accept', args=[self.item2.pk]))
+        self.client.logout()
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+
+    def test_request_demobilization_requires_acknowledged_receipt(self):
+        # A fresh item that was never confirmed received can't be
+        # self-reported as demobilized.
+        asset3 = Asset.objects.create(name='Drill C', status=Asset.Status.IN_STORE)
+        item3 = MobilizationItem.objects.create(mobilization=self.mobilization, asset=asset3)
+        with self.assertRaises(ValueError):
+            item3.request_demobilization(actor=self.requester)
+
+    def test_request_demobilization_rejects_non_requester(self):
+        with self.assertRaises(ValueError):
+            self.item1.request_demobilization(actor=self.other_user)
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.return_requested_at)
+
+    def test_request_demobilization_sets_fields_and_notifies_admins(self):
+        self.item1.request_demobilization(actor=self.requester, notes='Sent via courier')
+        self.item1.refresh_from_db()
+        self.assertIsNotNone(self.item1.return_requested_at)
+        self.assertEqual(self.item1.return_requested_by, self.requester)
+        self.assertEqual(self.item1.return_requested_notes, 'Sent via courier')
+        self.assertTrue(Notification.objects.filter(recipient=self.admin).exists())
+
+    def test_double_request_rejected(self):
+        self.item1.request_demobilization(actor=self.requester)
+        with self.assertRaises(ValueError):
+            self.item1.request_demobilization(actor=self.requester)
+
+    def test_cancel_demobilization_request_clears_fields(self):
+        self.item1.request_demobilization(actor=self.requester)
+        self.item1.cancel_demobilization_request(actor=self.requester)
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.return_requested_at)
+        self.assertIsNone(self.item1.return_requested_by)
+        self.assertEqual(self.item1.return_requested_notes, '')
+
+    def test_cancel_fails_after_admin_demobilized(self):
+        self.item1.request_demobilization(actor=self.requester)
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {
+            'return_condition': 'Good',
+        })
+        self.client.logout()
+        self.item1.refresh_from_db()
+        self.assertIsNotNone(self.item1.demobilized_at)
+        with self.assertRaises(ValueError):
+            self.item1.cancel_demobilization_request(actor=self.requester)
+
+    def test_demobilization_list_shows_only_own_ready_and_pending_items(self):
+        self.item1.request_demobilization(actor=self.requester, notes='On its way back')
+
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:demobilization_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Drill A')
+        self.assertContains(response, 'Drill B')
+        self.assertContains(response, 'On its way back')
+
+        self.client.logout()
+        self.client.login(email='demob-other@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:demobilization_list'))
+        self.assertNotContains(response, 'Drill A')
+
+    def test_demobilization_list_and_sidebar_link_persist_after_full_demobilization(self):
+        # Requester self-reports both items, admin demobilizes both — nothing
+        # is left outstanding, but the history and the sidebar link that
+        # leads to it should both still be there afterward.
+        self.item1.request_demobilization(actor=self.requester)
+        self.item2.request_demobilization(actor=self.requester)
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {
+            'return_condition': 'Good',
+        })
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item2.pk]), {
+            'return_condition': 'Good',
+        })
+        self.client.logout()
+
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:demobilization_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Drill A')
+        self.assertContains(response, 'Drill B')
+        self.assertContains(response, '(2)')
+        self.assertContains(response, 'demobilized')
+
+        dashboard_response = self.client.get(reverse('dashboard'))
+        self.assertContains(dashboard_response, reverse('tickets:demobilization_list'))
+
+    def test_batch_request_reports_multiple_items_one_bad_id_skipped(self):
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:mobilization_items_request_demobilize_batch'), {
+            'item_ids': [self.item1.pk, self.item2.pk, 999999],
+            'notes': 'Job complete, sending everything back',
+        })
+        self.assertEqual(response.status_code, 302)
+
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.assertIsNotNone(self.item1.return_requested_at)
+        self.assertIsNotNone(self.item2.return_requested_at)
+        self.assertEqual(self.item1.return_requested_notes, 'Job complete, sending everything back')
+
+    def test_admin_cannot_demobilize_without_prior_request_when_ticket_linked(self):
+        # Hard-gated, per design — the mobilization has a linked ticket/
+        # requester, so demobilize is blocked until they self-report it.
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {
+            'return_condition': 'Good',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.item1.refresh_from_db()
+        self.assertIsNone(self.item1.demobilized_at)
+
+    def test_demobilize_modal_blocks_when_no_request_reported(self):
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:mobilization_item_demobilize_modal', args=[self.item1.pk]))
+        self.assertContains(response, 'Not yet reported returned')
+        self.assertNotContains(response, reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]))
+
+    def test_demobilize_modal_prefills_when_request_reported(self):
+        self.item1.request_demobilization(actor=self.requester, notes='Sent via courier')
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:mobilization_item_demobilize_modal', args=[self.item1.pk]))
+        self.assertContains(response, 'Reported returned')
+        self.assertContains(response, 'Sent via courier')
+
+    def test_demobilize_all_blocked_when_any_item_unreported(self):
+        self.item1.request_demobilization(actor=self.requester)
+        # item2 left unreported.
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.post(reverse('tickets:mobilization_demobilize_all', args=[self.mobilization.pk]), {
+            'return_condition': 'Good',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.item1.refresh_from_db()
+        self.item2.refresh_from_db()
+        self.assertIsNone(self.item1.demobilized_at)
+        self.assertIsNone(self.item2.demobilized_at)
+
+    def test_demobilize_ticketless_mobilization_requires_reason(self):
+        ticketless_mobilization = Mobilization.objects.create(mobilized_by=self.admin)
+        asset = Asset.objects.create(name='Legacy Drill', status=Asset.Status.MOBILIZED)
+        item = MobilizationItem.objects.create(mobilization=ticketless_mobilization, asset=asset)
+
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.post(reverse('tickets:mobilization_item_demobilize', args=[item.pk]), {
+            'return_condition': 'Good',
+        })
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNone(item.demobilized_at)
+
+        response = self.client.post(reverse('tickets:mobilization_item_demobilize', args=[item.pk]), {
+            'return_condition': 'Good', 'override_reason': 'Legacy mobilization, no requester to report it',
+        })
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNotNone(item.demobilized_at)
+        log = AssetLog.objects.filter(asset=asset, action=AssetLog.Action.DEMOBILIZED).get()
+        self.assertEqual(log.details['override_reason'], 'Legacy mobilization, no requester to report it')
+
+    def test_demobilize_all_ticketless_requires_reason(self):
+        ticketless_mobilization = Mobilization.objects.create(mobilized_by=self.admin)
+        asset = Asset.objects.create(name='Legacy Drill', status=Asset.Status.MOBILIZED)
+        MobilizationItem.objects.create(mobilization=ticketless_mobilization, asset=asset)
+
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.post(reverse('tickets:mobilization_demobilize_all', args=[ticketless_mobilization.pk]), {
+            'return_condition': 'Good',
+        })
+        self.assertEqual(response.status_code, 302)
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, Asset.Status.MOBILIZED)
+
+        response = self.client.post(reverse('tickets:mobilization_demobilize_all', args=[ticketless_mobilization.pk]), {
+            'return_condition': 'Good', 'override_reason': 'Legacy mobilization, no requester to report it',
+        })
+        self.assertEqual(response.status_code, 302)
+        asset.refresh_from_db()
+        self.assertEqual(asset.status, Asset.Status.IN_STORE)
+
+    def test_pending_demobilizations_list_admin_only(self):
+        self.item1.request_demobilization(actor=self.requester)
+
+        self.client.login(email='demob-other@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:pending_demobilizations_list'))
+        self.assertEqual(response.status_code, 403)
+        self.client.logout()
+
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:pending_demobilizations_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Drill A')
+
+    def test_mobilization_detail_shows_self_report_and_notes_for_demobilized_item(self):
+        self.item1.request_demobilization(actor=self.requester, notes='Sent via courier')
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {
+            'return_condition': 'Good',
+            'return_notes': 'Checked in fine',
+        })
+
+        response = self.client.get(reverse('tickets:mobilization_detail', args=[self.mobilization.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Sent via courier')
+        self.assertContains(response, 'Checked in fine')
+
+    def test_mobilizations_list_shows_pending_demob_badge_and_tab(self):
+        self.item1.request_demobilization(actor=self.requester, notes='Sent via courier')
+
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:mobilizations'))
+        self.assertContains(response, '1 item')
+        self.assertContains(response, 'Needs Confirmation')
+        self.assertContains(response, '(1)')
+
+        response = self.client.get(reverse('tickets:mobilizations'), {'tab': 'needs_confirmation'})
+        self.assertContains(response, self.mobilization.destination_display)
+
+        # Confirming the item drops it out of the Needs Confirmation tab.
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {
+            'return_condition': 'Good',
+        })
+        response = self.client.get(reverse('tickets:mobilizations'), {'tab': 'needs_confirmation'})
+        self.assertNotContains(response, self.mobilization.destination_display)
+
+    def test_mobilization_audit_report_shows_full_lifecycle_and_is_admin_only(self):
+        self.item1.request_demobilization(actor=self.requester, notes='Sent via courier')
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {
+            'return_condition': 'Good',
+            'return_notes': 'Checked in fine',
+        })
+
+        response = self.client.get(reverse('tickets:mobilization_audit_report', args=[self.mobilization.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Drill A')
+        self.assertContains(response, 'Drill B')
+        self.assertContains(response, 'Sent via courier')
+        self.assertContains(response, 'Checked in fine')
+        self.assertContains(response, 'Returned to store (In Store)')
+        self.assertContains(response, 'Still mobilized')
+        self.client.logout()
+
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:mobilization_audit_report', args=[self.mobilization.pk]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_mobilization_audit_export_pdf(self):
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        response = self.client.get(reverse('tickets:mobilization_audit_export', args=[self.mobilization.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_sidebar_demobilization_link_only_shows_after_receiving_a_mobilization(self):
+        # requester has acknowledged both items in setUp — link should show.
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'Demobilization')
+
+        # other_user has never had anything mobilized to them — no link.
+        self.client.logout()
+        self.client.login(email='demob-other@example.com', password='TestPass123!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'Demobilization')
+
+    def test_sidebar_link_persists_after_everything_demobilized(self):
+        # Per design: once a requester has ever had anything mobilized to
+        # them, the link (and the history behind it) stays up permanently —
+        # it does not disappear just because nothing's outstanding anymore.
+        # See test_demobilization_list_and_sidebar_link_persist_after_full_demobilization
+        # for the corresponding history-content assertions.
+        self.item1.request_demobilization(actor=self.requester)
+        self.item2.request_demobilization(actor=self.requester)
+
+        self.client.login(email='demob-admin@example.com', password='AdminPass123!')
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item1.pk]), {'return_condition': 'Good'})
+        self.client.post(reverse('tickets:mobilization_item_demobilize', args=[self.item2.pk]), {'return_condition': 'Good'})
+        self.client.logout()
+
+        self.client.login(email='demob-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'Demobilization')
 
 
 class VendorCategoryAndMobilizationPrefillTests(TestCase):
@@ -953,6 +1639,24 @@ class AssetRequestTwoStepResolutionTests(TestCase):
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
 
+    def test_receipt_confirm_modal_renders_single_asset_content(self):
+        self._fulfill()
+        self.client.logout()
+        self.client.login(email='twostep-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:receipt_confirm_modal', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Yes, I received it')
+        self.assertContains(response, self.ticket.number)
+
+    def test_confirm_resolution_get_redirects_to_ticket_detail(self):
+        self._fulfill()
+        self.client.logout()
+        self.client.login(email='twostep-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:confirm_resolution', args=[self.ticket.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
+
     def test_confirming_receipt_does_not_resolve_the_ticket(self):
         self._fulfill()
         self.client.logout()
@@ -1008,6 +1712,13 @@ class AssetRequestTwoStepResolutionTests(TestCase):
             Notification.objects.filter(recipient=self.ticket.fulfilled_by, message__icontains="wasn't received").exists()
         )
 
+        # This comment carries a real human-typed reason ("Wrong laptop
+        # model") — it must stay attributed to the real requester, not
+        # flattened to "System".
+        comment = self.ticket.comments.get(body__icontains='Wrong laptop model')
+        self.assertFalse(comment.is_system_generated)
+        self.assertEqual(comment.author, self.requester)
+
     def test_non_asset_ticket_resolution_confirmation_unchanged(self):
         service_category = ServiceCategory.objects.create(
             name='General Two-Step', slug='general-two-step', field_group=ServiceCategory.FieldGroup.GENERAL
@@ -1024,6 +1735,50 @@ class AssetRequestTwoStepResolutionTests(TestCase):
         general_ticket.refresh_from_db()
         self.assertEqual(general_ticket.status, Ticket.Status.RESOLVED)
         self.assertIsNotNone(general_ticket.resolved_at)
+
+
+class SystemGeneratedCommentBackfillTests(TestCase):
+    """The 0052 migration's data backfill: existing rows already
+    identifiable as system-composed via is_receipt_confirmation_prompt or
+    mobilization_event should retroactively flip is_system_generated=True,
+    without touching plain human comments."""
+
+    def test_backfill_flags_existing_mobilization_and_prompt_rows_only(self):
+        import importlib
+        from django.apps import apps as real_apps
+        migration_module = importlib.import_module(
+            'apps.tickets.migrations.0052_ticketcomment_is_system_generated_and_more'
+        )
+        backfill_is_system_generated = migration_module.backfill_is_system_generated
+
+        admin = User.objects.create_superuser(
+            email='backfill-admin@example.com', password='AdminPass123!',
+            first_name='Backfill', last_name='Admin', department='IT',
+        )
+        ticket = Ticket.objects.create(
+            number='SRV#9900', type=Ticket.Type.SERVICE_REQUEST, title='...',
+            description='...', requester=admin, status=Ticket.Status.PENDING_FULFILLMENT,
+        )
+        mobilization_comment = TicketComment.objects.create(
+            ticket=ticket, author=admin, visibility='PUBLIC',
+            body='pretend created card', mobilization_event=TicketComment.MobilizationEvent.CREATED,
+        )
+        prompt_comment = TicketComment.objects.create(
+            ticket=ticket, author=admin, visibility='PUBLIC',
+            body='pretend fulfilled prompt', is_receipt_confirmation_prompt=True,
+        )
+        human_comment = TicketComment.objects.create(
+            ticket=ticket, author=admin, visibility='PUBLIC', body='a real reply',
+        )
+
+        backfill_is_system_generated(real_apps, None)
+
+        mobilization_comment.refresh_from_db()
+        prompt_comment.refresh_from_db()
+        human_comment.refresh_from_db()
+        self.assertTrue(mobilization_comment.is_system_generated)
+        self.assertTrue(prompt_comment.is_system_generated)
+        self.assertFalse(human_comment.is_system_generated)
 
 
 class MobilizationVendorGatingTests(TestCase):
@@ -1102,11 +1857,22 @@ class MobilizationVendorGatingTests(TestCase):
         mobilization = Mobilization.objects.get(ticket=self.ticket)
         self.assertEqual(mobilization.items.count(), 1)
 
+        # One coherent CREATED comment covering both lines, not two
+        # disconnected ones.
+        created_comment = self.ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.CREATED)
+        self.assertIn('mobilized from stock', created_comment.body)
+        self.assertIn('ordered from vendor', created_comment.body)
+        self.assertIn('2 items requested', created_comment.body)
+
         pr = AssetProcurementRequest.objects.get(item_name='Vendor Widget')
         self.client.post(reverse('tickets:procurement_receive', args=[pr.pk]))
 
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
+
+        arrived_comment = self.ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_ARRIVED)
+        self.assertIn('Vendor Widget', arrived_comment.body)
+        self.assertIn('All 2 items now fulfilled.', arrived_comment.body)
 
     def test_cancelling_last_open_procurement_fulfills_ticket_if_something_was_delivered(self):
         self.client.post(reverse('tickets:mobilization_create'), {
@@ -1124,6 +1890,10 @@ class MobilizationVendorGatingTests(TestCase):
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
 
+        cancelled_comment = self.ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_CANCELLED)
+        self.assertIn('Vendor Widget', cancelled_comment.body)
+        self.assertIn('All 1 items now fulfilled.', cancelled_comment.body)
+
     def test_cancelling_only_procurement_with_nothing_delivered_leaves_ticket_pending(self):
         self.client.post(reverse('tickets:mobilization_create'), {
             'job_number': self.job.pk,
@@ -1140,6 +1910,9 @@ class MobilizationVendorGatingTests(TestCase):
         self.assertNotEqual(self.ticket.status, Ticket.Status.PENDING_USER)
         self.assertIsNone(self.ticket.fulfilled_at)
 
+        cancelled_comment = self.ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_CANCELLED)
+        self.assertIn('Nothing left on order for this mobilization.', cancelled_comment.body)
+
 
 class ThirdPartyVesselMobilizationTests(TestCase):
     """Proposing a third-party vessel on a mobilization creates a pending
@@ -1154,10 +1927,20 @@ class ThirdPartyVesselMobilizationTests(TestCase):
         )
         self.client.login(email='tpv-admin@example.com', password='AdminPass123!')
         self.asset = Asset.objects.create(name='TPV Asset', status=Asset.Status.IN_STORE)
+        requester = User.objects.create_user(
+            email='tpv-requester@example.com', password='TestPass123!',
+            first_name='TPV', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.ticket = Ticket.objects.create(
+            number='SRV#8200', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='...', requester=requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
+        )
 
     def test_proposing_third_party_vessel_creates_pending_vessel(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
             'asset_ids': [self.asset.pk],
+            'ticket_id': self.ticket.pk,
             'third_party_vessels': ['MV Client Vessel'],
         })
         self.assertEqual(response.status_code, 302)
@@ -1170,6 +1953,7 @@ class ThirdPartyVesselMobilizationTests(TestCase):
     def test_multiple_third_party_vessels_in_one_submission(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
             'asset_ids': [self.asset.pk],
+            'ticket_id': self.ticket.pk,
             'third_party_vessels': ['MV Client One', 'MV Client Two'],
         })
         self.assertEqual(response.status_code, 302)
@@ -1181,6 +1965,7 @@ class ThirdPartyVesselMobilizationTests(TestCase):
         Vessel.objects.create(name='MV Reused Vessel', is_active=False, proposed_by=self.admin)
         self.client.post(reverse('tickets:mobilization_create'), {
             'asset_ids': [self.asset.pk],
+            'ticket_id': self.ticket.pk,
             'third_party_vessels': ['mv reused vessel'],
         })
         self.assertEqual(Vessel.objects.filter(name__iexact='MV Reused Vessel').count(), 1)
@@ -1188,6 +1973,7 @@ class ThirdPartyVesselMobilizationTests(TestCase):
     def test_pending_vessel_invisible_in_new_mobilization_picker(self):
         self.client.post(reverse('tickets:mobilization_create'), {
             'asset_ids': [self.asset.pk],
+            'ticket_id': self.ticket.pk,
             'third_party_vessels': ['MV Not Approved Yet'],
         })
         other_admin = User.objects.create_superuser(
@@ -1199,7 +1985,7 @@ class ThirdPartyVesselMobilizationTests(TestCase):
         # The vessel checkbox picker on a *new* mobilization form only shows
         # active (approved) vessels — the pending one stays hidden there
         # even though it's visible on the mobilization that already uses it.
-        response = self.client.get(reverse('tickets:mobilization_create_page'))
+        response = self.client.get(reverse('tickets:mobilization_create_page'), {'ticket_id': self.ticket.pk})
         self.assertNotContains(response, 'MV Not Approved Yet')
 
     def test_admins_notified_of_new_third_party_vessel(self):
@@ -1209,6 +1995,7 @@ class ThirdPartyVesselMobilizationTests(TestCase):
         )
         self.client.post(reverse('tickets:mobilization_create'), {
             'asset_ids': [self.asset.pk],
+            'ticket_id': self.ticket.pk,
             'third_party_vessels': ['MV Notify Test'],
         })
         self.assertTrue(
@@ -1236,6 +2023,15 @@ class ConsumableAssetTests(TestCase):
         self.regular_asset = Asset.objects.create(
             name='ThinkPad X1', category=self.regular_category, status=Asset.Status.IN_STORE,
         )
+        requester = User.objects.create_user(
+            email='consumable-requester@example.com', password='TestPass123!',
+            first_name='Consumable', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.ticket = Ticket.objects.create(
+            number='SRV#8300', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='...', requester=requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
+        )
 
     def test_is_consumable_property(self):
         self.assertTrue(self.consumable_asset.is_consumable)
@@ -1250,6 +2046,7 @@ class ConsumableAssetTests(TestCase):
     def test_mobilizing_consumable_deducts_stock_and_keeps_in_store(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
             'job_number': '',
+            'ticket_id': self.ticket.pk,
             'asset_ids': [self.consumable_asset.pk],
             f'quantity_{self.consumable_asset.pk}': '4',
             'third_party_vessels': ['MV Consumable Test'],
@@ -1264,6 +2061,7 @@ class ConsumableAssetTests(TestCase):
 
     def test_mobilizing_more_than_stock_is_rejected(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
             'asset_ids': [self.consumable_asset.pk],
             f'quantity_{self.consumable_asset.pk}': '999',
             'third_party_vessels': ['MV Overrequest Test'],
@@ -1275,6 +2073,7 @@ class ConsumableAssetTests(TestCase):
 
     def test_regular_asset_mobilization_unaffected(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
             'asset_ids': [self.regular_asset.pk],
             'third_party_vessels': ['MV Regular Test'],
         })
@@ -1286,6 +2085,7 @@ class ConsumableAssetTests(TestCase):
 
     def test_demobilizing_consumable_restores_stock(self):
         self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
             'asset_ids': [self.consumable_asset.pk],
             f'quantity_{self.consumable_asset.pk}': '4',
             'third_party_vessels': ['MV Demob Test'],
@@ -1294,6 +2094,8 @@ class ConsumableAssetTests(TestCase):
         self.assertEqual(self.consumable_asset.quantity_in_stock, 6)
 
         item = MobilizationItem.objects.get(asset=self.consumable_asset)
+        item.return_requested_at = timezone.now()
+        item.save(update_fields=['return_requested_at'])
         self.client.post(
             reverse('tickets:mobilization_item_demobilize', args=[item.pk]),
             {'return_condition': Asset.Condition.GOOD, 'return_quantity': '4'},
@@ -1303,6 +2105,7 @@ class ConsumableAssetTests(TestCase):
 
     def test_damaged_consumable_not_restocked(self):
         self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
             'asset_ids': [self.consumable_asset.pk],
             f'quantity_{self.consumable_asset.pk}': '4',
             'third_party_vessels': ['MV Damaged Test'],
@@ -1311,6 +2114,8 @@ class ConsumableAssetTests(TestCase):
         self.assertEqual(self.consumable_asset.quantity_in_stock, 6)
 
         item = MobilizationItem.objects.get(asset=self.consumable_asset)
+        item.return_requested_at = timezone.now()
+        item.save(update_fields=['return_requested_at'])
         self.client.post(
             reverse('tickets:mobilization_item_demobilize', args=[item.pk]),
             {'return_condition': Asset.Condition.DAMAGED, 'return_quantity': '4'},
@@ -1341,6 +2146,15 @@ class MobilizationAutopickTests(TestCase):
             Asset.objects.create(name=f'Laptop {i}', category=self.category, status=Asset.Status.IN_STORE)
             for i in range(5)
         ]
+        requester = User.objects.create_user(
+            email='autopick-requester@example.com', password='TestPass123!',
+            first_name='Autopick', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.ticket = Ticket.objects.create(
+            number='SRV#8400', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='...', requester=requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
+        )
 
     def test_autopick_returns_requested_quantity(self):
         response = self.client.get(reverse('tickets:mobilization_autopick_assets'), {
@@ -1364,6 +2178,7 @@ class MobilizationAutopickTests(TestCase):
         picked_ids = [a['id'] for a in response.json()['assets']]
 
         post_response = self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
             'asset_ids': picked_ids,
             'third_party_vessels': ['MV Autopick Test'],
         })
@@ -1380,6 +2195,51 @@ class MobilizationAutopickTests(TestCase):
             'category_id': consumable_category.pk, 'quantity': 1,
         })
         self.assertEqual(response.json()['assets'], [])
+
+    def test_autopick_excludes_assets_already_permanently_assigned(self):
+        other_user = User.objects.create_user(
+            email='autopick-owner@example.com', password='TestPass123!',
+            first_name='Autopick', last_name='Owner', department='IT', role=User.Role.END_USER,
+        )
+        self.laptops[0].assigned_to = other_user
+        self.laptops[0].save(update_fields=['assigned_to'])
+
+        response = self.client.get(reverse('tickets:mobilization_autopick_assets'), {
+            'category_id': self.category.pk, 'quantity': 99,
+        })
+        data = response.json()
+        self.assertEqual(len(data['assets']), 4)
+        self.assertNotIn(self.laptops[0].pk, [a['id'] for a in data['assets']])
+
+    def test_available_assets_picker_excludes_assets_already_permanently_assigned(self):
+        other_user = User.objects.create_user(
+            email='available-owner@example.com', password='TestPass123!',
+            first_name='Available', last_name='Owner', department='IT', role=User.Role.END_USER,
+        )
+        self.laptops[0].assigned_to = other_user
+        self.laptops[0].save(update_fields=['assigned_to'])
+
+        response = self.client.get(reverse('tickets:mobilization_available_assets'))
+        self.assertNotContains(response, self.laptops[0].tracking_id)
+        self.assertContains(response, self.laptops[1].tracking_id)
+
+    def test_mobilization_create_rejects_a_permanently_assigned_asset(self):
+        other_user = User.objects.create_user(
+            email='create-owner@example.com', password='TestPass123!',
+            first_name='Create', last_name='Owner', department='IT', role=User.Role.END_USER,
+        )
+        self.laptops[0].assigned_to = other_user
+        self.laptops[0].save(update_fields=['assigned_to'])
+
+        response = self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
+            'asset_ids': [self.laptops[0].pk],
+            'third_party_vessels': ['MV Assigned Reject Test'],
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(MobilizationItem.objects.filter(asset=self.laptops[0]).exists())
+        self.laptops[0].refresh_from_db()
+        self.assertNotEqual(self.laptops[0].status, Asset.Status.MOBILIZED)
 
 
 class LowStockAlertTests(TestCase):
@@ -1401,6 +2261,15 @@ class LowStockAlertTests(TestCase):
         self.asset = Asset.objects.create(
             name='Threshold Widgets', category=self.category,
             quantity_in_stock=6, low_stock_threshold=5, status=Asset.Status.IN_STORE,
+        )
+        requester = User.objects.create_user(
+            email='lowstock-requester@example.com', password='TestPass123!',
+            first_name='LowStock', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.ticket = Ticket.objects.create(
+            number='SRV#8500', type=Ticket.Type.SERVICE_REQUEST, title='Gear for job',
+            description='...', requester=requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True, is_mobilization_request=True,
         )
 
     def test_dipping_below_threshold_notifies_once(self):
@@ -1442,6 +2311,7 @@ class LowStockAlertTests(TestCase):
 
     def test_mobilizing_below_threshold_triggers_alert(self):
         response = self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': self.ticket.pk,
             'asset_ids': [self.asset.pk],
             f'quantity_{self.asset.pk}': '2',
             'third_party_vessels': ['MV Low Stock Test'],
@@ -2442,6 +3312,10 @@ class RemoteSessionTests(TestCase):
         session.refresh_from_db()
         self.assertEqual(session.status, 'ACCEPTED')
 
+        comment = self.ticket.comments.get(body__icontains='accepted the remote session request')
+        self.assertTrue(comment.is_system_generated)
+        self.assertEqual(comment.system_icon, 'monitor')
+
     def test_requester_can_reject_before_start(self):
         self._request_session()
         session = RemoteSession.objects.get(ticket=self.ticket)
@@ -2455,6 +3329,9 @@ class RemoteSessionTests(TestCase):
         notif = Notification.objects.filter(recipient=self.agent, message__icontains='rejected').first()
         self.assertIsNotNone(notif)
         self.assertEqual(notif.type, Notification.Type.REMOTE_SESSION)
+
+        comment = self.ticket.comments.get(body__icontains='declined the remote session request')
+        self.assertTrue(comment.is_system_generated)
 
     def test_reject_is_ignored_once_session_has_started(self):
         """The REJECTED transition previously had no old_status guard — a stray
@@ -2522,6 +3399,10 @@ class RemoteSessionTests(TestCase):
                 recipient=self.requester, type=Notification.Type.REMOTE_SESSION, message__icontains='ended'
             ).exists()
         )
+
+        comment = self.ticket.comments.get(body='The remote session has ended.')
+        self.assertTrue(comment.is_system_generated)
+        self.assertEqual(comment.system_icon, 'monitor')
 
     def test_admin_can_view_session_detail_they_are_not_party_to(self):
         """Admin could already see every session on the list page, but got a
@@ -2913,7 +3794,10 @@ class MaintenanceReportExportTests(TestCase):
             role=User.Role.ADMIN, is_active=True, email_verified=True,
         )
         category = AssetCategory.objects.create(name='Maintenance Report Category')
-        self.asset = Asset.objects.create(name='Report Asset', category=category, department='IT')
+        it_department, _ = AssetDepartment.objects.get_or_create(
+            legacy_user_department_code='IT', defaults={'name': 'IT'}
+        )
+        self.asset = Asset.objects.create(name='Report Asset', category=category, department=it_department)
         self.schedule = MaintenanceSchedule.objects.create(
             title='Report export schedule',
             departments=[MaintenanceSchedule.Department.IT],
@@ -2984,10 +3868,88 @@ class BulkReportExportTests(TestCase):
         self.assertIn('Bulk Export Asset Three', content)
         self.assertNotIn('Bulk Export Asset Two', content)
 
+    def test_csv_export_with_cols_only_includes_selected_columns(self):
+        response = self.client.get(
+            reverse('tickets:export_report', args=['assets']) + '?format=csv&cols=Tracking%20ID,Name,Status'
+        )
+        header = response.content.decode().splitlines()[0]
+        self.assertEqual(header, 'Tracking ID,Name,Status')
+
+    def test_excel_export_with_cols_only_includes_selected_columns(self):
+        from openpyxl import load_workbook
+        response = self.client.get(
+            reverse('tickets:export_report', args=['assets']) + '?format=excel&cols=Name,Category'
+        )
+        wb = load_workbook(BytesIO(response.content))
+        header = [c.value for c in wb.active[1]]
+        self.assertEqual(header, ['Name', 'Category'])
+
+    def test_bundled_pdf_export_respects_cols_param(self):
+        # The bundled/list PDF table export (report_pdf.html) is columns-
+        # driven just like CSV/Excel — a narrowed `cols` selection should
+        # still render successfully (unlike a single-record letterhead form
+        # PDF, which never receives a `cols` param at all).
+        response = self.client.get(
+            reverse('tickets:export_report', args=['assets']) + '?format=pdf&cols=Name,Status'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_bundled_docx_export_with_cols_only_includes_selected_columns(self):
+        from docx import Document
+        response = self.client.get(
+            reverse('tickets:export_report', args=['assets']) + '?format=docx&cols=Name,Status'
+        )
+        doc = Document(BytesIO(response.content))
+        # tables[0] is the letterhead (logo/title/meta) — the data table is
+        # the second table on the page (see _docx_report_letterhead).
+        table = doc.tables[1]
+        header = [cell.text for cell in table.rows[0].cells]
+        self.assertEqual(header, ['Name', 'Status'])
+
+    def test_csv_export_with_unknown_cols_falls_back_to_all_columns(self):
+        response = self.client.get(
+            reverse('tickets:export_report', args=['assets']) + '?format=csv&cols=Nonexistent,Also%20Bogus'
+        )
+        header = response.content.decode().splitlines()[0]
+        self.assertIn('Tracking ID', header)
+        self.assertIn('Name', header)
+        self.assertIn('Category', header)
+
     def test_report_table_renders_row_checkboxes(self):
         response = self.client.get(reverse('tickets:report_builder', args=['assets']))
         self.assertContains(response, 'bulk-row-checkbox')
         self.assertContains(response, f'value="{self.asset1.pk}"')
+
+
+class AuditLogColumnPickerExportTests(TestCase):
+    """The Logs page's own hand-rolled CSV/Excel/JSON exporter (separate
+    from the report_registry Exportables system) respects the same `cols`
+    column-picker param as build_export_response — see
+    components/export_menu.html."""
+
+    def setUp(self):
+        self.client = Client()
+        self.it_lead = User.objects.create_user(
+            email='auditcolslead@example.com', password='TestPass123!',
+            first_name='Audit', last_name='Lead', department='IT',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+        self.client.login(email='auditcolslead@example.com', password='TestPass123!')
+
+    def test_csv_export_with_cols_only_includes_selected_columns(self):
+        response = self.client.get(reverse('tickets:audit_log') + '?tab=tickets&format=csv&cols=Time,Actor')
+        header = response.content.decode().splitlines()[0]
+        self.assertEqual(header, 'Time,Actor')
+
+    def test_json_export_ignores_cols_param(self):
+        response = self.client.get(reverse('tickets:audit_log') + '?tab=tickets&format=json&cols=Time')
+        self.assertEqual(response['Content-Type'], 'application/json')
+
+    def test_csv_export_with_unknown_cols_falls_back_to_all_columns(self):
+        response = self.client.get(reverse('tickets:audit_log') + '?tab=tickets&format=csv&cols=Bogus')
+        header = response.content.decode().splitlines()[0]
+        self.assertEqual(header, 'Time,Category,Ticket,Action,Actor,Details')
 
 
 class NonITTeamLeadRestrictionTests(TestCase):
@@ -3487,9 +4449,22 @@ class ProcurementRequestTests(TestCase):
         self.assertEqual(pr.status, AssetProcurementRequest.Status.RECEIVED)
         self.assertEqual(pr.received_by, self.admin)
 
+    def _pending_fulfillment_mobilization_ticket(self):
+        return Ticket.objects.create(
+            type=Ticket.Type.SERVICE_REQUEST,
+            title='Gear for job',
+            description='Need gear mobilized',
+            requester=self.requester,
+            status=Ticket.Status.PENDING_FULFILLMENT,
+            is_asset_request=True,
+            is_mobilization_request=True,
+        )
+
     def test_mobilization_can_be_created_with_only_procurement_rows(self):
+        ticket = self._pending_fulfillment_mobilization_ticket()
         response = self.client.post(reverse('tickets:mobilization_create'), {
             'notes': 'Job needs items not in stock',
+            'ticket_id': ticket.pk,
             'third_party_vessels': ['MV Procurement Test'],
             'procurement_item_name': ['Deck Cable'],
             'procurement_category_id': [str(self.category.pk)],
@@ -3505,8 +4480,16 @@ class ProcurementRequestTests(TestCase):
         self.assertEqual(pr.item_name, 'Deck Cable')
         self.assertEqual(pr.quantity, 2)
 
+        # One itemized CREATED comment, listing the vendor line — not the
+        # old "assets mobilized" wording (nothing was actually sent).
+        created_comment = ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.CREATED)
+        self.assertIn('ordered from vendor', created_comment.body)
+        self.assertNotIn('mobilized from stock', created_comment.body)
+
     def test_receiving_mobilization_procurement_creates_item_and_mobilizes(self):
+        ticket = self._pending_fulfillment_mobilization_ticket()
         self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': ticket.pk,
             'third_party_vessels': ['MV Receive Test'],
             'procurement_item_name': ['Deck Cable'],
             'procurement_category_id': [str(self.category.pk)],
@@ -3526,6 +4509,44 @@ class ProcurementRequestTests(TestCase):
         self.assertEqual(item.quantity, 1)
         pr.refresh_from_db()
         self.assertEqual(pr.status, AssetProcurementRequest.Status.RECEIVED)
+
+        arrived_comment = ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_ARRIVED)
+        self.assertIn('Deck Cable', arrived_comment.body)
+        self.assertIn('All 1 items now fulfilled.', arrived_comment.body)
+
+    def test_receiving_consumable_batch_reports_quantity_not_row_count(self):
+        # A consumable vendor order for 3 units collapses into ONE
+        # MobilizationItem row with quantity=3 — the arrival message must
+        # say "All 3", not "All 1" (row count).
+        ticket = self._pending_fulfillment_mobilization_ticket()
+        self.client.post(reverse('tickets:mobilization_create'), {
+            'ticket_id': ticket.pk,
+            'third_party_vessels': ['MV Batch Test'],
+            'procurement_item_name': ['Cable Ties'],
+            'procurement_category_id': [str(self.consumable_category.pk)],
+            'procurement_quantity': ['3'],
+            'procurement_vendor_id': [str(self.vendor.pk)],
+            'procurement_vendor_name': [''],
+            'procurement_expected_date': [''],
+        })
+        mobilization = Mobilization.objects.get(mobilized_by=self.admin)
+        pr = AssetProcurementRequest.objects.get(mobilization=mobilization)
+
+        self.client.post(reverse('tickets:procurement_receive', args=[pr.pk]))
+
+        item = MobilizationItem.objects.get(mobilization=mobilization)
+        self.assertEqual(item.quantity, 3)
+
+        arrived_comment = ticket.comments.get(mobilization_event=TicketComment.MobilizationEvent.VENDOR_ITEM_ARRIVED)
+        self.assertIn('All 3 items now fulfilled.', arrived_comment.body)
+
+        # The confirm-receipt card on the conversation page has the same
+        # row-count-vs-quantity pitfall.
+        ticket.refresh_from_db()
+        self.client.logout()
+        self.client.login(email='proc-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:detail', args=[ticket.pk]))
+        self.assertContains(response, '3 assets mobilized')
 
     def test_consumable_receive_increments_stock_and_low_stock_alert_clears(self):
         stock_asset = Asset.objects.create(
@@ -3672,4 +4693,893 @@ class AttachmentPreviewTests(TestCase):
         response = self.client.get(reverse('tickets:attachment_preview', args=[attachment.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Preview not available for this file type')
+
+
+class AssetImportTransformTests(TestCase):
+    """Regression tests for apps.tickets.asset_import_transform, covering the
+    four bugs found while testing the import feature against real client
+    inventory layouts: a location banner above the header row, a person's
+    bundle-start row carrying no device, a header using an accepted alias
+    word, and multi-line CSV field corruption."""
+
+    def test_location_banner_above_header_row_is_carried_forward(self):
+        from apps.tickets.asset_import_transform import transform_raw_rows
+        rows = [
+            ('Hydrodive Asset Inventory',),
+            ('Ground Floor',),
+            ('S/n', 'USER', 'DEPARTMENT', 'DEVICE', 'TAG', 'TRACK #NO', 'Active', 'Not Active', 'Comments'),
+            (1, 'John Doe', 'Account', 'Monitor', 'HD GF ACC MNT 008', 'ACC008', 'Active', '', 'Functional'),
+        ]
+        out = transform_raw_rows(rows)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]['location_name'], 'Ground Floor')
+
+    def test_later_location_banner_still_overrides_earlier_one(self):
+        from apps.tickets.asset_import_transform import transform_raw_rows
+        rows = [
+            ('Ground Floor',),
+            ('S/n', 'USER', 'DEPARTMENT', 'DEVICE', 'TAG', 'TRACK #NO', 'Active', 'Not Active', 'Comments'),
+            (1, 'John Doe', 'Account', 'Monitor', 'HD GF ACC MNT 008', 'ACC008', 'Active', '', ''),
+            ('First Floor',),
+            (2, 'Jane Smith', 'HSE', 'Laptop', 'HD FF HSE LP 002', 'HSE002', '', 'Not Active', ''),
+        ]
+        out = transform_raw_rows(rows)
+        self.assertEqual(out[0]['location_name'], 'Ground Floor')
+        self.assertEqual(out[1]['location_name'], 'First Floor')
+
+    def test_bundle_start_row_with_no_device_still_captures_person(self):
+        from apps.tickets.asset_import_transform import transform_raw_rows
+        rows = [
+            ('S/n', 'USER', 'DEPARTMENT', 'DEVICE', 'TAG', 'TRACK #NO', 'Active', 'Not Active', 'Comments'),
+            (1, 'John Doe', 'Account', '', '', '', 'Active', '', 'Functional'),
+            (None, None, 'Account', 'Monitor', 'HD GF ACC MNT 008', 'ACC008', None, None, None),
+            (None, None, 'Account', 'CPU', 'HD GF ACC CPU 008', None, None, None, None),
+        ]
+        out = transform_raw_rows(rows)
+        self.assertEqual(len(out), 2)
+        for row in out:
+            self.assertEqual(row['assigned_to_name'], 'John Doe')
+            self.assertEqual(row['status_hint'], 'ACTIVE')
+            self.assertEqual(row['notes'], 'Functional')
+
+    def test_header_recognized_via_accepted_alias_words(self):
+        from apps.tickets.asset_import_transform import transform_raw_rows
+        rows = [
+            ('S/n', 'USER', 'DEPARTMENT', 'Item', 'Asset Tag', 'TRACK #NO', 'Active', 'Not Active', 'Comments'),
+            (1, 'John Doe', 'Account', 'Monitor', 'HD GF ACC MNT 008', 'ACC008', 'Active', '', ''),
+        ]
+        out = transform_raw_rows(rows)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]['name'], 'Monitor')
+
+    def test_csv_multiline_quoted_field_not_corrupted(self):
+        from apps.tickets.views import _read_raw_rows
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD001,ACC008,Active,,"line1\nline2"\r\n'
+        )
+        upload = SimpleUploadedFile('inventory.csv', raw_csv.encode('utf-8'), content_type='text/csv')
+        rows = _read_raw_rows(upload)
+        self.assertEqual(rows[1][-1], 'line1\nline2')
+
+
+class AssetImportEndToEndTests(TestCase):
+    """Exercises the full upload -> preview -> commit flow through the real
+    views, not just the transform function in isolation."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='import-admin@example.com', password='TestPass123!',
+            first_name='Import', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.assignee = User.objects.create_user(
+            email='import-assignee@example.com', password='TestPass123!',
+            first_name='John', last_name='Doe', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.client.login(email='import-admin@example.com', password='TestPass123!')
+
+    def _upload_csv(self, raw_csv):
+        upload = SimpleUploadedFile('inventory.csv', raw_csv.encode('utf-8'), content_type='text/csv')
+        return self.client.post(reverse('tickets:asset_import'), {'file': upload})
+
+    def test_full_import_flow_creates_expected_assets(self):
+        raw_csv = (
+            'Hydrodive Asset Inventory\r\n'
+            'Ground Floor\r\n'
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,Functional\r\n'
+            ',,Account,CPU,HD GF ACC CPU 008,,,,\r\n'
+        )
+        response = self._upload_csv(raw_csv)
+        self.assertEqual(response.status_code, 302)
+        batch = AssetImportBatch.objects.get()
+        self.assertEqual(batch.status, AssetImportBatch.Status.PENDING_REVIEW)
+        self.assertEqual(batch.row_count, 2)
+
+        preview = self.client.get(reverse('tickets:asset_import_preview', args=[batch.pk]))
+        self.assertEqual(preview.status_code, 200)
+        self.assertContains(preview, 'Monitor')
+
+        commit = self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]))
+        self.assertEqual(commit.status_code, 302)
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, AssetImportBatch.Status.COMMITTED)
+
+        self.assertEqual(Asset.objects.count(), 2)
+        monitor = Asset.objects.get(name='Monitor')
+        self.assertEqual(monitor.tracking_id, 'HD GF ACC MNT 008')
+        self.assertEqual(monitor.location.name, 'Ground Floor')
+        self.assertEqual(monitor.department.name, 'Account')
+        self.assertEqual(monitor.assigned_to, self.assignee)
+        self.assertEqual(monitor.status, Asset.Status.IN_USE)
+
+    def test_discarded_batch_creates_no_assets(self):
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        response = self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_discard', args=[batch.pk]))
+        batch.refresh_from_db()
+        self.assertEqual(batch.status, AssetImportBatch.Status.DISCARDED)
+        self.assertEqual(Asset.objects.count(), 0)
+
+    def test_non_admin_cannot_import(self):
+        self.client.logout()
+        self.client.login(email='import-assignee@example.com', password='TestPass123!')
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        response = self._upload_csv(raw_csv)
+        self.assertEqual(response.status_code, 403)
+
+    def test_unresolved_assignee_hint_set_when_name_does_not_resolve(self):
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,Nobody Matching,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]))
+        asset = Asset.objects.get()
+        self.assertIsNone(asset.assigned_to)
+        self.assertEqual(asset.unresolved_assignee_hint, 'Nobody Matching')
+
+    def test_unresolved_assignee_hint_blank_when_name_resolves(self):
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]))
+        asset = Asset.objects.get()
+        self.assertEqual(asset.assigned_to, self.assignee)
+        self.assertEqual(asset.unresolved_assignee_hint, '')
+
+
+class AssetImportDepartmentLocationMatchTests(TestCase):
+    """Prevents a repeat of the 'Account' vs 'Accounting' incident — the
+    preview step must flag sheet department/location text that doesn't
+    exactly match an existing row, and the commit step must honor an
+    admin's explicit choice to map it onto an existing one instead of
+    silently creating a duplicate."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='deptmatch-admin@example.com', password='TestPass123!',
+            first_name='Dept', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.client.login(email='deptmatch-admin@example.com', password='TestPass123!')
+
+    def _upload_csv(self, raw_csv):
+        upload = SimpleUploadedFile('inventory.csv', raw_csv.encode('utf-8'), content_type='text/csv')
+        return self.client.post(reverse('tickets:asset_import'), {'file': upload})
+
+    def test_preview_flags_department_and_location_with_no_exact_match(self):
+        AssetDepartment.objects.get_or_create(name='Accounting', defaults={'tag_code': 'ACC'})[0]
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        preview = self.client.get(reverse('tickets:asset_import_preview', args=[batch.pk]))
+        self.assertIn('Account', preview.context['unmatched_departments'])
+        self.assertContains(preview, 'Review new departments')
+        self.assertContains(preview, 'dept_map:Account')
+
+    def test_preview_does_not_flag_exact_department_match(self):
+        AssetDepartment.objects.get_or_create(name='Accounting', defaults={'tag_code': 'ACC'})[0]
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Accounting,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        preview = self.client.get(reverse('tickets:asset_import_preview', args=[batch.pk]))
+        self.assertEqual(preview.context['unmatched_departments'], [])
+
+    def test_commit_without_override_still_creates_new_department(self):
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,BrandNewDept,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]))
+        asset = Asset.objects.get()
+        self.assertEqual(asset.department.name, 'BrandNewDept')
+
+    def test_commit_with_override_maps_onto_existing_department_not_a_duplicate(self):
+        accounting = AssetDepartment.objects.get_or_create(name='Accounting', defaults={'tag_code': 'ACC'})[0]
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,Account,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]), {
+            f'dept_map:Account': str(accounting.pk),
+        })
+        asset = Asset.objects.get()
+        self.assertEqual(asset.department_id, accounting.pk)
+        self.assertEqual(AssetDepartment.objects.filter(name='Account').count(), 0)
+
+    def test_commit_with_location_override_maps_onto_existing_location(self):
+        gf = Location.objects.create(name='Ground Floor', tag_code='GF')
+        raw_csv = (
+            'Ground Flr\r\n'
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,IT,Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]), {
+            f'loc_map:Ground Flr': str(gf.pk),
+        })
+        asset = Asset.objects.get()
+        self.assertEqual(asset.location_id, gf.pk)
+        self.assertEqual(Location.objects.filter(name='Ground Flr').count(), 0)
+
+    def test_preview_flags_category_with_no_exact_match(self):
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,IT,Screen Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        preview = self.client.get(reverse('tickets:asset_import_preview', args=[batch.pk]))
+        self.assertIn('Screen Monitor', preview.context['unmatched_categories'])
+        self.assertContains(preview, 'cat_map:Screen Monitor')
+
+    def test_commit_without_category_override_still_creates_new_category(self):
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,IT,Screen Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]))
+        asset = Asset.objects.get()
+        self.assertEqual(asset.category.name, 'Screen Monitor')
+
+    def test_commit_with_category_override_maps_onto_existing_category_not_a_duplicate(self):
+        monitor = AssetCategory.objects.create(name='Monitor')
+        raw_csv = (
+            'S/n,USER,DEPARTMENT,DEVICE,TAG,TRACK #NO,Active,Not Active,Comments\r\n'
+            '1,John Doe,IT,Screen Monitor,HD GF ACC MNT 008,ACC008,Active,,\r\n'
+        )
+        self._upload_csv(raw_csv)
+        batch = AssetImportBatch.objects.get()
+        self.client.post(reverse('tickets:asset_import_commit', args=[batch.pk]), {
+            f'cat_map:Screen Monitor': str(monitor.pk),
+        })
+        asset = Asset.objects.get()
+        self.assertEqual(asset.category_id, monitor.pk)
+        self.assertEqual(AssetCategory.objects.filter(name='Screen Monitor').count(), 0)
+
+
+class AssetOrphanedActionTests(TestCase):
+    """Covers the state an imported asset can land in that the app's own
+    checkout/reassign flows never produce on their own: a status implying
+    someone has the asset (IN_USE/MAINTENANCE) with no assigned_to/
+    checked_out_to. Before the fix, such an asset had no available action —
+    Checkout requires IN_STORE/READY, Reassign requires an existing holder."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='orphan-admin@example.com', password='TestPass123!',
+            first_name='Orphan', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.new_owner = User.objects.create_user(
+            email='orphan-owner@example.com', password='TestPass123!',
+            first_name='New', last_name='Owner', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.client.login(email='orphan-admin@example.com', password='TestPass123!')
+
+    def test_can_reassign_true_for_in_use_status_with_no_holder(self):
+        asset = Asset.objects.create(name='Orphaned Monitor', status=Asset.Status.IN_USE)
+        self.assertTrue(asset.can_reassign)
+
+    def test_can_reassign_true_for_maintenance_status_with_no_holder(self):
+        asset = Asset.objects.create(name='Orphaned CPU', status=Asset.Status.MAINTENANCE)
+        self.assertTrue(asset.can_reassign)
+
+    def test_can_reassign_still_false_for_genuinely_available_stock(self):
+        asset = Asset.objects.create(name='Spare UPS', status=Asset.Status.IN_STORE)
+        self.assertFalse(asset.can_reassign)
+
+    def test_can_reassign_unaffected_for_normal_assigned_asset(self):
+        asset = Asset.objects.create(name='Laptop', status=Asset.Status.IN_USE, assigned_to=self.new_owner)
+        self.assertTrue(asset.can_reassign)
+
+    def test_reassign_view_succeeds_with_no_old_holder(self):
+        """The exact previously-unreachable case: status implies a holder,
+        but assigned_to/checked_out_to are both None. Must not crash on the
+        old-holder notification and must actually assign the new user."""
+        asset = Asset.objects.create(
+            name='Orphaned Monitor', status=Asset.Status.IN_USE,
+            unresolved_assignee_hint='Someone Unmatched',
+        )
+        response = self.client.post(reverse('tickets:asset_reassign', args=[asset.pk]), {
+            'assigned_to': self.new_owner.pk,
+            'comment': 'Claiming orphaned import row',
+        })
+        self.assertEqual(response.status_code, 302)
+        asset.refresh_from_db()
+        self.assertEqual(asset.assigned_to, self.new_owner)
+        self.assertEqual(asset.unresolved_assignee_hint, '')
+
+    def test_reassign_blocked_for_genuinely_available_stock(self):
+        asset = Asset.objects.create(name='Spare UPS', status=Asset.Status.IN_STORE)
+        response = self.client.post(reverse('tickets:asset_reassign', args=[asset.pk]), {
+            'assigned_to': self.new_owner.pk,
+            'comment': 'Should be blocked',
+        })
+        self.assertEqual(response.status_code, 302)
+        asset.refresh_from_db()
+        self.assertIsNone(asset.assigned_to)
+
+
+class AssetNameMatchingTests(TestCase):
+    """match_users_by_name / _find_assigned_to_by_name_or_email tolerate
+    first/last name being swapped between the system and an imported name,
+    and the post-User-save signal that auto-assigns a now-resolvable
+    unresolved_assignee_hint to the matching account."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='name-admin@example.com', password='TestPass123!',
+            first_name='Name', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+
+    def test_import_matches_swapped_name_order(self):
+        User.objects.create_user(
+            email='swapped-user@example.com', password='TestPass123!',
+            first_name='Doe', last_name='John', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        matches = list(match_users_by_name('John Doe'))
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].email, 'swapped-user@example.com')
+
+    def test_new_user_creation_auto_assigns_matching_unresolved_hint(self):
+        asset = Asset.objects.create(
+            name='Orphaned Laptop', status=Asset.Status.IN_USE,
+            unresolved_assignee_hint='Jane Roe',
+        )
+        new_user = User.objects.create_user(
+            email='jane-roe@example.com', password='TestPass123!',
+            first_name='Jane', last_name='Roe', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        asset.refresh_from_db()
+        self.assertEqual(asset.assigned_to, new_user)
+        self.assertEqual(asset.unresolved_assignee_hint, '')
+        notif = Notification.objects.filter(recipient=self.admin).latest('created_at')
+        self.assertIn('Jane Roe', notif.message)
+        self.assertIn('auto-assigned', notif.message)
+        self.assertIn('filter_q=', notif.url)
+
+    def test_new_user_creation_does_not_auto_assign_blocked_match(self):
+        """A match that can_reassign rejects (e.g. a mobilized or consumable
+        asset) is left alone rather than force-assigned — admins are told to
+        handle it manually instead."""
+        category = AssetCategory.objects.create(name='Cable Ties', is_consumable=True)
+        asset = Asset.objects.create(
+            name='Orphaned Cable Batch', status=Asset.Status.IN_USE,
+            unresolved_assignee_hint='Jane Roe', category=category,
+        )
+        User.objects.create_user(
+            email='jane-roe-blocked@example.com', password='TestPass123!',
+            first_name='Jane', last_name='Roe', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        asset.refresh_from_db()
+        self.assertIsNone(asset.assigned_to)
+        self.assertEqual(asset.unresolved_assignee_hint, 'Jane Roe')
+        notif = Notification.objects.filter(recipient=self.admin).latest('created_at')
+        self.assertIn('could not be auto-assigned', notif.message)
+
+    def test_new_user_creation_does_not_notify_without_matching_hint(self):
+        before = Notification.objects.filter(recipient=self.admin).count()
+        User.objects.create_user(
+            email='no-match@example.com', password='TestPass123!',
+            first_name='Nobody', last_name='Special', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        after = Notification.objects.filter(recipient=self.admin).count()
+        self.assertEqual(before, after)
+
+    def test_asset_list_search_matches_assignee_name(self):
+        owner = User.objects.create_user(
+            email='search-owner@example.com', password='TestPass123!',
+            first_name='Searchable', last_name='Owner', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        Asset.objects.create(name='Docking Station', assigned_to=owner, status=Asset.Status.IN_USE)
+        Asset.objects.create(name='Spare Cable', status=Asset.Status.IN_STORE)
+        self.client.login(email='name-admin@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:assets'), {'filter_q': 'Searchable'})
+        self.assertContains(response, 'Docking Station')
+        self.assertNotContains(response, 'Spare Cable')
+
+    def test_asset_list_search_matches_unresolved_hint(self):
+        Asset.objects.create(
+            name='Unclaimed Monitor', status=Asset.Status.IN_USE,
+            unresolved_assignee_hint='Someone Pending',
+        )
+        Asset.objects.create(name='Spare Cable', status=Asset.Status.IN_STORE)
+        self.client.login(email='name-admin@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:assets'), {'filter_q': 'Someone Pending'})
+        self.assertContains(response, 'Unclaimed Monitor')
+        self.assertNotContains(response, 'Spare Cable')
+
+
+class AssetMobilizedReassignGuardTests(TestCase):
+    """A mobilized asset must be demobilized before it can be reassigned —
+    mobilization is a second, parallel custody mechanism that doesn't
+    route through Asset.assign_to()/release(), so reassigning a mobilized
+    asset used to silently orphan its open MobilizationItem (mobilization
+    detail keeps showing it as active/out at the job) while the asset
+    itself showed a brand new holder. See [[project_asset_inventory_restructuring]]."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='mob-guard-admin@example.com', password='TestPass123!',
+            first_name='MobGuard', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.new_owner = User.objects.create_user(
+            email='mob-guard-owner@example.com', password='TestPass123!',
+            first_name='New', last_name='Owner', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.client.login(email='mob-guard-admin@example.com', password='TestPass123!')
+
+        self.job = JobNumber.objects.create(number='JB-200', is_active=True)
+        self.asset = Asset.objects.create(name='Mobilized Drill', status=Asset.Status.MOBILIZED)
+        self.mobilization = Mobilization.objects.create(job_number=self.job, mobilized_by=self.admin)
+        self.item = MobilizationItem.objects.create(mobilization=self.mobilization, asset=self.asset)
+
+    def test_can_reassign_false_while_mobilization_open(self):
+        self.assertFalse(self.asset.can_reassign)
+
+    def test_can_reassign_true_again_after_demobilize(self):
+        self.item.demobilized_at = timezone.now()
+        self.item.save()
+        self.assertTrue(self.asset.can_reassign)
+
+    def test_reassign_view_blocked_while_mobilized(self):
+        response = self.client.post(reverse('tickets:asset_reassign', args=[self.asset.pk]), {
+            'assigned_to': self.new_owner.pk,
+            'comment': 'Should be blocked',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.asset.refresh_from_db()
+        self.assertIsNone(self.asset.assigned_to)
+        self.assertEqual(self.asset.status, Asset.Status.MOBILIZED)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.demobilized_at)
+
+    def test_reassign_view_succeeds_after_demobilize(self):
+        self.item.demobilized_at = timezone.now()
+        self.item.save()
+        response = self.client.post(reverse('tickets:asset_reassign', args=[self.asset.pk]), {
+            'assigned_to': self.new_owner.pk,
+            'comment': 'Now allowed',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.assigned_to, self.new_owner)
+
+    def test_scrap_request_blocked_while_mobilized(self):
+        """Same bug class as reassign: asset_scrap_request clears
+        checked_out_to/assigned_to and flips status to DAMAGED directly,
+        which would orphan the open MobilizationItem exactly like an
+        un-guarded reassign did."""
+        response = self.client.post(reverse('tickets:asset_scrap_request', args=[self.asset.pk]), {
+            'comment': 'Should be blocked',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.status, Asset.Status.MOBILIZED)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.demobilized_at)
+
+    def test_scrap_request_succeeds_after_demobilize(self):
+        self.item.demobilized_at = timezone.now()
+        self.item.save()
+        response = self.client.post(reverse('tickets:asset_scrap_request', args=[self.asset.pk]), {
+            'comment': 'Now allowed',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.status, Asset.Status.DAMAGED)
+
+
+class AssetInventoryGroupingTests(TestCase):
+    """apps.tickets.views.assets() grouping-by-owner annotation."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='group-admin@example.com', password='TestPass123!',
+            first_name='Group', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.owner_a = User.objects.create_user(
+            email='group-owner-a@example.com', password='TestPass123!',
+            first_name='Alice', last_name='Anderson', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.owner_b = User.objects.create_user(
+            email='group-owner-b@example.com', password='TestPass123!',
+            first_name='Bob', last_name='Baker', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.department = AssetDepartment.objects.create(name='Account')
+        self.location = Location.objects.create(name='Ground Floor')
+        # 2 devices for Alice, 2 for Bob, 1 unmatched-hint, 1 fully unassigned.
+        Asset.objects.create(name='Monitor A1', assigned_to=self.owner_a, status=Asset.Status.IN_USE)
+        Asset.objects.create(name='CPU A2', assigned_to=self.owner_a, status=Asset.Status.IN_USE)
+        Asset.objects.create(name='Monitor B1', assigned_to=self.owner_b, status=Asset.Status.IN_USE)
+        Asset.objects.create(name='CPU B2', assigned_to=self.owner_b, status=Asset.Status.IN_USE)
+        Asset.objects.create(
+            name='UPS Unmatched', status=Asset.Status.IN_USE,
+            unresolved_assignee_hint='Unknown Person',
+        )
+        Asset.objects.create(
+            name='Spare Printer', status=Asset.Status.IN_STORE,
+            department=self.department, location=self.location,
+        )
+        self.client.login(email='group-admin@example.com', password='TestPass123!')
+
+    def test_grouped_by_default_produces_one_group_per_owner(self):
+        response = self.client.get(reverse('tickets:assets'))
+        self.assertEqual(response.status_code, 200)
+        groups = list(response.context['assets'])
+        self.assertTrue(response.context['group_by_owner'])
+        # One group per distinct owner/hint/pool bucket.
+        self.assertEqual(len(groups), 4)
+        alice_group = next(g for g in groups if g['label'] == 'Alice Anderson')
+        self.assertEqual(alice_group['item_count'], 2)
+        self.assertEqual(len(alice_group['assets']), 2)
+
+    def test_unmatched_hint_gets_its_own_labeled_group(self):
+        response = self.client.get(reverse('tickets:assets'))
+        groups = list(response.context['assets'])
+        unmatched = next(g for g in groups if 'UPS Unmatched' in [a.name for a in g['assets']])
+        self.assertEqual(unmatched['label'], 'Needs review: Unknown Person')
+
+    def test_fully_unassigned_grouped_by_department_and_location(self):
+        response = self.client.get(reverse('tickets:assets'))
+        groups = list(response.context['assets'])
+        spare = next(g for g in groups if 'Spare Printer' in [a.name for a in g['assets']])
+        self.assertIn('Account', spare['label'])
+        self.assertIn('Ground Floor', spare['label'])
+
+    def test_group_by_owner_off_falls_back_to_newest_first(self):
+        response = self.client.get(reverse('tickets:assets'), {'filter_group_by_owner': '0'})
+        self.assertFalse(response.context['group_by_owner'])
+        page_assets = list(response.context['assets'])
+        # Flat mode still yields plain Asset instances, not group dicts.
+        self.assertTrue(hasattr(page_assets[0], 'pk'))
+
+    def test_worst_status_picks_most_severe_item_in_group(self):
+        # Alice's two devices are both IN_USE; mark one DAMAGED — the group
+        # must surface DAMAGED, not just the first item's status.
+        Asset.objects.filter(name='CPU A2').update(status=Asset.Status.DAMAGED)
+        response = self.client.get(reverse('tickets:assets'))
+        groups = list(response.context['assets'])
+        alice_group = next(g for g in groups if g['label'] == 'Alice Anderson')
+        self.assertEqual(alice_group['worst_status'], Asset.Status.DAMAGED)
+
+    def test_worst_condition_picks_most_severe_item_in_group(self):
+        Asset.objects.filter(name='Monitor A1').update(condition=Asset.Condition.GOOD)
+        Asset.objects.filter(name='CPU A2').update(condition=Asset.Condition.POOR)
+        response = self.client.get(reverse('tickets:assets'))
+        groups = list(response.context['assets'])
+        alice_group = next(g for g in groups if g['label'] == 'Alice Anderson')
+        self.assertEqual(alice_group['worst_condition'], Asset.Condition.POOR)
+
+    def test_seat_code_uses_tag_slot_number_when_present(self):
+        self.department.tag_code = 'PLD'
+        self.department.save()
+        Asset.objects.filter(name='Monitor A1').update(department=self.department, tag_slot_number=3)
+        Asset.objects.filter(name='CPU A2').update(department=self.department, tag_slot_number=3)
+        response = self.client.get(reverse('tickets:assets'))
+        groups = list(response.context['assets'])
+        alice_group = next(g for g in groups if g['label'] == 'Alice Anderson')
+        self.assertEqual(alice_group['seat_code'], 'PLD-003')
+
+    def test_seat_code_none_for_legacy_format_assets(self):
+        response = self.client.get(reverse('tickets:assets'))
+        groups = list(response.context['assets'])
+        alice_group = next(g for g in groups if g['label'] == 'Alice Anderson')
+        self.assertIsNone(alice_group['seat_code'])
+
+    def test_pagination_links_preserve_active_filters(self):
+        # 15 more owners so the grouped list spans more than one page (10
+        # groups/page) — regression check for the pagination querystring
+        # bug where filter_low_stock/filter_renewal_due/filter_group_by_owner
+        # used to be silently dropped from Prev/Next/page-number links.
+        for i in range(15):
+            owner = User.objects.create_user(
+                email=f'group-extra-{i}@example.com', password='TestPass123!',
+                first_name=f'Extra{i}', last_name='Owner', department='IT',
+                role=User.Role.END_USER, is_active=True, email_verified=True,
+            )
+            Asset.objects.create(name=f'Laptop {i}', assigned_to=owner, status=Asset.Status.IN_USE)
+
+        response = self.client.get(reverse('tickets:assets'), {
+            'filter_status': Asset.Status.IN_USE, 'filter_group_by_owner': '1',
+        }, HTTP_HX_REQUEST='true')
+        content = response.content.decode()
+        self.assertIn('filter_status=IN_USE', content)
+        self.assertIn('filter_group_by_owner=1', content)
+
+    def test_sort_by_recently_updated_surfaces_edited_asset_first(self):
+        response = self.client.get(reverse('tickets:assets'), {
+            'filter_group_by_owner': '0', 'sort': '-updated_at',
+        })
+        self.assertEqual(response.context['active_sort'], '-updated_at')
+        asset = Asset.objects.get(name='Spare Printer')
+        asset.save()  # bump updated_at via a real save, as the edit form does
+        response = self.client.get(reverse('tickets:assets'), {
+            'filter_group_by_owner': '0', 'sort': '-updated_at',
+        })
+        page_assets = list(response.context['assets'])
+        self.assertEqual(page_assets[0].pk, asset.pk)
+
+    def test_invalid_sort_falls_back_to_default(self):
+        response = self.client.get(reverse('tickets:assets'), {'sort': 'not-a-real-option'})
+        self.assertEqual(response.context['active_sort'], 'owner')
+
+    def test_sort_included_in_pagination_querystring(self):
+        response = self.client.get(reverse('tickets:assets'), {
+            'filter_group_by_owner': '0', 'sort': '-updated_at',
+        }, HTTP_HX_REQUEST='true')
+        self.assertIn('sort=-updated_at', response.content.decode())
+
+
+class AssetEditRedirectPreservesStateTests(TestCase):
+    """apps.tickets.views.asset_edit_page — regression test for the param-
+    name mismatch bug where the redirect back to the list read q/category/
+    status/location but the list view actually filters on filter_q/
+    filter_category/filter_status/filter_location, so filters (and sort/
+    page/tab/grouping) silently reset on every edit."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='edit-redirect-admin@example.com', password='TestPass123!',
+            first_name='Edit', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.category = AssetCategory.objects.create(name='Laptops')
+        self.asset = Asset.objects.create(name='Laptop 1', category=self.category, status=Asset.Status.IN_STORE)
+        self.client.login(email='edit-redirect-admin@example.com', password='TestPass123!')
+
+    def test_redirect_preserves_filters_sort_page_and_tab(self):
+        url = reverse('tickets:asset_edit_page', args=[self.asset.pk])
+        response = self.client.post(
+            f'{url}?source=list&filter_q=laptop&filter_category={self.category.pk}'
+            f'&filter_status=IN_STORE&filter_group_by_owner=0&filter_tab=equipment'
+            f'&sort=-updated_at&page=3',
+            data={
+                'name': self.asset.name, 'category': self.category.pk, 'status': Asset.Status.IN_STORE,
+                'tracking_id': self.asset.tracking_id, 'serial_number': '', 'model': '', 'manufacturer': '',
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        location = response['Location']
+        self.assertIn('filter_q=laptop', location)
+        self.assertIn(f'filter_category={self.category.pk}', location)
+        self.assertIn('filter_status=IN_STORE', location)
+        self.assertIn('filter_group_by_owner=0', location)
+        self.assertIn('filter_tab=equipment', location)
+        self.assertIn('sort=-updated_at', location)
+        self.assertIn('page=3', location)
+
+
+class AssetRenewalStatusTests(TestCase):
+    """Asset.renewal_status boundary cases — mirrors warranty_status."""
+
+    def setUp(self):
+        self.category = AssetCategory.objects.create(name='Software License', is_renewable=True)
+
+    def _asset(self, next_renewal_date):
+        return Asset.objects.create(
+            name='License', category=self.category, next_renewal_date=next_renewal_date,
+        )
+
+    def test_no_date_on_file(self):
+        self.assertEqual(self._asset(None).renewal_status, 'NO_DATE')
+
+    def test_scheduled_when_more_than_30_days_out(self):
+        asset = self._asset(timezone.now().date() + timedelta(days=31))
+        self.assertEqual(asset.renewal_status, 'SCHEDULED')
+
+    def test_due_soon_at_exactly_30_days(self):
+        asset = self._asset(timezone.now().date() + timedelta(days=30))
+        self.assertEqual(asset.renewal_status, 'DUE_SOON')
+
+    def test_due_soon_today(self):
+        asset = self._asset(timezone.now().date())
+        self.assertEqual(asset.renewal_status, 'DUE_SOON')
+
+    def test_overdue_when_in_the_past(self):
+        asset = self._asset(timezone.now().date() - timedelta(days=1))
+        self.assertEqual(asset.renewal_status, 'OVERDUE')
+
+
+class AssetLicensesTabTests(TestCase):
+    """apps.tickets.views.assets() Equipment/Licenses & Subscriptions split —
+    see [[project_asset_inventory_restructuring]]. A renewable asset
+    (software license, subscription, support contract) shouldn't appear in
+    the physical seat-card/flat inventory at all, and its budget/renewal
+    aggregates should be global (unfiltered by search), matching the
+    get_asset_kpis() convention already used by the main KPI strip."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_user(
+            email='license-admin@example.com', password='TestPass123!',
+            first_name='License', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.client.login(email='license-admin@example.com', password='TestPass123!')
+
+        self.hw_category = AssetCategory.objects.create(name='Laptop')
+        self.license_category = AssetCategory.objects.create(name='Software License', is_renewable=True)
+        self.other_license_category = AssetCategory.objects.create(name='Support Contract', is_renewable=True)
+        self.vendor = Vendor.objects.create(name='Microsoft')
+
+        self.laptop = Asset.objects.create(name='Work Laptop', category=self.hw_category, status=Asset.Status.IN_USE)
+        self.overdue_license = Asset.objects.create(
+            name='Overdue License', category=self.license_category, renewal_vendor=self.vendor,
+            next_renewal_date=timezone.now().date() - timedelta(days=5), renewal_cost=Decimal('600.00'),
+        )
+        self.due_soon_license = Asset.objects.create(
+            name='Due Soon License', category=self.license_category,
+            next_renewal_date=timezone.now().date() + timedelta(days=10), renewal_cost=Decimal('1200.00'),
+        )
+        self.scheduled_license = Asset.objects.create(
+            name='Scheduled License', category=self.other_license_category,
+            next_renewal_date=timezone.now().date() + timedelta(days=90),
+        )
+        self.no_date_license = Asset.objects.create(name='No Date License', category=self.license_category)
+
+    def test_equipment_tab_excludes_renewable_assets(self):
+        response = self.client.get(reverse('tickets:assets'))
+        self.assertEqual(response.context['active_tab'], 'equipment')
+        page_assets = list(response.context['assets'])
+        # Grouped mode yields group dicts, not asset names directly — walk
+        # into each group's assets to confirm no license slipped through.
+        all_asset_names = []
+        for g in page_assets:
+            if isinstance(g, dict):
+                all_asset_names.extend(a.name for a in g['assets'])
+            else:
+                all_asset_names.append(g.name)
+        self.assertIn('Work Laptop', all_asset_names)
+        for license_name in ['Overdue License', 'Due Soon License', 'Scheduled License', 'No Date License']:
+            self.assertNotIn(license_name, all_asset_names)
+
+    def test_equipment_tab_flat_mode_also_excludes_renewables(self):
+        response = self.client.get(reverse('tickets:assets'), {'filter_group_by_owner': '0'})
+        page_assets = list(response.context['assets'])
+        names = [a.name for a in page_assets]
+        self.assertIn('Work Laptop', names)
+        self.assertNotIn('Overdue License', names)
+
+    def test_licenses_tab_shows_only_renewable_assets_ordered_by_urgency(self):
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses'})
+        self.assertEqual(response.context['active_tab'], 'licenses')
+        names = [a.name for a in response.context['assets']]
+        self.assertNotIn('Work Laptop', names)
+        # Overdue (5 days ago) sorts before due-soon (10 days) before
+        # scheduled (90 days); no-date-on-file sorts last (nulls last).
+        self.assertEqual(names, ['Overdue License', 'Due Soon License', 'Scheduled License', 'No Date License'])
+
+    def test_licenses_tab_budget_aggregates(self):
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses'})
+        self.assertEqual(response.context['license_total_cost'], Decimal('1800.00'))
+        self.assertEqual(response.context['license_costed_count'], 2)
+        self.assertEqual(response.context['license_total_count'], 4)
+        self.assertEqual(response.context['license_due_soon_count'], 1)
+        self.assertEqual(response.context['license_overdue_count'], 1)
+
+    def test_licenses_tab_budget_currency_is_per_asset(self):
+        # Both costed assets default to '$' (Asset.renewal_currency's
+        # model default) — a single agreed currency, so it's safe to show.
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses'})
+        self.assertEqual(response.context['license_budget_currency'], '$')
+        self.assertFalse(response.context['license_budget_mixed_currencies'])
+
+        # Once the two costed assets disagree on currency, the aggregate
+        # can no longer be labeled with a single symbol.
+        self.due_soon_license.renewal_currency = '€'
+        self.due_soon_license.save(update_fields=['renewal_currency'])
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses'})
+        self.assertEqual(response.context['license_budget_currency'], '')
+        self.assertTrue(response.context['license_budget_mixed_currencies'])
+
+    def test_licenses_tab_aggregates_unaffected_by_search(self):
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses', 'filter_q': 'Overdue'})
+        names = [a.name for a in response.context['assets']]
+        self.assertEqual(names, ['Overdue License'])
+        # Aggregates stay global regardless of the search narrowing the list.
+        self.assertEqual(response.context['license_total_count'], 4)
+        self.assertEqual(response.context['license_overdue_count'], 1)
+
+    def test_licenses_tab_category_filter_scoped_to_renewable_categories(self):
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses'})
+        category_names = [c.name for c in response.context['categories']]
+        self.assertIn('Software License', category_names)
+        self.assertIn('Support Contract', category_names)
+        self.assertNotIn('Laptop', category_names)
+
+    def test_licenses_tab_due_soon_filter(self):
+        # Matches Asset.is_renewal_due_soon's own semantics — "due soon"
+        # includes already-overdue renewals, not just the upcoming window.
+        response = self.client.get(reverse('tickets:assets'), {'filter_tab': 'licenses', 'filter_due_soon': '1'})
+        names = [a.name for a in response.context['assets']]
+        self.assertEqual(names, ['Overdue License', 'Due Soon License'])
+
+    def test_license_badge_count_shown_on_equipment_tab(self):
+        response = self.client.get(reverse('tickets:assets'))
+        self.assertEqual(response.context['license_total_count'], 4)
+
+    def test_htmx_pagination_target_renders_table_only_not_full_panel(self):
+        response = self.client.get(
+            reverse('tickets:assets'), {'filter_tab': 'licenses'},
+            HTTP_HX_REQUEST='true', HTTP_HX_TARGET='assetTableContainer',
+        )
+        content = response.content.decode()
+        self.assertNotIn('id="assetPanel"', content)
+        self.assertIn('Overdue License', content)
+
+    def test_htmx_tab_switch_target_renders_full_panel(self):
+        response = self.client.get(
+            reverse('tickets:assets'), {'filter_tab': 'licenses'},
+            HTTP_HX_REQUEST='true', HTTP_HX_TARGET='assetPanel',
+        )
+        content = response.content.decode()
+        self.assertIn('id="assetPanel"', content)
 

@@ -161,7 +161,23 @@ class ChangePasswordForm(PasswordChangeForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
-            field.widget.attrs.update({'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2'})
+            field.widget.attrs.update({
+                'class': 'block w-full rounded-lg border py-2.5 px-4 text-sm bg-background border-border text-text-primary ring-primary focus:outline-none focus:ring-2',
+                # Browsers still offer saved-credential autofill on a field
+                # marked autocomplete="current-password" (that's the whole
+                # point of the token) and largely ignore autocomplete="off"
+                # on password inputs outright. "new-password" is the one
+                # value every major browser reliably treats as "don't
+                # suggest a saved password here" — using it on old_password
+                # too is a deliberate override of Django's default, not an
+                # oversight, since this form's staged reveal depends on
+                # nothing pre-filling these fields. data-lpignore/data-1p-ignore
+                # additionally suppress the LastPass/1Password icon overlays,
+                # which don't respect autocomplete at all.
+                'autocomplete': 'new-password',
+                'data-lpignore': 'true',
+                'data-1p-ignore': 'true',
+            })
 
             
 class RegistrationStep1Form(forms.Form):

@@ -1,0 +1,171 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load badge_tags %}
+
+{% block dashboard_title %}{{ user_obj.get_full_name|default:user_obj.email }}{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="max-w-4xl mx-auto space-y-5">
+    {% url 'dashboard' as dash_url %}
+    {% url 'accounts:admin_users' as users_url %}
+    {% breadcrumbs "Dashboard" dash_url "User Management" users_url user_obj.get_full_name|default:user_obj.email %}
+
+    {# Header #}
+    <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold shrink-0">
+                {% if user_obj.avatar %}
+                    <img src="{{ user_obj.avatar.url }}" alt="" class="h-11 w-11 rounded-full object-cover">
+                {% else %}
+                    {{ user_obj.get_full_name|default:user_obj.email|slice:":1"|upper }}
+                {% endif %}
+            </div>
+            <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h2 class="text-base font-semibold text-text-primary">{{ user_obj.get_full_name|default:user_obj.email }}</h2>
+                    {% if user_obj.is_active %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium" style="color: var(--color-success);">
+                            <span class="w-1.5 h-1.5 rounded-full bg-success"></span> Active
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium" style="color: var(--color-error);">
+                            <span class="w-1.5 h-1.5 rounded-full bg-error"></span> Inactive
+                        </span>
+                    {% endif %}
+                    {% if user_obj.is_online %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium" style="color: var(--color-info);">
+                            <span class="w-1.5 h-1.5 rounded-full" style="background-color: var(--color-info);"></span> Online now
+                        </span>
+                    {% else %}
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary">
+                            <span class="w-1.5 h-1.5 rounded-full bg-text-secondary"></span> Offline
+                        </span>
+                    {% endif %}
+                </div>
+                <p class="text-xs text-text-secondary mt-1">{{ user_obj.email }}</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{% url 'accounts:admin_users' %}" class="btn-ghost text-xs px-3 py-2 rounded-lg flex items-center gap-1.5">
+                {% lucide "arrow-left" size=14 %} Back to User Management
+            </a>
+        </div>
+    </div>
+
+    {# Section 1 — Identification #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "id-card" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 1 — Identification</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Full Name</span><span class="font-medium text-text-primary">{{ user_obj.get_full_name|default:"—" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Email</span><span class="font-medium text-text-primary">{{ user_obj.email }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Job Title / Position</span><span class="font-medium text-text-primary">{{ user_obj.position|default:"—" }}</span></div>
+        </div>
+    </div>
+
+    {# Section 2 — Role & Department #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-info);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-info) 12%, transparent); color: var(--color-info);">{% lucide "shield" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 2 — Role &amp; Department</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Role(s)</span><span class="font-medium text-text-primary">{{ user_obj.role_names }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Active Role</span><span class="font-medium text-text-primary">{{ user_obj.get_active_role_display }}</span></div>
+            <div>
+                <span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Department</span>
+                <span class="text-xs px-2.5 py-1 rounded-full bg-surface-secondary text-text-secondary border border-border whitespace-nowrap">{{ user_obj.get_department_display }}</span>
+            </div>
+            {% comment %} <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Reports To</span><span class="font-medium text-text-primary">{{ user_obj.manager.get_full_name|default:"—" }}</span></div> {% endcomment %}
+        </div>
+    </div>
+
+    {# Section 3 — Account & Activity #}
+    <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-text-secondary);">
+        <div class="flex items-center gap-2 mb-4">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-text-secondary) 12%, transparent); color: var(--color-text-secondary);">{% lucide "activity" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 3 — Account &amp; Activity</h3>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 text-sm">
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Date Created</span><span class="font-medium text-text-primary">{{ user_obj.date_joined|date:"M d, Y" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Created By</span><span class="font-medium text-text-primary">{{ user_obj.created_by.get_full_name|default:"—" }}</span></div>
+            {% comment %} <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Last Login</span><span class="font-medium text-text-primary">{{ user_obj.last_login|date:"M d, Y g:i A"|default:"Never" }}</span></div> {% endcomment %}
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Last Seen</span><span class="font-medium text-text-primary">{{ user_obj.last_seen|date:"M d, Y g:i A"|default:"Never" }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Open Tickets Raised</span><span class="font-medium text-text-primary">{{ open_requested_tickets }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Open Tickets Assigned</span><span class="font-medium text-text-primary">{{ assigned_tickets_count }}</span></div>
+            <div><span class="block text-[0.7rem] font-medium uppercase tracking-wide text-text-secondary mb-1">Assets Assigned</span><span class="font-medium text-text-primary">{{ assigned_assets_count }}</span></div>
+        </div>
+    </div>
+
+    {# Section 4 — Login History #}
+    <div class="dashboard-card p-0 overflow-hidden">
+        <div class="flex items-center gap-2 mb-4 pb-3">
+            <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-warning) 12%, transparent); color: var(--color-warning);">{% lucide "log-in" size=14 %}</span>
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 4 — Activity Log</h3>
+        </div>
+        {% if login_history %}
+        <div class="overflow-x-auto">
+            <table class="text-sm w-full">
+                <thead>
+                    <tr class="border-b" style="border-color: var(--color-border);">
+                        <th class="text-left py-2.5 px-5 font-semibold text-text-secondary uppercase tracking-wider text-xs whitespace-nowrap" style="width: 190px;">Date &amp; Time</th>
+                        <th class="text-left py-2.5 px-5 font-semibold text-text-secondary uppercase tracking-wider text-xs" style="width: 140px;">IP Address</th>
+                        <th class="text-left py-2.5 px-5 font-semibold text-text-secondary uppercase tracking-wider text-xs">Device / Browser</th>
+                        <th class="text-left py-2.5 px-5 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in login_history %}
+                    <tr class="border-b" style="border-color: var(--color-border);">
+                        <td class="py-2.5 px-5 text-text-primary whitespace-nowrap">{{ entry.logged_in_at|date:"M d, Y g:i A" }}</td>
+                        <td class="py-2.5 px-5 text-text-secondary whitespace-nowrap">{{ entry.ip_address|default:"—" }}</td>
+                        <td class="py-2.5 px-5 text-text-secondary">{{ entry.friendly_device }}</td>
+                        <td class="py-2.5 px-5">
+                            {% if entry.is_first_login %}
+                            <span class="text-xs font-medium px-2 py-0.5 rounded-full" style="background-color: color-mix(in oklch, var(--color-success) 15%, transparent); color: var(--color-success);">Signed up</span>
+                            {% else %}
+                            <span class="text-xs font-medium text-text-secondary">Signed in</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if login_history.has_other_pages %}
+        <div class="pagination-bar">
+            <span class="pagination-summary">
+                Showing <strong>{{ login_history.start_index }}–{{ login_history.end_index }}</strong> of <strong>{{ login_history.paginator.count }}</strong> logins
+            </span>
+            <div class="pagination-controls">
+                <button class="pagination-step{% if not login_history.has_previous %} is-disabled{% endif %}"
+                        {% if login_history.has_previous %}onclick="window.location.href='?page={{ login_history.previous_page_number }}'"{% else %}disabled{% endif %}>
+                    {% lucide "chevron-left" size=14 %} Prev
+                </button>
+                <div class="pagination-numbers">
+                    <span class="pagination-number is-current">{{ login_history.number }}</span>
+                </div>
+                <button class="pagination-step{% if not login_history.has_next %} is-disabled{% endif %}"
+                        {% if login_history.has_next %}onclick="window.location.href='?page={{ login_history.next_page_number }}'"{% else %}disabled{% endif %}>
+                    Next {% lucide "chevron-right" size=14 %}
+                </button>
+            </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-sm text-text-secondary px-5 pb-5 italic">No login activity recorded yet.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

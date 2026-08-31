@@ -12,8 +12,9 @@ from django.urls import reverse
 from apps.common.decorators import xframe_options_exempt, document_admin_required
 from django.views.decorators.http import require_POST
 from django.template.loader import render_to_string
+from django.contrib.contenttypes.models import ContentType
 from .utils import get_document_view, set_document_view
-from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, generate_share_token, DocumentFolder, FolderShare
+from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, generate_share_token, DocumentFolder, FolderShare, ShareAuditLog, log_share_event
 from .forms import DisplayDocumentForm, DepartmentAccessFormSet, build_department_access_initial, ShareDocumentForm, DocumentFolderForm, ShareFolderForm
 from apps.accounts.models import User
 from apps.common.utils import send_email_via_brevo, role_of
@@ -55,7 +56,7 @@ def dashboard(request):
             cat.doc_count = cat_doc_count
             categories_with_docs.append(cat)
     
-    recent_docs = viewable_docs.order_by('-created_at')[:10]
+    recent_docs = viewable_docs.order_by('-created_at')[:5]
     
     context = {
         'categories': categories_with_docs,  # Only categories with documents
@@ -64,6 +65,71 @@ def dashboard(request):
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'documents_display/dashboard.html', context)
+
+
+@login_required
+def shared_with_me(request):
+    """Google-Drive-style landing page for everything individually shared
+    with the logged-in user - documents and folders alike, active
+    (non-revoked, non-expired) grants only. Each row links through the
+    same accept URL the emailed link uses (document_share_open /
+    folder_share_open), so opening it from here marks accepted_at and logs
+    an OPENED audit event exactly like opening the email would."""
+    now = timezone.now()
+    active_q = Q(expires_at__isnull=True) | Q(expires_at__gt=now)
+
+    document_shares = DocumentShare.objects.filter(
+        recipient=request.user, revoked_at__isnull=True, document__is_deleted=False,
+    ).filter(active_q).select_related('document', 'document__category', 'shared_by')
+
+    folder_shares = FolderShare.objects.filter(
+        recipient=request.user, revoked_at__isnull=True,
+    ).filter(active_q).select_related('folder', 'shared_by')
+
+    def _shared_by_label(share):
+        # Guards against shared_by=None (the sharing admin's account was
+        # since deleted) - template attribute chaining on a None object
+        # raises rather than degrading, per DocumentShare.display_target.
+        if not share.shared_by:
+            return 'a former user'
+        return share.shared_by.get_full_name() or share.shared_by.email
+
+    items = []
+    for s in document_shares:
+        items.append({
+            'kind': 'document',
+            'title': s.document.title,
+            'category': s.document.category.name,
+            'file_extension': s.document.file_extension,
+            'file_name': s.document.file_name,
+            'shared_by_label': _shared_by_label(s),
+            'created_at': s.created_at,
+            'can_edit': s.can_edit,
+            'can_download': s.can_download,
+            'expires_at': s.expires_at,
+            'accepted_at': s.accepted_at,
+            'open_url': reverse('documents_display:document_share_open', args=[s.token]),
+        })
+    for s in folder_shares:
+        items.append({
+            'kind': 'folder',
+            'title': s.folder.name,
+            'document_count': s.folder.documents.count(),
+            'shared_by_label': _shared_by_label(s),
+            'created_at': s.created_at,
+            'can_edit': False,
+            'can_download': s.can_download,
+            'expires_at': s.expires_at,
+            'accepted_at': s.accepted_at,
+            'open_url': reverse('documents_display:folder_share_open', args=[s.token]),
+        })
+    items.sort(key=lambda i: i['created_at'], reverse=True)
+
+    context = {
+        'items': items,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'documents_display/shared_with_me.html', context)
 
 
 @login_required
@@ -452,6 +518,34 @@ def _share_recipient_label(share):
     return share.display_target
 
 
+def _shareable_users():
+    """Active, non-deleted users for the multi-recipient searchableSelect
+    picker on the share management pages - id/label/department, department
+    doubling as the `group` value the picker's department filter matches
+    against."""
+    return [
+        {
+            'id': str(u.pk),
+            'label': f"{u.get_full_name() or u.email} ({u.get_department_display()})" if u.department else (u.get_full_name() or u.email),
+            'department': u.department or '',
+        }
+        for u in User.objects.filter(is_active=True).order_by('department', 'first_name', 'last_name')
+    ]
+
+
+def _attach_audit_events(shares, content_type):
+    """Fetch ShareAuditLog rows for a list of DocumentShare/FolderShare
+    instances in one query and attach them as `.audit_events` (most recent
+    first) - avoids an N+1 query per share row on the share management
+    page."""
+    ids = [s.id for s in shares]
+    events_by_id = {}
+    for event in ShareAuditLog.objects.filter(content_type=content_type, object_id__in=ids).select_related('actor'):
+        events_by_id.setdefault(event.object_id, []).append(event)
+    for s in shares:
+        s.audit_events = events_by_id.get(s.id, [])
+
+
 def _send_document_share_email(request, share):
     """Email the recipient (internal user or external address) a link to
     accept an active document share. Internal shares open the login-gated
@@ -483,15 +577,15 @@ def _send_document_share_email(request, share):
 @login_required
 @document_admin_required
 def document_share(request, slug):
-    """Manage shares for a document: list existing shares, add a new one -
-    either an in-system user or an external email address."""
+    """Manage shares for a document: list existing shares, add one or more
+    new ones - one or more in-system users, or one or more external email
+    addresses, per ShareDocumentForm's share_type/share_mode toggle."""
     document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=False)
 
     if request.method == 'POST':
         form = ShareDocumentForm(request.POST)
         if form.is_valid():
-            recipient = form.cleaned_data['recipient']
-            external_email = form.cleaned_data['external_email']
+            targets = form.cleaned_data['targets']
             expires_at = form.cleaned_data['expires_at']
             # A date-only picker; treat the expiry as valid through the end
             # of that day rather than midnight at its start.
@@ -499,44 +593,67 @@ def document_share(request, slug):
             if expires_at:
                 expires_at_dt = timezone.make_aware(datetime.combine(expires_at, time.max))
 
-            lookup = {'document': document, 'recipient': recipient} if recipient else {'document': document, 'external_email': external_email}
-            share, _created = DocumentShare.objects.update_or_create(
-                **lookup,
-                defaults={
-                    'shared_by': request.user,
-                    'can_edit': form.cleaned_data['can_edit'],
-                    'can_download': form.cleaned_data['can_download'],
-                    'expires_at': expires_at_dt,
-                    'revoked_at': None,
-                    'token': generate_share_token(),
-                    'accepted_at': None,
-                },
-            )
-            success, _result = _send_document_share_email(request, share)
-            label = _share_recipient_label(share)
-            if recipient:
-                Notification.objects.create(
-                    sender=request.user,
-                    recipient=recipient,
-                    role=role_of(recipient),
-                    message=f'{request.user.get_full_name()} shared "{document.title}" with you.',
-                    url=reverse('documents_display:document_share_open', args=[share.token]),
-                    type=Notification.Type.GENERAL,
+            shared_labels = []
+            failed_links = []
+            for target in targets:
+                recipient = target.get('recipient')
+                external_email = target.get('external_email')
+                lookup = {'document': document, 'recipient': recipient} if recipient else {'document': document, 'external_email': external_email}
+                share, _created = DocumentShare.objects.update_or_create(
+                    **lookup,
+                    defaults={
+                        'shared_by': request.user,
+                        'can_edit': form.cleaned_data['can_edit'],
+                        'can_download': form.cleaned_data['can_download'],
+                        'expires_at': expires_at_dt,
+                        'revoked_at': None,
+                        'token': generate_share_token(),
+                        'accepted_at': None,
+                        'expiry_reminder_sent': False,
+                    },
                 )
-            if success:
-                messages.success(request, f'"{document.title}" shared with {label}.')
-            else:
-                url_name = 'documents_display:document_share_external' if external_email else 'documents_display:document_share_open'
-                manual_link = request.build_absolute_uri(reverse(url_name, args=[share.token]))
-                messages.warning(request, f'Share created, but the notification email failed to send. Share the link manually: {manual_link}')
+                log_share_event(share, ShareAuditLog.Event.CREATED, actor=request.user)
+                success, _result = _send_document_share_email(request, share)
+                log_share_event(
+                    share,
+                    ShareAuditLog.Event.EMAIL_SENT if success else ShareAuditLog.Event.EMAIL_FAILED,
+                    actor=request.user,
+                    detail=external_email or recipient.email,
+                )
+                label = _share_recipient_label(share)
+                if recipient:
+                    Notification.objects.create(
+                        sender=request.user,
+                        recipient=recipient,
+                        role=role_of(recipient),
+                        message=f'{request.user.get_full_name()} shared "{document.title}" with you.',
+                        url=reverse('documents_display:document_share_open', args=[share.token]),
+                        type=Notification.Type.GENERAL,
+                    )
+                if success:
+                    shared_labels.append(label)
+                else:
+                    url_name = 'documents_display:document_share_external' if external_email else 'documents_display:document_share_open'
+                    manual_link = request.build_absolute_uri(reverse(url_name, args=[share.token]))
+                    failed_links.append(f'{label} ({manual_link})')
+
+            if shared_labels:
+                messages.success(request, f'"{document.title}" shared with {", ".join(shared_labels)}.')
+            if failed_links:
+                messages.warning(request, f'Share created, but the notification email failed to send for: {"; ".join(failed_links)}. Share the link(s) manually.')
             return redirect('documents_display:document_share', slug=document.slug)
     else:
         form = ShareDocumentForm()
 
+    shares = list(document.shares.select_related('recipient').all())
+    _attach_audit_events(shares, ContentType.objects.get_for_model(DocumentShare))
+
     context = {
         'document': document,
         'form': form,
-        'shares': document.shares.select_related('recipient').all(),
+        'shares': shares,
+        'shareable_users': _shareable_users(),
+        'department_choices': User.DEPARTMENT_CHOICES,
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'documents_display/document_share.html', context)
@@ -550,6 +667,7 @@ def document_share_revoke(request, slug, share_id):
     document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=False)
     share = get_object_or_404(DocumentShare, pk=share_id, document=document)
     share.revoke()
+    log_share_event(share, ShareAuditLog.Event.REVOKED, actor=request.user)
     messages.success(request, f'Access revoked for {_share_recipient_label(share)}.')
     return redirect('documents_display:document_share', slug=document.slug)
 
@@ -577,6 +695,7 @@ def document_share_open(request, token):
         share.accepted_at = timezone.now()
         share.save(update_fields=['accepted_at'])
 
+    log_share_event(share, ShareAuditLog.Event.OPENED, actor=request.user)
     messages.success(request, f'You now have access to "{share.document.title}".')
     return redirect('documents_display:document_detail', slug=share.document.slug)
 
@@ -602,6 +721,7 @@ def document_share_external(request, token):
     if share.document.is_deleted or not share.is_active:
         return _external_share_denied_response(share)
 
+    log_share_event(share, ShareAuditLog.Event.OPENED, detail=share.external_email)
     if share.accepted_at is None:
         share.accepted_at = timezone.now()
         share.save(update_fields=['accepted_at'])
@@ -648,6 +768,7 @@ def document_share_external_serve(request, token):
     except FileNotFoundError:
         return HttpResponse('File not found', status=404)
 
+    log_share_event(share, ShareAuditLog.Event.VIEWED, detail=share.external_email)
     response = FileResponse(file_handle, content_type='application/octet-stream')
     if file_to_serve.name.endswith('.pdf'):
         response['Content-Type'] = 'application/pdf'
@@ -674,6 +795,7 @@ def document_share_external_download(request, token):
     if not document.file:
         return _permission_denied_response('This document has no file attachment.')
 
+    log_share_event(share, ShareAuditLog.Event.DOWNLOADED, detail=share.external_email)
     return _file_download_response(document.file, document.file_name)
 
 
@@ -908,9 +1030,9 @@ def _send_folder_share_email(request, share):
 @login_required
 @document_admin_required
 def folder_share(request, slug):
-    """Manage shares for a folder: list existing shares, add a new one -
-    either an in-system user or an external email address. Mirrors
-    document_share."""
+    """Manage shares for a folder: list existing shares, add one or more
+    new ones - one or more in-system users, or one or more external email
+    addresses. Mirrors document_share."""
     folder = _get_manageable_folder(request, slug)
     if folder is None:
         messages.error(request, 'You do not have permission to manage this folder.')
@@ -919,50 +1041,72 @@ def folder_share(request, slug):
     if request.method == 'POST':
         form = ShareFolderForm(request.POST)
         if form.is_valid():
-            recipient = form.cleaned_data['recipient']
-            external_email = form.cleaned_data['external_email']
+            targets = form.cleaned_data['targets']
             expires_at = form.cleaned_data['expires_at']
             expires_at_dt = None
             if expires_at:
                 expires_at_dt = timezone.make_aware(datetime.combine(expires_at, time.max))
 
-            lookup = {'folder': folder, 'recipient': recipient} if recipient else {'folder': folder, 'external_email': external_email}
-            share, _created = FolderShare.objects.update_or_create(
-                **lookup,
-                defaults={
-                    'shared_by': request.user,
-                    'can_download': form.cleaned_data['can_download'],
-                    'expires_at': expires_at_dt,
-                    'revoked_at': None,
-                    'token': generate_share_token(),
-                    'accepted_at': None,
-                },
-            )
-            success, _result = _send_folder_share_email(request, share)
-            label = share.display_target
-            if recipient:
-                Notification.objects.create(
-                    sender=request.user,
-                    recipient=recipient,
-                    role=role_of(recipient),
-                    message=f'{request.user.get_full_name()} shared the folder "{folder.name}" with you.',
-                    url=reverse('documents_display:folder_share_open', args=[share.token]),
-                    type=Notification.Type.GENERAL,
+            shared_labels = []
+            failed_links = []
+            for target in targets:
+                recipient = target.get('recipient')
+                external_email = target.get('external_email')
+                lookup = {'folder': folder, 'recipient': recipient} if recipient else {'folder': folder, 'external_email': external_email}
+                share, _created = FolderShare.objects.update_or_create(
+                    **lookup,
+                    defaults={
+                        'shared_by': request.user,
+                        'can_download': form.cleaned_data['can_download'],
+                        'expires_at': expires_at_dt,
+                        'revoked_at': None,
+                        'token': generate_share_token(),
+                        'accepted_at': None,
+                        'expiry_reminder_sent': False,
+                    },
                 )
-            if success:
-                messages.success(request, f'"{folder.name}" shared with {label}.')
-            else:
-                url_name = 'documents_display:folder_share_external' if external_email else 'documents_display:folder_share_open'
-                manual_link = request.build_absolute_uri(reverse(url_name, args=[share.token]))
-                messages.warning(request, f'Share created, but the notification email failed to send. Share the link manually: {manual_link}')
+                log_share_event(share, ShareAuditLog.Event.CREATED, actor=request.user)
+                success, _result = _send_folder_share_email(request, share)
+                log_share_event(
+                    share,
+                    ShareAuditLog.Event.EMAIL_SENT if success else ShareAuditLog.Event.EMAIL_FAILED,
+                    actor=request.user,
+                    detail=external_email or recipient.email,
+                )
+                label = share.display_target
+                if recipient:
+                    Notification.objects.create(
+                        sender=request.user,
+                        recipient=recipient,
+                        role=role_of(recipient),
+                        message=f'{request.user.get_full_name()} shared the folder "{folder.name}" with you.',
+                        url=reverse('documents_display:folder_share_open', args=[share.token]),
+                        type=Notification.Type.GENERAL,
+                    )
+                if success:
+                    shared_labels.append(label)
+                else:
+                    url_name = 'documents_display:folder_share_external' if external_email else 'documents_display:folder_share_open'
+                    manual_link = request.build_absolute_uri(reverse(url_name, args=[share.token]))
+                    failed_links.append(f'{label} ({manual_link})')
+
+            if shared_labels:
+                messages.success(request, f'"{folder.name}" shared with {", ".join(shared_labels)}.')
+            if failed_links:
+                messages.warning(request, f'Share created, but the notification email failed to send for: {"; ".join(failed_links)}. Share the link(s) manually.')
             return redirect('documents_display:folder_share', slug=folder.slug)
     else:
         form = ShareFolderForm()
 
+    shares = list(folder.shares.select_related('recipient').all())
+    _attach_audit_events(shares, ContentType.objects.get_for_model(FolderShare))
+
     context = {
         'folder': folder,
         'form': form,
-        'shares': folder.shares.select_related('recipient').all(),
+        'shares': shares,
+        'shareable_users': _shareable_users(),
+        'department_choices': User.DEPARTMENT_CHOICES,
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'documents_display/folder_share.html', context)
@@ -978,6 +1122,7 @@ def folder_share_revoke(request, slug, share_id):
 
     share = get_object_or_404(FolderShare, pk=share_id, folder=folder)
     share.revoke()
+    log_share_event(share, ShareAuditLog.Event.REVOKED, actor=request.user)
     messages.success(request, f'Access revoked for {share.display_target}.')
     return redirect('documents_display:folder_share', slug=folder.slug)
 
@@ -1004,6 +1149,7 @@ def folder_share_open(request, token):
         share.accepted_at = timezone.now()
         share.save(update_fields=['accepted_at'])
 
+    log_share_event(share, ShareAuditLog.Event.OPENED, actor=request.user)
     messages.success(request, f'You now have access to "{share.folder.name}".')
     return redirect('documents_display:folder_shared_view', token=share.token)
 
@@ -1047,6 +1193,7 @@ def folder_share_external(request, token):
     if not share.is_active:
         return _external_folder_share_denied_response(share)
 
+    log_share_event(share, ShareAuditLog.Event.OPENED, detail=share.external_email)
     if share.accepted_at is None:
         share.accepted_at = timezone.now()
         share.save(update_fields=['accepted_at'])
@@ -1093,6 +1240,7 @@ def folder_share_external_serve(request, token, document_id):
     except FileNotFoundError:
         return HttpResponse('File not found', status=404)
 
+    log_share_event(share, ShareAuditLog.Event.VIEWED, detail=f'{share.external_email}: {document.title}')
     response = FileResponse(file_handle, content_type='application/octet-stream')
     if file_to_serve.name.endswith('.pdf'):
         response['Content-Type'] = 'application/pdf'
@@ -1121,4 +1269,5 @@ def folder_share_external_download(request, token, document_id):
     if not document.file:
         return _permission_denied_response('This document has no file attachment.')
 
+    log_share_event(share, ShareAuditLog.Event.DOWNLOADED, detail=f'{share.external_email}: {document.title}')
     return _file_download_response(document.file, document.file_name)

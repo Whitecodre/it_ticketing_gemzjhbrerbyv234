@@ -1,0 +1,111 @@
+{% load lucide %}
+
+<div id="receiptConfirmModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-modal-backdrop>
+    <div class="bg-surface rounded-xl shadow-xl w-full max-w-lg p-6 mx-4 max-h-[90vh] overflow-y-auto">
+
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold flex items-center gap-2 text-text-primary">
+                {% lucide "check-circle" size=20 %} Confirm Receipt
+            </h3>
+            <button data-close-modal class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
+                {% lucide "x" size=18 %}
+            </button>
+        </div>
+
+        {% if ticket.is_mobilization_request %}
+        <p class="text-sm text-text-secondary mb-4">
+            Confirm each item mobilized for <strong>{{ ticket.number }}</strong> as it reaches you.
+        </p>
+
+        {% if pending_items %}
+        <form method="post" action="{% url 'tickets:mobilization_items_confirm_batch' ticket.pk %}" id="receiptBatchForm">
+            {% csrf_token %}
+            <div id="receiptBatchInputs"></div>
+
+            <div class="space-y-3">
+                {% for item in pending_items %}
+                <div class="rounded-lg border p-3" style="border-color: var(--color-border);">
+                    <p class="text-sm font-medium text-text-primary">
+                        {{ item.asset.name }} <span class="font-mono text-text-secondary">({{ item.asset.tracking_id }})</span>
+                        {% if item.quantity > 1 %}<span class="text-text-secondary">x{{ item.quantity }}</span>{% endif %}
+                    </p>
+                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                        <button type="button" id="itemAcceptBtn{{ item.pk }}" onclick="markReceiptItem({{ item.pk }}, 'accept')"
+                                class="btn-success text-xs px-3 py-1.5 rounded">
+                            {% lucide "check" size=12 class="inline -mt-0.5" %} I received this
+                        </button>
+                        <button type="button" id="itemDisputeBtn{{ item.pk }}" onclick="markReceiptItem({{ item.pk }}, 'dispute')"
+                                class="btn-ghost text-xs px-3 py-1.5 rounded text-error">
+                            I didn't receive this
+                        </button>
+                    </div>
+                    <p id="itemStatus{{ item.pk }}" class="hidden text-xs font-medium mt-2"></p>
+                    <div id="itemDisputeReason{{ item.pk }}" class="hidden mt-2">
+                        <textarea id="itemReasonText{{ item.pk }}" rows="2" placeholder="What happened? (optional)"
+                                  class="w-full text-sm rounded-lg border p-2 bg-background border-border text-text-primary"></textarea>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="mt-4 pt-3 border-t flex items-center justify-between gap-3" style="border-color: var(--color-border);">
+                <p class="text-xs text-text-secondary">Mark every item above, then submit.</p>
+                <button type="button" id="receiptDoneBtn" data-pending-count="{{ pending_items|length }}" disabled
+                        onclick="submitReceiptBatch({{ ticket.pk }})"
+                        class="btn-primary text-sm px-4 py-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed">
+                    Done
+                </button>
+            </div>
+        </form>
+        {% else %}
+        <p class="text-sm text-text-secondary">Every mobilized item has already been actioned.</p>
+        {% endif %}
+
+        {% if actioned_items %}
+        <div class="mt-4 pt-4 border-t space-y-1.5" style="border-color: var(--color-border);">
+            {% for item in actioned_items %}
+            <p class="text-xs flex items-center gap-1.5 {% if item.disputed_at %}text-error{% else %}text-success{% endif %}">
+                {% if item.disputed_at %}
+                {% lucide "alert-triangle" size=12 %} {{ item.asset.name }} — disputed {{ item.disputed_at|date:"M d, Y" }}, pending admin review.
+                {% else %}
+                {% lucide "check" size=12 %} {{ item.asset.name }} — confirmed {{ item.acknowledged_at|date:"M d, Y" }}.
+                {% endif %}
+            </p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        {# Single-asset (non-mobilization) asset request — same yes/no content confirm_resolution.html used to render as a full page. #}
+        <p class="text-sm text-text-secondary mb-4">
+            Your request <strong>{{ ticket.number }}</strong> has been fulfilled by the support team. Please confirm you've received the item(s) you requested.
+        </p>
+
+        <form method="post" action="{% url 'tickets:confirm_resolution' ticket.pk %}" id="confirmForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" id="actionInput" value="">
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium mb-1 text-text-primary">
+                    If you haven't received it yet, please tell us why (optional)
+                </label>
+                <textarea name="reason" rows="3"
+                          class="w-full rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                          placeholder="What's missing or wrong?"></textarea>
+            </div>
+
+            <div class="flex flex-wrap gap-3">
+                <button type="button" onclick="document.getElementById('actionInput').value='confirm';document.getElementById('confirmForm').submit();"
+                        class="btn-success text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "check" size=16 %} Yes, I received it
+                </button>
+                <button type="button" onclick="document.getElementById('actionInput').value='reopen';document.getElementById('confirmForm').submit();"
+                        class="btn-danger text-sm px-4 py-2 rounded-lg flex items-center gap-2">
+                    {% lucide "alert-circle" size=16 %} No, not yet
+                </button>
+            </div>
+        </form>
+        {% endif %}
+
+    </div>
+</div>

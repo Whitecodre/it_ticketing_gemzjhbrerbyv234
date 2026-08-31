@@ -26,7 +26,7 @@
             </div>
             <div>
                 <h2 class="text-lg font-semibold" style="color: var(--color-text-primary);">Share this document</h2>
-                <p class="text-sm text-text-secondary">Grant an individual person access, regardless of their department.</p>
+                <p class="text-sm text-text-secondary">Grant one or more people access, regardless of their department.</p>
             </div>
         </div>
 
@@ -56,7 +56,18 @@
                 </label>
             </div>
 
-            <div id="internalRecipientGroup">
+            <div class="flex items-center gap-6">
+                <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                    <input type="radio" name="share_mode" value="single" id="shareModeSingle" checked class="text-primary focus:ring-primary">
+                    Single
+                </label>
+                <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                    <input type="radio" name="share_mode" value="multiple" id="shareModeMultiple" class="text-primary focus:ring-primary">
+                    Multiple
+                </label>
+            </div>
+
+            <div id="internalSingleGroup">
                 <label class="block text-sm font-medium mb-1 text-text-primary">Department</label>
                 {{ form.recipient_department }}
                 <p class="text-xs text-text-secondary mt-1">{{ form.recipient_department.help_text }}</p>
@@ -66,10 +77,69 @@
                 <p class="text-xs text-text-secondary mt-1">{{ form.recipient.help_text }}</p>
             </div>
 
-            <div id="externalEmailGroup" class="hidden">
+            <div id="internalMultipleGroup" class="hidden">
+                {% if shareable_users %}
+                <div id="recipientsPicker" x-data="searchableSelect({
+                        mode: 'multi',
+                        fieldName: 'recipients',
+                        options: [{% for u in shareable_users %}{id: '{{ u.id }}', label: '{{ u.label|escapejs }}', group: '{{ u.department|escapejs }}'}{% if not forloop.last %}, {% endif %}{% endfor %}],
+                        placeholder: 'Search people…',
+                     })"
+                     @click.outside="open = false" class="relative">
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Filter by department</label>
+                    <select x-model="groupFilter" class="w-full rounded-lg border py-2 px-3 text-sm mb-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <option value="">All departments</option>
+                        {% for code, label in department_choices %}
+                        <option value="{{ code }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+
+                    <label class="block text-sm font-medium mb-1 text-text-primary">Share with</label>
+                    <div class="flex flex-wrap gap-1.5 mb-2" x-show="selected.length" x-cloak>
+                        <template x-for="id in selected" :key="id">
+                            <span class="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-xs px-2.5 py-1">
+                                <span x-text="labelFor(id)"></span>
+                                <button type="button" @click="remove(id)" class="hover:text-error" aria-label="Remove">&times;</button>
+                            </span>
+                        </template>
+                    </div>
+                    <input type="text" x-model="query" @focus="open = true" :placeholder="placeholder" autocomplete="off"
+                           class="block w-full rounded-lg border py-2.5 px-4 text-sm transition focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                    <ul x-show="open" x-cloak class="absolute z-10 mt-1 w-full rounded-lg border shadow-lg max-h-56 overflow-y-auto" style="border-color: var(--color-border); background-color: var(--color-background);">
+                        <template x-for="opt in filtered" :key="opt.id">
+                            <li @click="toggle(opt.id)" class="px-3 py-2 text-sm cursor-pointer hover:bg-black/5 text-text-primary" x-text="opt.label"></li>
+                        </template>
+                        <li x-show="!filtered.length" class="px-3 py-2 text-sm text-text-secondary">No matches.</li>
+                    </ul>
+                    <template x-for="id in selected" :key="'in-' + id">
+                        <input type="hidden" name="recipients" :value="id">
+                    </template>
+                </div>
+                {% else %}
+                <p class="text-sm text-text-secondary">No active users to share with.</p>
+                {% endif %}
+            </div>
+
+            <div id="externalSingleGroup" class="hidden">
                 <label class="block text-sm font-medium mb-1 text-text-primary">Email address</label>
                 {{ form.external_email }}
                 <p class="text-xs text-text-secondary mt-1">{{ form.external_email.help_text }}</p>
+            </div>
+
+            <div id="externalMultipleGroup" class="hidden">
+                <label class="block text-sm font-medium mb-1 text-text-primary">Email addresses</label>
+                <div id="externalEmailRows" class="space-y-2">
+                    <div class="flex items-center gap-2 external-email-row">
+                        <input type="email" name="external_emails" placeholder="someone@example.com"
+                               class="flex-1 rounded-lg border py-2 px-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <button type="button" onclick="removeExternalEmailRow(this)" class="p-1 rounded hover:bg-black/5 text-text-secondary" aria-label="Remove this email address">
+                            {% lucide "x" size=16 %}
+                        </button>
+                    </div>
+                </div>
+                <button type="button" onclick="addExternalEmailRow()" class="mt-2 text-sm font-medium text-primary hover:underline">
+                    + Add another email address
+                </button>
             </div>
 
             <div>
@@ -86,7 +156,7 @@
                     {{ form.can_download }} Can download
                 </label>
             </div>
-            <p class="text-xs text-text-secondary">Read access is always included. They'll get an email with a link to the document — external recipients don't need an account.</p>
+            <p class="text-xs text-text-secondary">Read access is always included. Everyone selected gets the same permissions and expiry. They'll get an email with a link to the document — external recipients don't need an account.</p>
             <div class="flex justify-end">
                 <button type="submit" class="btn-primary text-sm px-6 py-2 rounded-lg flex items-center gap-2">
                     {% lucide "send" size=16 %} Share & Notify
@@ -100,30 +170,51 @@
         {% if shares %}
         <div class="space-y-2">
             {% for share in shares %}
-            <div class="flex items-center justify-between text-sm p-3 rounded-lg border {% if not share.is_active %}opacity-50{% endif %}" style="border-color: var(--color-border); background-color: var(--color-background);">
-                <div>
-                    <span class="font-medium" style="color: var(--color-text-primary);">{{ share.display_target }}</span>
-                    {% if share.recipient %}
-                    <span class="text-xs text-text-secondary ml-2">{{ share.recipient.email }}</span>
-                    {% else %}
-                    <span class="status-chip warning text-xs ml-2">External</span>
-                    {% endif %}
-                    <div class="flex items-center gap-1.5 mt-1">
-                        <span class="status-chip info text-xs">Read</span>
-                        {% if share.can_edit %}<span class="status-chip info text-xs">Edit</span>{% endif %}
-                        {% if share.can_download %}<span class="status-chip info text-xs">Download</span>{% endif %}
-                        {% if share.revoked_at %}<span class="status-chip error text-xs">Revoked</span>{% elif share.is_expired %}<span class="status-chip error text-xs">Expired</span>{% elif share.accepted_at %}<span class="status-chip success text-xs">Opened</span>{% else %}<span class="status-chip warning text-xs">Pending</span>{% endif %}
-                        {% if share.expires_at %}<span class="text-xs text-text-secondary">Expires {{ share.expires_at|date:"M d, Y" }}</span>{% endif %}
+            <div class="text-sm p-3 rounded-lg border {% if not share.is_active %}opacity-50{% endif %}" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="font-medium" style="color: var(--color-text-primary);">{{ share.display_target }}</span>
+                        {% if share.recipient %}
+                        <span class="text-xs text-text-secondary ml-2">{{ share.recipient.email }}</span>
+                        {% else %}
+                        <span class="status-chip warning text-xs ml-2">External</span>
+                        {% endif %}
+                        <div class="flex items-center gap-1.5 mt-1">
+                            <span class="status-chip info text-xs">Read</span>
+                            {% if share.can_edit %}<span class="status-chip info text-xs">Edit</span>{% endif %}
+                            {% if share.can_download %}<span class="status-chip info text-xs">Download</span>{% endif %}
+                            {% if share.revoked_at %}<span class="status-chip error text-xs">Revoked</span>{% elif share.is_expired %}<span class="status-chip error text-xs">Expired</span>{% elif share.accepted_at %}<span class="status-chip success text-xs">Opened</span>{% else %}<span class="status-chip warning text-xs">Pending</span>{% endif %}
+                            {% if share.expires_at %}<span class="text-xs text-text-secondary">Expires {{ share.expires_at|date:"M d, Y" }}</span>{% endif %}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        {% if share.audit_events %}
+                        <button type="button" class="btn-ghost text-xs flex items-center gap-1" onclick="document.getElementById('auditLog{{ share.id }}').classList.toggle('hidden')">
+                            {% lucide "history" size=14 %} History
+                        </button>
+                        {% endif %}
+                        {% if share.is_active %}
+                        <form method="post" action="{% url 'documents_display:document_share_revoke' document.slug share.id %}" id="revokeShareForm{{ share.id }}">
+                            {% csrf_token %}
+                            <button type="button" class="btn-ghost text-xs text-error flex items-center gap-1"
+                                    onclick="confirmRevokeAccess('{{ share.display_target|escapejs }}', function() { document.getElementById('revokeShareForm{{ share.id }}').submit(); })">
+                                {% lucide "x" size=14 %} Revoke
+                            </button>
+                        </form>
+                        {% endif %}
                     </div>
                 </div>
-                {% if share.is_active %}
-                <form method="post" action="{% url 'documents_display:document_share_revoke' document.slug share.id %}" id="revokeShareForm{{ share.id }}">
-                    {% csrf_token %}
-                    <button type="button" class="btn-ghost text-xs text-error flex items-center gap-1"
-                            onclick="confirmRevokeAccess('{{ share.display_target|escapejs }}', function() { document.getElementById('revokeShareForm{{ share.id }}').submit(); })">
-                        {% lucide "x" size=14 %} Revoke
-                    </button>
-                </form>
+                {% if share.audit_events %}
+                <div id="auditLog{{ share.id }}" class="hidden mt-3 pt-3 border-t space-y-1" style="border-color: var(--color-border);">
+                    {% for event in share.audit_events %}
+                    <div class="text-xs text-text-secondary flex items-center gap-2">
+                        <span class="font-medium" style="color: var(--color-text-primary);">{{ event.get_event_display }}</span>
+                        <span>{{ event.created_at|date:"M d, Y H:i" }}</span>
+                        {% if event.actor %}<span>· {{ event.actor.get_full_name }}</span>{% endif %}
+                        {% if event.detail %}<span>· {{ event.detail }}</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
                 {% endif %}
             </div>
             {% endfor %}
@@ -136,31 +227,87 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{% static 'js/searchable_select.js' %}"></script>
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
 <script>
+    function addExternalEmailRow() {
+        const container = document.getElementById('externalEmailRows');
+        const template = container.querySelector('.external-email-row');
+        if (!template) return;
+        const row = template.cloneNode(true);
+        row.querySelector('input').value = '';
+        container.appendChild(row);
+    }
+
+    function removeExternalEmailRow(btn) {
+        const container = document.getElementById('externalEmailRows');
+        const rows = container.querySelectorAll('.external-email-row');
+        const row = btn.closest('.external-email-row');
+        // Deleting the only remaining row would leave addExternalEmailRow()
+        // with nothing to clone from — clear it in place instead.
+        if (rows.length <= 1) {
+            row.querySelector('input').value = '';
+        } else {
+            row.remove();
+        }
+    }
+
+    function resetExternalEmailRows() {
+        const container = document.getElementById('externalEmailRows');
+        container.querySelectorAll('.external-email-row').forEach((row, idx) => {
+            if (idx === 0) { row.querySelector('input').value = ''; } else { row.remove(); }
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const internalRadio = document.getElementById('shareTypeInternal');
         const externalRadio = document.getElementById('shareTypeExternal');
-        const internalGroup = document.getElementById('internalRecipientGroup');
-        const externalGroup = document.getElementById('externalEmailGroup');
+        const singleRadio = document.getElementById('shareModeSingle');
+        const multipleRadio = document.getElementById('shareModeMultiple');
+
+        const groups = {
+            internalSingle: document.getElementById('internalSingleGroup'),
+            internalMultiple: document.getElementById('internalMultipleGroup'),
+            externalSingle: document.getElementById('externalSingleGroup'),
+            externalMultiple: document.getElementById('externalMultipleGroup'),
+        };
         const expiresRequiredMark = document.getElementById('expiresRequiredMark');
-        const recipientField = internalGroup.querySelector('select, input');
-        const emailField = externalGroup.querySelector('input');
+
+        function clearPlainFields(group) {
+            group.querySelectorAll('select, input:not([type=hidden])').forEach((field) => { field.value = ''; });
+        }
 
         function toggle() {
             const external = externalRadio.checked;
-            internalGroup.classList.toggle('hidden', external);
-            externalGroup.classList.toggle('hidden', !external);
+            const multiple = multipleRadio.checked;
+            const active = external
+                ? (multiple ? 'externalMultiple' : 'externalSingle')
+                : (multiple ? 'internalMultiple' : 'internalSingle');
+
+            Object.entries(groups).forEach(([name, group]) => {
+                const isActive = name === active;
+                group.classList.toggle('hidden', !isActive);
+                if (isActive) return;
+                // Clear whichever groups are now hidden so their values
+                // don't trip server-side "choose one" validation or submit
+                // stale selections.
+                if (name === 'internalMultiple') {
+                    const picker = document.getElementById('recipientsPicker');
+                    if (picker && window.Alpine) {
+                        const data = Alpine.$data(picker);
+                        data.selected = [];
+                        data.query = '';
+                    }
+                } else if (name === 'externalMultiple') {
+                    resetExternalEmailRows();
+                } else {
+                    clearPlainFields(group);
+                }
+            });
             expiresRequiredMark.classList.toggle('hidden', !external);
-            // Clear whichever side is hidden so it doesn't trip the
-            // server-side "choose one, not both" validation.
-            if (external) {
-                if (recipientField) recipientField.value = '';
-            } else {
-                if (emailField) emailField.value = '';
-            }
         }
-        internalRadio.addEventListener('change', toggle);
-        externalRadio.addEventListener('change', toggle);
+
+        [internalRadio, externalRadio, singleRadio, multipleRadio].forEach((el) => el.addEventListener('change', toggle));
         toggle();
     });
 </script>

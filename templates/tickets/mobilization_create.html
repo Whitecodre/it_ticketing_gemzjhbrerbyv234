@@ -14,7 +14,7 @@
 {% block main_content_class %} pt-4 px-4 sm:px-5 md:px-6 pb-0 md:pb-0{% endblock %}
 
 {% block dashboard_content %}
-<div class="w-full max-w-6xl mx-auto pb-8">
+<div class="w-full max-w-4xl mx-auto pb-8">
     <div class="flex items-center gap-3 mb-6">
         <a href="{% if ticket %}{% url 'tickets:conversation' ticket.pk %}{% else %}{% url 'tickets:mobilizations' %}{% endif %}"
            class="btn-ghost p-1.5 rounded-full hover:bg-black/5 transition">
@@ -41,9 +41,16 @@
         <p class="text-sm text-error mb-3">{{ form.non_field_errors.0 }}</p>
         {% endif %}
 
-        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {# LEFT COLUMN (~40%) — fields that don't need much horizontal room #}
-            <div class="lg:col-span-2">
+        <div class="space-y-5">
+            {# ============================================================ #}
+            {# SECTION 1 — Destination & Timing                             #}
+            {# ============================================================ #}
+            <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-primary);">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">{% lucide "map-pin" size=14 %}</span>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 1 — Destination &amp; Timing</h3>
+                </div>
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                     <div>
                         <label class="block text-sm font-medium mb-1 text-text-primary">Job Number</label>
@@ -57,40 +64,42 @@
                     </div>
                 </div>
 
-                <div class="mb-4">
-                    <label class="block text-sm font-medium mb-1 text-text-primary">Vessel(s)</label>
-                    <div id="vesselCombo" class="relative" data-placeholder="Search vessels…" data-empty-placeholder="No vessels configured">
-                        <div class="combo-source hidden">
-                            {% for checkbox in form.vessels %}
-                            <span class="combo-source-option">{{ checkbox.tag }}<span class="combo-source-label">{{ checkbox.choice_label }}</span></span>
-                            {% endfor %}
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Vessel(s)</label>
+                        <div id="vesselCombo" class="relative" data-placeholder="Search vessels…" data-empty-placeholder="No vessels configured">
+                            <div class="combo-source hidden">
+                                {% for checkbox in form.vessels %}
+                                <span class="combo-source-option">{{ checkbox.tag }}<span class="combo-source-label">{{ checkbox.choice_label }}</span></span>
+                                {% endfor %}
+                            </div>
+                            <div class="combo-chips flex flex-wrap gap-1.5 mb-1.5 hidden"></div>
+                            <div class="relative">
+                                <input type="text" class="combo-input w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" autocomplete="off">
+                                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=13 %}</span>
+                            </div>
+                            <div class="combo-panel hidden"></div>
                         </div>
-                        <div class="combo-chips flex flex-wrap gap-1.5 mb-1.5 hidden"></div>
-                        <div class="relative">
-                            <input type="text" class="combo-input w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" autocomplete="off">
-                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=13 %}</span>
-                        </div>
-                        <div class="combo-panel hidden"></div>
+                        {% if form.vessels.errors %}<p class="text-xs text-error mt-1">{{ form.vessels.errors.0 }}</p>{% endif %}
                     </div>
-                    {% if form.vessels.errors %}<p class="text-xs text-error mt-1">{{ form.vessels.errors.0 }}</p>{% endif %}
-                </div>
 
-                <div class="mb-4">
-                    <label class="block text-sm font-medium mb-1 text-text-primary">Dive System(s)</label>
-                    <div id="diveSystemCombo" class="relative" data-placeholder="Search dive systems…" data-empty-placeholder="No dive systems configured">
-                        <div class="combo-source hidden">
-                            {% for checkbox in form.dive_systems %}
-                            <span class="combo-source-option">{{ checkbox.tag }}<span class="combo-source-label">{{ checkbox.choice_label }}</span></span>
-                            {% endfor %}
+                    <div>
+                        <label class="block text-sm font-medium mb-1 text-text-primary">Dive System(s)</label>
+                        <div id="diveSystemCombo" class="relative" data-placeholder="Search dive systems…" data-empty-placeholder="No dive systems configured">
+                            <div class="combo-source hidden">
+                                {% for checkbox in form.dive_systems %}
+                                <span class="combo-source-option">{{ checkbox.tag }}<span class="combo-source-label">{{ checkbox.choice_label }}</span></span>
+                                {% endfor %}
+                            </div>
+                            <div class="combo-chips flex flex-wrap gap-1.5 mb-1.5 hidden"></div>
+                            <div class="relative">
+                                <input type="text" class="combo-input w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" autocomplete="off">
+                                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=13 %}</span>
+                            </div>
+                            <div class="combo-panel hidden"></div>
                         </div>
-                        <div class="combo-chips flex flex-wrap gap-1.5 mb-1.5 hidden"></div>
-                        <div class="relative">
-                            <input type="text" class="combo-input w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary" autocomplete="off">
-                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">{% lucide "search" size=13 %}</span>
-                        </div>
-                        <div class="combo-panel hidden"></div>
+                        {% if form.dive_systems.errors %}<p class="text-xs text-error mt-1">{{ form.dive_systems.errors.0 }}</p>{% endif %}
                     </div>
-                    {% if form.dive_systems.errors %}<p class="text-xs text-error mt-1">{{ form.dive_systems.errors.0 }}</p>{% endif %}
                 </div>
 
                 {# Third-Party Vessel(s) — collapsed behind a link until needed #}
@@ -110,7 +119,7 @@
                         </p>
                         <div id="thirdPartyVesselContainer" class="space-y-2">
                             <div class="flex items-center gap-2">
-                                <input type="text" name="third_party_vessels"
+                                <input type="text" name="third_party_vessels" aria-label="Third-party vessel name"
                                        class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
                                        placeholder="e.g., MV Client Vessel">
                                 <button type="button" onclick="this.closest('.flex').remove()"
@@ -126,101 +135,102 @@
                     </div>
                 </div>
 
-                <div class="mb-4 pt-4 border-t border-border">
+                <div class="pt-4 border-t border-border">
                     <label class="block text-sm font-medium mb-1 text-text-primary">Notes</label>
                     {{ form.notes }}
                     {% if form.notes.errors %}<p class="text-xs text-error mt-1">{{ form.notes.errors.0 }}</p>{% endif %}
                 </div>
+            </div>
 
-                {# Quick Add by Quantity — auto-picks N available assets of the same category; results land in the Assets to Mobilize card on the right. Collapsed behind a link, same pattern as "+ Add a vessel not listed" above — except it starts pre-expanded when the page arrives with a prefilled category/quantity from a service request, since that's directly actionable. #}
-                <div class="mb-4 pt-4 border-t border-border">
-                    <button type="button" id="quickAddLink"
-                            onclick="document.getElementById('quickAddSection').classList.remove('hidden'); this.classList.add('hidden');"
-                            class="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1{% if prefill_category or prefill_quantity %} hidden{% endif %}">
-                        {% lucide "plus" size=13 %} Quick add by quantity
+            {# ============================================================ #}
+            {# SECTION 2 — Assets to Send                                   #}
+            {# ============================================================ #}
+            <div class="dashboard-card p-5 border-l-4" style="border-left-color: var(--color-info);">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style="background-color: color-mix(in oklch, var(--color-info) 12%, transparent); color: var(--color-info);">{% lucide "package" size=14 %}</span>
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary">Section 2 — Assets to Send</h3>
+                </div>
+
+                <p class="text-xs text-text-secondary mb-3">Pick from what's already in stock, or request items from a vendor. You can use more than one method.</p>
+
+                <div class="flex flex-wrap gap-2 mb-4">
+                    <button type="button" id="btnToggleSearch" onclick="toggleAssetPanel('searchPanel', this)"
+                            class="btn-outline text-xs px-3 py-2 rounded-lg inline-flex items-center gap-1.5">
+                        {% lucide "search" size=14 %} Search Stock
                     </button>
-                    <div id="quickAddSection" class="{% if not prefill_category and not prefill_quantity %}hidden {% endif %}rounded-lg border border-border p-3">
-                        <div class="flex items-center justify-between mb-1">
-                            <span class="text-sm font-medium text-text-primary">Quick Add by Quantity</span>
-                            <button type="button" onclick="document.getElementById('quickAddSection').classList.add('hidden'); document.getElementById('quickAddLink').classList.remove('hidden');" class="text-xs text-text-secondary hover:text-error">Hide</button>
-                        </div>
-                        <p class="text-xs text-text-secondary mb-2">Need several of the same kind? Pick a category and count instead of checking units one by one.</p>
-                        <div class="flex items-center gap-2">
-                            <select id="autopickCategory" class="flex-1 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                                <option value="">-- Select category --</option>
-                                {% for cat in trackable_categories %}
-                                <option value="{{ cat.pk }}" {% if prefill_category and cat.pk == prefill_category.pk %}selected{% endif %}>{{ cat.full_name }}</option>
-                                {% endfor %}
-                            </select>
-                            <input type="number" id="autopickQuantity" min="1" value="{{ prefill_quantity|default:1 }}"
-                                   class="w-20 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-                            <button type="button" onclick="autopickAssets()" class="btn-outline text-xs px-3 py-2 rounded-lg whitespace-nowrap">
-                                + Add
-                            </button>
-                        </div>
-                        {% if prefill_category or prefill_quantity %}
-                        <p class="text-xs text-primary mt-2">
-                            Prefilled from the request: {{ prefill_quantity|default:"—" }}{% if prefill_category %} × {{ prefill_category.name }}{% endif %} — review and click "+ Add" to pick the assets.
-                        </p>
-                        {% endif %}
-                        <p id="autopickMessage" class="text-xs text-warning mt-2 hidden"></p>
+                    <button type="button" id="btnToggleQuickAdd" onclick="toggleAssetPanel('quickAddPanel', this)"
+                            class="{% if prefill_category or prefill_quantity %}btn-primary{% else %}btn-outline{% endif %} text-xs px-3 py-2 rounded-lg inline-flex items-center gap-1.5">
+                        {% lucide "list-plus" size=14 %} Add by Quantity
+                    </button>
+                    <button type="button" id="btnToggleVendor" onclick="toggleAssetPanel('vendorPanel', this)"
+                            class="btn-outline text-xs px-3 py-2 rounded-lg inline-flex items-center gap-1.5">
+                        {% lucide "truck" size=14 %} Request from Vendor
+                    </button>
+                </div>
+
+                {# Search Stock panel #}
+                <div id="searchPanel" class="hidden rounded-lg border border-border p-3 mb-4">
+                    <div class="relative mb-3">
+                        <input type="text" id="mobilizationAssetSearch"
+                               name="search"
+                               class="w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
+                               placeholder="Search assets by name, tracking ID, serial..."
+                               hx-get="{% url 'tickets:mobilization_available_assets' %}"
+                               hx-trigger="keyup changed delay:300ms, load"
+                               hx-target="#mobilizationAssetListContainer"
+                               hx-swap="innerHTML">
+                        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">
+                            {% lucide "search" size=14 %}
+                        </span>
                     </div>
+                    <div id="mobilizationAssetListContainer">
+                        {% include "partials/mobilization_available_assets_list.html" with assets=None %}
+                    </div>
+                </div>
+
+                {# Quick Add by Quantity panel #}
+                <div id="quickAddPanel" class="{% if not prefill_category and not prefill_quantity %}hidden {% endif %}rounded-lg border border-border p-3 mb-4">
+                    <p class="text-xs text-text-secondary mb-2">Need several of the same kind? Pick a category and count instead of checking units one by one.</p>
+                    <div class="flex items-center gap-2">
+                        <select id="autopickCategory" class="flex-1 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                            <option value="">-- Select category --</option>
+                            {% for cat in trackable_categories %}
+                            <option value="{{ cat.pk }}" {% if prefill_category and cat.pk == prefill_category.pk %}selected{% endif %}>{{ cat.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <input type="number" id="autopickQuantity" min="1" value="{{ prefill_quantity|default:1 }}"
+                               class="w-20 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+                        <button type="button" onclick="autopickAssets()" class="btn-outline text-xs px-3 py-2 rounded-lg whitespace-nowrap">
+                            + Add
+                        </button>
+                    </div>
+                    {% if prefill_category or prefill_quantity %}
+                    <p class="text-xs text-primary mt-2">
+                        Prefilled from the request: {{ prefill_quantity|default:"—" }}{% if prefill_category %} × {{ prefill_category.name }}{% endif %} — review and click "+ Add" to pick the assets.
+                    </p>
+                    {% endif %}
+                    <p id="autopickMessage" class="text-xs text-warning mt-2 hidden"></p>
+                </div>
+
+                {# Picked from stock — always visible once something's been added, regardless of which panel added it #}
+                <div class="mb-4">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-2">Picked from stock</p>
+                    <div id="autopickedAssetsContainer" class="space-y-1"></div>
+                    <p id="pickedEmptyState" class="text-xs text-text-secondary italic">None yet — use "Search Stock" or "Add by Quantity" above.</p>
                 </div>
 
                 {# Vendor Request line items — for items not currently in stock #}
-                <div class="mb-2 pt-4 border-t border-border">
-                    <label class="flex items-center gap-2 text-sm font-medium text-text-primary cursor-pointer">
-                        <input type="checkbox" id="procurementToggle"
-                               class="rounded border-border text-primary focus:ring-primary"
-                               onchange="document.getElementById('procurementSection').classList.toggle('hidden', !this.checked)">
-                        Also request item(s) not currently in stock, from a vendor
-                    </label>
-                    <div id="procurementSection" class="hidden mt-3">
-                        <p class="text-xs text-text-secondary mb-2">
-                            Recorded against this mobilization — once received, it's automatically added as mobilized.
-                        </p>
-                        <div id="procurementContainer" class="space-y-2">
-                            {% include "partials/procurement_mobilization_row.html" %}
-                        </div>
-                        <button type="button" onclick="addProcurementRow()"
-                                class="mt-2 text-sm font-medium text-primary hover:underline">
-                            + Add another item
-                        </button>
+                <div id="vendorPanel" class="hidden rounded-lg border border-border p-3">
+                    <p class="text-xs text-text-secondary mb-2">
+                        Recorded against this mobilization — once received, it's automatically added as mobilized.
+                    </p>
+                    <div id="procurementContainer" class="space-y-3">
+                        {% include "partials/procurement_mobilization_row.html" %}
                     </div>
-                </div>
-            </div>
-
-            {# RIGHT COLUMN (~60%) — Assets to Mobilize: the most space- and scroll-hungry section. Collapsed by default so the form doesn't overwhelm on first load; Quick Add above still works independently of this being open. #}
-            <div class="lg:col-span-3">
-                <div class="rounded-lg border border-border p-3">
-                    <button type="button" id="assetsToMobilizeToggle"
-                            onclick="document.getElementById('assetsToMobilizeBody').classList.toggle('hidden'); this.querySelector('.chevron').classList.toggle('rotate-90')"
-                            class="flex items-center gap-1 text-sm font-medium w-full text-left cursor-pointer text-text-primary">
-                        {% lucide "chevron-right" size=14 class="chevron transition-transform" %}
-                        Available Assets for Mobilization
+                    <button type="button" onclick="addProcurementRow()"
+                            class="mt-2 text-sm font-medium text-primary hover:underline">
+                        + Add another item
                     </button>
-                    <div id="assetsToMobilizeBody" class="hidden mt-2">
-                        <div class="relative mb-3">
-                            <input type="text" id="mobilizationAssetSearch"
-                                   name="search"
-                                   class="w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary"
-                                   placeholder="Search assets by name, tracking ID, serial..."
-                                   hx-get="{% url 'tickets:mobilization_available_assets' %}"
-                                   hx-trigger="keyup changed delay:300ms, load"
-                                   hx-target="#mobilizationAssetListContainer"
-                                   hx-swap="innerHTML">
-                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary">
-                                {% lucide "search" size=14 %}
-                            </span>
-                        </div>
-
-                        {# Selected via Quick Add — visually distinct rows, see .quick-add-highlighted #}
-                        <div id="autopickedAssetsContainer" class="mb-2 space-y-1"></div>
-
-                        <div id="mobilizationAssetListContainer">
-                            {% include "partials/mobilization_available_assets_list.html" with assets=None %}
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -235,7 +245,7 @@
 {# action bar rather than a card that scrolls with the content. #}
 <div class="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface"
      style="box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.05);">
-    <div class="max-w-6xl mx-auto px-4 sm:px-5 md:px-6 py-4 flex items-center justify-between gap-3">
+    <div class="max-w-4xl mx-auto px-4 sm:px-5 md:px-6 py-4 flex items-center justify-between gap-3">
         <span id="mobilizationSelectedCount" class="text-sm text-text-secondary">0 assets selected</span>
         <div class="flex items-center gap-2">
             <a href="{% if ticket %}{% url 'tickets:conversation' ticket.pk %}{% else %}{% url 'tickets:mobilizations' %}{% endif %}"
@@ -254,12 +264,26 @@
 const MOBILIZATION_X_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 const MOBILIZATION_X_ICON_SVG_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
 
+// ================================================================
+// SECTION 2 — equal-weight toggle buttons for the three ways to add
+// assets (search stock / add by quantity / request from vendor). Not
+// mutually exclusive — more than one can be open at once.
+// ================================================================
+function toggleAssetPanel(panelId, btnEl) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    const opening = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden');
+    btnEl.classList.toggle('btn-primary', opening);
+    btnEl.classList.toggle('btn-outline', !opening);
+}
+
 function addThirdPartyVesselRow() {
     const container = document.getElementById('thirdPartyVesselContainer');
     const div = document.createElement('div');
     div.className = 'flex items-center gap-2';
     div.innerHTML = `
-        <input type="text" name="third_party_vessels"
+        <input type="text" name="third_party_vessels" aria-label="Third-party vessel name"
                class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
                placeholder="e.g., MV Client Vessel">
         <button type="button" onclick="this.closest('.flex').remove()"
@@ -274,7 +298,7 @@ function resetThirdPartyVessels() {
     const container = document.getElementById('thirdPartyVesselContainer');
     container.innerHTML = `
         <div class="flex items-center gap-2">
-            <input type="text" name="third_party_vessels"
+            <input type="text" name="third_party_vessels" aria-label="Third-party vessel name"
                    class="flex-1 rounded-lg border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary"
                    placeholder="e.g., MV Client Vessel">
             <button type="button" onclick="this.closest('.flex').remove()"
@@ -287,17 +311,53 @@ function resetThirdPartyVessels() {
     document.getElementById('thirdPartyVesselLink').classList.remove('hidden');
 }
 
+function resetProcurementRowFields(row) {
+    row.querySelectorAll('input').forEach(function(input) {
+        if (input.type === 'number') { input.value = 1; }
+        else { input.value = ''; }
+    });
+    row.querySelectorAll('select').forEach(function(select) {
+        select.selectedIndex = 0;
+        // A category filter applied earlier (filterVendorSelectByCategory)
+        // hides non-matching vendor <option>s by setting their `hidden`
+        // attribute — that state survives cloneNode/selectedIndex resets,
+        // so without this a fresh row can silently inherit another row's
+        // narrowed-down vendor list even though its own category shows blank.
+        select.querySelectorAll('option').forEach(function(opt) { opt.hidden = false; });
+    });
+}
+
+function renumberProcurementRows() {
+    document.querySelectorAll('#procurementContainer .procurement-row').forEach(function(row, idx) {
+        const label = row.querySelector('.procurement-row-index');
+        if (label) label.textContent = idx + 1;
+    });
+}
+
 function addProcurementRow() {
     const container = document.getElementById('procurementContainer');
     const template = container.querySelector('.procurement-row');
     if (!template) return;
     const row = template.cloneNode(true);
-    row.querySelectorAll('input').forEach(function(input) {
-        if (input.type === 'number') { input.value = 1; }
-        else { input.value = ''; }
-    });
-    row.querySelectorAll('select').forEach(function(select) { select.selectedIndex = 0; });
+    resetProcurementRowFields(row);
     container.appendChild(row);
+    renumberProcurementRows();
+    updateMobilizationSelectionCount();
+}
+
+function removeProcurementRow(btn) {
+    const container = document.getElementById('procurementContainer');
+    const row = btn.closest('.procurement-row');
+    // Deleting the only remaining row would leave addProcurementRow() with
+    // nothing to clone from, silently breaking "+ Add another item" for the
+    // rest of the session — clear it in place instead of removing it.
+    if (container.querySelectorAll('.procurement-row').length <= 1) {
+        resetProcurementRowFields(row);
+    } else {
+        row.remove();
+    }
+    renumberProcurementRows();
+    updateMobilizationSelectionCount();
 }
 
 // ================================================================
@@ -394,21 +454,55 @@ initComboboxMultiSelect('vesselCombo');
 initComboboxMultiSelect('diveSystemCombo');
 
 // ================================================================
-// STICKY FOOTER — running selection count
+// STICKY FOOTER — running selection count (assets picked from stock,
+// plus a secondary count of vendor line items with a name typed in)
 // ================================================================
 function updateMobilizationSelectionCount() {
     const form = document.getElementById('mobilizationCreateForm');
     const countEl = document.getElementById('mobilizationSelectedCount');
     if (!form || !countEl) return;
     const n = form.querySelectorAll('input[name="asset_ids"]:checked').length;
-    countEl.textContent = n === 1 ? '1 asset selected' : n + ' assets selected';
+    const vendorCount = Array.from(form.querySelectorAll('input[name="procurement_item_name"]'))
+        .filter(function(i) { return i.value.trim(); }).length;
+    let text = n === 1 ? '1 asset selected' : n + ' assets selected';
+    if (vendorCount) text += ` · ${vendorCount} vendor item${vendorCount === 1 ? '' : 's'} requested`;
+    countEl.textContent = text;
 }
 
 (function() {
     const form = document.getElementById('mobilizationCreateForm');
     if (form) {
         form.addEventListener('change', function(e) {
-            if (e.target && e.target.name === 'asset_ids') updateMobilizationSelectionCount();
+            if (!e.target || e.target.name !== 'asset_ids') return;
+            updateMobilizationSelectionCount();
+
+            // A box checked inside the search-results list would otherwise be
+            // destroyed the next time the user searches again (the whole
+            // #mobilizationAssetListContainer is replaced via htmx), silently
+            // dropping the selection. Relocate the checked row into the
+            // persistent picks container — the same one Quick Add already
+            // uses — so it survives further searches.
+            const searchContainer = document.getElementById('mobilizationAssetListContainer');
+            if (e.target.checked && searchContainer && searchContainer.contains(e.target)) {
+                const label = e.target.closest('label');
+                if (label) {
+                    label.classList.add('quick-add-highlighted');
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'p-1 rounded hover:bg-black/5 text-text-secondary';
+                    removeBtn.innerHTML = MOBILIZATION_X_ICON_SVG_SM;
+                    removeBtn.addEventListener('click', function(ev) {
+                        ev.preventDefault();
+                        label.remove();
+                        updateMobilizationSelectionCount();
+                    });
+                    label.appendChild(removeBtn);
+                    document.getElementById('autopickedAssetsContainer').appendChild(label);
+                }
+            }
+        });
+        form.addEventListener('input', function(e) {
+            if (e.target && e.target.name === 'procurement_item_name') updateMobilizationSelectionCount();
         });
     }
     document.body.addEventListener('htmx:afterSwap', function(e) {
@@ -416,6 +510,20 @@ function updateMobilizationSelectionCount() {
             updateMobilizationSelectionCount();
         }
     });
+
+    // "Picked from stock" empty-state line — shown only while nothing has
+    // been picked yet, regardless of which panel (search or quick add) the
+    // pick came from.
+    const pickedContainer = document.getElementById('autopickedAssetsContainer');
+    const pickedEmptyState = document.getElementById('pickedEmptyState');
+    if (pickedContainer && pickedEmptyState) {
+        const refreshPickedEmptyState = function() {
+            pickedEmptyState.classList.toggle('hidden', pickedContainer.children.length > 0);
+        };
+        new MutationObserver(refreshPickedEmptyState).observe(pickedContainer, { childList: true });
+        refreshPickedEmptyState();
+    }
+
     updateMobilizationSelectionCount();
 })();
 

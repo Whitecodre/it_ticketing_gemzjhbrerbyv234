@@ -18,12 +18,13 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.html import strip_tags
 from django.db.models import F, DurationField, ExpressionWrapper, Count, Q
+from apps.common.permissions import effective_role_name
 from django.core.cache import cache
-from datetime import timedelta, date
+from datetime import timedelta
 from ..forms import ProfileForm, EmailAuthenticationForm, RegistrationStep1Form, RegistrationStep2Form, ChangePasswordForm, UserSettingsForm
 from ..models import User, UserProfile, Role
 from ..utils import validate_password_strength
-from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, Asset, RemoteConnector, TicketComment, RemoteSession
+from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, RemoteConnector, TicketComment, RemoteSession
 from apps.tickets.views import get_sidebar_template
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
@@ -80,15 +81,51 @@ class CustomPasswordResetView(PasswordResetView):
     subject_template_name = 'registration/password_reset_subject.txt'
     success_url = '/accounts/password-reset/done/'
     token_generator = default_token_generator
-    
+
+    def form_valid(self, form):
+        # PasswordResetForm.save() calls `self.send_mail(...)` where `self`
+        # is the FORM instance, not this view — Django's PasswordResetForm
+        # defines its own send_mail (which sends the rendered HTML template
+        # as a *plain-text* body with no html_email_template_name set,
+        # producing literal raw HTML in the inbox). Overriding send_mail
+        # only on this view was silently never called. Binding it onto the
+        # form instance here makes attribute lookup find ours first
+        # (instance attributes shadow class methods in Python).
+        form.send_mail = self.send_mail
+        return super().form_valid(form)
+
     def send_mail(self, subject_template_name, email_template_name, context, from_email, to_email, html_email_template_name=None):
         """
-        Override the default send_mail to use Brevo API.
+        Override the default send_mail to use SMTP (see send_email_via_brevo).
         """
+        # render_to_string() has no request here, so the client_settings
+        # context processor never runs — the email templates need the
+        # white-label company name/logo injected explicitly instead of
+        # hardcoding a specific client's branding.
+        from apps.accounts.models import ClientSettings
+        client = ClientSettings.objects.first()
+        logo_url = None
+        if client and client.logo:
+            # An email client has no browser location to resolve a relative
+            # URL against, unlike Cloudinary's already-absolute production
+            # URLs — local/dev media storage returns a relative path, so
+            # prefix it with SITE_URL the same way notify_recipients_by_email
+            # already does for notification links.
+            logo_url = client.logo.url
+            if logo_url.startswith('/'):
+                logo_url = f'{settings.SITE_URL}{logo_url}'
+        context = {
+            **context,
+            'client_settings': {
+                'company_name': client.company_name if client else 'My Company',
+                'logo_url': logo_url,
+            },
+        }
+
         subject = render_to_string(subject_template_name, context)
         # Email subject *must not* contain newlines
         subject = ''.join(subject.splitlines())
-        
+
         body = render_to_string(email_template_name, context)
         
         # Send via Brevo API
@@ -151,6 +188,22 @@ def validate_password_ajax(request):
     except Exception:
         result['valid'] = False
     return render(request, 'partials/password_strength.html', result)
+
+@login_required
+def validate_current_password_ajax(request):
+    if request.method != 'POST':
+        return HttpResponse('')
+    old_password = request.POST.get('old_password', '')
+    if not old_password:
+        return render(request, 'partials/current_password_check.html', {
+            'valid': False,
+            'message': '',
+        })
+    valid = request.user.check_password(old_password)
+    return render(request, 'partials/current_password_check.html', {
+        'valid': valid,
+        'message': '' if valid else 'Current password is incorrect.',
+    })
 
 @login_required
 def force_password_change(request):
@@ -241,36 +294,10 @@ def _get_admin_dashboard_kpis():
 
     pending_fulfillment_count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
 
-    total_assets = Asset.objects.count()
-    # 'ACTIVE' isn't a real Asset.Status value (there's no such status
-    # choice) — this always matched zero rows. "Active" here means
-    # currently in use, matching Asset.is_active's own definition.
-    active_assets = Asset.objects.filter(
-        status__in=[Asset.Status.CHECKED_OUT, Asset.Status.IN_USE, Asset.Status.MOBILIZED]
-    ).count()
-    in_store_assets = Asset.objects.filter(status='IN_STORE').count()
-    maintenance_assets = Asset.objects.filter(status='MAINTENANCE').count()
-    damaged_assets = Asset.objects.filter(status='DAMAGED').count()
-    scrapped_assets = Asset.objects.filter(status='SCRAPPED').count()
-
-    thirty_days_ago = timezone.now() - timedelta(days=30)
-    recently_added = Asset.objects.filter(created_at__gte=thirty_days_ago).count()
-    assigned_assets = Asset.objects.filter(assigned_to__isnull=False).count()
-    unassigned_assets = total_assets - assigned_assets
-
-    today = date.today()
-    ninety_days_later = today + timedelta(days=90)
-    # Same 'ACTIVE'-isn't-a-real-status bug as above — was always zero.
-    # A warranty expiring matters for any asset still in service, not
-    # just ones currently checked out, so this excludes end-of-life
-    # statuses (retired/scrapped/lost/stolen/disposed) instead of
-    # narrowing to "in use", matching Asset.is_end_of_life's own set.
-    expiring_warranty = Asset.objects.filter(
-        warranty_expiry__gte=today,
-        warranty_expiry__lte=ninety_days_later,
-    ).exclude(
-        status__in=[Asset.Status.RETIRED, Asset.Status.SCRAPPED, Asset.Status.LOST, Asset.Status.STOLEN, Asset.Status.DISPOSED]
-    ).count()
+    # Shared with the asset inventory page's own KPI strip (see
+    # apps.tickets.views.get_asset_kpis) so the two never drift apart.
+    from apps.tickets.views import get_asset_kpis
+    asset_kpis = get_asset_kpis()
 
     approved_requests = Ticket.objects.filter(
         type=Ticket.Type.SERVICE_REQUEST,
@@ -294,16 +321,7 @@ def _get_admin_dashboard_kpis():
         'recent_audit_logs': list(TicketActivityLog.objects.select_related('ticket', 'actor').order_by('-created_at')[:5]),
         'role_choices': User.Role.choices,
         'pending_fulfillment_count': pending_fulfillment_count,
-        'total_assets': total_assets,
-        'active_assets': active_assets,
-        'in_store_assets': in_store_assets,
-        'maintenance_assets': maintenance_assets,
-        'damaged_assets': damaged_assets,
-        'scrapped_assets': scrapped_assets,
-        'recently_added': recently_added,
-        'assigned_assets': assigned_assets,
-        'unassigned_assets': unassigned_assets,
-        'expiring_warranty': expiring_warranty,
+        **asset_kpis,
         'approved_requests': approved_requests,
         'fulfilled_this_month': fulfilled_this_month,
     }
@@ -357,6 +375,16 @@ def dashboard(request):
     # Build context based on active role
     # ================================================================
     context = {}
+
+    # Time-of-day greeting for the welcome banner, shared across every
+    # role's dashboard template since they all render through this view.
+    local_hour = timezone.localtime().hour
+    if local_hour < 12:
+        context['greeting'] = 'Good morning'
+    elif local_hour < 17:
+        context['greeting'] = 'Good afternoon'
+    else:
+        context['greeting'] = 'Good evening'
 
     # Remote sessions needing this user's action right now — surfaced as a
     # banner at the top of the dashboard so Accept/Reject/Start aren't only
@@ -485,7 +513,14 @@ def dashboard(request):
     # Team Lead specific context
     if active_role and active_role.name == 'TEAM_LEAD':
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
-        team_members = User.objects.filter(department='IT', role='AGENT', is_active=True)
+        # Drift-safe: role can be assigned via the legacy `role` field or the
+        # newer M2M `roles` — checking only `role` silently drops an IT agent
+        # from every metric on this dashboard if their role was reassigned
+        # through the M2M system without the legacy field kept in sync.
+        team_member_candidates = User.objects.filter(
+            Q(role='AGENT') | Q(roles__name='AGENT'), department='IT', is_active=True,
+        ).distinct()
+        team_members = [u for u in team_member_candidates if effective_role_name(u) == 'AGENT']
         
         context['team_open_tickets'] = Ticket.objects.filter(
             status__in=open_statuses,
@@ -507,9 +542,14 @@ def dashboard(request):
             Ticket.Status.PENDING_FULFILLMENT,
         ]).count()
         
+        # Includes unassigned tickets, not just ones already assigned to the
+        # team — a breach sitting in the unassigned queue is still very much
+        # "requires attention," and excluding it previously made this KPI
+        # blind to breaches piling up in exactly the place they're most
+        # likely to occur (tickets that haven't been picked up yet).
         context['sla_breaches'] = Ticket.objects.filter(
-            assigned_to__in=team_members,
-            status__in=['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS']
+            Q(assigned_to__in=team_members) | Q(assigned_to__isnull=True),
+            status__in=['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS'],
         ).filter(
             Q(response_due_at__lt=timezone.now()) | Q(resolution_due_at__lt=timezone.now())
         ).count()
@@ -561,25 +601,32 @@ def dashboard(request):
                     except SLA.DoesNotExist:
                         compliant += 1
             
-            compliance_rate = round((compliant / total_resolved * 100), 1) if total_resolved > 0 else 0
-            
-            avg_response_time = 0
+            # None (not 0) when there's nothing resolved yet — 0% reads as
+            # "failing," which is indistinguishable from an agent who's
+            # actually resolving tickets late. The template renders None as
+            # a neutral "No data" instead of a red grade.
+            compliance_rate = round((compliant / total_resolved * 100), 1) if total_resolved > 0 else None
+
+            avg_resolution_time = None
             if total_resolved > 0:
                 total_time = sum(
-                    (t.resolved_at - t.created_at).total_seconds() / 3600 
-                    for t in resolved 
+                    (t.resolved_at - t.created_at).total_seconds() / 3600
+                    for t in resolved
                     if t.resolved_at and t.created_at
                 )
-                avg_response_time = round(total_time / total_resolved, 1) if total_resolved > 0 else 0
+                avg_resolution_time = round(total_time / total_resolved, 1)
             
             agent_performance.append({
                 'agent': agent,
                 'total_resolved': total_resolved,
                 'compliance_rate': compliance_rate,
-                'avg_response_time': avg_response_time,
+                'avg_resolution_time': avg_resolution_time,
             })
-        
-        agent_performance.sort(key=lambda x: x['compliance_rate'], reverse=True)
+
+        # Agents with no resolved tickets (compliance_rate is None) sort to
+        # the bottom rather than the top, which reverse=True on a bare None
+        # comparison would otherwise raise/misorder.
+        agent_performance.sort(key=lambda x: (x['compliance_rate'] is not None, x['compliance_rate'] or 0), reverse=True)
         context['agent_performance'] = agent_performance
         
         context['recent_team_tickets'] = Ticket.objects.filter(
@@ -805,6 +852,13 @@ def profile(request):
                 form.save()
                 messages.success(request, 'Profile updated successfully.')
                 return redirect('accounts:profile')
+        elif 'delete_signature' in request.POST:
+            if request.user.signature:
+                request.user.signature.delete(save=False)
+                request.user.signature = None
+                request.user.save(update_fields=['signature'])
+                messages.success(request, 'Signature removed.')
+            return redirect('accounts:profile')
         elif 'save_settings' in request.POST:
             settings_form = UserSettingsForm(request.POST, instance=request.user.profile)
             if settings_form.is_valid():

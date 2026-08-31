@@ -15,8 +15,10 @@ SESSION_COOKIE_AGE = 86400  # 24 hours (in seconds)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Session persists after browser close
 SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection (Lax or Strict)
-# In config/settings/base.py or development.py
-SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Should be this
+# Redis-cached, DB-backed: reads/writes hit Redis first (fast, and avoids a
+# DB round trip on every single request), while the DB copy means a session
+# survives a Redis restart/eviction instead of silently logging everyone out.
+SESSION_ENGINE = 'django.contrib.sessions.backends.cached_db'
 
 # CSRF settings
 CSRF_COOKIE_HTTPONLY = True  # Prevent JavaScript access to CSRF cookie
@@ -86,7 +88,7 @@ SITE_URL = env('SITE_URL', default='http://localhost:8000')
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': env('REDIS_URL', default='redis://localhost:6379'),
+        'LOCATION': env('REDIS_URL', default='redis://127.0.0.1:6379'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_CLASS': 'redis.BlockingConnectionPool',
@@ -101,6 +103,7 @@ CACHES = {
 }
 
 MIDDLEWARE = [
+    'apps.common.middleware.CloudflareRealIPMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -108,8 +111,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'apps.common.middleware.SecurityHeadersMiddleware',  
+    'apps.common.middleware.SecurityHeadersMiddleware',
     'apps.common.middleware.ImpersonationMiddleware',
+    'apps.common.middleware.LastSeenMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -129,6 +133,7 @@ TEMPLATES = [
                 'apps.common.context_processors.impersonation_context',
                 'apps.common.context_processors.client_settings',
                 'apps.common.context_processors.active_role_context',
+                'apps.common.context_processors.mobilization_pending',
             ],
             'builtins':[
                 "lucide.templatetags.lucide",

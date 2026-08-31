@@ -26,6 +26,9 @@ DATABASES = {
         'PASSWORD': env('DB_PASSWORD', default='postgres'),
         'HOST': env('DB_HOST', default='localhost'),
         'PORT': env('DB_PORT', default='5432'),
+        # Reuse the connection across requests instead of opening a new
+        # TCP/auth handshake with Postgres on every single request.
+        'CONN_MAX_AGE': 60,
     }
 }
 
@@ -57,7 +60,13 @@ BREVO_API_KEY = env('BREVO_API_KEY', default='')
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': env('REDIS_URL', default='redis://localhost:6379'),
+        # 127.0.0.1, not localhost: on this dev machine, resolving
+        # "localhost" for a fresh TCP connect stalls ~2.7s (Windows trying
+        # IPv6 first, then falling back) versus ~0.3s for the literal IP —
+        # and that tax was landing on every request once sessions moved to
+        # the cache backend, since SessionMiddleware runs for every request
+        # including static asset requests.
+        'LOCATION': env('REDIS_URL', default='redis://127.0.0.1:6379'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         }

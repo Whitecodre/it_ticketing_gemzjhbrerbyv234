@@ -24,7 +24,12 @@
                 <p class="text-sm text-text-secondary">Review and claim incoming support work.</p>
             </div>
         </div>
-        <span class="status-chip info text-xs">{{ tickets.paginator.count }} open</span>
+        <div class="flex items-center gap-3">
+            <span class="status-chip info text-xs">{{ tickets.paginator.count }} open</span>
+            <form method="get">
+                {% include "components/sort_dropdown.html" with sort_options=sort_options active_sort=active_sort auto_submit=True %}
+            </form>
+        </div>
     </div>
 
     {# Ticket table - checkboxes visible by default #}
@@ -41,14 +46,14 @@
         </span>
         <div class="pagination-controls">
             {% if tickets.has_previous %}
-            <a class="pagination-step" href="?page={{ tickets.previous_page_number }}">
+            <a class="pagination-step" href="?page={{ tickets.previous_page_number }}&sort={{ active_sort }}">
                 {% lucide "chevron-left" size=14 %} Prev
             </a>
             {% else %}
             <span class="pagination-step is-disabled">{% lucide "chevron-left" size=14 %} Prev</span>
             {% endif %}
             {% if tickets.has_next %}
-            <a class="pagination-step" href="?page={{ tickets.next_page_number }}">
+            <a class="pagination-step" href="?page={{ tickets.next_page_number }}&sort={{ active_sort }}">
                 Next {% lucide "chevron-right" size=14 %}
             </a>
             {% else %}
