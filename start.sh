@@ -41,4 +41,6 @@ fi
 
 echo "=== Starting Daphne ASGI Server ==="
 # Use Daphne for ASGI/WebSocket support
-exec daphne -b 0.0.0.0 -p 8000 config.asgi:application
+# Render supplies PORT at runtime.  Retaining 8000 as the fallback keeps
+# local Docker usage unchanged.
+exec daphne -b 0.0.0.0 -p "${PORT:-8000}" config.asgi:application
