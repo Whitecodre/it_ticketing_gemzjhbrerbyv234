@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse, FileResponse
 from django.core.paginator import Paginator
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 from django.urls import reverse
@@ -298,49 +299,73 @@ def document_edit(request, slug):
         return redirect('documents_display:document_detail', slug=document.slug)
 
     if request.method == 'POST':
+        # Captured before the form binds/validates: form.is_valid() below
+        # calls construct_instance() on this same `document` instance (it's
+        # form.instance, not a copy), which overwrites document.file with
+        # the newly-uploaded file as a side effect of validation. Reading
+        # document.file *after* is_valid() would silently capture the new
+        # file instead of the old one — corrupting the version snapshot,
+        # and worse, causing that snapshot's Cloudinary upload to consume
+        # the new file's stream, so the real save() right after gets an
+        # empty read and Cloudinary rejects it with "Empty file".
+        old_file = document.file
+
         form = DisplayDocumentForm(request.POST, request.FILES, instance=document)
         formset = DepartmentAccessFormSet(request.POST, initial=build_department_access_initial(document))
         if form.is_valid() and formset.is_valid():
-            old_file = document.file
             new_file = request.FILES.get('file')
 
             updated_doc = form.save(commit=False)
+            is_replacing_file = bool(new_file)
+
+            # Everything here is a DB write with no external calls, so it's
+            # safe to make atomic — if any step fails, we don't want a
+            # DisplayVersion snapshot (or the department-access rows) left
+            # committed while the document update itself didn't go through.
+            # generate_preview_for_document() below stays outside this block
+            # deliberately: it shells out to LibreOffice and can take up to
+            # ~120s, and holding a DB transaction open for that long risks
+            # exhausting the connection pool under concurrent edits.
+            with transaction.atomic():
+                if is_replacing_file:
+                    # ✅ Update file metadata
+                    updated_doc.file = new_file
+                    updated_doc.file_name = new_file.name
+                    updated_doc.file_size = new_file.size
+
+                    # Create version record with old file
+                    DisplayVersion.objects.create(
+                        document=document,
+                        version_number=document.version,
+                        file=old_file,
+                        created_by=request.user,
+                        comment=request.POST.get('version_comment', f'Replaced file by {request.user.get_full_name()}')
+                    )
+
+                    updated_doc.version += 1
+                    updated_doc.save()
+                else:
+                    updated_doc.save()
+
+                form.save_m2m()
+                document.department_access.all().delete()
+                DocumentDepartmentAccess.objects.bulk_create([
+                    DocumentDepartmentAccess(
+                        document=updated_doc,
+                        department=row.cleaned_data['department'],
+                        can_edit=row.cleaned_data['can_edit'],
+                        can_download=row.cleaned_data['can_download'],
+                    )
+                    for row in formset if row.cleaned_data.get('grant')
+                ])
 
             preview_failed = False
-            if new_file:
-                # ✅ Update file metadata
-                updated_doc.file = new_file
-                updated_doc.file_name = new_file.name
-                updated_doc.file_size = new_file.size
-
-                # Create version record with old file
-                DisplayVersion.objects.create(
-                    document=document,
-                    version_number=document.version,
-                    file=old_file,
-                    created_by=request.user,
-                    comment=request.POST.get('version_comment', f'Replaced file by {request.user.get_full_name()}')
-                )
-
-                updated_doc.version += 1
-                updated_doc.save()
+            if is_replacing_file:
                 preview_failed = not generate_preview_for_document(updated_doc)
                 messages.success(request, f'Document "{document.title}" updated to version {document.version}.')
             else:
-                updated_doc.save()
                 messages.info(request, 'No changes detected.')
 
-            form.save_m2m()
-            document.department_access.all().delete()
-            DocumentDepartmentAccess.objects.bulk_create([
-                DocumentDepartmentAccess(
-                    document=updated_doc,
-                    department=row.cleaned_data['department'],
-                    can_edit=row.cleaned_data['can_edit'],
-                    can_download=row.cleaned_data['can_download'],
-                )
-                for row in formset if row.cleaned_data.get('grant')
-            ])
             if preview_failed:
                 messages.warning(request, 'Preview generation failed for this file (LibreOffice unavailable or conversion error). The document was still saved; check server logs or contact IT.')
 
