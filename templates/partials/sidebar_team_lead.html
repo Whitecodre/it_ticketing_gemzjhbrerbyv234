@@ -49,6 +49,7 @@
             <span class="shrink-0">{% lucide "circle-check" size=16 class="h-4 w-4" %}</span>
             <span>Approved Requests</span>
         </a>
+        {% if request.user.department == 'IT' %}
         <a href="{% url 'tickets:escalated_tickets' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/escalated/' in request.path %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
@@ -63,8 +64,10 @@
             </span>
             <span>Escalated</span>
         </a>
+        {% endif %}
 
         <div class="sidebar-subgroup-label px-3 pt-3 pb-1 text-[0.6rem] font-semibold uppercase tracking-wider" style="color: var(--color-text-secondary); opacity: 0.7;">My Tickets</div>
+        {% if request.user.department == 'IT' %}
         <a href="{% url 'tickets:unassigned' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/tickets/unassigned/' in request.path %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
@@ -79,6 +82,7 @@
             </span>
             <span>Unassigned</span>
         </a>
+        {% endif %}
         <a href="{% url 'tickets:assigned_to_me' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/tickets/assigned/' in request.path %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
