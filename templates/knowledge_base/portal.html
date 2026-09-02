@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load kb_filters %}
 
 {% block dashboard_title %}Knowledge Base{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -12,53 +13,89 @@
 {% endblock %}
 
 {% block dashboard_content %}
-<div class="w-full">
+<div class="w-full max-w-6xl mx-auto">
 
-    {# Header #}
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-        <div class="flex items-center gap-3">
-            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">{% lucide "book-open" size=19 %}</span>
+    {# Compact search header #}
+    <section class="max-w-3xl mb-8">
+        <div class="flex items-center gap-3 mb-4">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {% lucide "book-open" size=19 %}
+            </span>
             <div>
-                <h2 class="text-lg font-semibold text-text-primary">Knowledge base</h2>
-                <p class="text-sm text-text-secondary">Find proven fixes, guides, and self-service answers.</p>
+                <h2 class="text-xl font-semibold tracking-tight text-text-primary">Knowledge base</h2>
+                <p class="text-sm text-text-secondary">Find clear answers and step-by-step guides.</p>
             </div>
         </div>
-        <span class="status-chip info text-xs">{{ articles|length }} articles</span>
-    </div>
-
-    {# Search Bar #}
-    <form method="get" class="mb-5 rounded-xl border p-3 bg-surface border-border flex items-center gap-2">
-        <div class="relative max-w-xl flex-1">
-            {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
-            <input type="text" name="q" value="{{ query }}" placeholder="Search articles…" aria-label="Search knowledge base articles"
-                   class="w-full rounded-lg border py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-        </div>
-        <button type="submit" class="btn-primary text-sm px-4 py-2.5 rounded-lg shrink-0">Search</button>
-    </form>
+        <form method="get" class="flex items-stretch gap-2">
+            <div class="relative min-w-0 flex-1">
+                <span class="absolute text-text-secondary" style="left: 0.875rem; top: 50%; transform: translateY(-50%);" aria-hidden="true">
+                    {% lucide "search" size=18 %}
+                </span>
+                <input type="text" name="q" value="{{ query }}" placeholder="Search for help, guides, or answers" aria-label="Search knowledge base articles"
+                       class="w-full rounded-lg border border-border bg-surface py-2.5 pl-11 pr-4 text-sm text-text-primary placeholder:text-text-secondary focus:outline-none focus:ring-2 ring-primary">
+            </div>
+            <button type="submit" class="btn-primary text-sm px-4 sm:px-5 py-2.5 rounded-lg shrink-0">Search</button>
+        </form>
+    </section>
 
     {# Category Sections — top-level cards, shown when browsing (no search query) #}
     {% if not query %}
         {% if not selected_category %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        {% if popular_articles %}
+        <section class="mb-7">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div>
+                    <h3 class="text-base font-semibold text-text-primary">Popular guides</h3>
+                    <p class="mt-0.5 text-xs text-text-secondary">Start with the answers people need most.</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {% for article in popular_articles %}
+                <a href="{% url 'kb:article_detail' article.slug %}" class="group rounded-xl border border-border bg-surface p-4 transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                    <div class="flex items-start gap-3">
+                        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">{% lucide "file-text" size=17 %}</span>
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-sm font-semibold text-text-primary line-clamp-2 group-hover:text-primary">{{ article.title }}</h4>
+                            <p class="mt-1 text-xs text-text-secondary line-clamp-2">{{ article.content|plain_preview:100 }}</p>
+                            <p class="mt-3 text-xs font-medium text-primary">Read guide <span aria-hidden="true">→</span></p>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <section class="mb-7">
+            <div class="mb-3">
+                <h3 class="text-base font-semibold text-text-primary">Browse by topic</h3>
+                <p class="mt-0.5 text-xs text-text-secondary">Choose a topic to find guides and answers.</p>
+            </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {% for cat in top_level_categories %}
             <a href="{% url 'kb:portal' %}?category={{ cat.pk }}{% if selected_tag %}&tag={{ selected_tag }}{% endif %}"
-               class="block rounded-xl border p-4 hover:shadow-md transition-shadow border-border bg-surface">
-                <div class="flex items-center gap-3 mb-2">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+               class="group block rounded-xl border border-border bg-surface p-4 transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md">
+                <div class="flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                         {% lucide cat.icon|default:"folder" size=16 %}
                     </span>
-                    <h3 class="text-sm font-semibold text-text-primary">{{ cat.name }}</h3>
-                </div>
-                {% if cat.description %}<p class="text-xs text-text-secondary line-clamp-2 mb-3">{{ cat.description }}</p>{% endif %}
-                <div class="flex items-center gap-4 text-xs text-text-secondary pt-2 border-t border-border">
-                    <span>Articles: <span class="text-text-primary font-semibold">{{ cat.article_count }}</span></span>
-                    <span>Sections: <span class="text-text-primary font-semibold">{{ cat.section_count }}</span></span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-start justify-between gap-2">
+                            <h4 class="text-sm font-semibold text-text-primary group-hover:text-primary">{{ cat.name }}</h4>
+                            {% lucide "chevron-right" size=16 class="mt-0.5 shrink-0 text-text-secondary group-hover:text-primary" %}
+                        </div>
+                        {% if cat.description %}
+                        <p class="mt-1 text-xs text-text-secondary line-clamp-1">{{ cat.description }}</p>
+                        {% endif %}
+                        <p class="mt-2 text-xs font-medium text-text-secondary">{{ cat.article_count }} guide{{ cat.article_count|pluralize }}{% if cat.section_count %} · {{ cat.section_count }} section{{ cat.section_count|pluralize }}{% endif %}</p>
+                    </div>
                 </div>
             </a>
             {% empty %}
-            <p class="text-sm text-text-secondary col-span-full">No categories configured yet.</p>
+            <p class="text-sm text-text-secondary col-span-full">No topics are available yet.</p>
             {% endfor %}
         </div>
+        </section>
         {% else %}
         <div class="flex flex-wrap items-center gap-2 mb-2">
             <a href="{% url 'kb:portal' %}" class="text-xs text-primary hover:underline">← All Categories</a>
@@ -108,7 +145,7 @@
                             {{ article.category.name|default:"Uncategorized" }}
                         </span>
                     </div>
-                    <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
+                    <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|plain_preview:120 }}</p>
                     
                     {# Tags on card #}
                     {% if article.tags.all %}

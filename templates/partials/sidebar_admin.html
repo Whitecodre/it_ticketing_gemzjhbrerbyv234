@@ -17,7 +17,8 @@
         {% lucide "laptop" size=18 class="h-5 w-5" %}
         <div id="myAssetsBadge" class="absolute -top-1 -right-1"
              hx-get="{% url 'tickets:my_assets_pending_count' %}"
-             hx-trigger="load, every 5s"
+             hx-trigger="load"
+             data-sidebar-badge="true"
              hx-swap="innerHTML">
         </div>
     </span>
@@ -31,7 +32,8 @@
         {% lucide "log-in" size=18 class="h-5 w-5" %}
         <div id="demobilizationBadge" class="absolute -top-1 -right-1"
              hx-get="{% url 'tickets:demobilization_pending_count' %}"
-             hx-trigger="load, every 5s"
+             hx-trigger="load"
+             data-sidebar-badge="true"
              hx-swap="innerHTML">
         </div>
     </span>
@@ -59,7 +61,8 @@
                 {% lucide "inbox" size=16 class="h-4 w-4" %}
                 <div id="unassignedBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:unassigned_pending_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>
@@ -78,7 +81,8 @@
                 {% lucide "alert-triangle" size=16 class="h-4 w-4" %}
                 <div id="escalatedBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:escalated_pending_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>
@@ -119,7 +123,8 @@
                 {% lucide "monitor" size=16 class="h-4 w-4" %}
                 <div id="remoteSessionBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:remote_session_pending_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>
@@ -154,7 +159,8 @@
                 {% lucide "package" size=16 class="h-4 w-4" %}
                 <div id="pendingFulfillmentBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:pending_asset_fulfillment_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>
@@ -167,7 +173,8 @@
                 {% lucide "log-out" size=16 class="h-4 w-4" %}
                 <div id="pendingReturnsBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:pending_asset_returns_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>
@@ -180,7 +187,8 @@
                 {% lucide "ship" size=16 class="h-4 w-4" %}
                 <div id="pendingDemobilizationsBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:pending_demobilizations_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>
@@ -336,7 +344,8 @@
                 {% lucide "settings" size=16 class="h-4 w-4" %}
                 <div id="pendingSettingsBadge" class="absolute -top-1 -right-1"
                      hx-get="{% url 'tickets:pending_settings_approvals_count' %}"
-                     hx-trigger="load, every 5s"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
                      hx-swap="innerHTML">
                 </div>
             </span>

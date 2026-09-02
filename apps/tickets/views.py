@@ -692,7 +692,7 @@ def assigned_to_me(request):
         assigned_to=request.user
     ).exclude(
         status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL, Ticket.Status.PENDING_MANAGER_REVIEW]
-    ).order_by('-created_at')
+    ).select_related('requester', 'category').order_by('-created_at')
 
     assignable_agents = User.objects.filter(
         role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
@@ -1496,12 +1496,12 @@ def bulk_action(request):
         tickets = Ticket.objects.filter(
             assigned_to=request.user
         ).exclude(status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED, Ticket.Status.PENDING_APPROVAL]
-        ).order_by('-created_at')
+        ).select_related('requester', 'category').order_by('-created_at')
     else:
         tickets = Ticket.objects.filter(
             assigned_to__isnull=True
         ).exclude(status__in=[Ticket.Status.RESOLVED, Ticket.Status.CLOSED]
-        ).order_by('-created_at')
+        ).select_related('requester', 'category').order_by('-created_at')
 
     assignable_agents = User.objects.filter(
         role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
@@ -2134,9 +2134,17 @@ def trigger_sla_processing_external(request):
     if not secrets_module.compare_digest(secret, expected_secret):
         return JsonResponse({'error': 'Unauthorized'}, status=403)
 
+    from apps.tickets.periodic_tasks import run_sla_job_locked
+
     try:
-        call_command('process_sla')
-        return JsonResponse({'status': 'ok'})
+        # Shared lock with the process_sla step inside run_periodic_jobs
+        # (trigger_periodic_jobs_external) — if a deployment runs both this
+        # dedicated SLA cron and the general periodic-jobs cron on
+        # independent schedules, this stops them from ever running
+        # process_sla concurrently. Returns True if it ran, False if
+        # skipped because another trigger was already mid-run.
+        ran = run_sla_job_locked()
+        return JsonResponse({'status': 'ok' if ran else 'skipped'})
     except Exception:
         logger.exception('trigger_sla_processing_external failed')
         return JsonResponse({'error': 'SLA processing failed. Check server logs for details.'}, status=500)
@@ -3872,12 +3880,11 @@ def escalated_tickets(request):
 
     # Workload: open tickets per agent
     open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
-    agent_workload = {}
-    for agent in agents:
-        agent_workload[agent.pk] = Ticket.objects.filter(
-            assigned_to=agent,
-            status__in=open_statuses
-        ).count()
+    workload_counts = dict(
+        Ticket.objects.filter(assigned_to__in=agents, status__in=open_statuses)
+        .values_list('assigned_to').annotate(total=Count('id')).values_list('assigned_to', 'total')
+    )
+    agent_workload = {agent.pk: workload_counts.get(agent.pk, 0) for agent in agents}
 
     # Reason macros
     reassign_reasons = Macro.objects.filter(type=Macro.Type.REASSIGN_REASON)

@@ -646,6 +646,11 @@ tbody tr:hover .sticky-col-td { background-color: color-mix(in srgb, black 5%, v
     color: var(--color-text-secondary);
 }
 
+.status-chip.draft {
+    background-color: color-mix(in oklch, var(--color-accent) 15%, transparent);
+    color: var(--color-accent);
+}
+
 .status-chip.escalated,
 .status-chip.breached {
     background-color: color-mix(in oklch, var(--color-error) 15%, transparent);
@@ -1968,7 +1973,7 @@ table.data-table {
     right: -5px;
     width: 0;
     height: 0;
-    border-left: 8px solid var(--color-primary-dark);
+    border-left: 8px solid var(--color-primary-solid);
     border-top: 8px solid transparent;
     border-bottom: 8px solid transparent;
 }

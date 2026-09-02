@@ -19,9 +19,10 @@
             style="background-color: var(--color-surface); border-color: var(--color-border); height: 4.4rem; top: {% if is_impersonating %}48px{% else %}0{% endif %};">
 
         {# Left: Brand + Collapse button + Hamburger #}
-        <div class="flex items-center gap-3">
-            <span class="inline-flex items-center justify-center gap-2">
-                <img src="{% static "img/hydro-dive-color.png" %}" alt="Hydrodive Logo" class="h-14 max-w-[180px] w-auto object-contain object-left">
+        <div class="flex min-w-0 items-center gap-2 sm:gap-3">
+            <span class="inline-flex min-w-0 items-center justify-center">
+                <img src="{% static "img/hydro-dive-color.png" %}" alt="Hydrodive Logo" class="w-auto object-contain object-left"
+                     style="height: clamp(2.25rem, 8vw, 3.5rem); max-width: clamp(7rem, 31vw, 11.25rem);">
                 {% comment %} <span class="text-lg font-poppins font-semibold text-primary">TicketSwipe</span> {% endcomment %}
             </span>
             
@@ -29,7 +30,7 @@
                     class="inline-flex items-center justify-center rounded-md p-1.5 text-text-secondary hover:bg-black/5 focus:outline-none transition-transform duration-200"
                     onclick="toggleSidebarMain()"
                     title="Toggle sidebar"
-                    style="margin-left: 0.5rem;">
+                    style="margin-left: clamp(0.25rem, 2vw, 0.5rem);">
                 <span id="toggleIcon">{% lucide "menu" size=20 class="h-5 w-5" %}</span>
             </button>
         </div>
@@ -37,7 +38,7 @@
         <div class="flex-1"></div>
 
         {# ========== RIGHT SIDE NAVBAR ITEMS ========== #}
-        <div class="flex items-center gap-2 md:gap-3">
+        <div class="flex shrink-0 items-center gap-2 md:gap-3">
 
             {# ============================================================ #}
             {# 1. NOTIFICATION BELL - Vanilla JS                              #}
@@ -50,7 +51,8 @@
                     {% lucide "bell" size=18 class="h-4.5 w-4.5" %}
                     <div id="notificationBadgeContainer"
                         hx-get="{% url 'notifications:unread_count' %}"
-                        hx-trigger="load, every 30s"
+                        hx-trigger="load"
+                        data-sidebar-badge="true"
                         hx-swap="innerHTML">
                         {% include "partials/notification_badge.html" with count=0 %}
                     </div>
@@ -326,7 +328,6 @@
 <script src="{% static 'js/keyboard_shortcuts.js' %}"></script>
 <script src="{% static 'js/confirmation-modal.js' %}"></script>
 <script src="{% static 'js/dashboard_table_sort.js' %}"></script>
-<script src="{% static 'js/dashboard_freshness.js' %}"></script>
 
 {# Initialize vanilla JS components #}
 <script>

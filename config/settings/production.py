@@ -51,6 +51,11 @@ if DATABASES['default'] is None:
 MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+# Long-lived cache for hashed static assets, which is the safe CDN-friendly
+# pattern for Cloudflare: file names change when content changes, so the cache
+# can be aggressively reused without stale HTML concerns.
+WHITENOISE_MAX_AGE = 31536000
+WHITENOISE_IMMUTABLE_FILE_TEST = lambda path, url: 'static/' in url
 
 # ================================================================
 # EMAIL CONFIGURATION (Production)

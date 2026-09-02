@@ -33,6 +33,14 @@ from django_ratelimit.decorators import ratelimit
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
+
+def _ticket_status_counts(ticket_qs):
+    """Return a dict of status -> count for the queryset, collapsing multiple
+    count queries for dashboard KPI cards into a single aggregated fetch."""
+    counts = dict(ticket_qs.values_list('status').annotate(total=Count('id')).values_list('status', 'total'))
+    return {status: counts.get(status, 0) for status in dict(Ticket.Status.choices)}
+
+
 @method_decorator(ratelimit(key='ip', rate='5/15m', method='POST', block=True), name='dispatch')
 @method_decorator(csrf_protect, name='dispatch')
 class CustomLoginView(LoginView):
@@ -412,16 +420,16 @@ def dashboard(request):
         # the "Open" KPI card's count agrees with what clicking through to
         # ?status=OPEN actually shows.
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR', 'APPROVED']
-        context['open_tickets_count'] = Ticket.objects.filter(
-            requester=request.user,
-            status__in=open_statuses
-        ).count()
-        context['recent_tickets'] = Ticket.objects.filter(requester=request.user).order_by('-created_at')[:5]
-        context['all_count'] = Ticket.objects.filter(requester=request.user).count()
-        context['open_count'] = Ticket.objects.filter(requester=request.user, status__in=open_statuses).count()
-        context['in_progress_count'] = Ticket.objects.filter(requester=request.user, status='IN_PROGRESS').count()
-        context['resolved_count'] = Ticket.objects.filter(requester=request.user, status='RESOLVED').count()
-        context['closed_count'] = Ticket.objects.filter(requester=request.user, status='CLOSED').count()
+        requester_qs = Ticket.objects.filter(requester=request.user)
+        status_counts = _ticket_status_counts(requester_qs)
+
+        context['open_tickets_count'] = sum(status_counts[status] for status in open_statuses)
+        context['recent_tickets'] = requester_qs.order_by('-created_at')[:5]
+        context['all_count'] = requester_qs.count()
+        context['open_count'] = sum(status_counts[status] for status in open_statuses)
+        context['in_progress_count'] = status_counts.get('IN_PROGRESS', 0)
+        context['resolved_count'] = status_counts.get('RESOLVED', 0)
+        context['closed_count'] = status_counts.get('CLOSED', 0)
 
     elif active_role and active_role.name in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'] and (active_role.name != 'TEAM_LEAD' or is_it_team_lead):
         open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
@@ -473,8 +481,8 @@ def dashboard(request):
             assigned_to=request.user,
             status__in=open_statuses
         ).count()
-        
-        unassigned_count = Ticket.objects.filter(
+
+        unassigned_qs = Ticket.objects.filter(
             assigned_to__isnull=True
         ).exclude(status__in=[
             Ticket.Status.RESOLVED,
@@ -482,18 +490,12 @@ def dashboard(request):
             Ticket.Status.PENDING_APPROVAL,
             Ticket.Status.PENDING_MANAGER_REVIEW,
             Ticket.Status.PENDING_FULFILLMENT,
-        ]).count()
-        
-        recent_unassigned = Ticket.objects.filter(
-            assigned_to__isnull=True
-        ).exclude(status__in=[
-            Ticket.Status.RESOLVED,
-            Ticket.Status.CLOSED,
-            Ticket.Status.PENDING_APPROVAL,
-            Ticket.Status.PENDING_MANAGER_REVIEW,
-            Ticket.Status.PENDING_FULFILLMENT,
-        ]).order_by('-created_at')[:5]
-        
+        ])
+
+        unassigned_count = unassigned_qs.count()
+
+        recent_unassigned = unassigned_qs.order_by('-created_at')[:5]
+
         assigned_to_me_tickets = Ticket.objects.filter(
             assigned_to=request.user
         ).exclude(status__in=['RESOLVED', 'CLOSED']).order_by('-created_at')[:5]

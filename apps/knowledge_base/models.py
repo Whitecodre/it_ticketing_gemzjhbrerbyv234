@@ -25,6 +25,11 @@ class Article(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # Bumped once per detail-page view (kb_article_detail) — drives the
+    # portal's "Popular guides" ranking. Not a unique-visitor count, just a
+    # raw view tally; good enough for relative ranking, not analytics.
+    view_count = models.PositiveIntegerField(default=0)
+
     # Set once, the first time an article is published — distinct from
     # updated_at, which changes on every later edit while the article stays
     # published. Not overwritten by subsequent edits.

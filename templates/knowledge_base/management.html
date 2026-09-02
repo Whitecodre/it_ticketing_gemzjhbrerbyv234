@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load kb_filters %}
 
 {% block dashboard_title %}Knowledge Base{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -15,9 +16,17 @@
 <div class="w-full">
 
     {# Header with actions #}
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-        <h2 class="text-base font-semibold text-text-primary">Knowledge Base</h2>
-        <button type="button" onclick="openNewArticleModal()" class="btn-primary text-sm px-4 py-2 rounded-lg inline-flex items-center gap-1.5">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+        <div class="flex items-center gap-3">
+            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {% lucide "book-open" size=19 %}
+            </span>
+            <div>
+                <h2 class="text-xl font-semibold tracking-tight text-text-primary">Knowledge base articles</h2>
+                <p class="text-sm text-text-secondary">Write, review, and publish guides for the portal.</p>
+            </div>
+        </div>
+        <button type="button" onclick="openNewArticleModal()" class="btn-primary text-sm px-4 py-2 rounded-lg inline-flex items-center gap-1.5 shrink-0">
             {% lucide "plus" size=16 %} New Article
         </button>
     </div>
@@ -25,11 +34,6 @@
     {# Search — filters all tabs by title, content, and tags #}
     <form method="get" class="mb-4" id="kbSearchForm">
         <input type="hidden" name="tab" id="kbSearchTabInput" value="">
-        {% comment %} <div class="relative max-w-xl flex-1">
-            {% lucide "search" size=16 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
-            <input type="search" name="q" value="{{ search_query }}" placeholder="Search articles by title, content, or tag..."
-                   class="w-full rounded-lg border py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
-        </div> {% endcomment %}
          <div class="relative max-w-xl flex-1">
             {% lucide "search" size=18 class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" %}
             <input type="search" name="q" value="{{ search_query }}" placeholder="Search articles by title, content, or tag..." aria-label="Search knowledge base articles by title, content, or tag"
@@ -70,37 +74,57 @@
         {% if drafts %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {% for article in drafts %}
-            <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
+            <div class="group dashboard-card p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition duration-200 flex flex-col">
                 <div class="flex-1">
-                    <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
-                        <span class="status-chip draft text-xs shrink-0">Draft</span>
+                    <div class="flex items-start gap-3">
+                        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                            {% lucide "file-edit" size=16 %}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-2">
+                                <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
+                                <span class="status-chip draft text-xs shrink-0">Draft</span>
+                            </div>
+                            <p class="mt-1 text-xs text-text-secondary line-clamp-2">{{ article.content|plain_preview:120 }}</p>
+
+                            {# Tags on card #}
+                            {% if article.tags.all %}
+                            <div class="flex flex-wrap gap-1 mt-2">
+                                {% for tag in article.tags.all %}
+                                    <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                        #{{ tag.name }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <p class="text-xs text-text-secondary mt-2">Updated {{ article.updated_at|timesince }} ago</p>
+                        </div>
                     </div>
-                    <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
-                    
-                    {# Tags on card #}
-                    {% if article.tags.all %}
-                    <div class="flex flex-wrap gap-1 mt-2">
-                        {% for tag in article.tags.all %}
-                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
-                                #{{ tag.name }}
-                            </span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    
-                    <p class="text-xs text-text-secondary mt-2">Updated {{ article.updated_at|timesince }} ago</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
-                    <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "pencil" size=14 %} Edit
-                    </a>
-                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "clock" size=14 %} History
-                    </a>
-                    <form method="post" action="{% url 'kb:submit_review' article.pk %}" class="inline ml-auto">
+                <div class="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-3 border-t border-border">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                            {% lucide "pencil" size=13 %} Edit
+                        </a>
+                        <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                            {% lucide "clock" size=13 %} History
+                        </a>
+                        {% if user == article.author or active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
+                        <form method="post" action="{% url 'kb:delete' article.pk %}" class="inline" id="deleteDraftForm{{ article.pk }}">
+                            {% csrf_token %}
+                            <button type="button" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-error"
+                                    onclick="confirmDelete('{{ article.title|escapejs }}', 'Draft', function() { document.getElementById('deleteDraftForm{{ article.pk }}').submit(); })">
+                                {% lucide "trash-2" size=13 %} Delete
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                    <form method="post" action="{% url 'kb:submit_review' article.pk %}" class="inline">
                         {% csrf_token %}
-                        <button class="btn-primary text-xs px-3 py-1.5 rounded">Submit</button>
+                        <button class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                            {% lucide "send" size=13 %} Submit for review
+                        </button>
                     </form>
                 </div>
             </div>
@@ -128,45 +152,58 @@
         {% if pending_review %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {% for article in pending_review %}
-            <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
+            <div class="dashboard-card p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition duration-200 flex flex-col">
                 <div class="flex-1">
-                    <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
-                        <span class="status-chip pending_approval text-xs shrink-0">Pending</span>
+                    <div class="flex items-start gap-3">
+                        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
+                            {% lucide "eye" size=16 %}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-2">
+                                <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
+                                <span class="status-chip pending_approval text-xs shrink-0">Pending</span>
+                            </div>
+                            <p class="mt-1 text-xs text-text-secondary line-clamp-2">{{ article.content|plain_preview:120 }}</p>
+
+                            {# Tags on card #}
+                            {% if article.tags.all %}
+                            <div class="flex flex-wrap gap-1 mt-2">
+                                {% for tag in article.tags.all %}
+                                    <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                        #{{ tag.name }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <p class="text-xs text-text-secondary mt-2">By {{ article.author.get_full_name }} · {{ article.updated_at|timesince }} ago</p>
+                        </div>
                     </div>
-                    <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
-                    
-                    {# Tags on card #}
-                    {% if article.tags.all %}
-                    <div class="flex flex-wrap gap-1 mt-2">
-                        {% for tag in article.tags.all %}
-                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
-                                #{{ tag.name }}
-                            </span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    
-                    <p class="text-xs text-text-secondary mt-2">By {{ article.author.get_full_name }} · {{ article.updated_at|timesince }} ago</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
-                    <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "eye" size=14 %} Review
-                    </a>
-                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "clock" size=14 %} History
-                    </a>
-                    <form method="post" action="{% url 'kb:reject_review' article.pk %}" class="inline ml-auto" id="rejectForm{{ article.pk }}">
-                        {% csrf_token %}
-                        <input type="hidden" name="reason">
-                        <button type="button" class="btn-ghost text-xs px-3 py-1.5 rounded text-error"
-                                onclick="openSendBackModal('rejectForm{{ article.pk }}', '{{ article.title|escapejs }}')">Send Back</button>
-                    </form>
-                    <form method="post" action="{% url 'kb:publish' article.pk %}" class="inline" id="publishForm{{ article.pk }}">
-                        {% csrf_token %}
-                        <button type="button" class="btn-success text-xs px-3 py-1.5 rounded"
-                                onclick="confirmStatusChange('PUBLISHED', '{{ article.title|escapejs }}', function() { document.getElementById('publishForm{{ article.pk }}').submit(); })">Publish</button>
-                    </form>
+                <div class="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-3 border-t border-border">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                            {% lucide "eye" size=13 %} Review
+                        </a>
+                        <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                            {% lucide "clock" size=13 %} History
+                        </a>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <form method="post" action="{% url 'kb:reject_review' article.pk %}" class="inline" id="rejectForm{{ article.pk }}">
+                            {% csrf_token %}
+                            <input type="hidden" name="reason">
+                            <button type="button" class="btn-ghost text-xs px-2.5 py-1.5 rounded-lg text-error"
+                                    onclick="openSendBackModal('rejectForm{{ article.pk }}', '{{ article.title|escapejs }}')">Send Back</button>
+                        </form>
+                        <form method="post" action="{% url 'kb:publish' article.pk %}" class="inline" id="publishForm{{ article.pk }}">
+                            {% csrf_token %}
+                            <button type="button" class="btn-success text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                                    onclick="confirmStatusChange('PUBLISHED', '{{ article.title|escapejs }}', function() { document.getElementById('publishForm{{ article.pk }}').submit(); })">
+                                {% lucide "check" size=13 %} Publish
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
             {% endfor %}
@@ -193,44 +230,55 @@
         {% if published %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {% for article in published %}
-            <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
+            <div class="dashboard-card p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition duration-200 flex flex-col">
                 <div class="flex-1">
-                    <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
-                        <span class="status-chip resolved text-xs shrink-0">Published</span>
+                    <div class="flex items-start gap-3">
+                        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-success/10 text-success">
+                            {% lucide "file-check-2" size=16 %}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-2">
+                                <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
+                                <span class="status-chip resolved text-xs shrink-0">Published</span>
+                            </div>
+                            <p class="mt-1 text-xs text-text-secondary line-clamp-2">{{ article.content|plain_preview:120 }}</p>
+
+                            {# Tags on card #}
+                            {% if article.tags.all %}
+                            <div class="flex flex-wrap gap-1 mt-2">
+                                {% for tag in article.tags.all %}
+                                    <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
+                                        #{{ tag.name }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+
+                            <p class="text-xs text-text-secondary mt-2">Published {{ article.updated_at|timesince }} ago</p>
+                        </div>
                     </div>
-                    <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
-                    
-                    {# Tags on card #}
-                    {% if article.tags.all %}
-                    <div class="flex flex-wrap gap-1 mt-2">
-                        {% for tag in article.tags.all %}
-                            <span class="text-[0.5rem] px-1.5 py-0.5 rounded-full border border-border text-text-secondary">
-                                #{{ tag.name }}
-                            </span>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-                    
-                    <p class="text-xs text-text-secondary mt-2">Published {{ article.updated_at|timesince }} ago</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
-                    <a href="{% url 'kb:article_detail' article.slug %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5" target="_blank">
-                        {% lucide "eye" size=14 %} View
-                    </a>
-                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "clock" size=14 %} History
-                    </a>
-                    {% if user == article.author or active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
-                    <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "edit" size=14 %} Edit
-                    </a>
-                    {% endif %}
-                    <form method="post" action="{% url 'kb:archive' article.pk %}" class="inline ml-auto" id="archiveForm{{ article.pk }}">
+                <div class="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-3 border-t border-border">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <a href="{% url 'kb:article_detail' article.slug %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg" target="_blank">
+                            {% lucide "eye" size=13 %} View
+                        </a>
+                        <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                            {% lucide "clock" size=13 %} History
+                        </a>
+                        {% if user == article.author or active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
+                        <a href="{% url 'kb:edit_content' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                            {% lucide "edit" size=13 %} Edit
+                        </a>
+                        {% endif %}
+                    </div>
+                    <form method="post" action="{% url 'kb:archive' article.pk %}" class="inline" id="archiveForm{{ article.pk }}">
                         {% csrf_token %}
                         <button type="button"
                                 onclick="confirmArchiveArticle('{{ article.title|escapejs }}', 'archiveForm{{ article.pk }}')"
-                                class="btn-ghost text-xs px-3 py-1.5 rounded text-error">Archive</button>
+                                class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-error">
+                            {% lucide "archive" size=13 %} Archive
+                        </button>
                     </form>
                 </div>
             </div>
@@ -258,27 +306,34 @@
         {% if archived %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {% for article in archived %}
-            <div class="dashboard-card p-4 hover:shadow-md transition flex flex-col">
+            <div class="dashboard-card p-4 hover:shadow-md hover:-translate-y-0.5 hover:border-primary/40 transition duration-200 flex flex-col">
                 <div class="flex-1">
-                    <div class="flex items-start justify-between gap-2 mb-2">
-                        <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
-                        <span class="status-chip closed text-xs shrink-0">Archived</span>
+                    <div class="flex items-start gap-3">
+                        <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background text-text-secondary border border-border">
+                            {% lucide "archive" size=16 %}
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-2">
+                                <h3 class="text-sm font-semibold truncate text-text-primary">{{ article.title }}</h3>
+                                <span class="status-chip closed text-xs shrink-0">Archived</span>
+                            </div>
+                            <p class="mt-1 text-xs text-text-secondary line-clamp-2">{{ article.content|plain_preview:120 }}</p>
+                            <p class="text-xs text-text-secondary mt-2">
+                                Was {{ article.get_archived_from_status_display|default:"Draft" }} · Archived {{ article.updated_at|timesince }} ago
+                            </p>
+                        </div>
                     </div>
-                    <p class="text-xs text-text-secondary line-clamp-2">{{ article.content|truncatechars:120|striptags }}</p>
-                    <p class="text-xs text-text-secondary mt-2">
-                        Was {{ article.get_archived_from_status_display|default:"Draft" }} · Archived {{ article.updated_at|timesince }} ago
-                    </p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-border">
-                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5">
-                        {% lucide "clock" size=14 %} History
+                <div class="flex flex-wrap items-center justify-between gap-1.5 mt-3 pt-3 border-t border-border">
+                    <a href="{% url 'kb:history' article.pk %}" class="btn-ghost text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg">
+                        {% lucide "clock" size=13 %} History
                     </a>
-                    <form method="post" action="{% url 'kb:restore' article.pk %}" class="inline ml-auto" id="restoreForm{{ article.pk }}">
+                    <form method="post" action="{% url 'kb:restore' article.pk %}" class="inline" id="restoreForm{{ article.pk }}">
                         {% csrf_token %}
                         <button type="button"
                                 onclick="confirmRestoreArticle('{{ article.title|escapejs }}', '{{ article.get_archived_from_status_display|default:"Draft"|escapejs }}', 'restoreForm{{ article.pk }}')"
-                                class="btn-success text-xs px-3 py-1.5 rounded">
-                            {% lucide "rotate-ccw" size=14 %} Restore
+                                class="btn-success text-xs px-3 py-1.5 rounded-lg flex items-center gap-1">
+                            {% lucide "rotate-ccw" size=13 %} Restore
                         </button>
                     </form>
                 </div>
@@ -310,7 +365,10 @@
          onclick="if(event.target===this) closeNewArticleModal()">
         <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4" style="background-color: var(--color-surface);">
             <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--color-border);">
-                <h3 class="text-base font-semibold text-text-primary">New Article</h3>
+                <div>
+                    <h3 class="text-base font-semibold text-text-primary">New Article</h3>
+                    <p class="text-xs text-text-secondary mt-0.5">Step 1 of 2 — details now, then you'll write the content.</p>
+                </div>
                 <button type="button" onclick="closeNewArticleModal()" class="btn-ghost btn-icon" aria-label="Close">{% lucide "x" size=18 %}</button>
             </div>
             <form id="newArticleForm" class="px-6 py-5 space-y-4">

@@ -75,9 +75,14 @@
 <div class="w-full max-w-5xl mx-auto">
 
     <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <div class="min-w-0">
-            <h2 class="text-base font-semibold text-text-primary truncate" id="articleTitleDisplay">{{ article.title }}</h2>
-            <p class="text-xs text-text-secondary mt-0.5">{{ article.get_status_display }} · {{ article.category.name|default:"Uncategorized" }}</p>
+        <div class="flex items-center gap-3 min-w-0">
+            <span class="hidden sm:flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {% lucide "file-pen-line" size=18 %}
+            </span>
+            <div class="min-w-0">
+                <h2 class="text-lg sm:text-xl font-semibold tracking-tight text-text-primary truncate" id="articleTitleDisplay">{{ article.title }}</h2>
+                <p class="text-xs text-text-secondary mt-0.5">{{ article.get_status_display }} · {{ article.category.name|default:"Uncategorized" }}</p>
+            </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
             <button type="button" onclick="openEditorGuideModal()" class="btn-ghost text-xs flex items-center gap-1 px-3 py-1.5 lg:hidden">

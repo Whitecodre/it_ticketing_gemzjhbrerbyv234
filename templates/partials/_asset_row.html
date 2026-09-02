@@ -65,7 +65,8 @@
             {% if asset.assigned_to.department %}
             <div class="text-xs text-text-secondary">{{ asset.assigned_to.get_department_display }}</div>
             {% endif %}
-            {% if asset|has_reassignment_indicator %}
+            {% with row_reassign_count=asset|reassign_count %}
+            {% if row_reassign_count %}
             <span class="reassign-indicator cursor-pointer inline-flex items-center gap-0.5 px-1 py-0.5 mt-0.5 rounded text-[0.55rem] hover:bg-primary/10 transition-colors"
                 data-tooltip-html="{{ asset|format_assignment_history }}"
                 data-has-tooltip="true"
@@ -73,10 +74,11 @@
                 <span style="color: var(--color-warning);">{% lucide "rotate-cw" size=11 %}</span>
                 <span class="font-bold px-1 rounded-full"
                     style="background-color: var(--color-warning); color: white; min-width: 11px; text-align: center; font-size: 0.45rem;">
-                    {{ asset|reassign_count }}
+                    {{ row_reassign_count }}
                 </span>
             </span>
             {% endif %}
+            {% endwith %}
         {% elif asset.unresolved_assignee_hint %}
             <span class="text-sm" style="color: var(--color-warning);" title="Imported with an 'assigned to' name that hasn't been linked to a user account yet">
                 {% lucide "user-round-x" size=12 class="inline -mt-0.5" %} Needs review: {{ asset.unresolved_assignee_hint }}

@@ -12,6 +12,7 @@ urlpatterns = [
     path('<int:pk>/submit-review/', views.article_submit_review, name='submit_review'),
     path('<int:pk>/publish/', views.article_publish, name='publish'),
     path('<int:pk>/archive/', views.article_archive, name='archive'),
+    path('<int:pk>/delete/', views.article_delete, name='delete'),
     path('<int:pk>/restore/', views.article_restore, name='restore'),
     path('<int:pk>/reject-review/', views.article_reject_review, name='reject_review'),
     path('', views.kb_portal, name='portal'),

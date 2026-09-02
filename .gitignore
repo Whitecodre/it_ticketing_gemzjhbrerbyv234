@@ -8,6 +8,10 @@ env/
 
 # Environment variables
 .env
+*.env
+
+# Test run output
+*.log
 
 # Media & Static (collected)
 media/

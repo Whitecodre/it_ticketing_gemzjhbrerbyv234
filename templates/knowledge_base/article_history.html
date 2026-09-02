@@ -176,14 +176,20 @@
 
 <div class="w-full max-w-3xl mx-auto">
 
-    <div class="flex items-center gap-3 mb-4">
+    <div class="flex items-center gap-3 mb-2">
         <a href="{% url 'kb:management' %}" class="btn-ghost text-xs flex items-center gap-1">
             {% lucide "arrow-left" size=14 %} Back
         </a>
-        <h2 class="text-base font-semibold text-text-primary flex items-center gap-2">
-            {% lucide "history" size=18 %} Version History: {{ article.title }}
-        </h2>
-        <span class="text-xs text-text-secondary ml-auto">{{ versions|length }} versions</span>
+    </div>
+    <div class="flex items-center gap-3 mb-5">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {% lucide "history" size=19 %}
+        </span>
+        <div class="min-w-0 flex-1">
+            <h2 class="text-lg sm:text-xl font-semibold tracking-tight text-text-primary truncate">Version history</h2>
+            <p class="text-sm text-text-secondary truncate">{{ article.title }}</p>
+        </div>
+        <span class="text-xs text-text-secondary shrink-0">{{ versions|length }} version{{ versions|length|pluralize }}</span>
     </div>
 
     <div class="dashboard-card p-4">

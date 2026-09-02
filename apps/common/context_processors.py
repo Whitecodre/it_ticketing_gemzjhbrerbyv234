@@ -118,14 +118,23 @@ def mobilization_pending(request):
     if not request.user.is_authenticated:
         return {'has_mobilization_history': False}
 
+    cache_key = f'mobilization_pending:{request.user.pk}'
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return {'has_mobilization_history': cached}
+
     from apps.tickets.models import MobilizationItem
 
-    return {
-        'has_mobilization_history': MobilizationItem.objects.filter(
-            mobilization__ticket__requester=request.user,
-            acknowledged_at__isnull=False,
-        ).exists()
-    }
+    has_history = MobilizationItem.objects.filter(
+        mobilization__ticket__requester=request.user,
+        acknowledged_at__isnull=False,
+    ).exists()
+
+    # Monotonic (per the docstring above): once true it never reverts, so
+    # cache that outcome indefinitely; otherwise recheck periodically since
+    # a new acknowledgement can flip it to true at any time.
+    cache.set(cache_key, has_history, None if has_history else 60)
+    return {'has_mobilization_history': has_history}
 
 def active_role_context(request):
     """

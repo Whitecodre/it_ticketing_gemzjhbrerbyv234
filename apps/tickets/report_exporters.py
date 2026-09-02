@@ -135,9 +135,18 @@ def export_excel(rows, columns, title, filename_base, control_number='', **kwarg
     # exports' own boxed letterheads (report_pdf.html, _docx_report_letterhead).
     client_settings = ClientSettings.objects.first()
     total_cols = len(columns)
-    logo_cols = max(1, min(3, total_cols // 6))
-    control_cols = max(1, min(3, total_cols // 6))
-    title_cols = max(1, total_cols - logo_cols - control_cols)
+    # The letterhead always needs 3 distinct zones (logo/title/control), each
+    # at least 1 column wide — but `total_cols` comes from the caller's own
+    # column selection (e.g. a narrowed `cols=` export pick) and can be as
+    # small as 1-2, which isn't enough room for all three. Size the banner
+    # off its own minimum-3 budget instead of the data table's width, so a
+    # narrow export still gets a valid (if slightly wider-than-the-table)
+    # banner rather than an inverted, invalid merge range.
+    banner_cols = max(total_cols, 3)
+    logo_cols = max(1, min(3, banner_cols // 6))
+    control_cols = max(1, min(3, banner_cols // 6))
+    title_cols = max(1, banner_cols - logo_cols - control_cols)
+    banner_last_col_letter = get_column_letter(logo_cols + title_cols + control_cols)
     logo_end = get_column_letter(logo_cols)
     title_start = get_column_letter(logo_cols + 1)
     title_end = get_column_letter(logo_cols + title_cols)
@@ -181,14 +190,14 @@ def export_excel(rows, columns, title, filename_base, control_number='', **kwarg
         ws.cell(row=1, column=col_idx).border = box_border
         ws.cell(row=BANNER_ROWS, column=col_idx).border = box_border
 
-    ws.merge_cells(f'{control_start}1:{last_col_letter}{BANNER_ROWS}')
+    ws.merge_cells(f'{control_start}1:{banner_last_col_letter}{BANNER_ROWS}')
     control_cell = ws[f'{control_start}1']
     control_cell.value = f'CONTROL NO.\n{control_number}' if control_number else 'CONTROL NO.\n—'
     control_cell.font = Font(name=_EXCEL_FONT, size=11, bold=True, color='FFFFFF')
     control_cell.fill = _EXCEL_HEADER_FILL
     control_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
     control_cell.border = box_border
-    for col_idx in range(logo_cols + title_cols + 1, total_cols + 1):
+    for col_idx in range(logo_cols + title_cols + 1, logo_cols + title_cols + control_cols + 1):
         ws.cell(row=1, column=col_idx).border = box_border
         ws.cell(row=BANNER_ROWS, column=col_idx).border = box_border
         ws.cell(row=1, column=col_idx).fill = _EXCEL_HEADER_FILL

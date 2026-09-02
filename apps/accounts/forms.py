@@ -3,6 +3,7 @@ from django import forms
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm, UserChangeForm, PasswordChangeForm
 from django.core.exceptions import ValidationError
 from django.contrib.auth.password_validation import validate_password
+from django.db.models import Q
 from django.utils.safestring import mark_safe
 from django.urls import reverse
 from .models import User, UserProfile
@@ -21,7 +22,30 @@ class EmailAuthenticationForm(AuthenticationForm):
     }
 
     def clean(self):
-        cleaned_data = super().clean()
+        try:
+            cleaned_data = super().clean()
+        except ValidationError:
+            # EmailBackend.authenticate() now correctly refuses inactive
+            # users via user_can_authenticate(), so it returns None for a
+            # right-password-but-inactive login exactly like it does for a
+            # wrong password — AuthenticationForm.clean() can't tell those
+            # apart once authenticate() has already returned None, so it
+            # always raises the generic invalid_login error and
+            # confirm_login_allowed() (which holds the specific "account
+            # deactivated" / "email not verified" messages) never runs.
+            # Re-check credentials ourselves purely to pick the right
+            # message — self.user_cache is never set from here, so this
+            # doesn't authorize a login, only decides what to say.
+            username = self.cleaned_data.get('username')
+            password = self.cleaned_data.get('password')
+            if username and password:
+                try:
+                    candidate = User.objects.get(Q(email__iexact=username.strip()) | Q(username__iexact=username.strip()))
+                except (User.DoesNotExist, User.MultipleObjectsReturned):
+                    candidate = None
+                if candidate and not candidate.is_active and candidate.check_password(password):
+                    self.confirm_login_allowed(candidate)
+            raise
         # Optional debug:
         # print("User found:", self.user_cache)
         return cleaned_data

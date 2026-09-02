@@ -72,10 +72,15 @@
         <span class="step"><span class="num">3</span> Write Article</span>
     </div>
 
-    <h2 class="text-lg font-semibold mb-1 flex items-center gap-2">{% lucide "file-pen-line" size=18 %} Create Knowledge Article from Ticket #{{ ticket.number }}</h2>
-    <p class="text-xs text-text-secondary mb-4">
-        Choose what to carry over, then continue to the article editor to write the rest.
-    </p>
+    <div class="flex items-center gap-3 mb-4">
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {% lucide "file-pen-line" size=19 %}
+        </span>
+        <div>
+            <h2 class="text-lg sm:text-xl font-semibold tracking-tight text-text-primary">Create article from ticket #{{ ticket.number }}</h2>
+            <p class="text-sm text-text-secondary">Choose what to carry over, then continue to the editor to write the rest.</p>
+        </div>
+    </div>
 
     <form method="post" id="kbForm" class="space-y-6">
         {% csrf_token %}

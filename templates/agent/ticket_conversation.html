@@ -53,7 +53,7 @@
                         {% if is_agent %}
                         <div id="slaBadgeContainer"
                             hx-get="{% url 'tickets:sla_badge' ticket.pk %}"
-                            hx-trigger="every 5s"
+                            data-sidebar-badge="true"
                             hx-swap="innerHTML">
                             <span id="slaBadgeInner">
                                 {% with sla_info=ticket.sla_status %}

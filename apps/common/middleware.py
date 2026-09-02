@@ -33,18 +33,39 @@ class SecurityHeadersMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
         # Prevent MIME type sniffing
         response['X-Content-Type-Options'] = 'nosniff'
-        
+
         # Enable XSS filter
         response['X-XSS-Protection'] = '1; mode=block'
-        
+
         # Referrer policy
         response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        
+
         # Permissions policy — geolocation is allowed same-origin only, for
         # the Service Request form's device-location capture (see
         # templates/requester/service_request_form.html); microphone/camera
         # stay fully disabled, since nothing in the app uses them.
         response['Permissions-Policy'] = 'geolocation=(self), microphone=(), camera=()'
+
+        # Prefer CDN/static caching only for hashed static assets. Dynamic HTML
+        # pages must never be cached aggressively behind Cloudflare because they
+        # contain user-specific state, CSRF, authentication, and role context.
+        path = request.path or ''
+        ctype = response.get('Content-Type', '')
+        static_prefix = '/static/'
+        if path.startswith(static_prefix):
+            response['Cache-Control'] = 'public, max-age=31536000, immutable'
+            response['Vary'] = 'Accept-Encoding'
+        elif path == '/sw.js':
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+        elif 'text/html' in ctype or response.status_code in (200, 204):
+            # Keep HTML and API pages uncached so Cloudflare does not serve stale
+            # authenticated or role-specific dashboards to other users.
+            if 'Cache-Control' not in response:
+                response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+                response['Pragma'] = 'no-cache'
+                response['Expires'] = '0'
 
         # ================================================================
         # Skip X-Frame-Options for document viewer (PDF/Office previews)

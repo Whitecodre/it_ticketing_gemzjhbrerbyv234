@@ -13,7 +13,7 @@ from .models import Article, ArticleVersion, Category, ArticleFeedback
 from .forms import ArticleMetadataForm, KBFromTicketForm
 from .sanitize import sanitize_html
 from django.core.paginator import Paginator
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
 from apps.tickets.models import Ticket
@@ -246,6 +246,25 @@ def article_restore(request, pk):
 
 @login_required
 @require_POST
+def article_delete(request, pk):
+    """Permanently remove a draft — the author's own, or any Lead/Admin's.
+    Only DRAFT articles are deletable this way; anything that's been
+    through review at least once (Pending/Published/Archived) goes through
+    Archive instead, which keeps its history rather than erasing it."""
+    article = get_object_or_404(Article, pk=pk)
+    if article.status != Article.Status.DRAFT:
+        messages.error(request, 'Only drafts can be deleted — archive published or reviewed articles instead.')
+        return redirect('kb:management')
+    if article.author_id != request.user.pk and request.user.role not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+        return HttpResponseForbidden()
+    title = article.title
+    article.delete()
+    messages.success(request, f'"{title}" was deleted.')
+    return redirect('kb:management')
+
+
+@login_required
+@require_POST
 def article_reject_review(request, pk):
     """Send a PENDING_REVIEW article back to DRAFT for the author to revise
     — distinct from Archive, which retires an article rather than returning
@@ -346,10 +365,28 @@ def kb_portal(request):
     # category-folder grid instead of staying hidden until a filter is chosen.
     show_articles = bool(query or selected_category or tag_name)
 
+    # "Popular guides" strip on the bare landing page — ranked by actual
+    # view_count (bumped in kb_article_detail), not insertion order. Only
+    # worth showing once the library has enough articles for the ranking to
+    # mean anything.
+    popular_articles = []
+    if not query and not selected_category:
+        base_articles = Article.objects.filter(status=Article.Status.PUBLISHED, visibility='PUBLIC')
+        if base_articles.count() > 2:
+            popular_articles = list(base_articles.order_by('-view_count', '-created_at')[:3])
+
+    # Only categories that actually have a published/public article — the
+    # template used to filter these out with an {% if %} inside the loop,
+    # which meant Django's {% empty %} never fired (the loop itself wasn't
+    # empty, just every row got hidden), leaving a blank "Browse by topic"
+    # grid with no articles-yet message whenever every category was empty.
+    visible_top_level_categories = [cat for cat in top_level_categories if cat.article_count]
+
     context = {
         'articles': articles,
         'show_articles': show_articles,
-        'top_level_categories': top_level_categories,
+        'popular_articles': popular_articles,
+        'top_level_categories': visible_top_level_categories,
         'subcategories': subcategories,
         'selected_category': selected_category,
         'all_tags': all_tags,
@@ -369,6 +406,11 @@ def kb_article_detail(request, slug):
         article = get_object_or_404(Article, slug=slug, status=Article.Status.PUBLISHED)
     else:
         article = get_object_or_404(Article, slug=slug, status=Article.Status.PUBLISHED, visibility='PUBLIC')
+
+    # Atomic increment (not a read-modify-write on `article`) so concurrent
+    # viewers don't clobber each other's count.
+    Article.objects.filter(pk=article.pk).update(view_count=F('view_count') + 1)
+
     # Check if user already gave feedback
     user_feedback = None
     if request.user.is_authenticated:

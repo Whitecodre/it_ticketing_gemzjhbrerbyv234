@@ -4,6 +4,7 @@ import tempfile
 from decimal import Decimal
 from io import BytesIO
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, Client
 from django.urls import reverse
@@ -16,6 +17,8 @@ from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, Asset,
 from apps.tickets.asset_name_matching import match_users_by_name
 from apps.common.models import Category, Notification
 from apps.maintenance.models import MaintenanceSchedule, Vendor
+from apps.tickets.periodic_tasks import run_periodic_jobs
+
 
 # 1x1 transparent PNG, used to test signature-image upload/export handling.
 TINY_PNG_BYTES = base64.b64decode(
@@ -122,6 +125,21 @@ class TicketModelTests(TestCase):
         status = ticket.sla_status()
         # Response SLA should be breached
         self.assertEqual(status['response'], 'breached')
+
+
+class PeriodicTaskLockTests(TestCase):
+    """Prevent overlapping periodic jobs from running concurrently."""
+
+    def setUp(self):
+        cache.clear()
+
+    @patch('apps.tickets.periodic_tasks.call_command')
+    def test_run_periodic_jobs_skips_when_lock_is_active(self, mock_call_command):
+        cache.set('tickets:periodic_jobs:lock', 'running', timeout=300)
+
+        run_periodic_jobs(stdout=None, stderr=None)
+
+        mock_call_command.assert_not_called()
 
 
 class TicketViewTests(TestCase):
@@ -1597,7 +1615,12 @@ class ServiceRequestReportConfirmationFieldsTests(TestCase):
         response = self.client.get(reverse('tickets:export_report', args=['service-requests']), {'format': 'csv'})
         self.assertEqual(response.status_code, 200)
         content = response.content.decode('utf-8')
-        header = content.splitlines()[0]
+        # CSV exports now lead with a text letterhead block (company name,
+        # title, control no., generated date, record count, blank line —
+        # see export_csv) before the real column-header row, so find that
+        # row by content rather than assuming it's line 0.
+        lines = content.splitlines()
+        header = next(line for line in lines if 'Fulfilled' in line)
         for column in ('Fulfilled', 'Fulfilled By', 'Receipt Confirmed', 'Receipt Confirmed By', 'Is Mobilization Request'):
             self.assertIn(column, header)
 
@@ -2458,7 +2481,12 @@ class RenewableAssetTests(TestCase):
         Asset.objects.create(
             name='Adobe Creative Cloud', category=self.renewable_category, next_renewal_date=today + timedelta(days=200),
         )
-        response = self.client.get(reverse('tickets:assets'), {'filter_renewal_due': '1'})
+        # filter_renewal_due is implemented in report_registry's assets
+        # queryset (used by the Reports Builder page), not the day-to-day
+        # Asset Inventory page (tickets:assets) — that page's equipment tab
+        # excludes renewable assets entirely (they live in its separate
+        # License tab, sorted by urgency rather than filtered).
+        response = self.client.get(reverse('tickets:report_builder', args=['assets']), {'filter_renewal_due': '1'})
         self.assertContains(response, 'Office 365')
         self.assertNotContains(response, 'Adobe Creative Cloud')
 
@@ -2468,7 +2496,10 @@ class RenewableAssetTests(TestCase):
             next_renewal_date=date(2026, 6, 1), renewal_interval_months=12,
             renewal_cost=Decimal('500.00'), renewal_vendor=self.vendor,
         )
-        response = self.client.get(reverse('tickets:export_report', args=['assets']), {'format': 'csv'})
+        # CSV export was deliberately dropped for assets (see
+        # report_builder.html/export_report — a flat-text format can't
+        # carry the branded letterhead every other asset export shares).
+        response = self.client.get(reverse('tickets:export_report', args=['assets']), {'format': 'json'})
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertIn('Renewal Cost', content)
@@ -3852,7 +3883,11 @@ class BulkReportExportTests(TestCase):
         self.asset3 = Asset.objects.create(name='Bulk Export Asset Three', category=self.category)
 
     def test_export_with_no_selection_includes_all_matching_rows(self):
-        response = self.client.get(reverse('tickets:export_report', args=['assets']) + '?format=csv')
+        # Assets export dropped CSV (see report_builder.html/export_report —
+        # a flat-text format can't carry the branded letterhead every other
+        # asset export format shares), so this uses JSON instead — still a
+        # flat/unfiltered export, just a different serialization.
+        response = self.client.get(reverse('tickets:export_report', args=['assets']) + '?format=json')
         content = response.content.decode()
         self.assertIn('Bulk Export Asset One', content)
         self.assertIn('Bulk Export Asset Two', content)
@@ -3861,19 +3896,28 @@ class BulkReportExportTests(TestCase):
     def test_export_with_selected_ids_only_includes_those_rows(self):
         response = self.client.get(
             reverse('tickets:export_report', args=['assets'])
-            + f'?format=csv&ids={self.asset1.pk}&ids={self.asset3.pk}'
+            + f'?format=json&ids={self.asset1.pk}&ids={self.asset3.pk}'
         )
         content = response.content.decode()
         self.assertIn('Bulk Export Asset One', content)
         self.assertIn('Bulk Export Asset Three', content)
         self.assertNotIn('Bulk Export Asset Two', content)
 
-    def test_csv_export_with_cols_only_includes_selected_columns(self):
+    def test_report_export_with_cols_only_includes_selected_columns(self):
+        # cols-filtering isn't CSV-specific — Excel supports the same
+        # mechanism (see build_export_response) and is what assets actually
+        # use since CSV was dropped for that report type.
+        from openpyxl import load_workbook
         response = self.client.get(
-            reverse('tickets:export_report', args=['assets']) + '?format=csv&cols=Tracking%20ID,Name,Status'
+            reverse('tickets:export_report', args=['assets']) + '?format=excel&cols=Tracking%20ID,Name,Status'
         )
-        header = response.content.decode().splitlines()[0]
-        self.assertEqual(header, 'Tracking ID,Name,Status')
+        wb = load_workbook(BytesIO(response.content))
+        # Row 1 is the branded letterhead banner (logo/title/control no.),
+        # not the column header — see BANNER_ROWS/meta_row/header_row in
+        # report_exporters.export_excel. The real header row is 6:
+        # 3 banner rows + 1 meta row + 1 blank spacer + 1 header row.
+        header = [c.value for c in wb.active[6]]
+        self.assertEqual(header, ['Tracking ID', 'Name', 'Status'])
 
     def test_excel_export_with_cols_only_includes_selected_columns(self):
         from openpyxl import load_workbook
@@ -3881,7 +3925,12 @@ class BulkReportExportTests(TestCase):
             reverse('tickets:export_report', args=['assets']) + '?format=excel&cols=Name,Category'
         )
         wb = load_workbook(BytesIO(response.content))
-        header = [c.value for c in wb.active[1]]
+        # The letterhead banner always reserves room for 3 zones (logo/
+        # title/control), so a data table narrower than that (here: 2
+        # columns) leaves one extra blank bordered column touched on the
+        # banner rows — openpyxl then reports it as a trailing None cell on
+        # every row, including the header. Only the real columns matter here.
+        header = [c.value for c in wb.active[6]][:2]  # see header_row note above
         self.assertEqual(header, ['Name', 'Category'])
 
     def test_bundled_pdf_export_respects_cols_param(self):
@@ -3907,11 +3956,13 @@ class BulkReportExportTests(TestCase):
         header = [cell.text for cell in table.rows[0].cells]
         self.assertEqual(header, ['Name', 'Status'])
 
-    def test_csv_export_with_unknown_cols_falls_back_to_all_columns(self):
+    def test_excel_export_with_unknown_cols_falls_back_to_all_columns(self):
+        from openpyxl import load_workbook
         response = self.client.get(
-            reverse('tickets:export_report', args=['assets']) + '?format=csv&cols=Nonexistent,Also%20Bogus'
+            reverse('tickets:export_report', args=['assets']) + '?format=excel&cols=Nonexistent,Also%20Bogus'
         )
-        header = response.content.decode().splitlines()[0]
+        wb = load_workbook(BytesIO(response.content))
+        header = [c.value for c in wb.active[6]]  # see header_row note above
         self.assertIn('Tracking ID', header)
         self.assertIn('Name', header)
         self.assertIn('Category', header)
@@ -4810,7 +4861,7 @@ class AssetImportEndToEndTests(TestCase):
 
         self.assertEqual(Asset.objects.count(), 2)
         monitor = Asset.objects.get(name='Monitor')
-        self.assertEqual(monitor.tracking_id, 'HD GF ACC MNT 008')
+        self.assertEqual(monitor.tracking_id, 'HD-GF-ACC-MNT-008')
         self.assertEqual(monitor.location.name, 'Ground Floor')
         self.assertEqual(monitor.department.name, 'Account')
         self.assertEqual(monitor.assigned_to, self.assignee)

@@ -579,6 +579,21 @@ function refreshSidebarBadges() {
     });
 }
 
+function refreshSidebarBadgeCounts() {
+    const badges = document.querySelectorAll('[data-sidebar-badge="true"]');
+    badges.forEach(function(badge) {
+        const url = badge.getAttribute('hx-get');
+        if (!url) return;
+        if (window.htmx) {
+            htmx.ajax('GET', url, {
+                target: badge,
+                swap: badge.getAttribute('hx-swap') || 'innerHTML',
+                values: badge.dataset.values || {}
+            });
+        }
+    });
+}
+
 // Child badges (Remote Sessions, My Assets, Manager Review, ...) refresh
 // on their own independent HTMX polling intervals — recompute the
 // relevant parent's aggregate whenever any of them swaps in new content.
@@ -586,6 +601,16 @@ document.addEventListener('htmx:afterSwap', function(event) {
     if (event.target.closest && event.target.closest('.section-content')) {
         refreshSidebarBadges();
     }
+});
+
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        refreshSidebarBadgeCounts();
+    }
+});
+
+window.addEventListener('focus', function() {
+    refreshSidebarBadgeCounts();
 });
 
 function handleSectionToggle(e) {

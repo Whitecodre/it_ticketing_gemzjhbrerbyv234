@@ -15,6 +15,10 @@ SESSION_COOKIE_AGE = 86400  # 24 hours (in seconds)
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # Session persists after browser close
 SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
 SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection (Lax or Strict)
+# Cloudflare/edge deployments often terminate TLS at the edge and forward
+# host/proto headers. Respect the forwarded Host so redirects and builds use
+# the external host instead of the internal service name.
+USE_X_FORWARDED_HOST = True
 # Redis-cached, DB-backed: reads/writes hit Redis first (fast, and avoids a
 # DB round trip on every single request), while the DB copy means a session
 # survives a Redis restart/eviction instead of silently logging everyone out.

@@ -50,7 +50,7 @@
                 <td class="py-3">
                     <div id="sla-container-{{ ticket.pk }}"
                         hx-get="{% url 'tickets:sla_badge' ticket.pk %}"
-                        hx-trigger="every 5s"
+                        data-sidebar-badge="true"
                         hx-swap="innerHTML">
                         {% with sla_info=ticket.sla_status %}
                         <div class="flex flex-col">

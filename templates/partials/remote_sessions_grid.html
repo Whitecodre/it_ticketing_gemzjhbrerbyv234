@@ -1,7 +1,7 @@
 {% load lucide %}
 <div id="remoteSessionsGrid"
      hx-get="{% url 'tickets:remote_sessions_list' %}?page={{ request.GET.page|default:'' }}&sort={{ active_sort }}"
-     hx-trigger="every 20s"
+     data-sidebar-badge="true"
      hx-target="this"
      hx-swap="outerHTML">
     {# Grid of remote session cards #}
