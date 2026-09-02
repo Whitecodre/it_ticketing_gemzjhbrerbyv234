@@ -40,6 +40,7 @@
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Priority</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requester</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Department</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Stage</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Waiting</th>
                         <th class="text-center py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Action</th>
                     </tr>
@@ -62,6 +63,13 @@
                         </td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_full_name_with_role }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_department_display }}</td>
+                        <td class="py-3 px-4">
+                            {% if ticket.status == 'PENDING_IT_REVIEW' %}
+                            <span class="status-chip in_progress text-xs">IT Review</span>
+                            {% else %}
+                            <span class="status-chip pending_approval text-xs">Department Review</span>
+                            {% endif %}
+                        </td>
                         <td class="py-3 px-4 text-text-secondary text-xs">{{ ticket.created_at|timesince }} ago</td>
                         <td class="py-3 px-4 text-center">
                             <a href="{% url 'tickets:manager_review_ticket' ticket.pk %}" class="btn-primary text-xs px-3 py-1 rounded">

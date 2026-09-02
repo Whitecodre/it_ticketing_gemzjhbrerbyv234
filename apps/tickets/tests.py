@@ -3046,8 +3046,22 @@ class ServiceRequestFlowTests(TestCase):
     def test_manager_request_changes_posts_comment_and_resubmit_returns_to_review(self):
         """The manager's reason must be visible on the ticket (not just an
         activity-log entry), and once the requester replies, the ticket must
-        go back through manager review, not straight to the agent pool."""
-        self.client.login(email='user@example.com', password='TestPass123!')
+        go back through manager review, not straight to the agent pool.
+        Uses a non-IT requester/lead deliberately — an IT-department
+        requester skips straight to the IT review stage (see
+        TwoStageServiceRequestApprovalTests), which behaves differently."""
+        ops_user = User.objects.create_user(
+            email='ops-user@example.com', password='TestPass123!',
+            first_name='Ops', last_name='User', department='OPERATIONS',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        ops_lead = User.objects.create_user(
+            email='ops-lead@example.com', password='TestPass123!',
+            first_name='Ops', last_name='Lead', department='OPERATIONS',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+
+        self.client.login(email='ops-user@example.com', password='TestPass123!')
         self.client.post(reverse('tickets:create'), {
             'type': 'SERVICE_REQUEST',
             'title': 'Need a monitor',
@@ -3061,7 +3075,7 @@ class ServiceRequestFlowTests(TestCase):
         ticket = Ticket.objects.filter(title='Need a monitor').first()
         self.assertEqual(ticket.status, Ticket.Status.PENDING_MANAGER_REVIEW)
 
-        self.client.login(email='lead@example.com', password='TestPass123!')
+        self.client.login(email='ops-lead@example.com', password='TestPass123!')
         response = self.client.post(
             reverse('tickets:manager_review_ticket', args=[ticket.pk]),
             {'action': 'request_changes', 'comment': 'Please specify monitor size'}
@@ -3074,7 +3088,7 @@ class ServiceRequestFlowTests(TestCase):
             ticket.comments.filter(body__icontains='Please specify monitor size').exists()
         )
 
-        self.client.login(email='user@example.com', password='TestPass123!')
+        self.client.login(email='ops-user@example.com', password='TestPass123!')
         response = self.client.post(
             reverse('tickets:detail', args=[ticket.pk]),
             {'body': '27 inch please'},
@@ -3180,6 +3194,176 @@ class ServiceRequestFlowTests(TestCase):
 
         asset.refresh_from_db()
         self.assertEqual(asset.assigned_to, self.end_user)
+
+
+class TwoStageServiceRequestApprovalTests(TestCase):
+    """Department Lead -> IT Lead approval chain for service requests.
+    Nothing reaches fulfillment/the agent queue until both stages clear;
+    IT-stage 'request changes' returns to the department lead (the
+    previous approval level), not the requester directly; an IT-department
+    requester has no separate department-lead step to skip to, so their
+    requests start straight at the IT review stage."""
+
+    def setUp(self):
+        self.client = Client()
+        self.category = Category.objects.create(name='Hardware', slug='hardware')
+        self.service_category = ServiceCategory.objects.create(
+            name='Asset Category', slug='asset-category-2', field_group=ServiceCategory.FieldGroup.ASSET
+        )
+        self.general_category = ServiceCategory.objects.create(
+            name='General Category', slug='general-category', field_group=ServiceCategory.FieldGroup.GENERAL
+        )
+
+        self.ops_user = User.objects.create_user(
+            email='ops-req@example.com', password='TestPass123!',
+            first_name='Ops', last_name='Requester', department='OPERATIONS',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.ops_lead = User.objects.create_user(
+            email='ops-lead2@example.com', password='TestPass123!',
+            first_name='Ops', last_name='Lead', department='OPERATIONS',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+        self.it_lead = User.objects.create_user(
+            email='it-lead@example.com', password='TestPass123!',
+            first_name='IT', last_name='Lead', department='IT',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+        self.it_admin = User.objects.create_user(
+            email='it-admin@example.com', password='TestPass123!',
+            first_name='IT', last_name='Admin', department='IT',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.non_it_admin = User.objects.create_user(
+            email='ops-admin@example.com', password='TestPass123!',
+            first_name='Ops', last_name='Admin', department='OPERATIONS',
+            role=User.Role.ADMIN, is_active=True, email_verified=True,
+        )
+        self.it_requester = User.objects.create_user(
+            email='it-req@example.com', password='TestPass123!',
+            first_name='IT', last_name='Requester', department='IT',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+
+    def _submit(self, requester_email, title, service_category):
+        self.client.login(email=requester_email, password='TestPass123!')
+        self.client.post(reverse('tickets:create'), {
+            'type': 'SERVICE_REQUEST', 'title': title, 'description': 'desc',
+            'service_category': service_category.id, 'purpose': 'purpose', 'urgency': 'MEDIUM',
+            'number_of_assets': '1', 'asset_type': 'LAPTOP',
+        })
+        return Ticket.objects.get(title=title)
+
+    def _review(self, actor_email, ticket, action, comment='comment'):
+        self.client.login(email=actor_email, password='TestPass123!')
+        return self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': action, 'comment': comment},
+        )
+
+    def test_non_it_requester_starts_at_department_stage(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket A', self.service_category)
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_MANAGER_REVIEW)
+
+    def test_it_requester_skips_straight_to_it_stage(self):
+        ticket = self._submit('it-req@example.com', 'Ticket B', self.service_category)
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+
+    def test_dept_approval_alone_does_not_reach_fulfillment(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket C', self.service_category)
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+
+    def test_it_lead_cannot_review_department_stage_ticket(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket D', self.service_category)
+        response = self._review('it-lead@example.com', ticket, 'approve')
+        self.assertEqual(response.status_code, 403)
+
+    def test_ops_lead_cannot_review_it_stage_ticket(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket E', self.service_category)
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+        response = self._review('ops-lead2@example.com', ticket, 'approve')
+        self.assertEqual(response.status_code, 403)
+
+    def test_both_stages_approved_asset_request_notifies_only_it_admins(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket F', self.service_category)
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        self._review('it-lead@example.com', ticket, 'approve')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_FULFILLMENT)
+
+        it_admin_notified = Notification.objects.filter(
+            recipient=self.it_admin, message__icontains=ticket.number
+        ).exists()
+        non_it_admin_notified = Notification.objects.filter(
+            recipient=self.non_it_admin, message__icontains=ticket.number
+        ).exists()
+        self.assertTrue(it_admin_notified)
+        self.assertFalse(non_it_admin_notified)
+
+    def test_both_stages_approved_non_asset_request_reaches_approved(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket G', self.general_category)
+        self.assertFalse(ticket.is_asset_request)
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        self._review('it-lead@example.com', ticket, 'approve')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.APPROVED)
+
+    def test_it_stage_request_changes_returns_to_department_lead_not_requester(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket H', self.service_category)
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+
+        self._review('it-lead@example.com', ticket, 'request_changes', comment='Wrong laptop spec')
+        ticket.refresh_from_db()
+        # Back to the department lead, not PENDING_USER (the requester).
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_MANAGER_REVIEW)
+        self.assertTrue(
+            ticket.comments.filter(body__icontains='Wrong laptop spec').exists()
+        )
+
+        # The department lead can now re-approve, sending it back to IT again.
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+
+    def test_reject_at_either_stage_closes_the_ticket(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket I', self.service_category)
+        self._review('ops-lead2@example.com', ticket, 'reject', comment='Not needed')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.CLOSED)
+
+        ticket2 = self._submit('ops-req@example.com', 'Ticket J', self.service_category)
+        self._review('ops-lead2@example.com', ticket2, 'approve')
+        self._review('it-lead@example.com', ticket2, 'reject', comment='Budget')
+        ticket2.refresh_from_db()
+        self.assertEqual(ticket2.status, Ticket.Status.CLOSED)
+
+    def test_manager_review_count_badge_for_it_lead_includes_both_stages(self):
+        self._submit('ops-req@example.com', 'Ticket K', self.service_category)
+        it_stage_ticket = self._submit('it-req@example.com', 'Ticket L', self.service_category)
+        self.assertEqual(it_stage_ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+
+        self.client.login(email='it-lead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_count'))
+        self.assertContains(response, '1')  # only the IT-stage ticket, not the OPERATIONS one
+
+    def test_manager_review_history_includes_both_approval_actions(self):
+        ticket = self._submit('ops-req@example.com', 'Ticket M', self.service_category)
+        self._review('ops-lead2@example.com', ticket, 'approve')
+        self._review('it-lead@example.com', ticket, 'approve')
+
+        self.client.login(email='ops-lead2@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_history'))
+        self.assertContains(response, 'Ticket M')
+
+        self.client.login(email='it-lead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_history'))
+        self.assertContains(response, 'Ticket M')
 
 
 class ServiceRequestVesselJobDiveSystemTests(TestCase):

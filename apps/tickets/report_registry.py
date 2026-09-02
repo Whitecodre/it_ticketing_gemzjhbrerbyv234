@@ -181,10 +181,16 @@ def service_request_form_sections(ticket):
     captured yet as pending rather than guessing."""
     from .models import TicketActivityLog
 
+    # The form's one signature line is literally labeled "IT Manager
+    # Signature" (see templates/reports/service_request_form_pdf*.html) —
+    # scoped to the IT-stage approval specifically (it_approved/etc, the
+    # second of the two review stages), not the department lead's earlier
+    # approval. That department-lead stage has no dedicated slot on this
+    # physical form; adding one is a separate form-redesign decision.
     manager_log = (
         TicketActivityLog.objects.filter(
             ticket=ticket,
-            action__in=['manager_approved', 'manager_rejected', 'manager_requested_changes'],
+            action__in=['it_approved', 'it_rejected', 'it_requested_changes'],
         )
         .select_related('actor')
         .order_by('-created_at')
