@@ -301,6 +301,14 @@
             <span class="shrink-0">{% lucide "users" size=16 class="h-4 w-4" %}</span>
             <span>Shared with me</span>
         </a>
+        {% if user.can_manage_display_documents %}
+        <a href="{% url 'documents_display:document_trash' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'document_trash' %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "trash-2" size=16 class="h-4 w-4" %}</span>
+            <span>My Trash</span>
+        </a>
+        {% endif %}
     </div>
 </div>
 
