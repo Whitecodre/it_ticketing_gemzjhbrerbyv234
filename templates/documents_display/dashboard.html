@@ -39,8 +39,11 @@
             </div>
             
             {% if user.can_manage_display_documents %}
-            <a href="{% url 'documents_display:folder_list' %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                {% lucide "folder" size=16 %} My Folders
+            <a href="{% url 'documents_display:folder_list' %}" class="btn-outline btn-icon rounded-lg" title="My Folders" aria-label="My Folders">
+                {% lucide "folder" size=18 %}
+            </a>
+            <a href="{% url 'documents_display:document_trash' %}" class="btn-outline btn-icon rounded-lg" title="Trash" aria-label="Trash">
+                {% lucide "trash-2" size=18 %}
             </a>
             <a href="{% url 'documents_display:document_create' %}" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
                 {% lucide "plus" size=16 %} Upload Document

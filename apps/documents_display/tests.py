@@ -262,6 +262,67 @@ class DocumentShareTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class DocumentTrashTests(TestCase):
+    """Soft-delete -> Trash -> restore/permanently-delete lifecycle."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            email='admin@example.com', password='TestPass123!',
+            first_name='Admin', last_name='User', department='IT', role=User.Role.ADMIN,
+        )
+        self.end_user = User.objects.create_user(
+            email='enduser@example.com', password='TestPass123!',
+            first_name='End', last_name='User', department='LEGAL', role=User.Role.END_USER,
+        )
+        self.category = DisplayCategory.objects.create(name='Policies')
+        self.document = DisplayDocument.objects.create(
+            title='Old Handbook', category=self.category, file=make_pdf(), created_by=self.admin,
+        )
+        self.client = Client()
+
+    def _login_admin(self):
+        self.client.login(email='admin@example.com', password='TestPass123!')
+
+    def test_deleted_document_appears_in_trash(self):
+        self._login_admin()
+        self.client.post(reverse('documents_display:document_delete', args=[self.document.slug]))
+        response = self.client.get(reverse('documents_display:document_trash'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Old Handbook')
+
+    def test_restore_undoes_soft_delete(self):
+        self._login_admin()
+        self.client.post(reverse('documents_display:document_delete', args=[self.document.slug]))
+        self.client.post(reverse('documents_display:document_restore', args=[self.document.slug]))
+        self.document.refresh_from_db()
+        self.assertFalse(self.document.is_deleted)
+        self.assertIsNone(self.document.deleted_by)
+        self.assertIsNone(self.document.deleted_at)
+
+    def test_permanent_delete_removes_row_and_versions(self):
+        self._login_admin()
+        DisplayVersion.objects.create(
+            document=self.document, version_number=1, file=make_pdf('old.pdf'), created_by=self.admin,
+        )
+        self.client.post(reverse('documents_display:document_delete', args=[self.document.slug]))
+        response = self.client.post(reverse('documents_display:document_permanent_delete', args=[self.document.slug]))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(DisplayDocument.objects.filter(pk=self.document.pk).exists())
+        self.assertFalse(DisplayVersion.objects.filter(document_id=self.document.pk).exists())
+
+    def test_permanent_delete_requires_prior_soft_delete(self):
+        """Can't skip the Trash step and purge a live document directly."""
+        self._login_admin()
+        response = self.client.post(reverse('documents_display:document_permanent_delete', args=[self.document.slug]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(DisplayDocument.objects.filter(pk=self.document.pk).exists())
+
+    def test_non_admin_cannot_reach_trash(self):
+        self.client.login(email='enduser@example.com', password='TestPass123!')
+        response = self.client.get(reverse('documents_display:document_trash'))
+        self.assertNotEqual(response.status_code, 200)
+
+
 class DocumentVersionDownloadTests(TestCase):
     """Tests for the permission-checked old-version download endpoint,
     replacing the raw media-URL link that used to bypass is_downloadable_by()."""

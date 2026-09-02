@@ -1,0 +1,84 @@
+{# templates/documents_display/document_trash.html #}
+
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load badge_tags %}
+
+{% block dashboard_title %}Trash{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full max-w-4xl mx-auto">
+    {% url 'dashboard' as dash_url %}
+    {% url 'documents_display:dashboard' as docs_url %}
+    {% breadcrumbs "Dashboard" dash_url "Documents" docs_url "Trash" %}
+
+    <div class="flex items-center gap-3 mb-6">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            {% lucide "trash-2" size=19 %}
+        </span>
+        <div>
+            <h2 class="text-lg font-semibold text-text-primary">Trash</h2>
+            <p class="text-sm text-text-secondary">Deleted documents stay here until restored or permanently removed.</p>
+        </div>
+    </div>
+
+    <div class="dashboard-card p-5">
+        {% if documents %}
+        <div class="space-y-2">
+            {% for document in documents %}
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border p-3" style="border-color: var(--color-border); background-color: var(--color-background);">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    {% lucide "file-text" size=16 %}
+                </span>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ document.title }}</p>
+                    <p class="text-xs text-text-secondary">
+                        {{ document.category.name }} &middot; {{ document.file_size|filesizeformat }}
+                        &middot; Deleted {{ document.deleted_at|date:"M d, Y H:i" }}
+                        {% if document.deleted_by %}by {{ document.deleted_by.get_full_name }}{% endif %}
+                    </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <form method="post" action="{% url 'documents_display:document_restore' document.slug %}" class="inline" id="restoreForm{{ document.pk }}">
+                        {% csrf_token %}
+                        <button type="button" class="btn-outline btn-icon rounded-lg" title="Restore" aria-label="Restore"
+                                onclick="openConfirmationModal({
+                                    title: 'Restore Document',
+                                    message: 'Restore \'{{ document.title|escapejs }}\'?',
+                                    detail: 'It will become visible again wherever it was before. Any shares that were revoked when it was deleted stay revoked.',
+                                    confirmText: 'Yes, restore it',
+                                    confirmButtonClass: 'btn-success',
+                                    icon: 'success',
+                                    onConfirm: function() { document.getElementById('restoreForm{{ document.pk }}').submit(); }
+                                })">
+                            {% lucide "rotate-ccw" size=16 %}
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'documents_display:document_permanent_delete' document.slug %}" class="inline" id="purgeForm{{ document.pk }}">
+                        {% csrf_token %}
+                        <button type="button" class="btn-outline btn-icon rounded-lg text-error" title="Delete Permanently" aria-label="Delete Permanently"
+                                onclick="confirmDelete('{{ document.title|escapejs }}', 'Document', function() { document.getElementById('purgeForm{{ document.pk }}').submit(); })">
+                            {% lucide "trash-2" size=16 %}
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-10">
+            <span class="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mx-auto mb-3">
+                {% lucide "trash-2" size=20 %}
+            </span>
+            <p class="text-sm font-medium" style="color: var(--color-text-primary);">Trash is empty</p>
+            <p class="text-xs text-text-secondary mt-1">Deleted documents will show up here.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

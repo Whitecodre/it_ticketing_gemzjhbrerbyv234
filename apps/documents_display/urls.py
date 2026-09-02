@@ -20,6 +20,9 @@ urlpatterns = [
     path('document/<slug:slug>/download/', views.document_download, name='document_download'),
     path('document/<slug:slug>/versions/<int:version_id>/download/', views.document_version_download, name='document_version_download'),
     path('document/<slug:slug>/delete/', views.document_delete, name='document_delete'),
+    path('trash/', views.document_trash, name='document_trash'),
+    path('document/<slug:slug>/restore/', views.document_restore, name='document_restore'),
+    path('document/<slug:slug>/permanent-delete/', views.document_permanent_delete, name='document_permanent_delete'),
     path('document/<slug:slug>/history/', views.document_history, name='document_history'),
     path('document/<slug:slug>/serve/', views.document_serve_file, name='document_serve_file'),
 

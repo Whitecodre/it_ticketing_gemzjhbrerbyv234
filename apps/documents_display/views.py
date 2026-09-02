@@ -410,6 +410,65 @@ def document_delete(request, slug):
     return redirect('documents_display:dashboard')
 
 
+@login_required
+@document_admin_required
+def document_trash(request):
+    """Admin-only list of soft-deleted documents, restorable or purgeable.
+    document_admin_required already limits this to Admin/superuser (not
+    Superadmin — see that decorator's docstring), matching every other
+    document-management action."""
+    documents = DisplayDocument.objects.filter(is_deleted=True).select_related('category', 'deleted_by').order_by('-deleted_at')
+    context = {
+        'documents': documents,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'documents_display/document_trash.html', context)
+
+
+@login_required
+@document_admin_required
+@require_POST
+def document_restore(request, slug):
+    """Undo a soft delete. Deliberately does not re-activate shares that
+    document_delete revoked — a share link going live again automatically
+    would be a surprising, less-safe default; re-sharing is a conscious
+    admin action instead."""
+    document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=True)
+    document.is_deleted = False
+    document.deleted_by = None
+    document.deleted_at = None
+    document.save()
+    messages.success(request, f'Document "{document.title}" has been restored.')
+    return redirect('documents_display:document_trash')
+
+
+@login_required
+@document_admin_required
+@require_POST
+def document_permanent_delete(request, slug):
+    """Actually remove a document — only reachable from the Trash, i.e.
+    only after it's already been soft-deleted once. Explicitly clears the
+    Cloudinary-backed files (document + preview + every version's file)
+    before removing the row, since FileField storage content isn't
+    auto-deleted by model .delete() — leaving it would silently accumulate
+    orphaned files in storage. DisplayVersion/DocumentShare/
+    DocumentDepartmentAccess rows cascade automatically (on_delete=CASCADE)."""
+    document = get_object_or_404(DisplayDocument, slug=slug, is_deleted=True)
+    title = document.title
+
+    for version in document.versions.all():
+        if version.file:
+            version.file.delete(save=False)
+    if document.file:
+        document.file.delete(save=False)
+    if document.preview_pdf:
+        document.preview_pdf.delete(save=False)
+
+    document.delete()
+    messages.success(request, f'"{title}" has been permanently deleted.')
+    return redirect('documents_display:document_trash')
+
+
 def _permission_denied_response(message='Permission denied'):
     """Small self-contained HTML response for permission failures that can
     render inside a document viewer's <embed>/<iframe> or an HTMX-swapped

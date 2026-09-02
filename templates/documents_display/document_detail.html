@@ -37,26 +37,31 @@
             </div>
             <div class="flex gap-2 shrink-0 flex-wrap">
                 <!-- View Inline Button -->
-                <a href="{% url 'documents_display:document_viewer' document.slug %}" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                    {% lucide "eye" size=16 %} View
+                <a href="{% url 'documents_display:document_viewer' document.slug %}" class="btn-primary btn-icon rounded-lg" title="View" aria-label="View">
+                    {% lucide "eye" size=18 %}
                 </a>
                 {% if can_download %}
-                <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                    {% lucide "download" size=16 %} Download
+                <a href="{% url 'documents_display:document_download' document.slug %}" class="btn-outline btn-icon rounded-lg" title="Download" aria-label="Download">
+                    {% lucide "download" size=18 %}
                 </a>
                 {% endif %}
                 {% if user.can_manage_display_documents %}
-                <a href="{% url 'documents_display:document_edit' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                    {% lucide "pencil" size=16 %} Edit
+                <a href="{% url 'documents_display:document_edit' document.slug %}" class="btn-outline btn-icon rounded-lg" title="Edit" aria-label="Edit">
+                    {% lucide "pencil" size=18 %}
                 </a>
-                {% endif %}
-                {% if user.can_manage_display_documents %}
-                <a href="{% url 'documents_display:document_share' document.slug %}" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                    {% lucide "share-2" size=16 %} Share
+                <a href="{% url 'documents_display:document_share' document.slug %}" class="btn-outline btn-icon rounded-lg" title="Share" aria-label="Share">
+                    {% lucide "share-2" size=18 %}
                 </a>
-                <button type="button" onclick="document.getElementById('addToFolderModal').classList.remove('hidden')" class="btn-outline text-sm px-4 py-2 rounded-lg flex items-center gap-2">
-                    {% lucide "folder-plus" size=16 %} Add to Folder
+                <button type="button" onclick="document.getElementById('addToFolderModal').classList.remove('hidden')" class="btn-outline btn-icon rounded-lg" title="Add to Folder" aria-label="Add to Folder">
+                    {% lucide "folder-plus" size=18 %}
                 </button>
+                <form method="post" action="{% url 'documents_display:document_delete' document.slug %}" class="inline" id="deleteDocumentForm">
+                    {% csrf_token %}
+                    <button type="button" class="btn-outline btn-icon rounded-lg text-error" title="Delete" aria-label="Delete"
+                            onclick="confirmDelete('{{ document.title|escapejs }}', 'Document', function() { document.getElementById('deleteDocumentForm').submit(); })">
+                        {% lucide "trash-2" size=18 %}
+                    </button>
+                </form>
                 {% endif %}
             </div>
         </div>
