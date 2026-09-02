@@ -152,6 +152,29 @@ def notify_department_team_leads_pending_review(ticket):
             type=Notification.Type.MANAGER_REVIEW,
         )
 
+
+def notify_it_team_leads_pending_review(ticket):
+    """Second approval stage — alerts every IT department Team Lead that a
+    service request (already cleared by the requester's own department
+    lead, or skipping straight here if the requester is themselves in IT —
+    see create_ticket) is waiting in PENDING_IT_REVIEW. Mirrors
+    notify_department_team_leads_pending_review above, just scoped to the
+    IT department specifically rather than the requester's own."""
+    from django.db.models import Q
+    candidates = User.objects.filter(
+        Q(role=User.Role.TEAM_LEAD) | Q(roles__name='TEAM_LEAD'),
+        department='IT', is_active=True,
+    ).distinct()
+    leads = [u for u in candidates if effective_role_name(u) == 'TEAM_LEAD']
+    for lead in leads:
+        Notification.objects.create(
+            recipient=lead,
+            role=role_of(lead),
+            message=f'Service request {ticket.number} from {ticket.requester.get_full_name()} needs IT department approval.',
+            url=reverse('tickets:manager_review_ticket', kwargs={'pk': ticket.pk}),
+            type=Notification.Type.MANAGER_REVIEW,
+        )
+
 # Helper function to handle "Other" field logic
 def get_other_value(data, select_field, other_field, default_value):
     """Helper to handle 'Other' field logic for asset forms."""
@@ -396,18 +419,28 @@ def create_ticket(request):
 
             restore_kept_draft_attachments(ticket, request)
 
-            # If it's a service request, set status to PENDING_MANAGER_REVIEW
+            # If it's a service request, route it into the two-stage approval
+            # chain: the requester's own department Team Lead first, then
+            # the IT department Team Lead. A requester who's already in the
+            # IT department has no separate "department lead" step to skip
+            # to — their department lead *is* an IT Team Lead — so their
+            # requests start directly at the IT review stage instead of
+            # requiring the same authority to approve it twice in a row.
             if ticket.type == Ticket.Type.SERVICE_REQUEST:
-                ticket.status = Ticket.Status.PENDING_MANAGER_REVIEW
+                requester_is_it = ticket.requester.department == 'IT'
+                ticket.status = Ticket.Status.PENDING_IT_REVIEW if requester_is_it else Ticket.Status.PENDING_MANAGER_REVIEW
 
                 if ticket.service_category and ticket.service_category.field_group == ServiceCategory.FieldGroup.ASSET:
                     ticket.is_asset_request = True
                     ticket.is_mobilization_request = request.POST.get('is_mobilization_request') == 'on'
 
                 ticket.save(update_fields=['status', 'is_asset_request', 'is_mobilization_request'])
-                notify_department_team_leads_pending_review(ticket)
-
-                messages.success(request, f'Service request {ticket.number} submitted for manager review.')
+                if requester_is_it:
+                    notify_it_team_leads_pending_review(ticket)
+                    messages.success(request, f'Service request {ticket.number} submitted for IT department review.')
+                else:
+                    notify_department_team_leads_pending_review(ticket)
+                    messages.success(request, f'Service request {ticket.number} submitted for manager review.')
             else:
                 messages.success(request, f'Ticket {ticket.number} created successfully.')
 
@@ -4573,15 +4606,17 @@ def resolved_service_requests(request):
 
 @login_required
 def manager_review_queue(request):
-    """Team Lead view – list service requests pending manager review."""
+    """Team Lead view – list service requests pending review: the
+    department-lead stage (this Team Lead's own department only), plus,
+    for IT Team Leads specifically, the second/IT-review stage org-wide."""
     if effective_role_name(request.user) != User.Role.TEAM_LEAD:
         return HttpResponse(status=403)
 
     order_args, active_sort, sort_options = resolve_sort(request, TICKET_SORT_OPTIONS, '-created_at')
-    tickets = Ticket.objects.filter(
-        status=Ticket.Status.PENDING_MANAGER_REVIEW,
-        requester__department=request.user.department
-    ).order_by(*order_args)
+    stage_filter = Q(status=Ticket.Status.PENDING_MANAGER_REVIEW, requester__department=request.user.department)
+    if request.user.department == 'IT':
+        stage_filter |= Q(status=Ticket.Status.PENDING_IT_REVIEW)
+    tickets = Ticket.objects.filter(stage_filter).order_by(*order_args)
 
     context = {
         'tickets': tickets,
@@ -4594,20 +4629,33 @@ def manager_review_queue(request):
 
 @login_required
 def manager_review_ticket(request, pk):
-    """Team Lead review page for a single service request."""
+    """Team Lead review page for a single service request — handles both
+    approval stages (department lead, then IT department lead). They share
+    one view/template since the action set is identical (approve/reject/
+    request changes), and a ticket bounced back by IT re-enters this exact
+    same view+status for the department lead, no separate page needed."""
     if effective_role_name(request.user) != User.Role.TEAM_LEAD:
         return HttpResponse(status=403)
 
     ticket = get_object_or_404(Ticket, pk=pk)
+    stage = ticket.status
 
-    # Security: ensure ticket belongs to Team Lead's department
-    if ticket.requester.department != request.user.department:
-        return HttpResponse(status=403)
-
-    # Only allow review of PENDING_MANAGER_REVIEW tickets
-    if ticket.status != Ticket.Status.PENDING_MANAGER_REVIEW:
-        messages.warning(request, f'Ticket {ticket.number} is not pending manager review.')
+    if stage == Ticket.Status.PENDING_MANAGER_REVIEW:
+        # Security: ensure ticket belongs to Team Lead's department
+        if ticket.requester.department != request.user.department:
+            return HttpResponse(status=403)
+    elif stage == Ticket.Status.PENDING_IT_REVIEW:
+        if request.user.department != 'IT':
+            return HttpResponse(status=403)
+    else:
+        messages.warning(request, f'Ticket {ticket.number} is not pending review.')
         return redirect('tickets:manager_review_queue')
+
+    is_it_stage = stage == Ticket.Status.PENDING_IT_REVIEW
+    approved_action = 'it_approved' if is_it_stage else 'manager_approved'
+    rejected_action = 'it_rejected' if is_it_stage else 'manager_rejected'
+    changes_action = 'it_requested_changes' if is_it_stage else 'manager_requested_changes'
+    approver_label = 'the IT department' if is_it_stage else 'your manager'
 
     if request.method == 'POST':
         action = request.POST.get('action', '').strip()
@@ -4622,18 +4670,44 @@ def manager_review_ticket(request, pk):
             # ================================================================
             # APPROVAL - Comment is Optional
             # ================================================================
-            if ticket.is_asset_request:
-                ticket.status = Ticket.Status.PENDING_FULFILLMENT
+            if not is_it_stage:
+                # Department lead cleared it — on to the IT department for
+                # the second and final approval. Nothing reaches fulfillment
+                # or the agent queue until both stages have approved.
+                ticket.status = Ticket.Status.PENDING_IT_REVIEW
                 ticket.save()
-                
+
                 TicketActivityLog.objects.create(
                     ticket=ticket,
-                    action='manager_approved',
+                    action=approved_action,
+                    actor=request.user,
+                    details={'comment': comment if comment else 'No comment provided', 'routed_to': 'PENDING_IT_REVIEW'}
+                )
+
+                notify_it_team_leads_pending_review(ticket)
+
+                Notification.objects.create(
+                    recipient=ticket.requester,
+                    role=role_of(ticket.requester),
+                    message=f'Your service request {ticket.number} was approved by your department lead and is now awaiting IT department approval.',
+                    url=reverse('tickets:detail', args=[ticket.pk])
+                )
+
+                messages.success(request, f'Ticket {ticket.number} approved and sent to the IT department for final review.')
+            elif ticket.is_asset_request:
+                ticket.status = Ticket.Status.PENDING_FULFILLMENT
+                ticket.save()
+
+                TicketActivityLog.objects.create(
+                    ticket=ticket,
+                    action=approved_action,
                     actor=request.user,
                     details={'comment': comment if comment else 'No comment provided', 'routed_to': 'PENDING_FULFILLMENT'}
                 )
-                
-                admins = User.objects.filter(role=User.Role.ADMIN, is_active=True)
+
+                # Fulfillment is an IT-department responsibility — narrow to
+                # IT Admins specifically rather than every Admin org-wide.
+                admins = User.objects.filter(role=User.Role.ADMIN, department='IT', is_active=True)
                 for admin in admins:
                     Notification.objects.create(
                         recipient=admin,
@@ -4641,33 +4715,33 @@ def manager_review_ticket(request, pk):
                         message=f'Asset request {ticket.number} from {ticket.requester.get_full_name()} needs fulfillment.',
                         url=reverse('tickets:conversation', args=[ticket.pk])
                     )
-                
+
                 Notification.objects.create(
                     recipient=ticket.requester,
                     role=role_of(ticket.requester),
-                    message=f'Your asset request {ticket.number} has been approved by your manager and is pending fulfillment.',
+                    message=f'Your asset request {ticket.number} has been fully approved and is pending fulfillment.',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
-                
-                messages.success(request, f'Asset request {ticket.number} approved. An admin will fulfill it shortly.')
+
+                messages.success(request, f'Asset request {ticket.number} approved. An IT admin will fulfill it shortly.')
             else:
                 ticket.status = Ticket.Status.APPROVED
                 ticket.save()
-                
+
                 TicketActivityLog.objects.create(
                     ticket=ticket,
-                    action='manager_approved',
+                    action=approved_action,
                     actor=request.user,
                     details={'comment': comment if comment else 'No comment provided', 'routed_to': 'APPROVED'}
                 )
-                
+
                 Notification.objects.create(
                     recipient=ticket.requester,
                     role=role_of(ticket.requester),
-                    message=f'Your service request {ticket.number} has been approved.',
+                    message=f'Your service request {ticket.number} has been fully approved.',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
-                
+
                 agents = User.objects.filter(role__in=[User.Role.AGENT, User.Role.TEAM_LEAD])
                 for agent in agents:
                     Notification.objects.create(
@@ -4676,7 +4750,7 @@ def manager_review_ticket(request, pk):
                         message=f'New approved ticket {ticket.number}: {ticket.title}',
                         url=reverse('tickets:detail', args=[ticket.pk])
                     )
-                
+
                 messages.success(request, f'Ticket {ticket.number} approved and sent to agent queue.')
 
         elif action == 'reject':
@@ -4684,42 +4758,64 @@ def manager_review_ticket(request, pk):
             ticket.save()
             TicketActivityLog.objects.create(
                 ticket=ticket,
-                action='manager_rejected',
+                action=rejected_action,
                 actor=request.user,
                 details={'comment': comment}
             )
             Notification.objects.create(
                 recipient=ticket.requester,
                 role=role_of(ticket.requester),
-                message=f'Your service request {ticket.number} was rejected by your manager. Reason: {comment}',
+                message=f'Your service request {ticket.number} was rejected by {approver_label}. Reason: {comment}',
                 url=reverse('tickets:detail', args=[ticket.pk])
             )
             messages.info(request, f'Ticket {ticket.number} rejected.')
 
         elif action == 'request_changes':
-            ticket.status = Ticket.Status.PENDING_USER
-            ticket.save()
-            TicketActivityLog.objects.create(
-                ticket=ticket,
-                action='manager_requested_changes',
-                actor=request.user,
-                details={'comment': comment}
-            )
-            # Post the reason as a real comment — previously it only lived in
-            # the activity log and the notification text, so the requester's
-            # ticket page showed nothing explaining what to change.
-            comment_body = clean_comment_body(f'<p><strong>Changes requested:</strong> {comment}</p>')
-            if comment_body:
-                TicketComment.objects.create(
-                    ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body
+            if is_it_stage:
+                # Sent back to the previous approval level, per design: the
+                # department lead re-reviews IT's concern (and decides
+                # whether to re-approve straight back to IT, or bounce it
+                # further to the requester themselves), rather than the
+                # requester being pulled in directly at this point.
+                ticket.status = Ticket.Status.PENDING_MANAGER_REVIEW
+                ticket.save()
+                TicketActivityLog.objects.create(
+                    ticket=ticket,
+                    action=changes_action,
+                    actor=request.user,
+                    details={'comment': comment}
                 )
-            Notification.objects.create(
-                recipient=ticket.requester,
-                role=role_of(ticket.requester),
-                message=f'Changes requested for ticket {ticket.number} by your manager: {comment}',
-                url=reverse('tickets:detail', args=[ticket.pk])
-            )
-            messages.info(request, f'Changes requested on ticket {ticket.number}.')
+                comment_body = clean_comment_body(f'<p><strong>IT department requested changes:</strong> {comment}</p>')
+                if comment_body:
+                    TicketComment.objects.create(
+                        ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body
+                    )
+                notify_department_team_leads_pending_review(ticket)
+                messages.info(request, f'Ticket {ticket.number} sent back to the department lead for review.')
+            else:
+                ticket.status = Ticket.Status.PENDING_USER
+                ticket.save()
+                TicketActivityLog.objects.create(
+                    ticket=ticket,
+                    action=changes_action,
+                    actor=request.user,
+                    details={'comment': comment}
+                )
+                # Post the reason as a real comment — previously it only lived in
+                # the activity log and the notification text, so the requester's
+                # ticket page showed nothing explaining what to change.
+                comment_body = clean_comment_body(f'<p><strong>Changes requested:</strong> {comment}</p>')
+                if comment_body:
+                    TicketComment.objects.create(
+                        ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body
+                    )
+                Notification.objects.create(
+                    recipient=ticket.requester,
+                    role=role_of(ticket.requester),
+                    message=f'Changes requested for ticket {ticket.number} by your manager: {comment}',
+                    url=reverse('tickets:detail', args=[ticket.pk])
+                )
+                messages.info(request, f'Changes requested on ticket {ticket.number}.')
 
         else:
             messages.error(request, f'Invalid action: "{action}"')
@@ -4737,6 +4833,7 @@ def manager_review_ticket(request, pk):
         'comments': comments,
         'initial_attachments': initial_attachments,
         'attachments': attachments,
+        'review_stage_label': 'IT Department Review' if is_it_stage else 'Department Review',
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'team_lead/manager_review_ticket.html', context)
@@ -4749,6 +4846,8 @@ def manager_review_count(request):
         status=Ticket.Status.PENDING_MANAGER_REVIEW,
         requester__department=request.user.department
     ).count()
+    if request.user.department == 'IT':
+        count += Ticket.objects.filter(status=Ticket.Status.PENDING_IT_REVIEW).count()
     return render(request, 'partials/manager_review_badge.html', {'count': count})
 
 
@@ -4761,7 +4860,7 @@ def manager_review_history(request):
         return HttpResponse(status=403)
 
     logs = TicketActivityLog.objects.filter(
-        action='manager_approved', actor=request.user
+        action__in=['manager_approved', 'it_approved'], actor=request.user
     ).select_related('ticket', 'ticket__requester').order_by('-created_at')
 
     paginator = Paginator(logs, 15)

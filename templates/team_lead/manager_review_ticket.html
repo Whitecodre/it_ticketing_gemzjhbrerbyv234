@@ -50,13 +50,15 @@
                         <span>•</span>
                         <span>{{ ticket.get_type_display }}</span>
                         <span>•</span>
-                        <span class="priority-chip 
+                        <span class="priority-chip
                             {% if ticket.priority == 'P1' %}critical bg-white/20 text-white border-0
                             {% elif ticket.priority == 'P2' %}high bg-white/20 text-white border-0
                             {% elif ticket.priority == 'P3' %}medium bg-white/20 text-white border-0
                             {% else %}low bg-white/20 text-white border-0{% endif %} text-xs">
                             {{ ticket.get_priority_display }}
                         </span>
+                        <span>•</span>
+                        <span>{{ review_stage_label }}</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">

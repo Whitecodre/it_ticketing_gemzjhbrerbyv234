@@ -207,6 +207,7 @@ class Ticket(models.Model):
         PENDING_VENDOR = 'PENDING_VENDOR', 'Pending Vendor'
         PENDING_APPROVAL = 'PENDING_APPROVAL', 'Pending Approval'
         PENDING_MANAGER_REVIEW = 'PENDING_MANAGER_REVIEW', 'Pending Manager Review'
+        PENDING_IT_REVIEW = 'PENDING_IT_REVIEW', 'Pending IT Review'
         PENDING_FULFILLMENT = 'PENDING_FULFILLMENT', 'Pending Fulfillment'
         APPROVED = 'APPROVED', 'Approved'
         RESOLVED = 'RESOLVED', 'Resolved'
