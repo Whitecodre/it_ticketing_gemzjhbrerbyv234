@@ -19,6 +19,12 @@ python manage.py seed_macros
 echo "=== Seeding Asset Categories ==="
 python manage.py seed_asset_categories
 
+# TEMPORARY — sample vendor data for the current testing phase only
+# (get_or_create keyed on name, so re-running never duplicates). Remove
+# this step once real vendor data is in place.
+echo "=== Seeding Vendors (testing only — remove before production) ==="
+python manage.py seed_vendors
+
 echo "=== Seeding Assets ==="
 python manage.py seed_assets
 

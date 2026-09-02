@@ -55,8 +55,8 @@ VENDORS = [
         'contact_person': 'Yusuf Abdullahi',
         'phone': '+234 803 666 7777',
         'email': 'sales@generaloffice-equip.example.com',
-        'notes': 'Catch-all supplier for miscellaneous/other asset types not covered elsewhere.',
-        'categories': ['Other'],
+        'notes': 'Catch-all supplier for miscellaneous asset types not covered elsewhere.',
+        'categories': [],  # empty = serves every category, per Vendor.categories — a real catch-all
     },
     {
         'name': 'Nationwide IT Partners',

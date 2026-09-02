@@ -8,7 +8,6 @@ CATEGORIES = [
     "Network Device",
     "Printer",
     "Software License",
-    "Other",
 ]
 
 
