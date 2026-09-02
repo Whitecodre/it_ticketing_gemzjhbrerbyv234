@@ -307,7 +307,13 @@
 <script src="{% static 'js/form_draft.js' %}"></script>
 <script>
     if (window.createAttachmentComposer) {
-        window.createAttachmentComposer('serviceRequestAttachmentsInput', 'serviceRequestFilePreview');
+        window.createAttachmentComposer('serviceRequestAttachmentsInput', 'serviceRequestFilePreview', {
+            onFilesAdded: function (files) {
+                if (window.saveDraftAttachments) {
+                    window.saveDraftAttachments('SERVICE_REQUEST', files, document.getElementById('serviceRequestForm'));
+                }
+            },
+        });
     }
 </script>
 <script>
@@ -411,6 +417,7 @@
                 form: document.getElementById('serviceRequestForm'),
                 ticketType: 'SERVICE_REQUEST',
                 saveDraftBtnId: 'saveDraftBtn',
+                attachmentPreviewId: 'serviceRequestFilePreview',
                 onRestore: function (data) {
                     data = data || {};
                     const select = document.getElementById('id_service_category');

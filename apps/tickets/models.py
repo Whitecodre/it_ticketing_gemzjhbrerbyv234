@@ -124,6 +124,23 @@ class TicketDraft(models.Model):
         unique_together = ('user', 'ticket_type')
 
 
+class TicketDraftAttachment(models.Model):
+    """A file staged as part of a TicketDraft. Uploaded immediately when
+    picked (not on the debounced text-field autosave) so it survives a
+    closed tab — a browser can never re-populate a file input on restore,
+    so the file has to already be sitting on the server before that
+    happens. Pulled into a real Attachment on submit for any id the client
+    still lists in the `keep_draft_attachments` field (see create_ticket in
+    views.py) — anything the user removed during restore, or that's simply
+    superseded by a fresh pick in the live form, is dropped instead."""
+    draft = models.ForeignKey(TicketDraft, on_delete=models.CASCADE, related_name='draft_attachments')
+    file = models.FileField(upload_to='ticket_drafts/%Y/%m/%d/', storage=raw_file_storage())
+    filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100, blank=True)
+    size = models.PositiveIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+
 class Ticket(models.Model):
     class Type(models.TextChoices):
         INCIDENT = 'INCIDENT', 'Incident'

@@ -168,7 +168,13 @@
 <script src="{% static 'js/form_draft.js' %}"></script>
 <script>
     if (window.createAttachmentComposer) {
-        window.createAttachmentComposer('incidentAttachmentsInput', 'incidentFilePreview');
+        window.createAttachmentComposer('incidentAttachmentsInput', 'incidentFilePreview', {
+            onFilesAdded: function (files) {
+                if (window.saveDraftAttachments) {
+                    window.saveDraftAttachments('INCIDENT', files, document.getElementById('incidentForm'));
+                }
+            },
+        });
     }
 </script>
 <script>
@@ -229,6 +235,7 @@
                 form: document.getElementById('incidentForm'),
                 ticketType: 'INCIDENT',
                 saveDraftBtnId: 'saveDraftBtn',
+                attachmentPreviewId: 'incidentFilePreview',
                 onRestore: function () {
                     ['incident_category', 'how_discovered'].forEach(function (fieldType) {
                         const select = document.getElementById('id_' + fieldType);

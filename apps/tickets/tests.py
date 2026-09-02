@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.core.management import call_command
 from datetime import date, timedelta, time as datetime_time, datetime as datetime_dt
 from unittest.mock import patch
-from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, Asset, AssetCategory, AssetLog, SLA, EscalationRule, ServiceCategory, RemoteSession, RemoteConnector, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetProcurementRequest, Attachment, AssetDepartment, Location, AssetImportBatch
+from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, Asset, AssetCategory, AssetLog, SLA, EscalationRule, ServiceCategory, RemoteSession, RemoteConnector, Vessel, DiveSystem, JobNumber, Mobilization, MobilizationItem, AssetProcurementRequest, Attachment, AssetDepartment, Location, AssetImportBatch, TicketDraft, TicketDraftAttachment
 from apps.tickets.asset_name_matching import match_users_by_name
 from apps.common.models import Category, Notification
 from apps.maintenance.models import MaintenanceSchedule, Vendor
@@ -142,9 +142,158 @@ class PeriodicTaskLockTests(TestCase):
         mock_call_command.assert_not_called()
 
 
+class TicketDraftAttachmentTests(TestCase):
+    """Draft attachment upload/restore/submit lifecycle — see
+    apps/tickets/views_drafts.py and restore_kept_draft_attachments in
+    views.py."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            email='drafter@example.com', password='TestPass123!',
+            first_name='Draft', last_name='User', department='IT',
+            is_active=True, email_verified=True,
+        )
+        self.other_user = User.objects.create_user(
+            email='other@example.com', password='TestPass123!',
+            first_name='Other', last_name='User', department='IT',
+            is_active=True, email_verified=True,
+        )
+        self.category = Category.objects.create(name='Hardware', slug='hardware')
+        self.client.login(email='drafter@example.com', password='TestPass123!')
+
+    def _pdf(self, name='draft.pdf'):
+        return SimpleUploadedFile(name, b'%PDF-1.4 test content', content_type='application/pdf')
+
+    def test_save_draft_attachment_creates_row_and_draft(self):
+        response = self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf(),
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data['created']), 1)
+        self.assertEqual(TicketDraftAttachment.objects.count(), 1)
+        att = TicketDraftAttachment.objects.first()
+        self.assertEqual(att.draft.user, self.user)
+        self.assertEqual(att.filename, 'draft.pdf')
+
+    def test_save_draft_attachment_rejects_oversized_file(self):
+        big = SimpleUploadedFile('big.pdf', b'x' * (11 * 1024 * 1024), content_type='application/pdf')
+        response = self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': big,
+        })
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data['created']), 0)
+        self.assertEqual(len(data['rejected']), 1)
+        self.assertEqual(TicketDraftAttachment.objects.count(), 0)
+
+    def test_get_draft_includes_attachment_metadata(self):
+        self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf(),
+        })
+        response = self.client.get(reverse('tickets:get_draft'), {'type': 'INCIDENT'})
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data['attachments']), 1)
+        self.assertEqual(data['attachments'][0]['filename'], 'draft.pdf')
+
+    def test_discard_draft_attachment_removes_it(self):
+        self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf(),
+        })
+        att = TicketDraftAttachment.objects.first()
+        response = self.client.post(
+            reverse('tickets:discard_draft_attachment'),
+            data='{"attachment_id": %d}' % att.pk,
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(TicketDraftAttachment.objects.count(), 0)
+
+    def test_discard_draft_attachment_scoped_to_owner(self):
+        """Another user's attachment id can't be discarded."""
+        self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf(),
+        })
+        att = TicketDraftAttachment.objects.first()
+        self.client.logout()
+        self.client.login(email='other@example.com', password='TestPass123!')
+        response = self.client.post(
+            reverse('tickets:discard_draft_attachment'),
+            data='{"attachment_id": %d}' % att.pk,
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(TicketDraftAttachment.objects.count(), 1)
+
+    def test_discard_draft_removes_attachments_too(self):
+        self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf(),
+        })
+        response = self.client.post(
+            reverse('tickets:discard_draft'),
+            data='{"ticket_type": "INCIDENT"}',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(TicketDraft.objects.count(), 0)
+        self.assertEqual(TicketDraftAttachment.objects.count(), 0)
+
+    def test_submit_with_kept_draft_attachment_creates_real_attachment(self):
+        """The restore-then-submit-without-touching-the-input flow the
+        feature was built for: the draft attachment ends up as a real
+        Attachment on the new ticket, and the draft is fully cleaned up."""
+        save_response = self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf('kept.pdf'),
+        })
+        att_id = save_response.json()['created'][0]['id']
+
+        response = self.client.post(reverse('tickets:create'), {
+            'type': 'INCIDENT',
+            'title': 'Restored Draft Ticket',
+            'description': 'Test description',
+            'category': self.category.id,
+            'impact': 'INDIVIDUAL',
+            'urgency': 'MEDIUM',
+            'keep_draft_attachments': str(att_id),
+        })
+        self.assertEqual(response.status_code, 302)
+        ticket = Ticket.objects.get(title='Restored Draft Ticket')
+        self.assertEqual(ticket.attachments.count(), 1)
+        self.assertEqual(ticket.attachments.first().filename, 'kept.pdf')
+        # Draft and its attachment are both gone — no leftover duplicate copy.
+        self.assertEqual(TicketDraft.objects.filter(user=self.user, ticket_type='INCIDENT').count(), 0)
+        self.assertEqual(TicketDraftAttachment.objects.filter(pk=att_id).count(), 0)
+
+    def test_submit_with_fresh_attachment_does_not_duplicate_draft_copy(self):
+        """A file mirrored to the draft this session (via the composer's
+        onFilesAdded hook) and also present in the live `attachments` field
+        at submit must only be attached once — not pulled in a second time
+        just because a draft copy also exists."""
+        self.client.post(reverse('tickets:save_draft_attachment'), {
+            'ticket_type': 'INCIDENT', 'attachments': self._pdf('fresh.pdf'),
+        })
+        # Note: no keep_draft_attachments in this POST — the client never
+        # adds a freshly-mirrored (non-restored) attachment's id to that
+        # field, exactly to avoid this double-attach scenario.
+        response = self.client.post(reverse('tickets:create'), {
+            'type': 'INCIDENT',
+            'title': 'Fresh Attachment Ticket',
+            'description': 'Test description',
+            'category': self.category.id,
+            'impact': 'INDIVIDUAL',
+            'urgency': 'MEDIUM',
+            'attachments': self._pdf('fresh.pdf'),
+        })
+        self.assertEqual(response.status_code, 302)
+        ticket = Ticket.objects.get(title='Fresh Attachment Ticket')
+        self.assertEqual(ticket.attachments.count(), 1)
+
+
 class TicketViewTests(TestCase):
     """Test ticket view functionality."""
-    
+
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(

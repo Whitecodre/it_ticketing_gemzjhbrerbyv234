@@ -16,6 +16,9 @@ python manage.py seed_connectors
 echo "=== Seeding Macros ==="
 python manage.py seed_macros
 
+echo "=== Seeding Asset Categories ==="
+python manage.py seed_asset_categories
+
 echo "=== Seeding Assets ==="
 python manage.py seed_assets
 

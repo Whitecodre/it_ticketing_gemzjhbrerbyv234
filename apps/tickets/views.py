@@ -9,6 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.core.management import call_command
 from django.http import JsonResponse, HttpResponse, FileResponse
+from django.core.files.base import ContentFile
 from django.views.decorators.http import require_POST, require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Count, Avg, Q, F, Value, Prefetch, Sum
@@ -246,6 +247,42 @@ def save_attachments(ticket, files, author, comment=None):
         created.append(att)
     return created, rejected
 
+
+def restore_kept_draft_attachments(ticket, request):
+    """Copies draft attachments the client listed in `keep_draft_attachments`
+    (comma-separated TicketDraftAttachment ids, submitted by form_draft.js
+    for anything restored from a draft and not removed) onto the new
+    ticket. A browser can never resubmit a file it didn't just pick this
+    session, so this is the only way a restored-from-draft attachment
+    actually reaches the ticket — the file has to already be sitting on the
+    server from when it was originally picked and mirrored to the draft.
+
+    Freshly-picked files this session never end up in `keep_draft_attachments`
+    (only restored ones the client explicitly tracks by id) even though
+    they're also mirrored to the draft in the background for resilience —
+    so there's no risk of double-attaching the same file via both this and
+    the live `attachments` field above. Whatever's left on the draft (kept
+    or not) gets cleaned up regardless when the draft itself is deleted
+    right after ticket creation."""
+    raw_ids = request.POST.get('keep_draft_attachments', '')
+    ids = [int(v) for v in raw_ids.split(',') if v.strip().isdigit()]
+    if not ids:
+        return
+    draft_attachments = TicketDraftAttachment.objects.filter(pk__in=ids, draft__user=request.user)
+    for draft_att in draft_attachments:
+        draft_att.file.open('rb')
+        content = draft_att.file.read()
+        draft_att.file.close()
+        Attachment.objects.create(
+            ticket=ticket,
+            file=ContentFile(content, name=draft_att.filename),
+            filename=draft_att.filename,
+            uploaded_by=request.user,
+            content_type=draft_att.content_type,
+            size=draft_att.size,
+            hash=hashlib.sha256(content).hexdigest(),
+        )
+
 # ==========================================================================
 # TICKET CREATION & LISTING VIEWS (End Users)
 # ==========================================================================
@@ -357,6 +394,8 @@ def create_ticket(request):
                 for name, reason in rejected:
                     messages.warning(request, f'"{name}" was not attached — {reason}.')
 
+            restore_kept_draft_attachments(ticket, request)
+
             # If it's a service request, set status to PENDING_MANAGER_REVIEW
             if ticket.type == Ticket.Type.SERVICE_REQUEST:
                 ticket.status = Ticket.Status.PENDING_MANAGER_REVIEW
@@ -377,8 +416,18 @@ def create_ticket(request):
             # Submission is a normal full-page POST-redirect, not AJAX, so
             # there's no client-side "after submit" hook to fire a discard
             # request before the browser navigates away — clear the draft
-            # here instead.
-            TicketDraft.objects.filter(user=request.user, ticket_type=ticket_type).delete()
+            # here instead. Explicitly clear each attachment's storage file
+            # first — restore_kept_draft_attachments() above already copied
+            # anything kept into a real Attachment, so nothing here is still
+            # needed, but FileField storage content isn't auto-deleted by
+            # cascading the row, so skipping this would leave orphaned
+            # blobs (kept-and-copied ones included) sitting in storage.
+            draft = TicketDraft.objects.filter(user=request.user, ticket_type=ticket_type).first()
+            if draft:
+                for draft_att in draft.draft_attachments.all():
+                    if draft_att.file:
+                        draft_att.file.delete(save=False)
+                draft.delete()
 
             return redirect('tickets:detail', pk=ticket.pk)
         else:

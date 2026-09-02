@@ -189,6 +189,10 @@ window.createActionDropdown = createActionDropdown;
 //   maxSizeMB: max file size in MB (default 10, matches server MAX_SIZE_MB)
 //   allowedMimes: array of allowed MIME types (default matches server
 //                 ALLOWED_MIMES in apps/tickets/views.py — keep in sync)
+//   onFilesAdded(files): called with exactly the newly-accepted files from
+//                 one picker interaction (not the full accumulated staged
+//                 list) — e.g. form_draft.js uses this to mirror each pick
+//                 onto the server-side draft as it happens.
 function createAttachmentComposer(inputId, previewId, opts) {
     const input = document.getElementById(inputId);
     const preview = document.getElementById(previewId);
@@ -196,6 +200,7 @@ function createAttachmentComposer(inputId, previewId, opts) {
 
     const options = opts || {};
     const maxSizeBytes = (options.maxSizeMB || 10) * 1024 * 1024;
+    const onFilesAdded = options.onFilesAdded || function () {};
     const allowedMimes = options.allowedMimes || [
         'image/jpeg', 'image/png', 'image/gif', 'image/webp',
         'application/pdf',
@@ -276,6 +281,7 @@ function createAttachmentComposer(inputId, previewId, opts) {
     input.addEventListener('change', function() {
         const incoming = Array.from(input.files || []);
         const rejections = [];
+        const accepted = [];
         incoming.forEach(function(file) {
             if (file.size > maxSizeBytes) {
                 rejections.push([file.name, 'exceeds the ' + (options.maxSizeMB || 10) + 'MB limit, not attached']);
@@ -286,10 +292,12 @@ function createAttachmentComposer(inputId, previewId, opts) {
                 return;
             }
             stagedFiles.push(file);
+            accepted.push(file);
         });
         syncInputFiles();
         renderChips();
         rejections.forEach(function(r) { renderRejection(r[0], r[1]); });
+        if (accepted.length) onFilesAdded(accepted);
     });
 
     return {
