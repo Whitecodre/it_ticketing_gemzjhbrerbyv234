@@ -56,16 +56,7 @@
                             data-sidebar-badge="true"
                             hx-swap="innerHTML">
                             <span id="slaBadgeInner">
-                                {% with sla_info=ticket.sla_status %}
-                                <span class="text-[0.55rem] sm:text-[0.6rem] px-1.5 sm:px-2 py-0.5 rounded-full
-                                    {% if sla_info.overall == 'breached' %}bg-error/10 text-error
-                                    {% elif sla_info.overall == 'warning' %}bg-warning/10 text-warning
-                                    {% else %}bg-success/10 text-success{% endif %}">
-                                    {% if sla_info.overall == 'breached' %}SLA Breach
-                                    {% elif sla_info.overall == 'warning' %}SLA Warning
-                                    {% else %}On Track{% endif %}
-                                </span>
-                                {% endwith %}
+                                {% include "partials/sla_badge.html" %}
                             </span>
                         </div>
                         {% endif %}
@@ -98,8 +89,8 @@
                             {% endif %}
                         {% endif %}
 
-                        {# Fulfill/Mobilize button - only for admins on pending fulfillment tickets #}
-                        {% if ticket.status in 'PENDING_FULFILLMENT,PENDING_VENDOR' and active_role_name in 'ADMIN,SUPERADMIN' %}
+                        {# Fulfill/Mobilize button - admins, or the IT department Team Lead, on pending fulfillment tickets #}
+                        {% if ticket.status in 'PENDING_FULFILLMENT,PENDING_VENDOR' and can_fulfill_ticket %}
                             {% if ticket.is_mobilization_request %}
                             <button class="btn-success text-[0.65rem] sm:text-xs flex items-center gap-1 px-2 py-0.5 rounded min-h-[26px]"
                                     onclick="openMobilizationCreateModal({{ ticket.pk }})">

@@ -92,6 +92,58 @@
     </div>
 </div>
 
+{% if request.user.department == 'IT' %}
+{# ========== SECTION: ASSET FULFILLMENT (same responsibility as the IT-stage approval above — no role switch needed to finish what was just approved) ========== #}
+<div class="mt-2">
+    <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
+            data-section="fulfillment-section"
+            style="color: var(--color-text-secondary);">
+        <span class="section-icon">{% lucide "package" size=16 %}</span>
+        <span>Fulfillment</span>
+        <span class="section-chevron ml-auto transition-transform duration-200">
+            {% lucide "chevron-down" size=14 %}
+        </span>
+    </button>
+    <div id="fulfillment-section"
+         class="section-content pl-2 overflow-hidden transition-all duration-300 ease-in-out">
+        <a href="{% url 'tickets:pending_asset_fulfillment' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'pending_asset_fulfillment' %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0 relative">
+                {% lucide "package" size=16 class="h-4 w-4" %}
+                <div id="pendingFulfillmentBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:pending_asset_fulfillment_count' %}"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
+            <span>Asset Requests</span>
+        </a>
+        <a href="{% url 'tickets:procurement_list' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'procurement_list' %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0">{% lucide "truck" size=16 class="h-4 w-4" %}</span>
+            <span>Procurement</span>
+        </a>
+        <a href="{% url 'tickets:pending_asset_returns' %}"
+           class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
+           style="{% if request.resolver_match.url_name == 'pending_asset_returns' %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
+            <span class="shrink-0 relative">
+                {% lucide "log-out" size=16 class="h-4 w-4" %}
+                <div id="pendingReturnsBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:pending_asset_returns_count' %}"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
+                     hx-swap="innerHTML">
+                </div>
+            </span>
+            <span>Returns</span>
+        </a>
+    </div>
+</div>
+{% endif %}
+
 {# ========== SECTION: SUPPORT TOOLS ========== #}
 <div class="mt-2">
     <button class="sidebar-section-toggle flex w-full items-center rounded-lg px-3 py-2.5 text-xs font-semibold uppercase tracking-wider transition hover:bg-black/5"
@@ -164,7 +216,17 @@
         <a href="{% url 'tickets:mobilizations' %}"
            class="sidebar-link flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"
            style="{% if '/mobilizations/' in request.path %}background-color: var(--color-primary-solid); color: white;{% else %}color: var(--color-text-secondary);{% endif %}">
-            <span class="shrink-0">{% lucide "ship" size=16 class="h-4 w-4" %}</span>
+            <span class="shrink-0 relative">
+                {% lucide "ship" size=16 class="h-4 w-4" %}
+                {% if request.user.department == 'IT' %}
+                <div id="pendingDemobilizationsBadge" class="absolute -top-1 -right-1"
+                     hx-get="{% url 'tickets:pending_demobilizations_count' %}"
+                     hx-trigger="load"
+                     data-sidebar-badge="true"
+                     hx-swap="innerHTML">
+                </div>
+                {% endif %}
+            </span>
             <span>Mobilizations</span>
         </a>
         <a href="{% url 'tickets:macro_management' %}"

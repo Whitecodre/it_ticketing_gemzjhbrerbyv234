@@ -15,6 +15,7 @@ urlpatterns = [
     path('draft/save-attachment/', views_drafts.save_draft_attachment, name='save_draft_attachment'),
     path('draft/discard-attachment/', views_drafts.discard_draft_attachment, name='discard_draft_attachment'),
     path('<int:pk>/cancel/', views.cancel_ticket, name='cancel_ticket'),
+    path('<int:pk>/edit-request/', views.edit_ticket_request, name='edit_ticket_request'),
     path('my/', views.my_ticket_list, name='my_list'),
     path('<int:pk>/', views.ticket_detail, name='detail'),
     path('unassigned/', views.unassigned_queue, name='unassigned'),
@@ -142,12 +143,17 @@ urlpatterns = [
 
     # SYSTEM SETTINGS
     path('settings/', views_settings.system_settings, name='system_settings'),
+    path('settings/branding/', views_settings.system_settings_branding, name='system_settings_branding'),
+    path('settings/branding/save/', views_settings.branding_update, name='branding_update'),
+    path('settings/pending-count/', views.pending_settings_approvals_count, name='pending_settings_approvals_count'),
     path('settings/<slug:resource>/create/', views_settings.settings_resource_create, name='settings_resource_create'),
     path('settings/<slug:resource>/<int:pk>/update/', views_settings.settings_resource_update, name='settings_resource_update'),
     path('settings/<slug:resource>/<int:pk>/delete/', views_settings.settings_resource_delete, name='settings_resource_delete'),
     path('settings/<slug:resource>/<int:pk>/activate/', views_settings.settings_resource_activate, name='settings_resource_activate'),
-    path('settings/pending-count/', views.pending_settings_approvals_count, name='pending_settings_approvals_count'),
-    path('settings/branding/', views_settings.branding_update, name='branding_update'),
+    # Catch-all: must stay last among settings/ patterns so nothing above
+    # (branding/, pending-count/, .../create/ etc.) gets swallowed as a
+    # resource slug first.
+    path('settings/<slug:resource>/', views_settings.system_settings_category, name='system_settings_category'),
 
     # MACROS
     path('macros/manage/', views_macros.macro_management, name='macro_management'),

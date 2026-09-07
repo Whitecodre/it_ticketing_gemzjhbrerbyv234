@@ -1,0 +1,294 @@
+{% extends "base_dashboard.html" %}
+{% load static %}
+{% load lucide %}
+{% load ticket_filters %}
+
+{% block dashboard_title %}{{ config.label }} - Settings{% endblock %}
+{% block page_title_area %}{% endblock %}
+{% block role_label %}{{ request.user.get_role_display }}{% endblock %}
+{% block role_badge %}{{ request.user.get_role_display|upper }}{% endblock %}
+
+{% block sidebar_nav %}
+    {% include sidebar_template %}
+{% endblock %}
+
+{% block dashboard_content %}
+<div class="w-full space-y-5">
+
+    <a href="{% url 'tickets:system_settings' %}" class="inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary hover:text-text-primary transition">
+        {% lucide "arrow-left" size=14 %} System Settings
+    </a>
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+                {% lucide config.icon size=20 %}
+            </div>
+            <div>
+                <h2 class="text-base font-semibold text-text-primary">{{ config.label }}</h2>
+                <p class="text-xs text-text-secondary mt-0.5">Manage the {{ config.label|lower }} available elsewhere in the system.</p>
+            </div>
+        </div>
+        <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded-lg flex items-center gap-1"
+                onclick="openSettingsModal()">
+            {% lucide "plus" size=14 %} Add {{ config.singular_label }}
+        </button>
+    </div>
+
+    {% if pending %}
+    <div class="space-y-2">
+        {% for item in pending %}
+        <div class="rounded-lg border p-3 flex flex-wrap items-center justify-between gap-3"
+             style="background-color: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface)); border-color: var(--color-warning);">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
+                    {% lucide "clock" size=16 %}
+                </div>
+                <div class="min-w-0">
+                    <p class="text-sm font-medium text-text-primary">
+                        "{{ item|settings_cell:config.list_columns.0.0 }}" was proposed by {{ item.proposed_by.get_full_name|default:item.proposed_by.email }}
+                    </p>
+                    <p class="text-xs text-text-secondary">Not yet active — confirm it's valid before approving.</p>
+                </div>
+            </div>
+            <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded shrink-0"
+                    onclick="activateSettingsRow({{ item.pk }})">
+                {% lucide "check" size=12 %} Activate
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="dashboard-card p-0 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b" style="border-color: var(--color-border);">
+                        {% for col_attr, col_label in config.list_columns %}
+                        <th class="text-left py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs cursor-pointer select-none hover:text-text-primary"
+                            onclick="sortSettingsTable(this)" data-sort-col="{{ forloop.counter0 }}" data-sort-dir="">
+                            {{ col_label }} <span class="sort-indicator"></span>
+                        </th>
+                        {% endfor %}
+                        <th class="text-right py-2.5 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr class="border-b hover:bg-black/5 transition-colors" style="border-color: var(--color-border);"
+                        data-pk="{{ row.pk }}"
+                        {% for f in config.fields %}data-{{ f.name }}="{{ row|getattr:f.name }}" {% endfor %}>
+                        {% for col_attr, col_label in config.list_columns %}
+                        <td class="py-2.5 px-4 text-text-primary">{{ row|settings_cell:col_attr }}</td>
+                        {% endfor %}
+                        <td class="py-2.5 px-4 text-right">
+                            <button type="button" class="btn-ghost btn-icon" onclick="openSettingsModal(this.closest('tr'))" aria-label="Edit">
+                                {% lucide "pencil" size=14 %}
+                            </button>
+                            <button type="button" class="btn-ghost btn-icon" onclick="deleteSettingsRow({{ row.pk }})" aria-label="Delete">
+                                {% lucide "trash-2" size=14 class="text-error" %}
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="{{ config.list_columns|length|add:1 }}" class="py-6 px-4 text-center text-text-secondary text-sm">No {{ config.label|lower }} yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Add/Edit modal #}
+    <div id="settingsModalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+         onclick="if(event.target===this) closeSettingsModal()">
+        <div class="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4" style="background-color: var(--color-surface);">
+            <div class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--color-border);">
+                <h3 class="text-base font-semibold text-text-primary" id="settingsModalTitle">Add</h3>
+                <button type="button" onclick="closeSettingsModal()" class="btn-ghost btn-icon" aria-label="Close">{% lucide "x" size=18 %}</button>
+            </div>
+            <form id="settingsModalForm" class="px-6 py-5 space-y-4">
+                {% csrf_token %}
+                <div id="settingsModalFields" class="space-y-4"></div>
+                <div class="flex items-center justify-end gap-2 pt-2">
+                    <button type="button" onclick="closeSettingsModal()" class="btn-ghost text-sm px-4 py-2">Cancel</button>
+                    <button type="submit" class="btn-primary text-sm px-5 py-2 rounded-lg">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    const SETTINGS_RESOURCE = '{{ config.slug }}';
+    const SETTINGS_SINGULAR_LABEL = '{{ config.singular_label|escapejs }}';
+    const SETTINGS_FIELDS = [
+        {% for f in config.fields %}
+        { name: '{{ f.name }}', label: '{{ f.label|escapejs }}', kind: '{{ f.kind }}', choices: [{% for value, label in f.choices %}['{{ value|escapejs }}', '{{ label|escapejs }}'],{% endfor %}] },
+        {% endfor %}
+    ];
+
+    // Client-side sort — this list is small (no pagination on this page),
+    // so re-sorting the rows already in the DOM is simpler and instant
+    // compared to a server round-trip.
+    function sortSettingsTable(th) {
+        const table = th.closest('table');
+        const tbody = table.querySelector('tbody');
+        const colIndex = parseInt(th.dataset.sortCol, 10);
+        const rows = Array.from(tbody.querySelectorAll('tr')).filter(function (tr) { return tr.dataset.pk; });
+        if (!rows.length) return;
+
+        const nextDir = th.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+        table.querySelectorAll('th[data-sort-col]').forEach(function (header) {
+            header.dataset.sortDir = '';
+            const indicator = header.querySelector('.sort-indicator');
+            if (indicator) indicator.textContent = '';
+        });
+        th.dataset.sortDir = nextDir;
+        const indicator = th.querySelector('.sort-indicator');
+        if (indicator) indicator.textContent = nextDir === 'asc' ? '▲' : '▼';
+
+        rows.sort(function (a, b) {
+            const aText = a.children[colIndex].textContent.trim();
+            const bText = b.children[colIndex].textContent.trim();
+            const aNum = parseFloat(aText), bNum = parseFloat(bText);
+            let cmp;
+            if (!isNaN(aNum) && !isNaN(bNum) && aText !== '' && bText !== '') {
+                cmp = aNum - bNum;
+            } else {
+                cmp = aText.localeCompare(bText, undefined, { sensitivity: 'base' });
+            }
+            return nextDir === 'asc' ? cmp : -cmp;
+        });
+        rows.forEach(function (row) { tbody.appendChild(row); });
+    }
+
+    const SETTINGS_TOAST_KEY = 'systemSettingsPendingToast';
+
+    // A save/delete reloads this same category page, so a toast fired
+    // before that would never be seen — stash it and show it once the page
+    // that comes back has loaded.
+    (function showPendingSettingsToast() {
+        const pending = sessionStorage.getItem(SETTINGS_TOAST_KEY);
+        if (!pending) return;
+        sessionStorage.removeItem(SETTINGS_TOAST_KEY);
+        try {
+            const toast = JSON.parse(pending);
+            if (typeof showToast === 'function') showToast(toast.message, toast.type);
+        } catch (e) { /* ignore malformed/stale entry */ }
+    })();
+
+    function queueSettingsToast(message, type) {
+        sessionStorage.setItem(SETTINGS_TOAST_KEY, JSON.stringify({ message: message, type: type }));
+    }
+
+    let activePk = null;
+
+    function openSettingsModal(rowEl) {
+        activePk = rowEl ? rowEl.dataset.pk : null;
+        const container = document.getElementById('settingsModalFields');
+        container.innerHTML = '';
+        document.getElementById('settingsModalTitle').textContent = (activePk ? 'Edit ' : 'Add ') + SETTINGS_SINGULAR_LABEL;
+
+        SETTINGS_FIELDS.forEach(function (f) {
+            const wrap = document.createElement('div');
+            const currentValue = rowEl ? (rowEl.dataset[f.name] || '') : '';
+            let inputHtml = '';
+            const baseClass = 'block w-full rounded-lg border py-2 px-3 text-sm bg-background border-border text-text-primary';
+            if (f.kind === 'textarea') {
+                inputHtml = `<textarea name="${f.name}" rows="3" class="${baseClass}">${currentValue}</textarea>`;
+            } else if (f.kind === 'checkbox') {
+                const checked = (currentValue === 'True' || currentValue === 'true') ? 'checked' : '';
+                inputHtml = `<label class="flex items-center gap-2 text-sm text-text-primary"><input type="checkbox" name="${f.name}" ${checked} class="rounded border-border text-primary"> ${f.label}</label>`;
+                wrap.innerHTML = inputHtml;
+                container.appendChild(wrap);
+                return;
+            } else if (f.kind === 'select') {
+                let options = f.choices.map(function (c) {
+                    const selected = c[0] === currentValue ? 'selected' : '';
+                    return `<option value="${c[0]}" ${selected}>${c[1]}</option>`;
+                }).join('');
+                inputHtml = `<select name="${f.name}" class="${baseClass}">${options}</select>`;
+            } else if (f.kind === 'multiselect') {
+                const selectedIds = currentValue ? currentValue.split(',') : [];
+                const boxes = f.choices.map(function (c) {
+                    const checked = selectedIds.indexOf(String(c[0])) !== -1 ? 'checked' : '';
+                    return `<label class="flex items-center gap-2 text-sm text-text-primary"><input type="checkbox" name="${f.name}" value="${c[0]}" ${checked} class="rounded border-border text-primary"> ${c[1]}</label>`;
+                }).join('');
+                inputHtml = `<div class="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-border p-2">${boxes || '<p class="text-xs text-text-secondary">No options yet.</p>'}</div>`;
+            } else {
+                const type = f.kind === 'number' ? 'number' : 'text';
+                inputHtml = `<input type="${type}" name="${f.name}" value="${currentValue}" class="${baseClass}">`;
+            }
+            wrap.innerHTML = `<label class="block text-xs font-medium mb-1 text-text-secondary">${f.label}</label>${inputHtml}`;
+            container.appendChild(wrap);
+        });
+
+        document.getElementById('settingsModalOverlay').classList.remove('hidden');
+    }
+
+    function closeSettingsModal() {
+        document.getElementById('settingsModalOverlay').classList.add('hidden');
+        activePk = null;
+    }
+
+    document.getElementById('settingsModalForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const wasEdit = !!activePk;
+        const url = activePk
+            ? `/tickets/settings/${SETTINGS_RESOURCE}/${activePk}/update/`
+            : `/tickets/settings/${SETTINGS_RESOURCE}/create/`;
+        fetch(url, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+            body: formData,
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+              if (result.ok) {
+                  closeSettingsModal();
+                  queueSettingsToast(`${SETTINGS_SINGULAR_LABEL} ${wasEdit ? 'updated' : 'created'} successfully.`, 'success');
+                  window.location.reload();
+              } else if (typeof showToast === 'function') {
+                  showToast(result.data.error || 'Could not save', 'error');
+              }
+          });
+    });
+
+    function activateSettingsRow(pk) {
+        fetch(`/tickets/settings/${SETTINGS_RESOURCE}/${pk}/activate/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+        }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+          .then(function (result) {
+              if (result.ok) {
+                  queueSettingsToast(`${SETTINGS_SINGULAR_LABEL} activated.`, 'success');
+                  window.location.reload();
+              } else if (typeof showToast === 'function') {
+                  showToast(result.data.error || 'Could not activate', 'error');
+              }
+          });
+    }
+
+    function deleteSettingsRow(pk) {
+        confirmDelete(SETTINGS_SINGULAR_LABEL, SETTINGS_SINGULAR_LABEL, function () {
+            fetch(`/tickets/settings/${SETTINGS_RESOURCE}/${pk}/delete/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
+            }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
+              .then(function (result) {
+                  if (result.ok) {
+                      queueSettingsToast(`${SETTINGS_SINGULAR_LABEL} deleted successfully.`, 'success');
+                      window.location.reload();
+                  } else if (typeof showToast === 'function') {
+                      showToast(result.data.error || 'Could not delete', 'error');
+                  }
+              });
+        });
+    }
+</script>
+{% endblock %}

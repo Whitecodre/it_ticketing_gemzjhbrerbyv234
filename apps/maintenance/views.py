@@ -27,7 +27,7 @@ ASSET_EXCLUDED_STATUSES = [
     Asset.Status.RETIRED, Asset.Status.SCRAPPED, Asset.Status.DISPOSED,
     Asset.Status.LOST, Asset.Status.STOLEN,
 ]
-from apps.common.utils import send_email_via_brevo, role_of, run_in_background, resolve_sort
+from apps.common.utils import send_email_via_brevo, run_in_background, resolve_sort
 from apps.common.models import Notification
 from apps.common.permissions import get_sidebar_template, effective_role_name
 
@@ -46,7 +46,7 @@ def notify_maintenance_assignees(schedule, message):
     for recipient in {r.pk: r for r in recipients}.values():
         Notification.objects.create(
             recipient=recipient,
-            role=role_of(recipient),
+            role=None,
             message=message,
             url=url,
             type=Notification.Type.GENERAL,
@@ -67,7 +67,7 @@ def notify_maintenance_management(schedule, message, actor):
     for recipient in {r.pk: r for r in recipients}.values():
         Notification.objects.create(
             recipient=recipient,
-            role=role_of(recipient),
+            role=None,
             message=message,
             url=url,
             type=Notification.Type.GENERAL,
@@ -134,7 +134,7 @@ def notify_asset_confirmers(asset, schedule, message, exclude=None):
     for recipient in recipients:
         Notification.objects.create(
             recipient=recipient,
-            role=role_of(recipient),
+            role=None,
             message=message,
             url=_asset_review_url(asset, schedule, recipient),
             type=Notification.Type.GENERAL,
@@ -173,7 +173,7 @@ def notify_department_team_leads(schedule, departments, request, actor=None):
     for tl in team_leads:
         Notification.objects.create(
             recipient=tl,
-            role=role_of(tl),
+            role=None,
             message=f'New maintenance scheduled for {tl.get_department_display()}: "{schedule.title}" ({schedule.scheduled_date}).',
             url=url,
             type=Notification.Type.GENERAL,

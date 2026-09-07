@@ -11,7 +11,6 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.common.models import Notification
-from apps.common.utils import role_of
 from apps.maintenance.models import MaintenanceSchedule, MaintenanceActivityLog, MaintenanceAssetConfirmation
 from apps.maintenance.views import (
     log_activity, notify_maintenance_assignees, notify_maintenance_management,
@@ -108,7 +107,7 @@ class Command(BaseCommand):
                 for recipient in {r.pk: r for r in assignee_recipients}.values():
                     Notification.objects.create(
                         recipient=recipient,
-                        role=role_of(recipient),
+                        role=None,
                         message=f'⏰ Maintenance "{schedule.title}" is due in {label} ({due.strftime("%b %d, %H:%M")}).',
                         url=f'/maintenance/{schedule.pk}/',
                         type=Notification.Type.GENERAL,
@@ -128,7 +127,7 @@ class Command(BaseCommand):
                     for recipient in {r.pk: r for r in owner_recipients}.values():
                         Notification.objects.create(
                             recipient=recipient,
-                            role=role_of(recipient),
+                            role=None,
                             message=f'⏰ Maintenance "{schedule.title}" affecting your asset {asset.name} ({asset.tracking_id}) is due in {label}.',
                             url=_asset_review_url(asset, schedule, recipient),
                             type=Notification.Type.GENERAL,

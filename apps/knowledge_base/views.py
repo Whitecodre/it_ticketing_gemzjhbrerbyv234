@@ -281,13 +281,12 @@ def article_reject_review(request, pk):
     article.save()
 
     from apps.common.models import Notification
-    from apps.common.utils import role_of
     note = f'"{article.title}" was sent back to draft by {request.user.get_full_name()}.'
     if reason:
         note += f' Reason: {reason}'
     Notification.objects.create(
         recipient=article.author,
-        role=role_of(article.author),
+        role=None,
         message=note,
         url=reverse('kb:edit_content', args=[article.pk]),
         type=Notification.Type.GENERAL,

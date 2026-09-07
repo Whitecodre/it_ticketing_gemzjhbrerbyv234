@@ -127,6 +127,115 @@ class TicketModelTests(TestCase):
         self.assertEqual(status['response'], 'breached')
 
 
+class SlaTimerSemanticsTests(TestCase):
+    """Response SLA freezes at first assignment; Resolution SLA pauses while
+    the ticket is waiting on someone outside the agent's control
+    (PENDING_USER/PENDING_VENDOR/PENDING_MANAGER_REVIEW/PENDING_IT_REVIEW)
+    and stops entirely once resolved. See signals.py's _track_sla_timers."""
+
+    def setUp(self):
+        self.requester = User.objects.create_user(
+            email='sla-req@example.com', password='TestPass123!',
+            first_name='Req', last_name='User', department='IT',
+        )
+        self.agent = User.objects.create_user(
+            email='sla-agent@example.com', password='TestPass123!',
+            first_name='Agent', last_name='User', department='IT', role=User.Role.AGENT,
+        )
+        self.category = Category.objects.create(name='Hardware SLA', slug='hardware-sla')
+        SLA.objects.create(priority='P2', response_minutes=60, resolution_minutes=480)
+        self._counter = 0
+
+    def _make_ticket(self, **kwargs):
+        self._counter += 1
+        defaults = dict(
+            number=f'TK#SLA{self._counter}',
+            title='SLA timer test', description='desc',
+            requester=self.requester, category=self.category,
+            priority='P2', status=Ticket.Status.NEW,
+        )
+        defaults.update(kwargs)
+        return Ticket.objects.create(**defaults)
+
+    def test_response_freezes_at_first_assignment(self):
+        ticket = self._make_ticket()
+        Ticket.objects.filter(pk=ticket.pk).update(
+            created_at=timezone.now() - timedelta(minutes=100),
+            response_due_at=timezone.now() - timedelta(minutes=90),  # already overdue
+        )
+        ticket.refresh_from_db()
+
+        ticket.assigned_to = self.agent
+        ticket.save()
+        ticket.refresh_from_db()
+        self.assertIsNotNone(ticket.first_assigned_at)
+
+        status = ticket.sla_status()
+        self.assertEqual(status['response'], 'breached')
+        frozen_pct = status['response_pct']
+
+        # A later evaluation must return the identical figure/verdict —
+        # nothing should move again once first_assigned_at is set.
+        status_later = ticket.sla_status()
+        self.assertEqual(status_later['response_pct'], frozen_pct)
+        self.assertEqual(status_later['response'], 'breached')
+
+    def test_response_stays_ok_when_assigned_before_due(self):
+        ticket = self._make_ticket()
+        Ticket.objects.filter(pk=ticket.pk).update(
+            created_at=timezone.now() - timedelta(minutes=10),
+            response_due_at=timezone.now() + timedelta(minutes=50),
+        )
+        ticket.refresh_from_db()
+
+        ticket.assigned_to = self.agent
+        ticket.save()
+        ticket.refresh_from_db()
+
+        status = ticket.sla_status()
+        self.assertEqual(status['response'], 'ok')
+
+    def test_resolution_pauses_on_pending_user_and_credits_on_resume(self):
+        ticket = self._make_ticket(status=Ticket.Status.IN_PROGRESS)
+        Ticket.objects.filter(pk=ticket.pk).update(
+            created_at=timezone.now() - timedelta(minutes=100),
+            resolution_due_at=timezone.now() + timedelta(minutes=380),
+        )
+        ticket.refresh_from_db()
+
+        ticket.status = Ticket.Status.PENDING_USER
+        ticket.save()
+        ticket.refresh_from_db()
+        self.assertIsNotNone(ticket.resolution_paused_at)
+
+        # Backdate the pause start so there's a real span to credit.
+        Ticket.objects.filter(pk=ticket.pk).update(
+            resolution_paused_at=timezone.now() - timedelta(minutes=60)
+        )
+        ticket.refresh_from_db()
+        self.assertTrue(ticket.sla_status()['resolution_paused'])
+
+        ticket.status = Ticket.Status.IN_PROGRESS
+        ticket.save()
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.resolution_paused_at)
+        self.assertGreaterEqual(ticket.resolution_paused_minutes, 59)
+        self.assertFalse(ticket.sla_status()['resolution_paused'])
+
+    def test_resolution_stops_counting_once_resolved(self):
+        ticket = self._make_ticket(status=Ticket.Status.IN_PROGRESS)
+        Ticket.objects.filter(pk=ticket.pk).update(
+            created_at=timezone.now() - timedelta(minutes=100),
+            resolution_due_at=timezone.now() + timedelta(minutes=380),
+            resolved_at=timezone.now() - timedelta(minutes=50),
+        )
+        ticket.refresh_from_db()
+
+        first_pct = ticket.sla_status()['resolution_pct']
+        later_pct = ticket.sla_status()['resolution_pct']
+        self.assertEqual(first_pct, later_pct)
+
+
 class PeriodicTaskLockTests(TestCase):
     """Prevent overlapping periodic jobs from running concurrently."""
 
@@ -1715,6 +1824,67 @@ class VendorCategoryAndMobilizationPrefillTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class SystemSettingsHubTests(TestCase):
+    """The System Settings redesign: a card-grid hub (grouped by
+    SettingsResource.group) replacing the old ten-tab page, each card
+    linking to a dedicated per-resource page, plus Branding as its own page."""
+
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(
+            email='settingshub-admin@example.com', password='AdminPass123!',
+            first_name='Settings', last_name='Admin', department='IT',
+        )
+        self.agent = User.objects.create_user(
+            email='settingshub-agent@example.com', password='TestPass123!',
+            first_name='Settings', last_name='Agent', department='IT', role=User.Role.AGENT,
+        )
+        self.client.login(email='settingshub-admin@example.com', password='AdminPass123!')
+
+    def test_hub_groups_resources_and_shows_branding_card(self):
+        response = self.client.get(reverse('tickets:system_settings'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Tickets &amp; Service')
+        self.assertContains(response, 'Assets &amp; Fleet')
+        self.assertContains(response, 'Vessels')
+        self.assertContains(response, 'Branding')
+        self.assertContains(response, reverse('tickets:system_settings_category', args=['vessels']))
+        self.assertContains(response, reverse('tickets:system_settings_branding'))
+
+    def test_hub_shows_pending_count_badge_for_proposed_rows(self):
+        Vessel.objects.create(name='Proposed Vessel', is_active=False, proposed_by=self.agent)
+        response = self.client.get(reverse('tickets:system_settings'))
+        self.assertContains(response, '1 pending')
+
+    def test_category_page_shows_only_that_resource(self):
+        ServiceCategory.objects.create(name='Only This One', slug='only-this-one', field_group=ServiceCategory.FieldGroup.GENERAL)
+        response = self.client.get(reverse('tickets:system_settings_category', args=['service-categories']))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Service Categories')
+        self.assertContains(response, 'Only This One')
+        # Nothing about an unrelated resource leaks onto this page.
+        self.assertNotContains(response, 'Add Vessel')
+
+    def test_category_page_404s_for_unknown_slug(self):
+        response = self.client.get(reverse('tickets:system_settings_category', args=['not-a-real-resource']))
+        self.assertEqual(response.status_code, 404)
+
+    def test_branding_page_renders_and_save_redirects_back_to_it(self):
+        response = self.client.get(reverse('tickets:system_settings_branding'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Company Name')
+
+        response = self.client.post(reverse('tickets:branding_update'), {'company_name': 'New Co Name'})
+        self.assertRedirects(response, reverse('tickets:system_settings_branding'))
+
+    def test_non_admin_denied_hub_category_and_branding_pages(self):
+        self.client.logout()
+        self.client.login(email='settingshub-agent@example.com', password='TestPass123!')
+        self.assertEqual(self.client.get(reverse('tickets:system_settings')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('tickets:system_settings_category', args=['vessels'])).status_code, 403)
+        self.assertEqual(self.client.get(reverse('tickets:system_settings_branding')).status_code, 403)
+
+
 class ServiceRequestReportConfirmationFieldsTests(TestCase):
     """The receipt-confirmation fields (fulfilled/receipt confirmed, who and
     when) must actually reach report output, not just live on the model —
@@ -1907,6 +2077,193 @@ class AssetRequestTwoStepResolutionTests(TestCase):
         general_ticket.refresh_from_db()
         self.assertEqual(general_ticket.status, Ticket.Status.RESOLVED)
         self.assertIsNotNone(general_ticket.resolved_at)
+
+
+class FulfillmentTeamLeadAccessTests(TestCase):
+    """Asset fulfillment (direct + vendor procurement + mobilization) used
+    to be Admin-only, forcing an IT Team Lead who also holds the Admin role
+    to switch roles mid-task just to finish a request they'd already
+    approved as Team Lead. can_manage_fulfillment() closed that gap for the
+    IT department specifically — a Team Lead outside IT still has no
+    business here."""
+
+    def setUp(self):
+        self.client = Client()
+        self.it_lead = User.objects.create_user(
+            email='fulfill-itlead@example.com', password='TestPass123!',
+            first_name='Fulfill', last_name='ITLead', department='IT', role=User.Role.TEAM_LEAD,
+        )
+        self.other_lead = User.objects.create_user(
+            email='fulfill-otherlead@example.com', password='TestPass123!',
+            first_name='Fulfill', last_name='OtherLead', department='OPERATIONS', role=User.Role.TEAM_LEAD,
+        )
+        self.requester = User.objects.create_user(
+            email='fulfill-requester@example.com', password='TestPass123!',
+            first_name='Fulfill', last_name='Requester', department='IT', role=User.Role.END_USER,
+        )
+        self.category = AssetCategory.objects.create(name='Fulfillment Category')
+        self.asset = Asset.objects.create(name='Fulfillment Laptop', status=Asset.Status.IN_STORE, category=self.category)
+        self.ticket = Ticket.objects.create(
+            number='SRV#9400', type=Ticket.Type.SERVICE_REQUEST, title='Need a laptop',
+            description='...', requester=self.requester,
+            status=Ticket.Status.PENDING_FULFILLMENT, is_asset_request=True,
+        )
+
+    def test_it_team_lead_can_view_fulfillment_queue_and_procurement(self):
+        self.client.login(email='fulfill-itlead@example.com', password='TestPass123!')
+        self.assertEqual(self.client.get(reverse('tickets:pending_asset_fulfillment')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('tickets:procurement_list')).status_code, 200)
+
+    def test_it_team_lead_can_fulfill_asset_request(self):
+        self.client.login(email='fulfill-itlead@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:fulfill_asset_request', args=[self.ticket.pk]), {
+            'asset_id': self.asset.pk, 'comment': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, Ticket.Status.PENDING_USER)
+        self.assertEqual(self.ticket.assigned_asset_id, self.asset.pk)
+
+    def test_non_it_team_lead_still_denied_fulfillment(self):
+        self.client.login(email='fulfill-otherlead@example.com', password='TestPass123!')
+        self.assertEqual(self.client.get(reverse('tickets:pending_asset_fulfillment')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('tickets:procurement_list')).status_code, 403)
+        response = self.client.post(reverse('tickets:fulfill_asset_request', args=[self.ticket.pk]), {
+            'asset_id': self.asset.pk, 'comment': '',
+        })
+        self.assertEqual(response.status_code, 403)
+
+    def test_it_team_lead_can_confirm_a_self_reported_return(self):
+        """The other end of fulfillment: a holder self-reports returning an
+        asset, and confirming physical receipt (asset_checkin) used to be
+        Admin-only too."""
+        holder = User.objects.create_user(
+            email='fulfill-holder@example.com', password='TestPass123!',
+            first_name='Fulfill', last_name='Holder', department='IT', role=User.Role.END_USER,
+        )
+        self.asset.assign_to(holder, actor=self.it_lead)
+        history = self.asset._open_checkout_history()
+        history.return_requested_at = timezone.now()
+        history.return_requested_reason = Asset.ReturnReason.RETURNED
+        history.save(update_fields=['return_requested_at', 'return_requested_reason'])
+
+        self.client.login(email='fulfill-itlead@example.com', password='TestPass123!')
+        self.assertEqual(self.client.get(reverse('tickets:pending_asset_returns')).status_code, 200)
+        response = self.client.post(reverse('tickets:asset_checkin', args=[self.asset.pk]), {
+            'return_reason': Asset.ReturnReason.RETURNED,
+            'return_comment': '', 'return_condition': 'Good',
+        }, HTTP_REFERER=reverse('tickets:pending_asset_returns'))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('tickets:pending_asset_returns'))
+        self.asset.refresh_from_db()
+        self.assertIsNone(self.asset.checked_out_to)
+
+    def test_it_team_lead_can_confirm_a_demobilization(self):
+        job = JobNumber.objects.create(number='JOB-FULFILL-1', is_active=True)
+        mobilization = Mobilization.objects.create(job_number=job, mobilized_by=self.it_lead)
+        item = MobilizationItem.objects.create(
+            mobilization=mobilization, asset=self.asset, quantity=1,
+            return_requested_at=timezone.now(), return_requested_by=self.requester,
+        )
+        self.asset.status = Asset.Status.MOBILIZED
+        self.asset.save(update_fields=['status'])
+
+        self.client.login(email='fulfill-itlead@example.com', password='TestPass123!')
+        self.assertEqual(self.client.get(reverse('tickets:pending_demobilizations_list')).status_code, 200)
+        response = self.client.post(reverse('tickets:mobilization_item_demobilize', args=[item.pk]), {
+            'return_condition': 'Good', 'return_notes': '', 'override_reason': 'no linked ticket',
+        })
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNotNone(item.demobilized_at)
+
+    def test_non_it_team_lead_still_denied_returns_and_demobilization(self):
+        self.client.login(email='fulfill-otherlead@example.com', password='TestPass123!')
+        self.assertEqual(self.client.get(reverse('tickets:pending_asset_returns')).status_code, 403)
+        self.assertEqual(self.client.get(reverse('tickets:pending_demobilizations_list')).status_code, 403)
+
+
+class NotificationRoleFreezeRegressionTests(TestCase):
+    """Reproduces the reported bug end-to-end: a dual-role account (END_USER
+    + TEAM_LEAD) submits a service request, then switches to their Team Lead
+    hat for unrelated work before the IT department requests changes on
+    their request. role_of(recipient) used to sample whatever active_role
+    the recipient happened to be on *at notification-creation time*, so this
+    requester-facing notification got permanently mis-tagged 'TEAM_LEAD' and
+    vanished the moment they switched back to End User to check their
+    request. Notification.objects.create() call sites now write role=None
+    for anything not gated to a single specific role (see
+    apps/common/utils.py's role_of()/notification_role_q() docstrings) —
+    ticket_detail (this notification's target) has no role gate at all, so
+    it must always be visible regardless of active role."""
+
+    def setUp(self):
+        from apps.accounts.models import Role
+
+        self.client = Client()
+        self.general_category = ServiceCategory.objects.create(
+            name='Notif Regression Category', slug='notif-regression-category',
+            field_group=ServiceCategory.FieldGroup.GENERAL,
+        )
+        self.requester = User.objects.create_user(
+            email='notifreg-requester@example.com', password='TestPass123!',
+            first_name='Notif', last_name='Requester', department='OPERATIONS',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        end_user_role, _ = Role.objects.get_or_create(
+            name='END_USER', defaults={'display_name': 'User', 'priority': 5}
+        )
+        team_lead_role, _ = Role.objects.get_or_create(
+            name='TEAM_LEAD', defaults={'display_name': 'Team Lead', 'priority': 2}
+        )
+        self.requester.roles.add(end_user_role, team_lead_role)
+        self.requester.set_active_role('END_USER')
+
+        self.ops_lead = User.objects.create_user(
+            email='notifreg-opslead@example.com', password='TestPass123!',
+            first_name='Notifreg', last_name='OpsLead', department='OPERATIONS',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+        self.it_lead = User.objects.create_user(
+            email='notifreg-itlead@example.com', password='TestPass123!',
+            first_name='Notifreg', last_name='ITLead', department='IT',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+
+    def test_requester_notification_survives_a_role_switch(self):
+        self.client.login(email='notifreg-requester@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:create'), {
+            'type': 'SERVICE_REQUEST', 'title': 'Notif Regression Ticket', 'description': 'desc',
+            'service_category': self.general_category.id, 'purpose': 'purpose', 'urgency': 'MEDIUM',
+        })
+        ticket = Ticket.objects.get(title='Notif Regression Ticket')
+
+        self.client.login(email='notifreg-opslead@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:manager_review_ticket', args=[ticket.pk]), {
+            'action': 'approve', 'comment': 'looks fine',
+        })
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_IT_REVIEW)
+
+        # The requester switches to their Team Lead hat for unrelated work
+        # BEFORE the IT-stage notification is created — this is what used to
+        # freeze the wrong role onto the notification.
+        self.requester.set_active_role('TEAM_LEAD')
+
+        self.client.login(email='notifreg-itlead@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:manager_review_ticket', args=[ticket.pk]), {
+            'action': 'request_changes', 'comment': 'please clarify',
+        })
+
+        notification = Notification.objects.filter(recipient=self.requester).latest('created_at')
+        self.assertIsNone(notification.role)
+
+        # Switch back to End User — the hat they'd actually check this
+        # under — and confirm the notification is there.
+        self.requester.set_active_role('END_USER')
+        self.client.login(email='notifreg-requester@example.com', password='TestPass123!')
+        response = self.client.get(reverse('notifications:page'))
+        self.assertContains(response, notification.message)
 
 
 class SystemGeneratedCommentBackfillTests(TestCase):
@@ -2729,7 +3086,10 @@ class SLAAndEscalationTests(TestCase):
         )
         response = self.client.get(reverse('tickets:sla_badge', args=[ticket.pk]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'On Track')
+        # Badge shows Response and Resolution as two separate trackers (see
+        # SlaTimerSemanticsTests) rather than one combined "On Track" pill.
+        self.assertContains(response, '>Resp<')
+        self.assertContains(response, '>Res<')
 
 
 class NotificationTests(TestCase):
@@ -3364,6 +3724,226 @@ class TwoStageServiceRequestApprovalTests(TestCase):
         self.client.login(email='it-lead@example.com', password='TestPass123!')
         response = self.client.get(reverse('tickets:manager_review_history'))
         self.assertContains(response, 'Ticket M')
+
+
+class RevisionAndRejectionFlowTests(TestCase):
+    """The requester-facing side of a revision request / rejection: the
+    conversation-timeline prompt cards, the Edit Request flow, and the
+    resubmit-from-rejection flow (apps/tickets/views.py edit_ticket_request
+    and create_ticket's resubmit_from handling)."""
+
+    def setUp(self):
+        self.client = Client()
+        self.category = Category.objects.create(name='Hardware', slug='hardware-revreq')
+        self.service_category = ServiceCategory.objects.create(
+            name='Asset Category', slug='asset-category-revreq', field_group=ServiceCategory.FieldGroup.ASSET
+        )
+        self.requester = User.objects.create_user(
+            email='revreq-user@example.com', password='TestPass123!',
+            first_name='Rev', last_name='Requester', department='OPERATIONS',
+            role=User.Role.END_USER, is_active=True, email_verified=True,
+        )
+        self.ops_lead = User.objects.create_user(
+            email='revreq-lead@example.com', password='TestPass123!',
+            first_name='Rev', last_name='Lead', department='OPERATIONS',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+        self.it_lead = User.objects.create_user(
+            email='revreq-itlead@example.com', password='TestPass123!',
+            first_name='Rev', last_name='ITLead', department='IT',
+            role=User.Role.TEAM_LEAD, is_active=True, email_verified=True,
+        )
+
+    def _submit(self, title='Need a laptop'):
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:create'), {
+            'type': 'SERVICE_REQUEST', 'title': title, 'description': 'desc',
+            'service_category': self.service_category.id, 'purpose': 'purpose', 'urgency': 'MEDIUM',
+            'number_of_assets': '1', 'asset_type': 'LAPTOP',
+        })
+        return Ticket.objects.get(title=title)
+
+    def test_department_stage_request_changes_creates_revision_prompt(self):
+        ticket = self._submit('Ticket RR1')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'Specify the laptop model'},
+        )
+        prompt = TicketComment.objects.get(ticket=ticket, is_revision_request_prompt=True)
+        self.assertIn('Specify the laptop model', prompt.body)
+
+    def test_it_stage_request_changes_notifies_requester(self):
+        """Previously the requester got no notification at all when IT
+        requested changes — only the department lead heard about it."""
+        ticket = self._submit('Ticket RR2')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(reverse('tickets:manager_review_ticket', args=[ticket.pk]), {'action': 'approve', 'comment': ''})
+        self.client.login(email='revreq-itlead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'Wrong spec'},
+        )
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.requester, message__icontains=ticket.number).exists()
+        )
+        prompt = TicketComment.objects.get(ticket=ticket, is_revision_request_prompt=True)
+        self.assertIn('IT department requested changes', prompt.body)
+
+    def test_reject_creates_rejection_prompt_comment(self):
+        ticket = self._submit('Ticket RR3')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'reject', 'comment': 'Not needed'},
+        )
+        prompt = TicketComment.objects.get(ticket=ticket, is_rejection_prompt=True)
+        self.assertIn('Not needed', prompt.body)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, Ticket.Status.CLOSED)
+
+    def test_edit_request_rejects_non_requester(self):
+        ticket = self._submit('Ticket RR4')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'fix it'},
+        )
+        self.client.login(email='revreq-itlead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:edit_ticket_request', args=[ticket.pk]))
+        self.assertEqual(response.status_code, 403)
+
+    def test_edit_request_blocked_when_not_awaiting_revision(self):
+        ticket = self._submit('Ticket RR5')  # still PENDING_MANAGER_REVIEW, no revision requested
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:edit_ticket_request', args=[ticket.pk]))
+        self.assertEqual(response.status_code, 302)
+
+    def test_edit_request_get_prefills_form(self):
+        ticket = self._submit('Ticket RR6')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'fix it'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:edit_ticket_request', args=[ticket.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ticket RR6')
+        self.assertContains(response, 'Edit Your Service Request')
+
+    def test_edit_request_post_updates_ticket_and_resubmits(self):
+        ticket = self._submit('Ticket RR7')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'wrong title'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        response = self.client.post(reverse('tickets:edit_ticket_request', args=[ticket.pk]), {
+            'title': 'Ticket RR7 corrected', 'description': 'desc updated',
+            'service_category': self.service_category.id, 'purpose': 'purpose', 'urgency': 'MEDIUM',
+            'number_of_assets': '2', 'asset_type': 'LAPTOP',
+        })
+        self.assertEqual(response.status_code, 302)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.title, 'Ticket RR7 corrected')
+        self.assertEqual(ticket.service_request_details.get('number_of_assets'), '2')
+        self.assertEqual(ticket.status, Ticket.Status.PENDING_MANAGER_REVIEW)
+        self.assertTrue(
+            Notification.objects.filter(recipient=self.ops_lead, message__icontains=ticket.number).exists()
+        )
+
+    def test_resubmit_from_rejection_prefills_create_form(self):
+        ticket = self._submit('Ticket RR8')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'reject', 'comment': 'Budget'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        response = self.client.get(
+            reverse('tickets:create') + f'?type=SERVICE_REQUEST&resubmit_from={ticket.pk}'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'prefillData')
+
+    def test_conversation_timeline_shows_edit_request_button_to_requester(self):
+        ticket = self._submit('Ticket RR9')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'fix it'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:detail', args=[ticket.pk]))
+        self.assertContains(response, 'Edit Request')
+
+    def test_conversation_timeline_shows_resubmit_button_after_rejection(self):
+        ticket = self._submit('Ticket RR10')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'reject', 'comment': 'Not needed'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:detail', args=[ticket.pk]))
+        self.assertContains(response, 'Submit a Corrected Request')
+
+    def test_queue_flags_resubmitted_ticket(self):
+        """A ticket that bounced back after a revision request must be
+        visually distinguishable from a fresh submission in the queue."""
+        ticket = self._submit('Ticket RR11')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'fix it'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:edit_ticket_request', args=[ticket.pk]),
+            {
+                'title': 'Ticket RR11', 'description': 'desc updated',
+                'service_category': self.service_category.id, 'purpose': 'purpose', 'urgency': 'MEDIUM',
+                'number_of_assets': '1', 'asset_type': 'LAPTOP',
+            },
+        )
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_queue'))
+        self.assertContains(response, 'Resubmitted')
+
+    def test_fresh_ticket_not_flagged_as_resubmitted(self):
+        self._submit('Ticket RR12')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_queue'))
+        self.assertNotContains(response, 'Resubmitted')
+
+    def test_review_page_shows_history_after_revision_request(self):
+        ticket = self._submit('Ticket RR13')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:manager_review_ticket', args=[ticket.pk]),
+            {'action': 'request_changes', 'comment': 'Specify quantity'},
+        )
+        self.client.login(email='revreq-user@example.com', password='TestPass123!')
+        self.client.post(
+            reverse('tickets:edit_ticket_request', args=[ticket.pk]),
+            {
+                'title': 'Ticket RR13', 'description': 'desc updated',
+                'service_category': self.service_category.id, 'purpose': 'purpose', 'urgency': 'MEDIUM',
+                'number_of_assets': '3', 'asset_type': 'LAPTOP',
+            },
+        )
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_ticket', args=[ticket.pk]))
+        self.assertContains(response, 'Review History')
+        self.assertContains(response, 'Specify quantity')
+
+    def test_review_page_no_history_panel_for_fresh_ticket(self):
+        ticket = self._submit('Ticket RR14')
+        self.client.login(email='revreq-lead@example.com', password='TestPass123!')
+        response = self.client.get(reverse('tickets:manager_review_ticket', args=[ticket.pk]))
+        self.assertNotContains(response, 'Review History')
 
 
 class ServiceRequestVesselJobDiveSystemTests(TestCase):

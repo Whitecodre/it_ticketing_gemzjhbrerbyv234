@@ -82,6 +82,12 @@
             field.value = Array.isArray(value) ? value[0] : value;
         });
     }
+    // Exposed globally — reused outside the draft-restore flow by the
+    // ticket edit/resubmit pages (Edit Request after a revision request,
+    // Submit a Corrected Request after a rejection) to pre-fill the same
+    // create-form templates from an existing ticket's values, without a
+    // second field-population mechanism.
+    window.restoreForm = restoreForm;
 
     function showBanner(form, savedAt, hasAttachments, onRestore, onDiscard) {
         const existing = document.getElementById('draftRestoreBanner');

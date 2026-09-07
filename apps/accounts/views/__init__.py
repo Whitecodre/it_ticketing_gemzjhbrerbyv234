@@ -22,7 +22,7 @@ from apps.common.permissions import effective_role_name
 from django.core.cache import cache
 from datetime import timedelta
 from ..forms import ProfileForm, EmailAuthenticationForm, RegistrationStep1Form, RegistrationStep2Form, ChangePasswordForm, UserSettingsForm
-from ..models import User, UserProfile, Role
+from ..models import User, UserProfile, Role, SYSTEM_BOT_EMAIL
 from ..utils import validate_password_strength
 from apps.tickets.models import Ticket, TicketActivityLog, SLA, BusinessCalendar, EscalationRule, RemoteConnector, TicketComment, RemoteSession
 from apps.tickets.views import get_sidebar_template
@@ -521,7 +521,7 @@ def dashboard(request):
         # through the M2M system without the legacy field kept in sync.
         team_member_candidates = User.objects.filter(
             Q(role='AGENT') | Q(roles__name='AGENT'), department='IT', is_active=True,
-        ).distinct()
+        ).exclude(email=SYSTEM_BOT_EMAIL).distinct()
         team_members = [u for u in team_member_candidates if effective_role_name(u) == 'AGENT']
         
         context['team_open_tickets'] = Ticket.objects.filter(

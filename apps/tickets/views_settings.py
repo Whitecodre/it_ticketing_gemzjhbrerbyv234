@@ -3,17 +3,20 @@
 System Settings page — generic CRUD over apps.tickets.settings_registry.SETTINGS_RESOURCES,
 plus a dedicated branding (ClientSettings) editor. Admin/Superadmin only.
 """
+from collections import OrderedDict
+
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.forms import modelform_factory
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .models import Ticket
-from .settings_registry import SETTINGS_RESOURCES
+from .settings_registry import SETTINGS_RESOURCES, SETTINGS_GROUP_ORDER
 from .views import get_sidebar_template
 from apps.common.permissions import is_admin as _is_admin
 from apps.common.models import AdminActionLog, log_admin_action
@@ -52,29 +55,71 @@ def _unique_slug(model, base):
 
 @login_required
 def system_settings(request):
+    """Hub landing page — an icon-card grid grouped by SettingsResource.group,
+    one card per resource (plus Branding). Replaces the old single page with
+    ten tabs all rendered into the DOM at once, which was overwhelming for a
+    non-technical admin to scan. Each card links to system_settings_category,
+    a page about that one resource and nothing else — same pattern as
+    report_hub.html for Exportables."""
+    if not _is_admin(request.user):
+        return HttpResponse(status=403)
+
+    groups = OrderedDict((name, []) for name in SETTINGS_GROUP_ORDER)
+    for slug, config in SETTINGS_RESOURCES.items():
+        pending_count = 0
+        if config.has_proposals:
+            pending_count = config.model.objects.filter(is_active=False, proposed_by__isnull=False).count()
+        groups.setdefault(config.group, []).append({
+            'config': config,
+            'count': config.model.objects.count(),
+            'pending_count': pending_count,
+        })
+
+    context = {
+        'groups': groups,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'dashboards/system_settings.html', context)
+
+
+@login_required
+def system_settings_category(request, resource):
+    """One resource's full CRUD table, pending-approval banner included —
+    what a hub card links to. Deliberately shows nothing about any other
+    resource."""
+    if not _is_admin(request.user):
+        return HttpResponse(status=403)
+
+    config = _get_resource_or_404(resource)
+    pending = []
+    if config.has_proposals:
+        pending = list(config.model.objects.filter(is_active=False, proposed_by__isnull=False))
+
+    context = {
+        'config': config,
+        'rows': config.model.objects.all(),
+        'pending': pending,
+        'sidebar_template': get_sidebar_template(request.user),
+    }
+    return render(request, 'dashboards/system_settings_category.html', context)
+
+
+@login_required
+def system_settings_branding(request):
+    """Branding's own page — same hub-card-links-to-a-single-page pattern
+    as a SettingsResource, just backed by ClientSettings instead of the
+    generic registry (a singleton with a file upload, not a CRUD list)."""
     if not _is_admin(request.user):
         return HttpResponse(status=403)
 
     from apps.accounts.models import ClientSettings
     client_settings, _ = ClientSettings.objects.get_or_create(id=1)
 
-    resources_ctx = []
-    for slug, config in SETTINGS_RESOURCES.items():
-        pending = []
-        if config.has_proposals:
-            pending = list(config.model.objects.filter(is_active=False, proposed_by__isnull=False))
-        resources_ctx.append({
-            'config': config,
-            'rows': config.model.objects.all(),
-            'pending': pending,
-        })
-
     context = {
-        'resources': resources_ctx,
         'client_settings_obj': client_settings,
         'sidebar_template': get_sidebar_template(request.user),
     }
-    return render(request, 'dashboards/system_settings.html', context)
+    return render(request, 'dashboards/system_settings_branding.html', context)
 
 
 def _obj_label(obj):
@@ -182,13 +227,12 @@ def settings_resource_activate(request, resource, pk):
     proposer = getattr(obj, 'proposed_by', None)
     if proposer:
         from apps.common.models import Notification
-        from apps.common.utils import role_of
         label = getattr(obj, 'name', None) or getattr(obj, 'number', None) or str(obj)
         Notification.objects.create(
             recipient=proposer,
-            role=role_of(proposer),
+            role=None,
             message=f'"{label}" ({config.singular_label}) you proposed has been approved and is now active.',
-            url='/tickets/settings/',
+            url=reverse('tickets:system_settings_category', args=[resource]),
         )
 
     return JsonResponse({'status': 'ok'})
@@ -234,10 +278,10 @@ def branding_update(request):
         allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
         if logo.content_type not in allowed_types:
             messages.error(request, 'Please upload a valid image (JPEG, PNG, GIF, or WEBP).')
-            return redirect('tickets:system_settings')
+            return redirect('tickets:system_settings_branding')
         if logo.size > 2 * 1024 * 1024:
             messages.error(request, 'Logo must be less than 2MB.')
-            return redirect('tickets:system_settings')
+            return redirect('tickets:system_settings_branding')
         if client_settings.logo:
             try:
                 client_settings.logo.delete(save=False)
@@ -253,4 +297,4 @@ def branding_update(request):
             details=f'Fields changed: {", ".join(changed_fields)}',
         )
     messages.success(request, 'Branding updated successfully.')
-    return redirect('tickets:system_settings')
+    return redirect('tickets:system_settings_branding')

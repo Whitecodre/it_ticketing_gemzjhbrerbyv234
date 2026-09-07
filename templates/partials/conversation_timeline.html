@@ -1,6 +1,10 @@
 {% load lucide %}
 {% load badge_tags %}
 {% latest_receipt_prompt_id ticket as latest_receipt_prompt_id %}
+{% latest_revision_prompt_id ticket as latest_revision_prompt_id %}
+{% latest_rejection_prompt_id ticket as latest_rejection_prompt_id %}
+{% latest_resolution_confirmation_prompt_id ticket as latest_resolution_confirmation_prompt_id %}
+{% latest_pending_user_prompt_id ticket as latest_pending_user_prompt_id %}
 
 {% if attachment_warnings %}
 <div class="rounded-lg bg-warning/10 border border-warning/30 text-warning text-xs p-3 mb-3">
@@ -12,9 +16,14 @@
 </div>
 {% endif %}
 
-{# ---------- Ticket description (initial message) ---------- #}
-<div class="flex justify-start mb-3">
-    <div class="max-w-[70%] xl:max-w-xl rounded-lg px-4 py-2 text-sm break-words bubble-theirs bubble-left">
+{# ---------- Ticket description (initial message) — aligned like any other bubble, so the requester's own opening message sits on their own side when they view it, same as everyone else's comments do. ---------- #}
+<div class="flex {% if ticket.requester == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
+    <div class="max-w-[70%] xl:max-w-xl rounded-lg px-4 py-2 text-sm break-words
+                {% if ticket.requester == request.user %}
+                    text-white bg-primary bubble-right
+                {% else %}
+                    bubble-theirs bubble-left
+                {% endif %}">
         <div class="text-xs font-semibold mb-1 opacity-80">
             {{ ticket.requester.get_full_name_with_role }}
         </div>
@@ -34,7 +43,7 @@
 
 {% for comment in comments %}
     {% if comment.mobilization_event %}
-        <div class="flex justify-start mb-3">
+        <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
             <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
                 <div class="flex items-start gap-2.5">
                     {% if comment.mobilization_event == 'VENDOR_ITEM_ARRIVED' %}
@@ -53,14 +62,16 @@
                     <div class="min-w-0">
                         <div class="text-text-primary">{{ comment.body|safe }}</div>
                         <p class="text-xs text-text-secondary mt-1">
-                            {% if comment.mobilization_event == 'VENDOR_ITEM_CANCELLED' %}Updated{% else %}Sent{% endif %} by System · {{ comment.created_at|date:"M j, Y g:i A" }}
+                            {% if comment.mobilization_event == 'VENDOR_ITEM_CANCELLED' %}Updated{% else %}Sent{% endif %} by
+                            {% if comment.author.email == 'system@ticketswipe.local' %}System{% else %}{{ comment.author.get_full_name_with_role }}{% endif %}
+                            · {{ comment.created_at|date:"M j, Y g:i A" }}
                         </p>
                     </div>
                 </div>
             </div>
         </div>
     {% elif comment.is_receipt_confirmation_prompt and comment.pk == latest_receipt_prompt_id %}
-        <div class="flex justify-start mb-3">
+        <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
             <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
                 {% if ticket.resolution_confirmed_at and ticket.status != 'PENDING_USER' %}
                     {# ---------- Confirmed ---------- #}
@@ -91,7 +102,8 @@
                                 {{ mob_total }} asset{{ mob_total|pluralize }} mobilized for <strong>{{ mob.destination_display }}</strong>
                             </p>
                             <p class="text-xs text-text-secondary mt-0.5">
-                                Sent by System · {{ comment.created_at|date:"M j, Y g:i A" }} ·
+                                Sent by {% if comment.author.email == 'system@ticketswipe.local' %}System{% else %}{{ comment.author.get_full_name_with_role }}{% endif %}
+                                · {{ comment.created_at|date:"M j, Y g:i A" }} ·
                                 <button type="button" onclick="document.getElementById('receiptItems{{ comment.pk }}').classList.toggle('hidden')" class="text-primary hover:underline">View items</button>
                             </p>
                             <div id="receiptItems{{ comment.pk }}" class="hidden mt-2 space-y-1">
@@ -104,7 +116,8 @@
                             {% else %}
                             <p class="font-medium text-text-primary">Your request has been fulfilled</p>
                             <p class="text-xs text-text-secondary mt-0.5">
-                                Sent by System · {{ comment.created_at|date:"M j, Y g:i A" }}
+                                Sent by {% if comment.author.email == 'system@ticketswipe.local' %}System{% else %}{{ comment.author.get_full_name_with_role }}{% endif %}
+                                · {{ comment.created_at|date:"M j, Y g:i A" }}
                             </p>
                             {% endif %}
                             {% if user == ticket.requester %}
@@ -129,8 +142,98 @@
                 {% endif %}
             </div>
         </div>
+    {% elif comment.is_revision_request_prompt and comment.pk == latest_revision_prompt_id %}
+        {# ---------- Revision requested — same system-card shape as the receipt-confirmation prompt above, not a chat bubble; aligned to whichever side actually authored it (the reviewing lead), not hardcoded left. Edit Request only shows while it's actually the requester's turn to act (PENDING_USER); a bounce sitting with the department lead (PENDING_MANAGER_REVIEW) shows informational text instead, since the requester can't act on it yet. ---------- #}
+        <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                <div class="flex items-start gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning);">
+                        {% lucide "pencil-line" size=15 %}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-medium text-text-primary">Revision requested</p>
+                        <div class="text-text-primary mt-1">{{ comment.body|safe }}</div>
+                        <p class="text-xs text-text-secondary mt-1">{{ comment.created_at|date:"M j, Y g:i A" }}</p>
+                        {% if ticket.status == 'PENDING_USER' and user == ticket.requester and comment.pk == latest_pending_user_prompt_id %}
+                        <a href="{% url 'tickets:edit_ticket_request' ticket.pk %}"
+                           class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">
+                            {% lucide "pencil" size=12 %} Edit Request
+                        </a>
+                        {% elif ticket.status == 'PENDING_MANAGER_REVIEW' %}
+                        <p class="text-xs text-text-secondary mt-1.5 italic">Your department lead is reviewing this.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% elif comment.is_rejection_prompt and comment.pk == latest_rejection_prompt_id %}
+        {# ---------- Request rejected — same system-card pattern, aligned by actual author. ---------- #}
+        <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                <div class="flex items-start gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-error) 15%, transparent); color: var(--color-error);">
+                        {% lucide "x-circle" size=15 %}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-medium text-text-primary">Request rejected</p>
+                        <div class="text-text-primary mt-1">{{ comment.body|safe }}</div>
+                        <p class="text-xs text-text-secondary mt-1">{{ comment.created_at|date:"M j, Y g:i A" }}</p>
+                        {% if user == ticket.requester %}
+                        <a href="{% url 'tickets:create' %}?type={{ ticket.type }}&resubmit_from={{ ticket.pk }}"
+                           class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">
+                            {% lucide "refresh-cw" size=12 %} Submit a Corrected Request
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% elif comment.is_resolution_confirmation_prompt and comment.pk == latest_resolution_confirmation_prompt_id %}
+        {# ---------- Resolution requested — same system-card pattern as receipt confirmation/revision request above, with the Confirm/Reopen actions right on the card instead of behind a notification-only link. Aligned by actual author (the resolving agent), not hardcoded left. ---------- #}
+        <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
+            <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
+                <div class="flex items-start gap-2.5">
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success);">
+                        {% lucide "check-circle" size=15 %}
+                    </span>
+                    <div class="min-w-0 flex-1">
+                        <p class="font-medium text-text-primary">Resolution requested</p>
+                        <div class="text-text-primary mt-1">{{ comment.body|safe }}</div>
+                        <p class="text-xs text-text-secondary mt-1">{{ comment.created_at|date:"M j, Y g:i A" }}</p>
+                        {% if ticket.status == 'PENDING_USER' and user == ticket.requester and comment.pk == latest_pending_user_prompt_id %}
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            <form method="post" action="{% url 'tickets:confirm_resolution' ticket.pk %}" data-guard-submit>
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="confirm">
+                                <button type="submit" class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5">
+                                    {% lucide "check" size=12 %} {% if ticket.is_asset_request %}Yes, I received it{% else %}Yes, it's resolved{% endif %}
+                                </button>
+                            </form>
+                            <button type="button" onclick="document.getElementById('reopenReason{{ comment.pk }}').classList.toggle('hidden')"
+                                    class="btn-outline text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5">
+                                {% lucide "alert-circle" size=12 %} {% if ticket.is_asset_request %}No, not yet{% else %}Still having issues{% endif %}
+                            </button>
+                        </div>
+                        <div id="reopenReason{{ comment.pk }}" class="hidden mt-2">
+                            <form method="post" action="{% url 'tickets:confirm_resolution' ticket.pk %}" class="flex flex-col gap-2" data-guard-submit>
+                                {% csrf_token %}
+                                <input type="hidden" name="action" value="reopen">
+                                <textarea name="reason" rows="2"
+                                          placeholder="{% if ticket.is_asset_request %}What's missing or wrong? (optional){% else %}What's still not working? (optional){% endif %}"
+                                          class="w-full rounded-lg border py-1.5 px-2.5 text-xs bg-background border-border text-text-primary"></textarea>
+                                <button type="submit" class="btn-danger text-xs px-3 py-1.5 rounded-lg self-start">
+                                    {% if ticket.is_asset_request %}Not received{% else %}Reopen ticket{% endif %}
+                                </button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
     {% elif comment.is_system_generated %}
-        <div class="flex justify-start mb-3">
+        {# ---------- Aligned by actual author, same as any other comment — is_system_generated only picks the icon/card treatment (an automated log line from the bot account, or a specially-styled announcement from a real person like "Resolution confirmed"), it isn't a claim that a real author's comment came from "the system." The attribution line below names the true author except for the bot account itself. ---------- #}
+        <div class="flex {% if comment.author == request.user %}justify-end{% else %}justify-start{% endif %} mb-3">
             <div class="max-w-[70%] xl:max-w-xl rounded-lg border p-3 text-sm break-words" style="border-color: var(--color-border); background-color: var(--color-surface);">
                 <div class="flex items-start gap-2.5">
                     <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style="background-color: color-mix(in srgb, var(--color-text-secondary) 15%, transparent); color: var(--color-text-secondary);">
@@ -138,7 +241,39 @@
                     </span>
                     <div class="min-w-0">
                         <div class="text-text-primary">{{ comment.body|safe }}</div>
-                        <p class="text-xs text-text-secondary mt-1">System · {{ comment.created_at|date:"M j, Y g:i A" }}</p>
+                        <p class="text-xs text-text-secondary mt-1">
+                            {% if comment.author.email == 'system@ticketswipe.local' %}System{% else %}{{ comment.author.get_full_name_with_role }}{% endif %}
+                            · {{ comment.created_at|date:"M j, Y g:i A" }}
+                        </p>
+                        {% if comment.remote_session %}
+                        {% with session=comment.remote_session %}
+                        {# Deep-links straight to this session's own page — where the
+                           accept/reject/code-entry UI actually lives — so the party
+                           with a pending action reaches it directly from the thread
+                           instead of having to go find the right notification. #}
+                        {% if session.status == 'REQUESTED' and user == session.requester %}
+                        <a href="{% url 'tickets:remote_session_detail' session.pk %}"
+                           class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">
+                            {% lucide "monitor" size=12 %} Respond to Request
+                        </a>
+                        {% elif session.status == 'ACCEPTED' and user == session.agent %}
+                        <a href="{% url 'tickets:remote_session_detail' session.pk %}"
+                           class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">
+                            {% lucide "monitor" size=12 %} Start Session
+                        </a>
+                        {% elif session.status == 'STARTED' and user == session.agent %}
+                        <a href="{% url 'tickets:remote_session_detail' session.pk %}"
+                           class="btn-danger text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">
+                            {% lucide "monitor-off" size=12 %} End Session
+                        </a>
+                        {% elif user == session.requester or user == session.agent %}
+                        <a href="{% url 'tickets:remote_session_detail' session.pk %}"
+                           class="text-xs text-primary hover:underline inline-flex items-center gap-1 mt-2">
+                            {% lucide "external-link" size=11 %} View session
+                        </a>
+                        {% endif %}
+                        {% endwith %}
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -201,15 +336,6 @@
         <span class="status-chip {{ ticket.status|lower }} text-xs">{{ ticket.get_status_display }}</span>
     </div>
     <div id="slaBadgeInner" hx-swap-oob="true">
-        {% with sla_info=ticket.sla_status %}
-        <span class="text-[0.6rem] px-2 py-0.5 rounded-full 
-            {% if sla_info.overall == 'breached' %}bg-error/10 text-error
-            {% elif sla_info.overall == 'warning' %}bg-warning/10 text-warning
-            {% else %}bg-success/10 text-success{% endif %}">
-            {% if sla_info.overall == 'breached' %}SLA Breach
-            {% elif sla_info.overall == 'warning' %}SLA Warning
-            {% else %}On Track{% endif %}
-        </span>
-        {% endwith %}
+        {% include "partials/sla_badge.html" %}
     </div>
 </div>

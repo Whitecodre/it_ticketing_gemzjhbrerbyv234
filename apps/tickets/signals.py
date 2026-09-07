@@ -5,10 +5,65 @@ from django.db.models import Q
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.urls import reverse
-from .models import Asset, Ticket, TicketComment
+from django.utils import timezone
+from .models import Asset, Ticket, TicketComment, SLA, business_minutes_elapsed
 from apps.accounts.models import User
 from apps.common.models import Notification
-from apps.common.utils import role_of
+
+
+@receiver(pre_save, sender=Ticket)
+def _capture_old_assignment_and_status_for_sla(sender, instance, **kwargs):
+    """Stash the pre-save assigned_to/status so the post_save handler below
+    can tell a genuine transition (unassigned -> assigned, or entering/
+    leaving a resolution-pause status) apart from an unrelated field save
+    that happens to touch the same row — same pattern as
+    _capture_old_name_for_asset_resolve below, for the same reason."""
+    if not instance.pk:
+        instance._old_assigned_to_id = None
+        instance._old_status = None
+        return
+    try:
+        old = Ticket.objects.only('assigned_to_id', 'status').get(pk=instance.pk)
+        instance._old_assigned_to_id = old.assigned_to_id
+        instance._old_status = old.status
+    except Ticket.DoesNotExist:
+        instance._old_assigned_to_id = None
+        instance._old_status = None
+
+
+@receiver(post_save, sender=Ticket)
+def _track_sla_timers(sender, instance, created, **kwargs):
+    """Freezes the Response SLA at first assignment and pauses/resumes the
+    Resolution SLA around wait states — see Ticket.sla_status()'s docstring
+    comments for why. Runs off a signal (not view code) so every path that
+    can change assigned_to/status (manual claim, auto-assign-on-breach,
+    manager approval, admin edit, ...) is covered by one place, not
+    re-implemented per call site. Uses .update() to persist without
+    re-triggering this same signal."""
+    old_assigned_to_id = getattr(instance, '_old_assigned_to_id', None)
+    old_status = getattr(instance, '_old_status', None)
+    updates = {}
+
+    if instance.assigned_to_id and not old_assigned_to_id and not instance.first_assigned_at:
+        updates['first_assigned_at'] = timezone.now()
+
+    was_paused = old_status in Ticket.RESOLUTION_PAUSE_STATUSES
+    is_paused = instance.status in Ticket.RESOLUTION_PAUSE_STATUSES
+    if is_paused and not was_paused and not instance.resolution_paused_at:
+        updates['resolution_paused_at'] = timezone.now()
+    elif was_paused and not is_paused and instance.resolution_paused_at:
+        try:
+            calendar = SLA.objects.select_related('calendar').get(priority=instance.priority).calendar
+        except SLA.DoesNotExist:
+            calendar = None
+        now = timezone.now()
+        paused_span = business_minutes_elapsed(instance.resolution_paused_at, now, calendar)
+        updates['resolution_paused_minutes'] = (instance.resolution_paused_minutes or 0) + paused_span
+        updates['resolution_paused_at'] = None
+
+    if updates:
+        Ticket.objects.filter(pk=instance.pk).update(**updates)
+
 
 @receiver(post_save, sender=Ticket)
 def create_ticket_notification(sender, instance, created, **kwargs):
@@ -16,7 +71,7 @@ def create_ticket_notification(sender, instance, created, **kwargs):
         # Notify the requester (always)
         Notification.objects.create(
             recipient=instance.requester,
-            role=role_of(instance.requester),
+            role=None,
             message=f"Ticket {instance.number} created successfully.",
             url=reverse('tickets:detail', args=[instance.pk])
         )
@@ -28,7 +83,7 @@ def create_ticket_notification(sender, instance, created, **kwargs):
             for agent in agents:
                 Notification.objects.create(
                     recipient=agent,
-                    role=role_of(agent),
+                    role=None,
                     message=f"New unassigned ticket {instance.number}: {instance.title}",
                     url=reverse('tickets:detail', args=[instance.pk])
                 )
@@ -42,7 +97,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
         if instance.author != instance.ticket.requester:
             Notification.objects.create(
                 recipient=instance.ticket.requester,
-                role=role_of(instance.ticket.requester),
+                role=None,
                 message=f"New reply on ticket {instance.ticket.number}.",
                 url=reverse('tickets:detail', args=[instance.ticket.pk])
             )
@@ -50,7 +105,7 @@ def create_comment_notification(sender, instance, created, **kwargs):
         if instance.author == instance.ticket.requester and instance.ticket.assigned_to:
             Notification.objects.create(
                 recipient=instance.ticket.assigned_to,
-                role=role_of(instance.ticket.assigned_to),
+                role=None,
                 message=f"{instance.ticket.requester.get_full_name()} replied to ticket {instance.ticket.number}.",
                 url=reverse('tickets:detail', args=[instance.ticket.pk])
             )
@@ -70,7 +125,7 @@ def handle_ticket_fulfillment_notification(sender, instance, created, **kwargs):
                 # This is a new fulfillment
                 Notification.objects.create(
                     recipient=instance.requester,
-                    role=role_of(instance.requester),
+                    role=None,
                     message=f'Your asset request {instance.number} has been fulfilled. Asset assigned to you.',
                     url=reverse('tickets:detail', args=[instance.pk])
                 )
@@ -150,14 +205,14 @@ def flag_assets_resolvable_for_new_user(sender, instance, created, **kwargs):
     for admin in admins:
         if assigned:
             Notification.objects.create(
-                recipient=admin, role=role_of(admin),
+                recipient=admin, role=None,
                 message=f'{instance.get_full_name()} matched {len(assigned)} imported asset(s) that listed '
                         f'"{hint_text}" as their holder — auto-assigned to them.',
                 url=assets_url,
             )
         if blocked:
             Notification.objects.create(
-                recipient=admin, role=role_of(admin),
+                recipient=admin, role=None,
                 message=f'{instance.get_full_name()} matches {len(blocked)} imported asset(s) listed '
                         f'"{hint_text}" as their holder, but they could not be auto-assigned — review manually.',
                 url=assets_url,

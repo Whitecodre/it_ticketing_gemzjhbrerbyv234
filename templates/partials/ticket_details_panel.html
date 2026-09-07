@@ -13,7 +13,11 @@
     <div>
         <div class="flex items-center justify-between mb-2">
             <label class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Assignee</label>
-            {% if is_agent %}
+            {# Team Lead/Admin/Superadmin only — reassigning a ticket away from
+               whoever holds it is a workload/oversight call, not something a
+               plain Agent should be able to do (they still claim an unclaimed
+               ticket via the row-action "Claim" button in the queue table). #}
+            {% if active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
             <button type="button" class="text-[0.65rem] font-semibold text-primary hover:underline"
                     hx-get="{% url 'tickets:assign_popover' ticket.pk %}"
                     hx-target="body"

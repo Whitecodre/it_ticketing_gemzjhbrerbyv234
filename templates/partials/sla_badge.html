@@ -1,23 +1,55 @@
 {% load lucide %}
-
+{% comment %}
+  Two separate trackers, not one — Response and Resolution measure different
+  things and stop at different moments (Response freezes the instant an
+  agent is assigned; Resolution keeps running, paused-aware, until the
+  ticket is actually resolved). A single combined bar/percent here is what
+  made this look "stuck"/"still running after claim" during testing: it was
+  silently only ever showing Resolution's number. Each row below switches
+  from a live bar to a plain "Met"/"Resolved" chip once its own clock has
+  actually stopped, so an agent can tell at a glance which timer (if either)
+  needs attention.
+{% endcomment %}
 {% with sla_info=ticket.sla_status %}
-<div class="flex flex-col">
-    <div class="sla-bar w-24 mb-1">
-        <div class="sla-bar-fill 
-            {% if sla_info.overall == 'ok' %}safe
-            {% elif sla_info.overall == 'warning' %}warning
-            {% else %}danger{% endif %}" 
-            style="width: {% if sla_info.overall == 'breached' %}100{% else %}{{ sla_info.resolution_pct|default:0 }}{% endif %}%;">
+<div class="flex flex-col gap-1"
+     title="Response: {{ sla_info.response|capfirst }} ({{ sla_info.response_pct|default:0 }}% of budget) · Resolution: {{ sla_info.resolution|capfirst }}{% if sla_info.resolution_paused %}, paused{% endif %} ({{ sla_info.resolution_pct|default:0 }}% of budget)">
+
+    <div class="flex items-center gap-1.5">
+        <span class="text-[9px] font-semibold uppercase tracking-wider text-text-secondary w-7 shrink-0">Resp</span>
+        {% if ticket.first_assigned_at %}
+        <span class="sla-timer {% if sla_info.response == 'breached' %}danger{% else %}safe{% endif %} inline-flex items-center gap-1 text-xs">
+            {% lucide "check" size=11 %}{% if sla_info.response == 'breached' %}Missed{% else %}Met{% endif %}
+        </span>
+        {% else %}
+        <div class="sla-bar w-14 shrink-0">
+            <div class="sla-bar-fill {% if sla_info.response == 'ok' %}safe{% elif sla_info.response == 'warning' %}warning{% else %}danger{% endif %}"
+                 style="width: {% if sla_info.response == 'breached' %}100{% else %}{{ sla_info.response_pct|default:0 }}{% endif %}%;"></div>
         </div>
-    </div>
-    <span class="sla-timer
-        {% if sla_info.overall == 'ok' %}safe
-        {% elif sla_info.overall == 'warning' %}warning
-        {% else %}danger{% endif %} text-xs">
-        {% if sla_info.overall == 'breached' %}Breached
-        {% elif sla_info.overall == 'warning' %}At Risk ({{ sla_info.resolution_pct|default:0 }}%)
-        {% else %}On Track
+        <span class="sla-timer {% if sla_info.response == 'ok' %}safe{% elif sla_info.response == 'warning' %}warning{% else %}danger{% endif %} text-xs">
+            {% if sla_info.response == 'breached' %}Breached{% else %}{{ sla_info.response_pct|default:0 }}%{% endif %}
+        </span>
         {% endif %}
-    </span>
+    </div>
+
+    <div class="flex items-center gap-1.5">
+        <span class="text-[9px] font-semibold uppercase tracking-wider text-text-secondary w-7 shrink-0">Res</span>
+        {% if ticket.resolved_at %}
+        <span class="sla-timer safe inline-flex items-center gap-1 text-xs">
+            {% lucide "check" size=11 %}Resolved
+        </span>
+        {% elif sla_info.resolution_paused %}
+        <span class="sla-timer text-text-secondary inline-flex items-center gap-1 text-xs">
+            {% lucide "pause" size=11 %}Paused
+        </span>
+        {% else %}
+        <div class="sla-bar w-14 shrink-0">
+            <div class="sla-bar-fill {% if sla_info.resolution == 'ok' %}safe{% elif sla_info.resolution == 'warning' %}warning{% else %}danger{% endif %}"
+                 style="width: {% if sla_info.resolution == 'breached' %}100{% else %}{{ sla_info.resolution_pct|default:0 }}{% endif %}%;"></div>
+        </div>
+        <span class="sla-timer {% if sla_info.resolution == 'ok' %}safe{% elif sla_info.resolution == 'warning' %}warning{% else %}danger{% endif %} text-xs">
+            {% if sla_info.resolution == 'breached' %}Breached{% else %}{{ sla_info.resolution_pct|default:0 }}%{% endif %}
+        </span>
+        {% endif %}
+    </div>
 </div>
 {% endwith %}

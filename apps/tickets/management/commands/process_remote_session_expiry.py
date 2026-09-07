@@ -7,7 +7,6 @@ from django.urls import reverse
 from datetime import timedelta
 from apps.tickets.models import RemoteSession, TicketComment, TicketActivityLog
 from apps.common.models import Notification
-from apps.common.utils import role_of
 
 User = get_user_model()
 
@@ -94,14 +93,14 @@ class Command(BaseCommand):
         # already respects via remote_session_detail's own role branching.
         Notification.objects.create(
             recipient=session.agent,
-            role=role_of(session.agent),
+            role=None,
             message=f"Your remote session request for ticket {ticket.number} expired without a response. Send a new request?",
             url=reverse('tickets:conversation', args=[ticket.pk]),
             type=Notification.Type.REMOTE_SESSION,
         )
         Notification.objects.create(
             recipient=session.requester,
-            role=role_of(session.requester),
+            role=None,
             message=f"The remote session request for ticket {ticket.number} expired.",
             url=reverse('tickets:detail', args=[ticket.pk]),
             type=Notification.Type.REMOTE_SESSION,

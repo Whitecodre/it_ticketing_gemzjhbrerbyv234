@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.common.models import Notification
-from apps.common.utils import role_of, notify_recipients_by_email
+from apps.common.utils import notify_recipients_by_email
 from apps.common.permissions import effective_role_name
 from apps.tickets.models import Asset
 
@@ -50,7 +50,7 @@ class Command(BaseCommand):
                 for recipient in recipients:
                     Notification.objects.create(
                         recipient=recipient,
-                        role=role_of(recipient),
+                        role=None,
                         message=message,
                         url=url,
                         type=Notification.Type.GENERAL,

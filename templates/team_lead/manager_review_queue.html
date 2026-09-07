@@ -64,11 +64,16 @@
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_full_name_with_role }}</td>
                         <td class="py-3 px-4 text-text-secondary">{{ ticket.requester.get_department_display }}</td>
                         <td class="py-3 px-4">
-                            {% if ticket.status == 'PENDING_IT_REVIEW' %}
-                            <span class="status-chip in_progress text-xs">IT Review</span>
-                            {% else %}
-                            <span class="status-chip pending_approval text-xs">Department Review</span>
-                            {% endif %}
+                            <div class="flex flex-wrap items-center gap-1">
+                                {% if ticket.status == 'PENDING_IT_REVIEW' %}
+                                <span class="status-chip in_progress text-xs">IT Review</span>
+                                {% else %}
+                                <span class="status-chip pending_approval text-xs">Department Review</span>
+                                {% endif %}
+                                {% if ticket.pk in resubmitted_ticket_ids %}
+                                <span class="status-chip escalated text-xs" title="Changes were requested before — see Review History on this ticket">Resubmitted</span>
+                                {% endif %}
+                            </div>
                         </td>
                         <td class="py-3 px-4 text-text-secondary text-xs">{{ ticket.created_at|timesince }} ago</td>
                         <td class="py-3 px-4 text-center">

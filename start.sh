@@ -37,6 +37,9 @@ python manage.py seed_roles
 echo "=== Seeding Service Categories ==="
 python manage.py seed_service_categories
 
+echo "=== Seeding SLA policies, business calendar, and escalation rules ==="
+python manage.py seed_sla
+
 # start.sh
 # echo "=== Checking npm version ==="
 # npm --version || echo "npm not found"

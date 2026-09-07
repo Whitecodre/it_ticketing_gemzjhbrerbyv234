@@ -15,7 +15,7 @@ import logging
 
 from apps.accounts.models import User
 from apps.common.models import Notification
-from apps.common.utils import send_email_via_brevo, role_of
+from apps.common.utils import send_email_via_brevo
 from apps.common.permissions import effective_role_name
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ def impersonate_token(request, token):
 
     Notification.objects.create(
         recipient=target_user,
-        role=role_of(target_user),
+        role=None,
         message=f"{admin_user.get_full_name()} has logged in as you for: {impersonation_reason}",
         url=reverse('dashboard'),
         type=Notification.Type.GENERAL

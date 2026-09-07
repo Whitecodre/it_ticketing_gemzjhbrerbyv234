@@ -65,6 +65,19 @@ class UserManager(BaseUserManager):
 # USER MODEL
 # ================================================================
 
+# The one automated-actions account (created ad-hoc by process_sla,
+# process_remote_session_expiry, backfill_asset_assignments, etc. — see
+# their get_or_create(email=SYSTEM_BOT_EMAIL, ...) calls). It holds a real
+# AGENT role so it can author/act on tickets programmatically, which means
+# any query for "an available agent" (auto-assign candidate pools, the
+# workload dashboard, reassignment pickers, the org chart) must explicitly
+# exclude it — otherwise a ticket can get auto-assigned to a login nobody
+# ever uses, silently stuck forever. There's no dedicated is_bot flag; this
+# fixed address is the only marker, so exclude by email consistently rather
+# than re-deriving the string at each call site.
+SYSTEM_BOT_EMAIL = 'system@ticketswipe.local'
+
+
 class User(AbstractUser):
     username = None
 

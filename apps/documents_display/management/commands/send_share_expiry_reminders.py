@@ -11,7 +11,7 @@ from django.utils import timezone
 from datetime import timedelta
 
 from apps.common.models import Notification
-from apps.common.utils import role_of, notify_recipients_by_email
+from apps.common.utils import notify_recipients_by_email
 from apps.documents_display.models import DocumentShare, FolderShare, ShareAuditLog, log_share_event
 
 REMINDER_WINDOW_DAYS = 3
@@ -52,7 +52,7 @@ class Command(BaseCommand):
 
                 Notification.objects.create(
                     recipient=share.shared_by,
-                    role=role_of(share.shared_by),
+                    role=None,
                     message=message,
                     url=url,
                     type=Notification.Type.GENERAL,

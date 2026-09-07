@@ -35,13 +35,21 @@ class SettingsResource:
     # some other form (a new vessel/job number/vendor typed on a
     # mobilization/service-request/procurement form) — created is_active=
     # False + proposed_by=<that user>. Drives the pending-approval banner
-    # on this resource's System Settings tab.
+    # on this resource's System Settings page.
     has_proposals: bool = False
+    # Which card-grid section this resource's icon button lands in on the
+    # System Settings hub — see SETTINGS_GROUP_ORDER below for the section
+    # display order. Purely a hub-layout grouping, unrelated to has_proposals.
+    group: str = 'Tickets & Service'
 
     def __post_init__(self):
         if not self.singular_label:
             self.singular_label = self.label
 
+
+# Display order for the hub's section headings — anything with a group not
+# listed here would simply be appended at the end.
+SETTINGS_GROUP_ORDER = ['Tickets & Service', 'Assets & Fleet']
 
 SETTINGS_RESOURCES = {
     'service-categories': SettingsResource(
@@ -49,6 +57,7 @@ SETTINGS_RESOURCES = {
         label='Service Categories',
         singular_label='Service Category',
         icon='clipboard-list',
+        group='Tickets & Service',
         model=ServiceCategory,
         fields=[
             SettingsField('name', 'Name'),
@@ -63,6 +72,7 @@ SETTINGS_RESOURCES = {
         label='Vessels',
         singular_label='Vessel',
         icon='anchor',
+        group='Assets & Fleet',
         model=Vessel,
         has_proposals=True,
         fields=[
@@ -77,6 +87,7 @@ SETTINGS_RESOURCES = {
         label='Dive Systems',
         singular_label='Dive System',
         icon='waves',
+        group='Assets & Fleet',
         model=DiveSystem,
         fields=[
             SettingsField('name', 'Name'),
@@ -89,6 +100,7 @@ SETTINGS_RESOURCES = {
         label='Job Numbers',
         singular_label='Job Number',
         icon='briefcase',
+        group='Assets & Fleet',
         model=JobNumber,
         has_proposals=True,
         fields=[
@@ -102,6 +114,7 @@ SETTINGS_RESOURCES = {
         label='Asset Categories',
         singular_label='Asset Category',
         icon='hard-drive',
+        group='Assets & Fleet',
         model=AssetCategory,
         fields=[
             SettingsField('name', 'Name'),
@@ -117,6 +130,7 @@ SETTINGS_RESOURCES = {
         label='Locations',
         singular_label='Location',
         icon='map-pin',
+        group='Assets & Fleet',
         model=Location,
         fields=[
             SettingsField('name', 'Name'),
@@ -131,6 +145,7 @@ SETTINGS_RESOURCES = {
         label='Asset Departments',
         singular_label='Asset Department',
         icon='building',
+        group='Assets & Fleet',
         model=AssetDepartment,
         fields=[
             SettingsField('name', 'Name'),
@@ -144,6 +159,7 @@ SETTINGS_RESOURCES = {
         label='Categories (Incident Tickets, KB Articles)',
         singular_label='Category',
         icon='folder',
+        group='Tickets & Service',
         model=Category,
         fields=[
             SettingsField('name', 'Name'),
@@ -157,6 +173,7 @@ SETTINGS_RESOURCES = {
         label='Maintenance Checklist Items',
         singular_label='Checklist Item',
         icon='list-checks',
+        group='Tickets & Service',
         model=MaintenanceChecklistTemplate,
         fields=[
             SettingsField('department', 'Department', 'select', choices=MaintenanceChecklistTemplate.Department.choices),
@@ -170,6 +187,7 @@ SETTINGS_RESOURCES = {
         label='Vendors',
         singular_label='Vendor',
         icon='truck',
+        group='Assets & Fleet',
         model=Vendor,
         has_proposals=True,
         fields=[

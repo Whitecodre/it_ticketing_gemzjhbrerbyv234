@@ -18,7 +18,7 @@ from .utils import get_document_view, set_document_view
 from .models import DisplayCategory, DisplayDocument, DisplayVersion, DocumentDepartmentAccess, DocumentShare, generate_share_token, DocumentFolder, FolderShare, ShareAuditLog, log_share_event
 from .forms import DisplayDocumentForm, DepartmentAccessFormSet, build_department_access_initial, ShareDocumentForm, DocumentFolderForm, ShareFolderForm
 from apps.accounts.models import User
-from apps.common.utils import send_email_via_brevo, role_of
+from apps.common.utils import send_email_via_brevo
 from apps.common.models import Notification
 from .utils import generate_preview_for_document
 from apps.tickets.views import get_sidebar_template
@@ -709,7 +709,7 @@ def document_share(request, slug):
                     Notification.objects.create(
                         sender=request.user,
                         recipient=recipient,
-                        role=role_of(recipient),
+                        role=None,
                         message=f'{request.user.get_full_name()} shared "{document.title}" with you.',
                         url=reverse('documents_display:document_share_open', args=[share.token]),
                         type=Notification.Type.GENERAL,
@@ -812,7 +812,7 @@ def document_share_external(request, token):
         if share.shared_by_id:
             Notification.objects.create(
                 recipient=share.shared_by,
-                role=role_of(share.shared_by),
+                role=None,
                 message=f'{share.external_email} opened the external link you shared for "{share.document.title}".',
                 url=reverse('documents_display:document_share', args=[share.document.slug]),
                 type=Notification.Type.GENERAL,
@@ -1162,7 +1162,7 @@ def folder_share(request, slug):
                     Notification.objects.create(
                         sender=request.user,
                         recipient=recipient,
-                        role=role_of(recipient),
+                        role=None,
                         message=f'{request.user.get_full_name()} shared the folder "{folder.name}" with you.',
                         url=reverse('documents_display:folder_share_open', args=[share.token]),
                         type=Notification.Type.GENERAL,
@@ -1284,7 +1284,7 @@ def folder_share_external(request, token):
         if share.shared_by_id:
             Notification.objects.create(
                 recipient=share.shared_by,
-                role=role_of(share.shared_by),
+                role=None,
                 message=f'{share.external_email} opened the external link you shared for "{share.folder.name}".',
                 url=reverse('documents_display:folder_share', args=[share.folder.slug]),
                 type=Notification.Type.GENERAL,

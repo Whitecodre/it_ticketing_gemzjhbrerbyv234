@@ -270,9 +270,17 @@
     <div class="letterhead">
         <div class="brand">
             {% if client_settings.logo_url %}
+                {% comment %}
+                Logo already carries the brand — pairing it with the name as
+                plain text too duplicates the branding (the logo image
+                itself typically has the wordmark baked in). Same
+                logo-OR-name convention every other export/report
+                letterhead in the app already follows.
+                {% endcomment %}
                 <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name }}">
+            {% else %}
+                <span class="brand-name">{{ client_settings.company_name }}</span>
             {% endif %}
-            <span class="brand-name">{{ client_settings.company_name }}</span>
         </div>
         <div class="doc-title">
             <h1>System Organogram</h1>

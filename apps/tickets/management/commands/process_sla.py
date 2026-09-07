@@ -5,8 +5,8 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from apps.tickets.models import Ticket, TicketComment, TicketActivityLog, EscalationRule, SLA, business_minutes_elapsed
 from apps.common.models import Notification
-from apps.common.utils import role_of
 from apps.common.permissions import effective_role_name
+from apps.accounts.models import SYSTEM_BOT_EMAIL
 from django.db.models import Q
 
 User = get_user_model()
@@ -62,15 +62,25 @@ class Command(BaseCommand):
         """Evaluate both SLA timers on a ticket against their escalation
         rules' thresholds (percent of the timer's window elapsed), firing
         each rule at most once, then handle a full (100%) breach separately
-        once per timer type."""
+        once per timer type.
+
+        Response is frozen at ticket.first_assigned_at (once an agent is
+        assigned, elapsed stops growing — see Ticket.sla_status()). Resolution
+        is frozen at ticket.resolved_at and has any resolution_paused_minutes
+        (plus the still-running pause, if one is active) subtracted before
+        computing elapsed — both mirror sla_status()'s math exactly so the
+        dashboard and this command never disagree about breach state."""
         try:
             sla = SLA.objects.select_related('calendar').get(priority=ticket.priority)
         except SLA.DoesNotExist:
             sla = None
+        calendar = sla.calendar if sla else None
 
-        for timer_type, due_at, budget_minutes in (
-            ('response', ticket.response_due_at, sla.response_minutes if sla else None),
-            ('resolution', ticket.resolution_due_at, sla.resolution_minutes if sla else None),
+        for timer_type, due_at, budget_minutes, effective_time in (
+            ('response', ticket.response_due_at, sla.response_minutes if sla else None,
+             ticket.first_assigned_at or now),
+            ('resolution', ticket.resolution_due_at, sla.resolution_minutes if sla else None,
+             ticket.resolved_at or now),
         ):
             if not due_at or not ticket.created_at:
                 continue
@@ -81,22 +91,26 @@ class Command(BaseCommand):
             # window can span a weekend/holiday that wall-clock elapsed
             # time would wrongly count as "progress," delaying the 75%/90%
             # notify/reassign rules until right before (or even past) the
-            # actual breach instead of well ahead of it. The 100% full-
-            # breach check stays exact either way since it's anchored
-            # directly to now >= due_at below.
+            # actual breach instead of well ahead of it.
             if budget_minutes:
-                calendar = sla.calendar if sla else None
-                elapsed_minutes = business_minutes_elapsed(ticket.created_at, now, calendar)
+                elapsed_minutes = business_minutes_elapsed(ticket.created_at, effective_time, calendar)
+                if timer_type == 'resolution':
+                    paused_minutes = ticket.resolution_paused_minutes or 0
+                    if ticket.resolution_paused_at and not ticket.resolved_at:
+                        paused_minutes += business_minutes_elapsed(ticket.resolution_paused_at, effective_time, calendar)
+                    elapsed_minutes = max(0, elapsed_minutes - paused_minutes)
                 elapsed_percent = elapsed_minutes / budget_minutes * 100
+                breached = elapsed_percent >= 100
             else:
                 window_seconds = (due_at - ticket.created_at).total_seconds()
                 if window_seconds <= 0:
                     continue
-                elapsed_percent = (now - ticket.created_at).total_seconds() / window_seconds * 100
+                elapsed_percent = (effective_time - ticket.created_at).total_seconds() / window_seconds * 100
+                breached = effective_time >= due_at
 
             self.fire_threshold_rules(ticket, timer_type, elapsed_percent, system_user)
 
-            if now >= due_at:
+            if breached:
                 self.handle_full_breach(ticket, timer_type, now, system_user)
 
     def fire_threshold_rules(self, ticket, timer_type, elapsed_percent, system_user):
@@ -157,7 +171,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f'⏰ Ticket {ticket.number} breached its {timer_type} SLA!')
 
-        comment_body = f"**Auto-escalated** due to SLA breach ({timer_type} timer exceeded)."
+        comment_body = f"Auto-escalated due to SLA breach ({timer_type} timer exceeded)."
         TicketComment.objects.create(
             ticket=ticket,
             author=system_user,
@@ -188,7 +202,7 @@ class Command(BaseCommand):
 
                 Notification.objects.create(
                     recipient=agent,
-                    role=role_of(agent),
+                    role=None,
                     message=f"⚠️ Ticket {ticket.number} has been auto-assigned to you due to SLA breach.",
                     url=f'/tickets/{ticket.pk}/',
                     type=Notification.Type.TICKET
@@ -218,11 +232,15 @@ class Command(BaseCommand):
         self.stdout.write(f'   ✅ Created {len(rules)} default escalation rules for {priority}')
 
     def find_available_agent(self):
-        """Find an available agent with the fewest open tickets."""
+        """Find an available agent with the fewest open tickets. Excludes
+        the system bot account — it holds a real AGENT role so it can
+        author/act on tickets programmatically, but it's not a person who
+        can actually work a ticket; picking it here would silently strand
+        the ticket on a login nobody uses."""
         from django.db.models import Count
 
         agents = [
-            u for u in User.objects.filter(is_active=True)
+            u for u in User.objects.filter(is_active=True).exclude(email=SYSTEM_BOT_EMAIL)
             if effective_role_name(u) in ('AGENT', 'TEAM_LEAD')
         ]
         if not agents:
@@ -246,7 +264,7 @@ class Command(BaseCommand):
                 for user in users:
                     Notification.objects.create(
                         recipient=user,
-                        role=role_of(user),
+                        role=None,
                         message=f"⚠️ Ticket {ticket.number} has been escalated. Please review.",
                         url=f'/tickets/{ticket.pk}/',
                         type=Notification.Type.TICKET
@@ -256,7 +274,7 @@ class Command(BaseCommand):
         elif action_type == 'reassign':
             if rule.reassign_to_role:
                 users = [
-                    u for u in User.objects.filter(is_active=True)
+                    u for u in User.objects.filter(is_active=True).exclude(email=SYSTEM_BOT_EMAIL)
                     if effective_role_name(u) == rule.reassign_to_role
                 ]
                 if users:
@@ -266,7 +284,7 @@ class Command(BaseCommand):
 
                     Notification.objects.create(
                         recipient=new_assignee,
-                        role=role_of(new_assignee),
+                        role=None,
                         message=f"🔄 Ticket {ticket.number} has been auto-reassigned to you due to SLA breach.",
                         url=f'/tickets/{ticket.pk}/',
                         type=Notification.Type.TICKET

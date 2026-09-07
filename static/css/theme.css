@@ -628,6 +628,8 @@ tbody tr:hover .sticky-col-td { background-color: color-mix(in srgb, black 5%, v
 .status-chip.pending_fulfillment,
 .status-chip.pending_manager_review,
 .status-chip.pending-manager-review,
+.status-chip.pending_it_review,
+.status-chip.pending-it-review,
 .status-chip.pending_user,
 .status-chip.pending_vendor,
 .status-chip.pending_approval {
@@ -1098,7 +1100,7 @@ tbody tr:hover .sticky-col-td { background-color: color-mix(in srgb, black 5%, v
     filter: brightness(1.08);
 }
 .btn-primary:disabled, .btn-secondary:disabled, .btn-outline:disabled,
-.btn-ghost:disabled, .btn-danger:disabled, .btn-success:disabled, .btn-attachment:disabled {
+.btn-ghost:disabled, .btn-danger:disabled, .btn-success:disabled, .btn-warning:disabled, .btn-attachment:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
@@ -1109,6 +1111,13 @@ tbody tr:hover .sticky-col-td { background-color: color-mix(in srgb, black 5%, v
     color: white;
 }
 .btn-success:hover {
+    filter: brightness(1.08);
+}
+.btn-warning {
+    background-color: var(--color-warning);
+    color: white;
+}
+.btn-warning:hover {
     filter: brightness(1.08);
 }
 

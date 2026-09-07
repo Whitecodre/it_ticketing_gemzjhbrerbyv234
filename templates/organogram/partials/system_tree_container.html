@@ -73,9 +73,14 @@
 <!-- IT Department Stats (shown when IT is selected or no filter) — placed
      at the bottom of the chart rather than above it, and rendered only
      here (not also in system.html) so there's a single copy that stays in
-     sync when search/filter re-swaps this container. -->
+     sync when search/filter re-swaps this container. In normal document
+     flow (not absolutely positioned) so it can never end up spatially
+     behind the tree's own node cards or their hover-detail tooltips on a
+     tall tree — it was previously pinned to the scroll container's bottom
+     edge regardless of content height, which put it directly underneath
+     whichever row of nodes happened to render last. -->
 {% if not department or department == 'IT' %}
-<div class="it-stats absolute bottom-0">
+<div class="it-stats mt-4">
     <div class="stat-item">
         <div class="label">Total IT Staff</div>
         <div class="value">{{ it_dept_stats.total }}</div>

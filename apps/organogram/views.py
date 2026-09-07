@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.common.permissions import get_sidebar_template, effective_role_name
 from .models import SystemOrgConfig
 from django.contrib.auth import get_user_model
+from apps.accounts.models import SYSTEM_BOT_EMAIL
 
 User = get_user_model()
 
@@ -87,7 +88,7 @@ def get_system_org_queryset(request):
     if 'department' not in request.GET and request.user.department:
         department = request.user.department
 
-    qs = User.objects.filter(is_active=True).prefetch_related('roles')
+    qs = User.objects.filter(is_active=True).exclude(email=SYSTEM_BOT_EMAIL).prefetch_related('roles')
     if department:
         qs = qs.filter(department=department)
     if search_query:
@@ -125,7 +126,7 @@ def system_org(request):
     has_results = any(tier['count'] for tier in tiers)
 
     # Get IT stats
-    it_dept_users = User.objects.filter(department='IT', is_active=True)
+    it_dept_users = User.objects.filter(department='IT', is_active=True).exclude(email=SYSTEM_BOT_EMAIL)
     it_dept_stats = {
         'total': it_dept_users.count(),
         'managers': it_dept_users.filter(role__in=['TEAM_LEAD', 'ADMIN']).count(),

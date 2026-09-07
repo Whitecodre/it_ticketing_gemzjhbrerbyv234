@@ -27,8 +27,8 @@ def get_attribute(obj, attr_name):
 def settings_cell(row, col_attr):
     """Same lookup as the `getattr` filter above, but renders a boolean
     value as a status pill instead of the literal words True/False — used
-    by the generic System Settings table (system_settings.html), which
-    otherwise has no way to know a given column is a boolean."""
+    by the generic System Settings table (system_settings_category.html),
+    which otherwise has no way to know a given column is a boolean."""
     value = get_attribute(row, col_attr)
     if isinstance(value, bool):
         if col_attr == 'is_active':

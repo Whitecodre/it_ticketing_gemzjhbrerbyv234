@@ -21,8 +21,13 @@
                 {% lucide "alert-triangle" size=20 %}
             </div>
             <div>
+                {% if edit_mode %}
+                <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Edit Your Incident Report</h2>
+                <p class="text-xs text-text-secondary">Make the changes requested, then resubmit for review.</p>
+                {% else %}
                 <h2 class="text-base font-semibold" style="color: var(--color-text-primary);">Report an Incident</h2>
                 <p class="text-xs text-text-secondary">Something's broken or not working as expected? Let us know.</p>
+                {% endif %}
             </div>
         </div>
 
@@ -30,13 +35,11 @@
             {% csrf_token %}
             <input type="hidden" name="type" value="INCIDENT">
 
-            {% if form.errors %}
+            {% if form.non_field_errors %}
             <div class="rounded-lg bg-error/10 p-4 border border-error/30 text-error text-sm">
                 <ul class="list-disc list-inside space-y-0.5">
-                    {% for field in form %}
-                        {% for error in field.errors %}
-                            <li>{{ error }}</li>
-                        {% endfor %}
+                    {% for error in form.non_field_errors %}
+                        <li>{{ error }}</li>
                     {% endfor %}
                 </ul>
             </div>
@@ -152,15 +155,23 @@
 
             {# Actions #}
             <div class="flex flex-wrap items-center justify-end gap-3 pt-4 border-t" style="border-color: var(--color-border);">
+                {% if edit_mode %}
+                <a href="{% url 'tickets:detail' edit_ticket.pk %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
+                <button type="submit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5">
+                    {% lucide "send" size=16 %} Resubmit
+                </button>
+                {% else %}
                 <a href="{% url 'dashboard' %}" class="btn-ghost text-sm px-5 py-2">Cancel</a>
                 <button type="button" id="saveDraftBtn" class="btn-outline text-sm px-5 py-2">Save Draft</button>
                 <button type="submit" class="btn-primary inline-flex items-center gap-2 text-sm px-6 py-2.5">
                     {% lucide "send" size=16 %} Submit Incident
                 </button>
+                {% endif %}
             </div>
         </form>
     </div>
 </div>
+{% if edit_mode or prefill_data %}{{ prefill_data|json_script:"prefillData" }}{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -222,6 +233,17 @@
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
+        {% if edit_mode or prefill_data %}
+        // Editing an existing ticket (revision requested) or resubmitting
+        // from a rejected one — pre-fill from its values rather than
+        // initializing the draft system, which is only for a brand-new,
+        // not-yet-submitted ticket.
+        const prefillEl = document.getElementById('prefillData');
+        if (prefillEl && window.restoreForm) {
+            window.restoreForm(document.getElementById('incidentForm'), JSON.parse(prefillEl.textContent));
+        }
+        {% endif %}
+
         ['incident_category', 'how_discovered'].forEach(function(fieldType) {
             const select = document.getElementById('id_' + fieldType);
             if (select && select.value === 'OTHER') {
@@ -230,6 +252,7 @@
             }
         });
 
+        {% if not edit_mode %}
         if (window.initFormDraft) {
             window.initFormDraft({
                 form: document.getElementById('incidentForm'),
@@ -244,6 +267,7 @@
                 },
             });
         }
+        {% endif %}
     });
 </script>
 {% endblock %}

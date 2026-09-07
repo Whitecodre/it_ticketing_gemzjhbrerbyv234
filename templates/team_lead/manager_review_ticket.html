@@ -83,6 +83,37 @@
                         </div>
                     </div>
 
+                    {% if review_history %}
+                    <!-- Review History — only present once this ticket has gone through at least one prior decision -->
+                    <div class="rounded-lg border border-warning/30 bg-warning/5 p-3">
+                        <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-primary">
+                            {% lucide "history" size=14 %} Review History
+                        </h3>
+                        <div class="space-y-2">
+                            {% for entry in review_history %}
+                            <div class="text-xs p-2.5 rounded-lg bg-background border border-border">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="font-medium text-text-primary">
+                                        {{ entry.actor.get_full_name_with_role|default:entry.actor.email }}
+                                        {% if entry.action == 'manager_approved' %}approved (department stage)
+                                        {% elif entry.action == 'manager_rejected' %}rejected (department stage)
+                                        {% elif entry.action == 'manager_requested_changes' %}requested changes (department stage)
+                                        {% elif entry.action == 'it_approved' %}approved (IT stage)
+                                        {% elif entry.action == 'it_rejected' %}rejected (IT stage)
+                                        {% elif entry.action == 'it_requested_changes' %}requested changes (IT stage)
+                                        {% endif %}
+                                    </span>
+                                    <span class="text-text-secondary shrink-0">{{ entry.created_at|date:"M j, Y g:i A" }}</span>
+                                </div>
+                                {% if entry.details.comment %}
+                                <p class="text-text-secondary mt-1">"{{ entry.details.comment }}"</p>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <!-- Description -->
                     <div>
                         <h3 class="text-sm font-semibold mb-2 flex items-center gap-2 text-text-secondary">

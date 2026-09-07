@@ -3,6 +3,7 @@ import json
 from urllib.parse import urlencode as _urlencode
 
 from django import template
+from django.db.models import Q
 from django.utils import timezone
 
 register = template.Library()
@@ -17,6 +18,47 @@ def latest_receipt_prompt_id(ticket):
     plain historical text instead, so a stale card never shows next to a
     still-pending or already-resolved one."""
     comment = ticket.comments.filter(is_receipt_confirmation_prompt=True).order_by('-created_at').first()
+    return comment.pk if comment else None
+
+
+@register.simple_tag
+def latest_revision_prompt_id(ticket):
+    """Mirrors latest_receipt_prompt_id above, for the most recent
+    'changes requested' system comment (department or IT stage)."""
+    comment = ticket.comments.filter(is_revision_request_prompt=True).order_by('-created_at').first()
+    return comment.pk if comment else None
+
+
+@register.simple_tag
+def latest_rejection_prompt_id(ticket):
+    """Mirrors latest_receipt_prompt_id above, for the most recent
+    'request rejected' system comment."""
+    comment = ticket.comments.filter(is_rejection_prompt=True).order_by('-created_at').first()
+    return comment.pk if comment else None
+
+
+@register.simple_tag
+def latest_resolution_confirmation_prompt_id(ticket):
+    """Mirrors latest_receipt_prompt_id above, for the most recent
+    'resolution requested' system comment."""
+    comment = ticket.comments.filter(is_resolution_confirmation_prompt=True).order_by('-created_at').first()
+    return comment.pk if comment else None
+
+
+@register.simple_tag
+def latest_pending_user_prompt_id(ticket):
+    """Of the two comment types that can each ask the requester to act
+    while the ticket sits in PENDING_USER — a revision request during
+    service-request approval, or a resolution-confirmation prompt from
+    resolve_ticket — whichever is genuinely the most recent. Gates the
+    action buttons on exactly one card when both a revision-request and a
+    resolution-confirmation prompt exist in a ticket's history (e.g. a
+    service request that went through a revision cycle earlier and is now,
+    separately, awaiting resolution confirmation), so a superseded prompt
+    never shows a live action button alongside the actually-current one."""
+    comment = ticket.comments.filter(
+        Q(is_revision_request_prompt=True) | Q(is_resolution_confirmation_prompt=True)
+    ).order_by('-created_at').first()
     return comment.pk if comment else None
 
 

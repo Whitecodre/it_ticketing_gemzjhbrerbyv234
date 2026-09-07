@@ -145,22 +145,34 @@ class Ticket(models.Model):
     class Type(models.TextChoices):
         INCIDENT = 'INCIDENT', 'Incident'
         SERVICE_REQUEST = 'SERVICE_REQUEST', 'Service Request'
-    
+
+    # Statuses that pause the Resolution SLA clock — the ticket is waiting on
+    # someone outside the assigned agent's control (the requester, a vendor,
+    # or either approval stage), same principle as ServiceNow's "Awaiting
+    # Caller/Vendor" pause. Referenced by signals.py (to start/stop a pause)
+    # and process_sla.py (to compute elapsed minutes the same way). Response
+    # SLA never pauses — see first_assigned_at's field comment above.
+    RESOLUTION_PAUSE_STATUSES = ('PENDING_USER', 'PENDING_VENDOR', 'PENDING_MANAGER_REVIEW', 'PENDING_IT_REVIEW')
+
     def sla_status(self):
         now = timezone.now()
-        result = {'response': 'ok', 'resolution': 'ok', 'response_pct': 0, 'resolution_pct': 0}
+        result = {
+            'response': 'ok', 'resolution': 'ok', 'response_pct': 0, 'resolution_pct': 0,
+            'resolution_paused': bool(self.resolution_paused_at and not self.resolved_at),
+        }
 
         try:
             sla = SLA.objects.get(priority=self.priority)
         except SLA.DoesNotExist:
             return result  # no policy → always ok
 
-        # Response. Breach is judged directly against the deadline (now >=
-        # due_at) rather than only from the elapsed/total percentage: when a
-        # due_at is at or before created_at (e.g. a ticket whose response
-        # SLA was already overdue when it was set), total_secs is <= 0 and
-        # the old "only act if total_secs > 0" guard silently left this at
-        # its default 'ok' — an overdue ticket reported as on-track.
+        # Response — frozen the moment an agent is first assigned
+        # (first_assigned_at), since "how fast did someone start on this"
+        # shouldn't keep moving once it's actually been picked up. Still
+        # judged directly against the deadline (effective_time >= due_at)
+        # rather than only the percentage, for the same reason as below: a
+        # due_at at/before created_at must still register as breached.
+        response_effective_time = self.first_assigned_at or now
         response_due = self.response_due_at or (
             self.created_at + datetime.timedelta(minutes=sla.response_minutes)
         )
@@ -170,21 +182,31 @@ class Ticket(models.Model):
         # that window can span a weekend/holiday that wall-clock elapsed
         # time would wrongly count as "progress," making the 75% warning
         # threshold fire far too late (or not until right at the breach).
-        elapsed_minutes = business_minutes_elapsed(self.created_at, now, sla.calendar)
-        pct = min(100, (elapsed_minutes / sla.response_minutes) * 100) if sla.response_minutes > 0 else 100
+        response_elapsed_minutes = business_minutes_elapsed(self.created_at, response_effective_time, sla.calendar)
+        pct = min(100, (response_elapsed_minutes / sla.response_minutes) * 100) if sla.response_minutes > 0 else 100
         result['response_pct'] = round(pct, 1)
-        if now >= response_due:
+        if response_effective_time >= response_due:
             result['response'] = 'breached'
         elif pct >= 75:
             result['response'] = 'warning'
 
-        # Resolution — same logic.
-        resolution_due = self.resolution_due_at or (
-            self.created_at + datetime.timedelta(minutes=sla.resolution_minutes)
-        )
-        pct = min(100, (elapsed_minutes / sla.resolution_minutes) * 100) if sla.resolution_minutes > 0 else 100
+        # Resolution — stops entirely once resolved (resolved_at), and
+        # subtracts any time spent paused (completed pauses in
+        # resolution_paused_minutes, plus the still-running one if currently
+        # paused) so waiting on the requester/vendor/an approval stage never
+        # counts against the agent. Breach is judged off the paused-adjusted
+        # elapsed minutes rather than raw due_at, since due_at is a fixed
+        # business-time deadline set at creation and doesn't itself shift
+        # when a pause is credited.
+        resolution_effective_time = self.resolved_at or now
+        raw_elapsed = business_minutes_elapsed(self.created_at, resolution_effective_time, sla.calendar)
+        paused_minutes = self.resolution_paused_minutes or 0
+        if self.resolution_paused_at and not self.resolved_at:
+            paused_minutes += business_minutes_elapsed(self.resolution_paused_at, resolution_effective_time, sla.calendar)
+        resolution_elapsed_minutes = max(0, raw_elapsed - paused_minutes)
+        pct = min(100, (resolution_elapsed_minutes / sla.resolution_minutes) * 100) if sla.resolution_minutes > 0 else 100
         result['resolution_pct'] = round(pct, 1)
-        if now >= resolution_due:
+        if sla.resolution_minutes > 0 and resolution_elapsed_minutes >= sla.resolution_minutes:
             result['resolution'] = 'breached'
         elif pct >= 75:
             result['resolution'] = 'warning'
@@ -334,6 +356,19 @@ class Ticket(models.Model):
     response_due_at = models.DateTimeField(null=True, blank=True)
     resolution_due_at = models.DateTimeField(null=True, blank=True)
 
+    # SLA timer bookkeeping — see sla_status() below for how these are used.
+    # first_assigned_at freezes the Response SLA the moment an agent is first
+    # assigned (it never pauses otherwise — "how fast did someone start on
+    # this" isn't excused by later wait states). resolution_paused_at/
+    # resolution_paused_minutes let the Resolution SLA pause while the ticket
+    # is waiting on someone outside the agent's control (requester, vendor,
+    # or either approval stage) and resume exactly where it left off — set by
+    # signals.py on status/assignment change, not by view code directly, so
+    # every code path that reassigns/transitions a ticket is covered.
+    first_assigned_at = models.DateTimeField(null=True, blank=True)
+    resolution_paused_at = models.DateTimeField(null=True, blank=True)
+    resolution_paused_minutes = models.FloatField(default=0)
+
     # Related asset
     asset_id = models.CharField(max_length=100, blank=True)
     
@@ -482,6 +517,27 @@ class TicketComment(models.Model):
     # side panel or notification-only link.
     is_receipt_confirmation_prompt = models.BooleanField(default=False)
 
+    # Same pattern as is_receipt_confirmation_prompt above, for the two-stage
+    # service request approval flow: the conversation timeline renders these
+    # as a distinct left-aligned system card (not a chat bubble) with the
+    # relevant action — Edit Request for a revision, Submit a Corrected
+    # Request for a rejection — but only on the most recent one (see
+    # latest_revision_prompt_id/latest_rejection_prompt_id in badge_tags.py),
+    # so an old, already-actioned prompt never shows a stale live button.
+    is_revision_request_prompt = models.BooleanField(default=False)
+    is_rejection_prompt = models.BooleanField(default=False)
+
+    # Marks the "Resolution requested" comment resolve_ticket posts when an
+    # agent proposes a ticket as resolved — same pattern as
+    # is_receipt_confirmation_prompt above (in-thread Confirm/Reopen actions
+    # instead of a notification-only link to a standalone page), gated to
+    # the most recent one via latest_resolution_confirmation_prompt_id in
+    # badge_tags.py. PENDING_USER is shared with is_revision_request_prompt
+    # (a service request revision cycle) — latest_pending_user_prompt_id
+    # disambiguates which of the two is the ticket's currently-live ask
+    # when both exist in a ticket's history.
+    is_resolution_confirmation_prompt = models.BooleanField(default=False)
+
     # Per-line-item fulfillment narrative for a mobilization: one CREATED
     # comment itemizing every line (stock picks + vendor orders) as of
     # creation, then a VENDOR_ITEM_ARRIVED/CANCELLED comment each time a
@@ -497,6 +553,19 @@ class TicketComment(models.Model):
         related_name='ticket_comments'
     )
     mobilization_event = models.CharField(max_length=25, choices=MobilizationEvent.choices, blank=True)
+
+    # Set on every comment the remote-session handshake posts (request/
+    # accept/reject/code/end) so conversation_timeline.html can attach a
+    # "Respond" / "Start Session" / "End Session" button that deep-links to
+    # that exact session's page — the actual accept/reject/code-entry UI
+    # stays on that dedicated page (there's real form/instructions real
+    # estate needed there), this just means the user reaches it straight
+    # from the thread instead of having to go hunting for the right
+    # notification first.
+    remote_session = models.ForeignKey(
+        'RemoteSession', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ticket_comments'
+    )
 
     # Display-only: the app composed this comment's text as a side effect
     # of a workflow action (reassignment, remote session lifecycle, vendor
@@ -955,7 +1024,6 @@ def _notify_it_admins(message, url):
     includes admins whose active role has diverged from the legacy field."""
     from django.db.models import Q
     from apps.common.models import Notification
-    from apps.common.utils import role_of
     from apps.common.permissions import effective_role_name
 
     candidates = User.objects.filter(
@@ -964,7 +1032,7 @@ def _notify_it_admins(message, url):
     ).distinct()
     for recipient in candidates:
         if effective_role_name(recipient) in ('ADMIN', 'SUPERADMIN'):
-            Notification.objects.create(recipient=recipient, role=role_of(recipient), message=message, url=url)
+            Notification.objects.create(recipient=recipient, role=None, message=message, url=url)
 
 
 class Asset(models.Model):
@@ -1430,9 +1498,8 @@ class Asset(models.Model):
         # open AssetCheckoutHistory row's acknowledged_at stays null until
         # they Accept (or gets disputed_at instead if they Dispute).
         from apps.common.models import Notification
-        from apps.common.utils import role_of
         Notification.objects.create(
-            recipient=user, role=role_of(user),
+            recipient=user, role=None,
             message=f'"{self.name}" ({self.tracking_id}) has been checked out to you — please confirm you received it.',
             url='/tickets/my-assets/',
         )
@@ -1598,7 +1665,7 @@ class Asset(models.Model):
 
         from django.db.models import Q
         from apps.common.models import Notification
-        from apps.common.utils import role_of, notify_recipients_by_email
+        from apps.common.utils import notify_recipients_by_email
         from apps.common.permissions import effective_role_name
         from apps.accounts.models import User
 
@@ -1622,7 +1689,7 @@ class Asset(models.Model):
                 for recipient in recipients:
                     Notification.objects.create(
                         recipient=recipient,
-                        role=role_of(recipient),
+                        role=None,
                         message=message,
                         url=url,
                         type=Notification.Type.GENERAL,

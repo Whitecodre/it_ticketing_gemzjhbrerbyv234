@@ -19,7 +19,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags, escape
 from django.urls import reverse
 from django.template.loader import render_to_string
-from apps.common.utils import send_email_via_brevo, role_of, resolve_sort
+from apps.common.utils import send_email_via_brevo, resolve_sort
 from django.conf import settings
 from .forms import (
     TicketForm, IncidentReportForm, ServiceRequestForm, CommentForm, AssetForm, MobilizationForm,
@@ -33,9 +33,9 @@ from .asset_name_matching import match_users_by_name
 from .models import *
 from apps.tickets.models import Asset
 from apps.maintenance.models import Vendor, MaintenanceAssetConfirmation, MaintenanceSchedule
-from apps.accounts.models import User
+from apps.accounts.models import User, SYSTEM_BOT_EMAIL
 from apps.common.models import Notification, AdminActionLog, log_admin_action
-from apps.common.permissions import is_admin, is_superadmin, get_sidebar_template, effective_role_name
+from apps.common.permissions import is_admin, is_superadmin, get_sidebar_template, effective_role_name, can_manage_fulfillment
 from bs4 import BeautifulSoup
 import bleach
 
@@ -146,7 +146,12 @@ def notify_department_team_leads_pending_review(ticket):
     for lead in leads:
         Notification.objects.create(
             recipient=lead,
-            role=role_of(lead),
+            # Literal, not role_of(lead) — manager_review_ticket is gated to
+            # exactly the TEAM_LEAD active role, so this must always show
+            # under that hat specifically, regardless of whichever role the
+            # recipient's session happens to be on right now. See
+            # apps/common/utils.py's role_of()/notification_role_q() docstrings.
+            role=User.Role.TEAM_LEAD,
             message=f'Service request {ticket.number} from {ticket.requester.get_full_name()} needs your approval.',
             url=reverse('tickets:manager_review_ticket', kwargs={'pk': ticket.pk}),
             type=Notification.Type.MANAGER_REVIEW,
@@ -169,7 +174,7 @@ def notify_it_team_leads_pending_review(ticket):
     for lead in leads:
         Notification.objects.create(
             recipient=lead,
-            role=role_of(lead),
+            role=User.Role.TEAM_LEAD,  # see notify_department_team_leads_pending_review above
             message=f'Service request {ticket.number} from {ticket.requester.get_full_name()} needs IT department approval.',
             url=reverse('tickets:manager_review_ticket', kwargs={'pk': ticket.pk}),
             type=Notification.Type.MANAGER_REVIEW,
@@ -343,15 +348,14 @@ def create_ticket(request):
     if request.method == 'POST':
         form = FormClass(request.POST)
         service_request_details = {}
+        detail_errors = {}
 
         if form.is_valid() and ticket_type == 'SERVICE_REQUEST':
             service_category = form.cleaned_data.get('service_category')
             field_group = service_category.field_group if service_category else ServiceCategory.FieldGroup.GENERAL
             service_request_details, detail_errors = build_service_request_details(field_group, request.POST)
-            for message_text in detail_errors.values():
-                form.add_error(None, message_text)
 
-        if not form.errors:
+        if not form.errors and not detail_errors:
             ticket = form.save(commit=False)
             ticket.requester = request.user
             ticket.type = ticket_type
@@ -402,7 +406,7 @@ def create_ticket(request):
                 for admin in User.objects.filter(role=User.Role.ADMIN, is_active=True):
                     Notification.objects.create(
                         recipient=admin,
-                        role=role_of(admin),
+                        role=None,
                         message=(
                             f'{request.user.get_full_name()} submitted service request {ticket.number} for job '
                             f'"{notify_admins_new_job_number.number}", which isn\'t in the system yet. Review and '
@@ -467,9 +471,10 @@ def create_ticket(request):
             messages.error(request, 'Please correct the errors below.')
     else:
         form = FormClass(initial={'type': ticket_type})
+        detail_errors = {}
 
     template = 'requester/incident_form.html' if ticket_type == 'INCIDENT' else 'requester/service_request_form.html'
-    context = {'form': form, 'ticket_type': ticket_type}
+    context = {'form': form, 'ticket_type': ticket_type, 'detail_field_errors': detail_errors}
     if ticket_type == 'SERVICE_REQUEST':
         from .service_request_fields import DYNAMIC_FIELDS_BY_GROUP
         context['dynamic_fields_by_group'] = DYNAMIC_FIELDS_BY_GROUP
@@ -478,7 +483,161 @@ def create_ticket(request):
         context['dive_systems'] = DiveSystem.objects.filter(is_active=True)
         context['selected_dive_systems'] = set(request.POST.getlist('dive_systems')) if request.method == 'POST' else set()
         context['job_numbers'] = JobNumber.objects.filter(is_active=True)
+
+    resubmit_from_id = request.GET.get('resubmit_from')
+    if resubmit_from_id and request.method == 'GET':
+        # Reject flow's "Submit a Corrected Request" link — pre-fills a
+        # brand new submission from the rejected ticket rather than editing
+        # it in place, since a rejected ticket stays closed as a record.
+        source = Ticket.objects.filter(
+            pk=resubmit_from_id, requester=request.user, type=ticket_type, status=Ticket.Status.CLOSED,
+        ).first()
+        if source:
+            context['prefill_data'] = _ticket_edit_initial(source)
+
     return render(request, template, context)
+
+
+def _ticket_edit_initial(ticket):
+    """Builds a plain {field_name: value} dict shaped exactly like
+    form_draft.js's restoreForm() already expects (it's the same function
+    that pre-fills a restored draft), reused here for both the Edit Request
+    flow (revision requested) and the resubmit-from-rejection flow — one
+    prefill mechanism instead of two."""
+    data = {
+        'title': ticket.title,
+        'description': ticket.description,
+        'urgency': ticket.urgency,
+    }
+    if ticket.type == Ticket.Type.INCIDENT:
+        data.update({
+            'incident_datetime': ticket.incident_datetime.strftime('%Y-%m-%dT%H:%M') if ticket.incident_datetime else '',
+            'incident_category': ticket.incident_category,
+            'incident_category_other': ticket.incident_category_other,
+            'business_impact': ticket.business_impact,
+            'how_discovered': ticket.how_discovered,
+            'how_discovered_other': ticket.how_discovered_other,
+            'location_hostname': ticket.location_hostname,
+            'immediate_actions': ticket.immediate_actions,
+        })
+    else:
+        data.update({
+            'service_category': str(ticket.service_category_id) if ticket.service_category_id else '',
+            'purpose': ticket.purpose,
+            'vessels': [str(pk) for pk in ticket.vessels.values_list('pk', flat=True)],
+            'dive_systems': [str(pk) for pk in ticket.dive_systems.values_list('pk', flat=True)],
+            'job_number': str(ticket.job_number_id) if ticket.job_number_id else '',
+            'is_mobilization_request': 'on' if ticket.is_mobilization_request else '',
+        })
+        if ticket.service_category:
+            for f in fields_for_group(ticket.service_category.field_group):
+                raw = (ticket.service_request_details or {}).get(f.key, '')
+                if f.has_other and raw and raw not in dict(f.choices):
+                    # The stored value is the resolved free-text an earlier
+                    # "Other" pick was replaced with (see
+                    # build_service_request_details) — show it the same way
+                    # it was entered: OTHER selected, text box filled in.
+                    data[f.key] = 'OTHER'
+                    data[f.key + '_other'] = raw
+                else:
+                    data[f.key] = raw
+    return data
+
+
+@login_required
+def edit_ticket_request(request, pk):
+    """Lets the requester actually amend their own service request's real
+    fields after a department/IT lead requests changes, instead of the only
+    prior mechanism (reply in the conversation thread, which silently
+    resubmits without the reviewer's concern ever being addressed on the
+    form itself). Reuses the same create-form templates/fields as
+    create_ticket, pre-filled from the ticket's current values."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    if ticket.requester != request.user:
+        return HttpResponse(status=403)
+
+    # Only reachable while genuinely awaiting a revision the requester needs
+    # to make — same disambiguation ticket_detail's reply-triggers-resubmit
+    # logic already uses, since PENDING_USER is shared with the unrelated
+    # "agent proposed a resolution" case.
+    last_reason = ticket.activities.filter(
+        action__in=['manager_requested_changes', 'resolution_requested']
+    ).order_by('-created_at').first()
+    if ticket.status != Ticket.Status.PENDING_USER or not last_reason or last_reason.action != 'manager_requested_changes':
+        messages.warning(request, f'Ticket {ticket.number} is not awaiting a revision.')
+        return redirect('tickets:detail', pk=ticket.pk)
+
+    ticket_type = ticket.type
+    FormClass = IncidentReportForm if ticket_type == Ticket.Type.INCIDENT else ServiceRequestForm
+
+    if request.method == 'POST':
+        form = FormClass(request.POST, instance=ticket)
+        service_request_details = ticket.service_request_details
+        detail_errors = {}
+        if form.is_valid() and ticket_type == Ticket.Type.SERVICE_REQUEST:
+            service_category = form.cleaned_data.get('service_category')
+            field_group = service_category.field_group if service_category else ServiceCategory.FieldGroup.GENERAL
+            service_request_details, detail_errors = build_service_request_details(field_group, request.POST)
+
+        if not form.errors and not detail_errors:
+            updated_ticket = form.save(commit=False)
+            if ticket_type == Ticket.Type.SERVICE_REQUEST:
+                updated_ticket.service_request_details = service_request_details
+                job_number_selection = request.POST.get('job_number')
+                new_job_number_text = (request.POST.get('new_job_number_text') or '').strip()
+                if job_number_selection == 'NEW' and new_job_number_text:
+                    job_number_obj, _created = JobNumber.objects.get_or_create(
+                        number=new_job_number_text, defaults={'is_active': False, 'proposed_by': request.user},
+                    )
+                    updated_ticket.job_number = job_number_obj
+                elif job_number_selection:
+                    updated_ticket.job_number = JobNumber.objects.filter(pk=job_number_selection, is_active=True).first()
+                else:
+                    updated_ticket.job_number = None
+                if updated_ticket.service_category and updated_ticket.service_category.field_group == ServiceCategory.FieldGroup.ASSET:
+                    updated_ticket.is_mobilization_request = request.POST.get('is_mobilization_request') == 'on'
+
+            updated_ticket.status = Ticket.Status.PENDING_MANAGER_REVIEW
+            updated_ticket.save()
+            if ticket_type == Ticket.Type.SERVICE_REQUEST:
+                form.save_m2m()
+
+            files = request.FILES.getlist('attachments')
+            if files:
+                _, rejected = save_attachments(updated_ticket, files, request.user)
+                for name, reason in rejected:
+                    messages.warning(request, f'"{name}" was not attached — {reason}.')
+
+            TicketActivityLog.objects.create(
+                ticket=updated_ticket, action='status_changed', actor=request.user,
+                details={'from': 'PENDING_USER', 'to': 'PENDING_MANAGER_REVIEW', 'reason': 'requester edited and resubmitted'}
+            )
+            notify_department_team_leads_pending_review(updated_ticket)
+            messages.success(request, f'Ticket {updated_ticket.number} updated and resubmitted for review.')
+            return redirect('tickets:detail', pk=updated_ticket.pk)
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = FormClass(instance=ticket)
+        detail_errors = {}
+
+    template = 'requester/incident_form.html' if ticket_type == Ticket.Type.INCIDENT else 'requester/service_request_form.html'
+    context = {
+        'form': form, 'ticket_type': ticket_type,
+        'edit_mode': True, 'edit_ticket': ticket,
+        'prefill_data': _ticket_edit_initial(ticket),
+        'detail_field_errors': detail_errors,
+    }
+    if ticket_type == Ticket.Type.SERVICE_REQUEST:
+        from .service_request_fields import DYNAMIC_FIELDS_BY_GROUP
+        context['dynamic_fields_by_group'] = DYNAMIC_FIELDS_BY_GROUP
+        context['vessels'] = Vessel.objects.filter(is_active=True)
+        context['selected_vessels'] = set(str(pk) for pk in ticket.vessels.values_list('pk', flat=True))
+        context['dive_systems'] = DiveSystem.objects.filter(is_active=True)
+        context['selected_dive_systems'] = set(str(pk) for pk in ticket.dive_systems.values_list('pk', flat=True))
+        context['job_numbers'] = JobNumber.objects.filter(is_active=True)
+    return render(request, template, context)
+
 
 @login_required
 @require_POST
@@ -674,6 +833,7 @@ def ticket_detail(request, pk):
         'agent_attachments': agent_attachments,
         'sidebar_template': get_sidebar_template(request.user),
         'is_agent': is_agent,
+        'can_fulfill_ticket': can_manage_fulfillment(request.user),
     })
 
 # ==========================================================================
@@ -824,7 +984,7 @@ def claim_ticket(request, pk):
         # Create notifications
         Notification.objects.create(
             recipient=request.user,
-            role=role_of(request.user),
+            role=None,
             message=f"You have claimed ticket {ticket.number}: {ticket.title}",
             url=reverse('tickets:conversation', args=[ticket.pk]),
             type=Notification.Type.TICKET
@@ -832,7 +992,7 @@ def claim_ticket(request, pk):
         
         Notification.objects.create(
             recipient=ticket.requester,
-            role=role_of(ticket.requester),
+            role=None,
             message=f"Ticket {ticket.number} has been claimed by {request.user.get_full_name()} and is now in progress.",
             url=reverse('tickets:detail', args=[ticket.pk]),
             type=Notification.Type.TICKET
@@ -942,6 +1102,7 @@ def agent_ticket_conversation(request, pk):
         'agent_attachments': agent_attachments,
         'sidebar_template': get_sidebar_template(request.user),
         'is_agent': True,
+        'can_fulfill_ticket': can_manage_fulfillment(request.user),
     })
 
 @login_required
@@ -1056,7 +1217,7 @@ def resolve_ticket(request, pk):
                 )
                 TicketComment.objects.create(
                     ticket=ticket, author=request.user, visibility='PUBLIC',
-                    body=f"**Resolved**.{' ' + escape(comment) if comment else ''}"
+                    body=f"Resolved.{' ' + escape(comment) if comment else ''}"
                 )
                 if request.headers.get('HX-Request'):
                     return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:conversation', kwargs={'pk': ticket.pk})})
@@ -1090,20 +1251,27 @@ def resolve_ticket(request, pk):
                 details={'comment': comment}
             )
             
-            # Add system comment to ticket
+            # Add system comment to ticket — rendered by conversation_timeline.html
+            # as an actionable card (is_resolution_confirmation_prompt) with
+            # Confirm/Reopen buttons right on the card, not a notification-only
+            # link to a standalone page. The card supplies its own "Resolution
+            # requested" heading, so the body only needs the agent's comment.
             TicketComment.objects.create(
                 ticket=ticket,
                 author=request.user,
-                body=f"**Resolution requested**: Please confirm if this ticket has been resolved.{' ' + escape(comment) if comment else ''}",
-                visibility='PUBLIC'
+                body=escape(comment) if comment else 'Please confirm if this ticket has been resolved.',
+                visibility='PUBLIC',
+                is_resolution_confirmation_prompt=True,
             )
             
-            # Send notification to requester
+            # Send notification to requester — links to the ticket thread,
+            # where the Confirm/Reopen card now lives, not the old
+            # standalone confirm_resolution page.
             Notification.objects.create(
                 recipient=ticket.requester,
-                role=role_of(ticket.requester),
+                role=None,
                 message=f"Please confirm if ticket {ticket.number} has been resolved.",
-                url=reverse('tickets:confirm_resolution', args=[ticket.pk]),
+                url=reverse('tickets:detail', args=[ticket.pk]),
                 type=Notification.Type.RESOLUTION_CONFIRMATION
             )
             
@@ -1243,7 +1411,7 @@ def confirm_resolution(request, pk):
             TicketComment.objects.create(
                 ticket=ticket,
                 author=request.user,
-                body="**Resolution confirmed**. The issue has been resolved.",
+                body="Resolution confirmed. The issue has been resolved.",
                 visibility='PUBLIC',
                 is_system_generated=True,
             )
@@ -1268,14 +1436,14 @@ def confirm_resolution(request, pk):
                 TicketComment.objects.create(
                     ticket=ticket,
                     author=request.user,
-                    body=f"**Not received**. The requester says the asset(s) weren't received as expected.{' Reason: ' + escape(reason) if reason else ''}",
+                    body=f"Not received. The requester says the asset(s) weren't received as expected.{' Reason: ' + escape(reason) if reason else ''}",
                     visibility='PUBLIC'
                 )
 
                 if ticket.fulfilled_by:
                     Notification.objects.create(
                         recipient=ticket.fulfilled_by,
-                        role=role_of(ticket.fulfilled_by),
+                        role=None,
                         message=f"{ticket.requester.get_full_name()} says request {ticket.number} wasn't received as expected.{' Reason: ' + reason if reason else ''}",
                         url=reverse('tickets:conversation', args=[ticket.pk])
                     )
@@ -1290,7 +1458,7 @@ def confirm_resolution(request, pk):
             TicketComment.objects.create(
                 ticket=ticket,
                 author=request.user,
-                body=f"**Resolution rejected**. The issue is not fully resolved.{' Reason: ' + escape(reason) if reason else ''}",
+                body=f"Resolution rejected. The issue is not fully resolved.{' Reason: ' + escape(reason) if reason else ''}",
                 visibility='PUBLIC'
             )
 
@@ -1303,7 +1471,7 @@ def confirm_resolution(request, pk):
             if last_log and last_log.actor:
                 Notification.objects.create(
                     recipient=last_log.actor,
-                    role=role_of(last_log.actor),
+                    role=None,
                     message=f"{ticket.requester.get_full_name()} rejected resolution for ticket {ticket.number}.{' Reason: ' + reason if reason else ''}",
                     url=reverse('tickets:conversation', args=[ticket.pk])
                 )
@@ -1375,7 +1543,7 @@ def submit_feedback(request, pk):
             star_emoji = '⭐' * int(rating) + '☆' * (5 - int(rating))
             Notification.objects.create(
                 recipient=assigned_log.actor,
-                role=role_of(assigned_log.actor),
+                role=None,
                 message=f"Feedback received for ticket {ticket.number}: {star_emoji} ({rating}/5)",
                 url=reverse('tickets:detail', args=[ticket.pk])
             )
@@ -1434,18 +1602,27 @@ def edit_subject(request, pk):
 @login_required
 def assign_popover(request, pk):
     """
-    Returns a popover with a list of assignable agents (Agent, Team Lead, Admin, Superadmin)
-    so the agent can reassign the ticket.
+    Returns a popover for claiming/assigning a ticket. Every IT role can
+    claim it for themselves (Assign to me); only Team Lead/Admin/Superadmin
+    can hand it to someone else — reassigning a ticket away from whoever
+    holds it is a workload/oversight call, not something the agent
+    currently sitting on it should be able to do unilaterally (see
+    can_reassign_others below, which the template uses to hide the other-
+    agent picker entirely for a plain Agent, and assign_specific enforces
+    server-side regardless of what the template shows).
     """
     if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk)
+    can_reassign_others = effective_role_name(request.user) in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
     agents = User.objects.filter(
         role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'],
         department='IT',  # ✅ Only IT department
         is_active=True
-    )[:10]
-    return render(request, 'partials/popovers/assign_popover.html', {'ticket': ticket, 'agents': agents})
+    ).exclude(email=SYSTEM_BOT_EMAIL)[:10] if can_reassign_others else User.objects.none()
+    return render(request, 'partials/popovers/assign_popover.html', {
+        'ticket': ticket, 'agents': agents, 'can_reassign_others': can_reassign_others,
+    })
 
 @login_required
 @require_POST
@@ -1470,10 +1647,12 @@ def assign_to_me(request, pk):
 @require_POST
 def assign_specific(request, pk, user_pk):
     """
-    Assigns the ticket to a specific user (by primary key).
-    Returns the updated assignee display partial.
+    Assigns the ticket to a specific user (by primary key) — i.e. reassigns
+    it away from whoever currently holds it. Team Lead/Admin/Superadmin
+    only; a plain Agent can still claim a ticket for themselves via
+    assign_to_me, just not hand it to someone else.
     """
-    if effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+    if effective_role_name(request.user) not in ['TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
         return HttpResponse(status=403)
     ticket = get_object_or_404(Ticket, pk=pk)
     agent = get_object_or_404(User, pk=user_pk)
@@ -1560,7 +1739,7 @@ def bulk_action(request):
                 TicketComment.objects.create(
                     ticket=ticket,
                     author=request.user,
-                    body=f"**Bulk reassign**: Ticket reassigned by {escape(actor_name)} from **{escape(old_name)}** to **{escape(agent_name)}**.",
+                    body=f"Bulk reassign: Ticket reassigned by {escape(actor_name)} from {escape(old_name)} to {escape(agent_name)}.",
                     visibility='PUBLIC',
                     is_system_generated=True,
                 )
@@ -1568,7 +1747,7 @@ def bulk_action(request):
             # Notify the agent once for all tickets
             Notification.objects.create(
                 recipient=agent,
-                role=role_of(agent),
+                role=None,
                 message=f"{len(tickets)} ticket(s) have been reassigned to you by {actor_name}.",
                 url=reverse('tickets:unassigned')
             )
@@ -1667,7 +1846,7 @@ def team_reassign(request, pk):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"**Ticket reassigned** by {escape(actor_name)} from **{escape(old_name)}** to **{escape(new_name)}**.",
+        body=f"Ticket reassigned by {escape(actor_name)} from {escape(old_name)} to {escape(new_name)}.",
         visibility='PUBLIC',
         is_system_generated=True,
     )
@@ -1675,7 +1854,7 @@ def team_reassign(request, pk):
     # Notify the new agent
     Notification.objects.create(
         recipient=agent,
-        role=role_of(agent),
+        role=None,
         message=f"Ticket {ticket.number} has been reassigned to you by {actor_name}.",
         url=reverse('tickets:conversation', args=[ticket.pk])
     )
@@ -1703,6 +1882,9 @@ LOG_CATEGORY_MAP = {
     'manager_approved': 'Manager Review',
     'manager_rejected': 'Manager Review',
     'manager_requested_changes': 'Manager Review',
+    'it_approved': 'Manager Review',
+    'it_rejected': 'Manager Review',
+    'it_requested_changes': 'Manager Review',
     'breached': 'Escalation',
     'escalation_rule_fired': 'Escalation',
     'reassigned_escalated': 'Escalation',
@@ -2963,7 +3145,7 @@ def pending_demobilizations_list(request):
     """Admin-side queue: items the requester has self-reported as returned
     but an admin hasn't yet confirmed physical receipt — mirrors
     pending_asset_returns_list."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     items_qs = MobilizationItem.objects.filter(
@@ -2981,7 +3163,7 @@ def pending_demobilizations_list(request):
 
 @login_required
 def pending_demobilizations_count(request):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     count = MobilizationItem.objects.filter(
@@ -3187,7 +3369,7 @@ def asset_reassign(request, pk):
     # claiming an imported asset that was never actually assigned to anyone).
     if old_holder:
         Notification.objects.create(
-            recipient=old_holder, role=role_of(old_holder),
+            recipient=old_holder, role=None,
             message=f'"{asset.name}" ({asset.tracking_id}) has been reassigned away from you'
                     f'{" to " + new_name if new_user else ""}.',
             url='/tickets/my-assets/',
@@ -3195,9 +3377,9 @@ def asset_reassign(request, pk):
 
     # Add comment to asset notes (user can edit the default comment)
     if new_user_id:
-        comment_body = f"**Asset reassigned** by {actor_name} from **{old_name}** to **{new_name}**.\n\n**Reason:** {comment}"
+        comment_body = f"Asset reassigned by {actor_name} from {old_name} to {new_name}.\n\nReason: {comment}"
     else:
-        comment_body = f"**Asset unassigned** by {actor_name} from **{old_name}**.\n\n**Reason:** {comment}"
+        comment_body = f"Asset unassigned by {actor_name} from {old_name}.\n\nReason: {comment}"
     
     if asset.notes:
         asset.notes = f"{asset.notes}\n\n{comment_body}"
@@ -3637,22 +3819,30 @@ def request_remote_session(request, pk):
         status=RemoteSession.Status.REQUESTED
     )
 
-    # Add a public comment to the ticket timeline
+    # Add a public comment to the ticket timeline — rendered with a
+    # "Respond to Request" button (see conversation_timeline.html) that
+    # deep-links to this exact session's page, so the requester doesn't
+    # have to go hunting through notifications to find the accept/reject
+    # action.
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"Remote session requested via {escape(connector.name)}. Please check your notifications to accept.",
+        body=f"Remote session requested via {escape(connector.name)}.",
         visibility='PUBLIC',
         is_system_generated=True,
         system_icon='monitor',
+        remote_session=session,
     )
 
-    # Send in‑app notification
+    # Send in‑app notification — links to the ticket thread (where the
+    # actionable card now lives), not straight to the standalone session
+    # page, so every ticket-related notification lands in one consistent
+    # place regardless of which action it's about.
     Notification.objects.create(
         recipient=ticket.requester,
-        role=role_of(ticket.requester),
+        role=None,
         message=f"Remote session requested for ticket {ticket.number}. Click to accept.",
-        url=reverse('tickets:remote_session_detail', args=[session.pk]),
+        url=reverse('tickets:detail', args=[ticket.pk]),
         type=Notification.Type.REMOTE_SESSION
     )
 
@@ -3723,9 +3913,9 @@ def remote_session_detail(request, session_pk):
                 # Notify agent
                 Notification.objects.create(
                     recipient=session.agent,
-                    role=role_of(session.agent),
+                    role=None,
                     message=f"{session.requester.get_full_name()} rejected the remote session for ticket {session.ticket.number}.",
-                    url=reverse('tickets:remote_session_detail', args=[session.pk]),
+                    url=reverse('tickets:detail', args=[session.ticket.pk]),
                     type=Notification.Type.REMOTE_SESSION
                 )
                 TicketComment.objects.create(
@@ -3735,6 +3925,7 @@ def remote_session_detail(request, session_pk):
                     visibility='PUBLIC',
                     is_system_generated=True,
                     system_icon='monitor',
+                    remote_session=session,
                 )
                 TicketActivityLog.objects.create(
                     ticket=session.ticket,
@@ -3751,9 +3942,9 @@ def remote_session_detail(request, session_pk):
                 # Notify agent
                 Notification.objects.create(
                     recipient=session.agent,
-                    role=role_of(session.agent),
+                    role=None,
                     message=f"{session.requester.get_full_name()} accepted the remote session for ticket {session.ticket.number}.",
-                    url=reverse('tickets:remote_session_detail', args=[session.pk]),
+                    url=reverse('tickets:detail', args=[session.ticket.pk]),
                     type=Notification.Type.REMOTE_SESSION
                 )
                 TicketComment.objects.create(
@@ -3763,6 +3954,7 @@ def remote_session_detail(request, session_pk):
                     visibility='PUBLIC',
                     is_system_generated=True,
                     system_icon='monitor',
+                    remote_session=session,
                 )
                 TicketActivityLog.objects.create(
                     ticket=session.ticket,
@@ -3790,6 +3982,7 @@ def remote_session_detail(request, session_pk):
                         visibility='PUBLIC',
                         is_system_generated=True,
                         system_icon='monitor',
+                        remote_session=session,
                     )
                     # Send email to requester
                     html_message = render_to_string('emails/remote_session_code.html', {
@@ -3827,9 +4020,9 @@ def remote_session_detail(request, session_pk):
                 # transition does.
                 Notification.objects.create(
                     recipient=session.requester,
-                    role=role_of(session.requester),
+                    role=None,
                     message=f"The remote session for ticket {session.ticket.number} has ended.",
-                    url=reverse('tickets:remote_session_detail', args=[session.pk]),
+                    url=reverse('tickets:detail', args=[session.ticket.pk]),
                     type=Notification.Type.REMOTE_SESSION
                 )
                 TicketComment.objects.create(
@@ -3839,6 +4032,7 @@ def remote_session_detail(request, session_pk):
                     visibility='PUBLIC',
                     is_system_generated=True,
                     system_icon='monitor',
+                    remote_session=session,
                 )
                 html_message = render_to_string('emails/remote_session_ended.html', {
                     'requester_name': session.requester.get_full_name() or session.requester.email,
@@ -4008,7 +4202,7 @@ def reassign_escalated(request, pk):
     
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.ESCALATED)
 
-    agents = User.objects.filter(department=request.user.department, role=User.Role.AGENT, is_active=True)
+    agents = User.objects.filter(department=request.user.department, role=User.Role.AGENT, is_active=True).exclude(email=SYSTEM_BOT_EMAIL)
     open_statuses = ['NEW', 'TRIAGED', 'ASSIGNED', 'IN_PROGRESS', 'PENDING_USER', 'PENDING_VENDOR']
     agent_workload = {
         agent.pk: Ticket.objects.filter(assigned_to=agent, status__in=open_statuses).count()
@@ -4049,9 +4243,9 @@ def reassign_escalated(request, pk):
     # ================================================================
     # DEFAULT REASSIGN COMMENT
     # ================================================================
-    reassign_body = f"**Escalated ticket reassigned** by {escape(actor_name)} from **{escape(old_name)}** to **{escape(new_name)}**."
+    reassign_body = f"Escalated ticket reassigned by {escape(actor_name)} from {escape(old_name)} to {escape(new_name)}."
     if comment:
-        reassign_body += f"\n\n**Reason:** {escape(comment)}"
+        reassign_body += f"\n\nReason: {escape(comment)}"
     
     TicketComment.objects.create(
         ticket=ticket,
@@ -4063,7 +4257,7 @@ def reassign_escalated(request, pk):
     # Notify agent
     Notification.objects.create(
         recipient=agent,
-        role=role_of(agent),
+        role=None,
         message=f"Ticket {ticket.number} has been reassigned to you by {request.user.get_full_name()}.",
         url=reverse('tickets:detail', args=[ticket.pk])
     )
@@ -4618,8 +4812,19 @@ def manager_review_queue(request):
         stage_filter |= Q(status=Ticket.Status.PENDING_IT_REVIEW)
     tickets = Ticket.objects.filter(stage_filter).order_by(*order_args)
 
+    # Flags a ticket that's back in the queue after a prior revision
+    # request (department or IT stage) so a reviewer can tell it apart from
+    # a fresh submission at a glance, without opening every row — one query
+    # for the whole page rather than one per ticket.
+    resubmitted_ticket_ids = set(
+        TicketActivityLog.objects.filter(
+            ticket__in=tickets, action__in=['manager_requested_changes', 'it_requested_changes'],
+        ).values_list('ticket_id', flat=True)
+    )
+
     context = {
         'tickets': tickets,
+        'resubmitted_ticket_ids': resubmitted_ticket_ids,
         'sidebar_template': get_sidebar_template(request.user),
         'sort_options': sort_options,
         'active_sort': active_sort,
@@ -4688,7 +4893,7 @@ def manager_review_ticket(request, pk):
 
                 Notification.objects.create(
                     recipient=ticket.requester,
-                    role=role_of(ticket.requester),
+                    role=None,
                     message=f'Your service request {ticket.number} was approved by your department lead and is now awaiting IT department approval.',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
@@ -4711,14 +4916,14 @@ def manager_review_ticket(request, pk):
                 for admin in admins:
                     Notification.objects.create(
                         recipient=admin,
-                        role=role_of(admin),
+                        role=None,
                         message=f'Asset request {ticket.number} from {ticket.requester.get_full_name()} needs fulfillment.',
                         url=reverse('tickets:conversation', args=[ticket.pk])
                     )
 
                 Notification.objects.create(
                     recipient=ticket.requester,
-                    role=role_of(ticket.requester),
+                    role=None,
                     message=f'Your asset request {ticket.number} has been fully approved and is pending fulfillment.',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
@@ -4737,7 +4942,7 @@ def manager_review_ticket(request, pk):
 
                 Notification.objects.create(
                     recipient=ticket.requester,
-                    role=role_of(ticket.requester),
+                    role=None,
                     message=f'Your service request {ticket.number} has been fully approved.',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
@@ -4746,7 +4951,7 @@ def manager_review_ticket(request, pk):
                 for agent in agents:
                     Notification.objects.create(
                         recipient=agent,
-                        role=role_of(agent),
+                        role=None,
                         message=f'New approved ticket {ticket.number}: {ticket.title}',
                         url=reverse('tickets:detail', args=[ticket.pk])
                     )
@@ -4762,9 +4967,20 @@ def manager_review_ticket(request, pk):
                 actor=request.user,
                 details={'comment': comment}
             )
+            # Posted as a comment (not just a notification the requester
+            # might miss) so the reason has a permanent, easy-to-find home
+            # on the ticket itself — rendered as its own distinct card by
+            # conversation_timeline.html (is_rejection_prompt), with a
+            # "Submit a Corrected Request" action, not buried in chat.
+            comment_body = clean_comment_body(f'<p><strong>Request rejected:</strong> {comment}</p>')
+            if comment_body:
+                TicketComment.objects.create(
+                    ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body,
+                    is_rejection_prompt=True,
+                )
             Notification.objects.create(
                 recipient=ticket.requester,
-                role=role_of(ticket.requester),
+                role=None,
                 message=f'Your service request {ticket.number} was rejected by {approver_label}. Reason: {comment}',
                 url=reverse('tickets:detail', args=[ticket.pk])
             )
@@ -4788,9 +5004,21 @@ def manager_review_ticket(request, pk):
                 comment_body = clean_comment_body(f'<p><strong>IT department requested changes:</strong> {comment}</p>')
                 if comment_body:
                     TicketComment.objects.create(
-                        ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body
+                        ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body,
+                        is_revision_request_prompt=True,
                     )
                 notify_department_team_leads_pending_review(ticket)
+                # The requester was silent on this before — nothing told
+                # them IT flagged a concern, only the department lead heard
+                # about it. Not actionable by the requester at this point
+                # (it's back with their department lead first), but they
+                # should still know something happened to their request.
+                Notification.objects.create(
+                    recipient=ticket.requester,
+                    role=None,
+                    message=f'The IT department requested changes on your service request {ticket.number}. Your department lead is reviewing their feedback.',
+                    url=reverse('tickets:detail', args=[ticket.pk])
+                )
                 messages.info(request, f'Ticket {ticket.number} sent back to the department lead for review.')
             else:
                 ticket.status = Ticket.Status.PENDING_USER
@@ -4803,15 +5031,19 @@ def manager_review_ticket(request, pk):
                 )
                 # Post the reason as a real comment — previously it only lived in
                 # the activity log and the notification text, so the requester's
-                # ticket page showed nothing explaining what to change.
-                comment_body = clean_comment_body(f'<p><strong>Changes requested:</strong> {comment}</p>')
+                # ticket page showed nothing explaining what to change. Flagged
+                # as the revision-request prompt so conversation_timeline.html
+                # renders it as an actionable card with an Edit Request button,
+                # not just a plain comment they have to reply to by guesswork.
+                comment_body = clean_comment_body(f'<p><strong>Department lead requested changes:</strong> {comment}</p>')
                 if comment_body:
                     TicketComment.objects.create(
-                        ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body
+                        ticket=ticket, author=request.user, visibility='PUBLIC', body=comment_body,
+                        is_revision_request_prompt=True,
                     )
                 Notification.objects.create(
                     recipient=ticket.requester,
-                    role=role_of(ticket.requester),
+                    role=None,
                     message=f'Changes requested for ticket {ticket.number} by your manager: {comment}',
                     url=reverse('tickets:detail', args=[ticket.pk])
                 )
@@ -4823,10 +5055,23 @@ def manager_review_ticket(request, pk):
 
         return redirect('tickets:manager_review_queue')
 
-    # GET – render review page
-    comments = ticket.comments.all().order_by('created_at')
+    # GET – render review page. Revision-request/rejection comments are
+    # excluded here — review_history below already covers that exact same
+    # event more clearly (who/stage/action/comment), so showing it a second
+    # time in this plain Activity feed was pure duplication, not a second
+    # useful view of it. This page's Activity is genuine conversation only.
+    comments = ticket.comments.exclude(is_revision_request_prompt=True).exclude(is_rejection_prompt=True).order_by('created_at')
     initial_attachments = ticket.attachments.filter(comment__isnull=True)
     attachments = ticket.attachments.all().order_by('uploaded_at')
+
+    # Every prior decision on this ticket, most recent first, so a reviewer
+    # seeing it a second (or third) time — after a revision request bounced
+    # it back — sees the full back-and-forth instead of just the current
+    # snapshot with no sign anything happened before.
+    review_history = ticket.activities.filter(
+        action__in=['manager_approved', 'manager_rejected', 'manager_requested_changes',
+                    'it_approved', 'it_rejected', 'it_requested_changes'],
+    ).select_related('actor').order_by('-created_at')
 
     context = {
         'ticket': ticket,
@@ -4834,6 +5079,7 @@ def manager_review_ticket(request, pk):
         'initial_attachments': initial_attachments,
         'attachments': attachments,
         'review_stage_label': 'IT Department Review' if is_it_stage else 'Department Review',
+        'review_history': review_history,
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'team_lead/manager_review_ticket.html', context)
@@ -5231,15 +5477,15 @@ def asset_import_discard(request, pk):
 
 
 # ==========================================================================
-# ASSET FULFILLMENT (Admin only)
+# ASSET FULFILLMENT (Admin, or IT department Team Lead — see can_manage_fulfillment)
 # ==========================================================================
 
 @login_required
 def fulfill_asset_modal(request, pk):
     """Returns the fulfillment modal for an asset request."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
-    
+
     ticket = get_object_or_404(
         Ticket, pk=pk,
         status__in=[Ticket.Status.PENDING_FULFILLMENT, Ticket.Status.PENDING_VENDOR]
@@ -5300,7 +5546,7 @@ def _mark_asset_ticket_fulfilled(ticket, request, summary):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"**Fulfilled**: {escape(summary)}. Please confirm once received.",
+        body=f"Fulfilled: {escape(summary)}. Please confirm once received.",
         visibility='PUBLIC',
         is_receipt_confirmation_prompt=True,
         is_system_generated=True,
@@ -5308,7 +5554,7 @@ def _mark_asset_ticket_fulfilled(ticket, request, summary):
 
     Notification.objects.create(
         recipient=ticket.requester,
-        role=role_of(ticket.requester),
+        role=None,
         message=f'Your request {ticket.number} has been fulfilled — please confirm receipt on the ticket page.',
         url=reverse('tickets:detail', args=[ticket.pk]),
         type=Notification.Type.RESOLUTION_CONFIRMATION,
@@ -5404,12 +5650,12 @@ def _maybe_resolve_mobilization_receipt(ticket, actor):
         )
         TicketComment.objects.create(
             ticket=ticket, author=actor, visibility='PUBLIC',
-            body=f"**Not received**: the requester disputes receiving {escape(names)}. Sent back for review.",
+            body=f"Not received: the requester disputes receiving {escape(names)}. Sent back for review.",
             is_system_generated=True,
         )
         if ticket.fulfilled_by:
             Notification.objects.create(
-                recipient=ticket.fulfilled_by, role=role_of(ticket.fulfilled_by),
+                recipient=ticket.fulfilled_by, role=None,
                 message=f"{ticket.requester.get_full_name()} disputes receiving mobilized item(s) for {ticket.number}.",
                 url=reverse('tickets:conversation', args=[ticket.pk])
             )
@@ -5461,7 +5707,7 @@ def _fulfill_ticket_with_asset(ticket, asset, actor, request, comment=''):
 
     Notification.objects.create(
         recipient=ticket.requester,
-        role=role_of(ticket.requester),
+        role=None,
         message=f'Your asset request {ticket.number} has been fulfilled. {asset.name} assigned to you.',
         url=reverse('tickets:detail', args=[ticket.pk])
     )
@@ -5492,8 +5738,8 @@ def _fulfill_ticket_with_asset(ticket, asset, actor, request, comment=''):
 @login_required
 @require_POST
 def fulfill_asset_request(request, pk):
-    """Admin action to fulfill an asset request by assigning an asset."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    """Admin (or IT department Team Lead) action to fulfill an asset request by assigning an asset."""
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
     
     ticket = get_object_or_404(
@@ -5540,7 +5786,7 @@ def pending_asset_fulfillment_list(request):
     Admin/Superadmin only. Same query the dashboard's 'Pending Asset
     Fulfillment' widget uses (apps/accounts/views/__init__.py), just
     without the [:10] cap, so 'View all' has somewhere real to go."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     tickets_qs = Ticket.objects.filter(
@@ -5560,7 +5806,7 @@ def pending_asset_fulfillment_list(request):
 def pending_asset_fulfillment_count(request):
     """Badge count for the sidebar 'Fulfillment' link — same filter as
     pending_asset_fulfillment_list."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     count = Ticket.objects.filter(status=Ticket.Status.PENDING_FULFILLMENT).count()
@@ -5600,7 +5846,7 @@ def _notify_new_vendor_proposed(vendor, actor, detail_url):
     for admin in User.objects.filter(role=User.Role.ADMIN, is_active=True):
         Notification.objects.create(
             recipient=admin,
-            role=role_of(admin),
+            role=None,
             message=(
                 f'{actor.get_full_name()} referenced "{vendor.name}", a vendor not yet in the system, '
                 f'on a procurement request. Review and activate it under System Settings → Vendors if it should be added.'
@@ -5615,7 +5861,7 @@ def procurement_request_create(request, pk):
     """Record that an asset-request ticket's needed item isn't in stock and
     is being sourced from a vendor. Ticket moves to PENDING_VENDOR —
     receiving the item later is what actually fulfills it."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     ticket = get_object_or_404(Ticket, pk=pk, status=Ticket.Status.PENDING_FULFILLMENT)
@@ -5638,7 +5884,7 @@ def procurement_request_create(request, pk):
     TicketComment.objects.create(
         ticket=ticket,
         author=request.user,
-        body=f"**On order**: {escape(procurement_request.item_name)} x{procurement_request.quantity} requested from "
+        body=f"On order: {escape(procurement_request.item_name)} x{procurement_request.quantity} requested from "
              f"{escape(procurement_request.vendor.name) if procurement_request.vendor else 'vendor (TBD)'}"
              f"{f', expected {procurement_request.expected_arrival_date}' if procurement_request.expected_arrival_date else ''}.",
         visibility='PUBLIC',
@@ -5652,7 +5898,7 @@ def procurement_request_create(request, pk):
     )
     Notification.objects.create(
         recipient=ticket.requester,
-        role=role_of(ticket.requester),
+        role=None,
         message=f'Your asset request {ticket.number} is on order from a vendor. We\'ll notify you once it arrives.',
         url=reverse('tickets:detail', args=[ticket.pk])
     )
@@ -5670,7 +5916,7 @@ def procurement_reorder_create(request, asset_pk):
     a standalone AssetProcurementRequest not tied to any ticket or
     mobilization, restocking the SKU it was raised for once received
     (same Procurement list/receive flow as every other request)."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=asset_pk)
@@ -5700,7 +5946,7 @@ def procurement_reorder_create(request, asset_pk):
 @login_required
 def procurement_list(request):
     """All vendor procurement requests, filterable by status."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     status_filter = request.GET.get('status', '').strip()
@@ -5724,7 +5970,7 @@ def procurement_list(request):
 @login_required
 @require_POST
 def procurement_mark_ordered(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk, status=AssetProcurementRequest.Status.REQUESTED)
@@ -5737,7 +5983,7 @@ def procurement_mark_ordered(request, pk):
 @login_required
 @require_POST
 def procurement_cancel(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk)
@@ -5777,7 +6023,7 @@ def procurement_cancel(request, pk):
 
     Notification.objects.create(
         recipient=procurement_request.requested_by,
-        role=role_of(procurement_request.requested_by),
+        role=None,
         message=f'Procurement request for {procurement_request.item_name} was cancelled.',
         url=reverse('tickets:procurement_list')
     )
@@ -5787,7 +6033,7 @@ def procurement_cancel(request, pk):
 
 @login_required
 def procurement_receive_modal(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk)
@@ -5806,7 +6052,7 @@ def procurement_receive(request, pk):
     if this request was for a ticket or a mobilization, automatically
     finish that ticket/mobilization exactly as if the item had come from
     existing stock."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(AssetProcurementRequest, pk=pk)
@@ -5910,7 +6156,7 @@ def procurement_receive(request, pk):
 
     Notification.objects.create(
         recipient=procurement_request.requested_by,
-        role=role_of(procurement_request.requested_by),
+        role=None,
         message=f'{procurement_request.item_name} has been received and added to inventory.',
         url=reverse('tickets:procurement_list')
     )
@@ -5920,7 +6166,7 @@ def procurement_receive(request, pk):
 
 @login_required
 def procurement_export_pdf(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     procurement_request = get_object_or_404(
@@ -5934,7 +6180,7 @@ def procurement_export_pdf(request, pk):
 @login_required
 def available_assets_for_fulfillment(request):
     """HTMX endpoint to get available assets for a specific request."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
     
     search = request.GET.get('search', '').strip()
@@ -6041,7 +6287,7 @@ def asset_checkout(request, pk):
             return redirect('tickets:assets')
 
     # Add comment to asset notes
-    checkout_note = f"**Asset checked out** by {request.user.get_full_name()} to {user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+    checkout_note = f"Asset checked out by {request.user.get_full_name()} to {user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
     if notes:
         checkout_note += f"\nNotes: {notes}"
     if asset.notes:
@@ -6053,7 +6299,7 @@ def asset_checkout(request, pk):
     # Notify user
     Notification.objects.create(
         recipient=user,
-        role=role_of(user),
+        role=None,
         message=f"Asset {asset.name} ({asset.tracking_id}) has been checked out to you.",
         url=reverse('tickets:asset_detail', args=[asset.pk])
     )
@@ -6066,8 +6312,13 @@ def asset_checkout(request, pk):
 
 @login_required
 def asset_checkin_modal(request, pk):
-    """Return the checkin modal for an asset."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    """Return the checkin modal for an asset. Shared by the standalone asset
+    inventory page and pending_asset_returns_list's 'Confirm Check-In' —
+    opened to can_manage_fulfillment (not just ADMIN/SUPERADMIN) so an IT
+    Team Lead can complete a return confirmation without switching roles;
+    asset_checkout stays ADMIN-only since handing an asset out isn't part
+    of that workflow."""
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
     
     asset = get_object_or_404(Asset, pk=pk)
@@ -6097,8 +6348,9 @@ def asset_checkin_modal(request, pk):
 @login_required
 @require_POST
 def asset_checkin(request, pk):
-    """Check in an asset."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    """Check in an asset. See asset_checkin_modal for why this is
+    can_manage_fulfillment rather than ADMIN/SUPERADMIN-only."""
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     asset = get_object_or_404(Asset, pk=pk)
@@ -6108,14 +6360,14 @@ def asset_checkin(request, pk):
         if request.headers.get('HX-Request'):
             return HttpResponse('This asset is not currently checked out.', status=400)
         messages.error(request, 'This asset is not currently checked out.')
-        return redirect('tickets:assets')
+        return redirect(request.META.get('HTTP_REFERER') or 'tickets:assets')
 
     form = AssetCheckinForm(request.POST)
     if not form.is_valid():
         if request.headers.get('HX-Request'):
             return render(request, 'partials/asset_checkin_modal.html', {'asset': asset, 'form': form})
         messages.error(request, 'Please correct the errors below.')
-        return redirect('tickets:assets')
+        return redirect(request.META.get('HTTP_REFERER') or 'tickets:assets')
 
     return_reason = form.cleaned_data['return_reason']
     return_comment = form.cleaned_data['return_comment'].strip()
@@ -6135,13 +6387,13 @@ def asset_checkin(request, pk):
 
     if holder:
         Notification.objects.create(
-            recipient=holder, role=role_of(holder),
+            recipient=holder, role=None,
             message=f'Your return of "{asset.name}" ({asset.tracking_id}) has been confirmed. Thanks!',
             url='/tickets/my-assets/',
         )
 
     # Add comment to asset notes
-    checkin_note = f"**Asset checked in** by {request.user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+    checkin_note = f"Asset checked in by {request.user.get_full_name()} on {timezone.now().strftime('%Y-%m-%d %H:%M')}"
     checkin_note += f"\nReason: {asset.get_return_reason_display()}"
     if return_condition:
         checkin_note += f"\nCondition: {return_condition}"
@@ -6155,9 +6407,14 @@ def asset_checkin(request, pk):
     asset.save(update_fields=['notes'])
     
     messages.success(request, f'Asset "{asset.name}" checked in successfully.')
+    # Land back wherever this was triggered from (e.g. pending_asset_returns_list
+    # for a Team Lead confirming a return, tickets:assets for an admin doing an
+    # ad-hoc checkin) rather than always the full inventory list, which an IT
+    # Team Lead can't access.
+    fallback_url = request.META.get('HTTP_REFERER') or reverse('tickets:assets')
     if request.headers.get('HX-Request'):
-        return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:assets')})
-    return redirect('tickets:assets')
+        return HttpResponse(status=204, headers={'HX-Redirect': fallback_url})
+    return redirect(fallback_url)
 
 
 @login_required
@@ -6397,7 +6654,7 @@ def pending_asset_returns_list(request):
     """Full, paginated list of assets whose holder has requested a return
     but an admin hasn't yet confirmed physical retrieval — the admin-side
     queue this two-step flow needs, parallel to pending_asset_fulfillment_list."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     history_qs = AssetCheckoutHistory.objects.filter(
@@ -6417,7 +6674,7 @@ def pending_asset_returns_list(request):
 def pending_asset_returns_count(request):
     """Badge count for the sidebar 'Returns' link — same filter as
     pending_asset_returns_list."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     count = AssetCheckoutHistory.objects.filter(
@@ -6552,7 +6809,7 @@ def mobilization_audit_export(request, pk):
 
 @login_required
 def mobilization_create_page(request):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     ticket_id = request.GET.get('ticket_id')
@@ -6604,7 +6861,7 @@ def mobilization_create_page(request):
 @login_required
 @require_POST
 def mobilization_create(request):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     ticket_id = request.POST.get('ticket_id')
@@ -6816,7 +7073,7 @@ def mobilization_create(request):
         for admin in User.objects.filter(role=User.Role.ADMIN, is_active=True):
             Notification.objects.create(
                 recipient=admin,
-                role=role_of(admin),
+                role=None,
                 message=(
                     f'{request.user.get_full_name()} mobilized assets to "{vessel.name}", a third-party vessel '
                     f'not yet in the system. Review and activate it under System Settings → Vessels if it should be added.'
@@ -6840,7 +7097,7 @@ def mobilization_create(request):
 @login_required
 def mobilization_available_assets(request):
     """HTMX endpoint: assets available to add to a new mobilization."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     search = request.GET.get('search', '').strip()
@@ -6877,7 +7134,7 @@ def mobilization_autopick_assets(request):
     `asset_ids` list and select_for_update() re-validation in
     mobilization_create as a manually-checked pick, so a race between pick
     and submit just surfaces the existing "not available" error there."""
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     category_id = request.GET.get('category_id')
@@ -6908,7 +7165,7 @@ def mobilization_autopick_assets(request):
 
 @login_required
 def mobilization_item_demobilize_modal(request, item_pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     item = get_object_or_404(MobilizationItem.objects.select_related('asset', 'mobilization'), pk=item_pk)
@@ -7001,7 +7258,7 @@ def _demobilize_item(item, return_condition, return_notes, actor, return_quantit
 @login_required
 @require_POST
 def mobilization_item_demobilize(request, item_pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     return_condition = request.POST.get('return_condition')
@@ -7044,7 +7301,7 @@ def mobilization_item_demobilize(request, item_pk):
 
 @login_required
 def mobilization_demobilize_all_modal(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -7065,7 +7322,7 @@ def mobilization_demobilize_all_modal(request, pk):
 @login_required
 @require_POST
 def mobilization_demobilize_all(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -7108,7 +7365,7 @@ def mobilization_demobilize_all(request, pk):
 
 @login_required
 def mobilization_extend_date_modal(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)
@@ -7123,7 +7380,7 @@ def mobilization_extend_date_modal(request, pk):
 @login_required
 @require_POST
 def mobilization_extend_date(request, pk):
-    if effective_role_name(request.user) not in ['ADMIN', 'SUPERADMIN']:
+    if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     mobilization = get_object_or_404(Mobilization, pk=pk)

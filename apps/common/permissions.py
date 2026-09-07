@@ -61,3 +61,17 @@ def is_support_staff(user):
     return user.department == 'IT' and effective_role_name(user) in (
         'AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN'
     )
+
+
+def can_manage_fulfillment(user):
+    """Asset request fulfillment (direct-from-stock, vendor procurement, and
+    mobilization) plus the department/IT Team Lead's own final approval are
+    one continuous workflow — in orgs where the IT Team Lead and IT Admin
+    are the same person, gating fulfillment to ADMIN-only forced that person
+    to switch roles mid-task to finish a request they'd just approved. IT
+    Team Leads get the same fulfillment access as Admins; Team Leads outside
+    IT still don't (fulfillment is an IT-operational responsibility)."""
+    role_name = effective_role_name(user)
+    if role_name in ('ADMIN', 'SUPERADMIN'):
+        return True
+    return role_name == 'TEAM_LEAD' and user.department == 'IT'
