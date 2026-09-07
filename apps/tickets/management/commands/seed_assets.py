@@ -3,7 +3,7 @@ import random
 from datetime import date, timedelta
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
-from apps.tickets.models import Asset, AssetCategory, AssetLog
+from apps.tickets.models import Asset, AssetCategory, AssetLog, Location
 
 User = get_user_model()
 
@@ -30,6 +30,14 @@ class Command(BaseCommand):
             obj, _ = AssetCategory.objects.get_or_create(name=name)
             return obj
 
+        def location(name):
+            # Asset.location is a Location FK (Building -> Floor -> Section,
+            # replacing the old free-text field) — this seed data predates
+            # that migration, so resolve each descriptive string to a flat
+            # Location row instead of assigning the string directly.
+            obj, _ = Location.objects.get_or_create(name=name)
+            return obj
+
         asset_data = [
             {
                 'name': 'Dell Latitude 5420',
@@ -37,7 +45,7 @@ class Command(BaseCommand):
                 'serial_number': f'SN-{random.randint(1000, 9999)}',
                 'model': 'Latitude 5420',
                 'manufacturer': 'Dell',
-                'location': 'Building A, Floor 3, IT Dept',
+                'location': location('Building A, Floor 3, IT Dept'),
                 'purchase_date': date.today() - timedelta(days=random.randint(30, 900)),
                 'warranty_expiry': date.today() + timedelta(days=random.randint(100, 500)),
                 'status': Asset.Status.IN_USE,
@@ -50,7 +58,7 @@ class Command(BaseCommand):
                 'serial_number': f'SN-{random.randint(1000, 9999)}',
                 'model': 'PowerEdge R740',
                 'manufacturer': 'Dell',
-                'location': 'Data Center A, Rack 12',
+                'location': location('Data Center A, Rack 12'),
                 'purchase_date': date.today() - timedelta(days=random.randint(30, 900)),
                 'warranty_expiry': date.today() + timedelta(days=random.randint(100, 500)),
                 'status': Asset.Status.IN_STORE,
@@ -62,7 +70,7 @@ class Command(BaseCommand):
                 'serial_number': f'SN-{random.randint(1000, 9999)}',
                 'model': 'LaserJet Enterprise M607',
                 'manufacturer': 'HP',
-                'location': 'Building A, Floor 2, Breakroom',
+                'location': location('Building A, Floor 2, Breakroom'),
                 'purchase_date': date.today() - timedelta(days=random.randint(30, 900)),
                 'warranty_expiry': date.today() + timedelta(days=random.randint(100, 500)),
                 'status': Asset.Status.IN_STORE,
@@ -74,7 +82,7 @@ class Command(BaseCommand):
                 'serial_number': '',
                 'model': 'Office 365 E3',
                 'manufacturer': 'Microsoft',
-                'location': 'Global',
+                'location': location('Global'),
                 'purchase_date': date.today() - timedelta(days=random.randint(30, 900)),
                 'warranty_expiry': None,
                 'status': Asset.Status.IN_USE,
@@ -86,7 +94,7 @@ class Command(BaseCommand):
                 'serial_number': f'SN-{random.randint(1000, 9999)}',
                 'model': 'Latitude 7400',
                 'manufacturer': 'Dell',
-                'location': 'IT Repair Shop',
+                'location': location('IT Repair Shop'),
                 'purchase_date': date.today() - timedelta(days=500),
                 'warranty_expiry': date.today() - timedelta(days=100),
                 'status': Asset.Status.MAINTENANCE,
