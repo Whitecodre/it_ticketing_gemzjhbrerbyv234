@@ -42,7 +42,7 @@ class Command(BaseCommand):
         if created:
             system_user.set_password(User.objects.make_random_password())
             system_user.save()
-            self.stdout.write(self.style.SUCCESS('✅ Created system user for automated actions'))
+            self.stdout.write(self.style.SUCCESS('[OK] Created system user for automated actions'))
 
         # Every open ticket that has at least one SLA timer running — not
         # just ones that have already breached, since threshold rules
@@ -53,7 +53,7 @@ class Command(BaseCommand):
             Q(response_due_at__isnull=False) | Q(resolution_due_at__isnull=False)
         )
 
-        self.stdout.write(f'🔍 Evaluating {tickets.count()} open ticket(s) with SLA timers')
+        self.stdout.write(f'[INFO] Evaluating {tickets.count()} open ticket(s) with SLA timers')
 
         for ticket in tickets:
             self.process_ticket(ticket, now, system_user)
@@ -122,7 +122,7 @@ class Command(BaseCommand):
         ).order_by('threshold_percent')
 
         if not rules.exists() and timer_type == 'response':
-            self.stdout.write(f'   ⚠️ No response escalation rules for {ticket.priority}, creating defaults...')
+            self.stdout.write(f'   [WARN] No response escalation rules for {ticket.priority}, creating defaults...')
             self.create_default_escalation_rules(ticket.priority)
             rules = EscalationRule.objects.filter(priority=ticket.priority, timer_type=timer_type)
 
@@ -145,7 +145,7 @@ class Command(BaseCommand):
                 }
             )
             self.stdout.write(
-                f'   ⏰ Ticket {ticket.number}: fired {rule.action_type} rule '
+                f'   [ESCALATE] Ticket {ticket.number}: fired {rule.action_type} rule '
                 f'at {rule.threshold_percent}% of {timer_type} ({elapsed_percent:.0f}% elapsed)'
             )
 
@@ -169,7 +169,7 @@ class Command(BaseCommand):
         if already_breached:
             return
 
-        self.stdout.write(f'⏰ Ticket {ticket.number} breached its {timer_type} SLA!')
+        self.stdout.write(f'[BREACH] Ticket {ticket.number} breached its {timer_type} SLA!')
 
         comment_body = f"Auto-escalated due to SLA breach ({timer_type} timer exceeded)."
         TicketComment.objects.create(
@@ -198,7 +198,7 @@ class Command(BaseCommand):
                 ticket.assigned_to = agent
                 ticket.status = Ticket.Status.ASSIGNED
                 ticket.save()
-                self.stdout.write(f'   ✅ Assigned to {agent.get_full_name()}')
+                self.stdout.write(f'   [OK] Assigned to {agent.get_full_name()}')
 
                 Notification.objects.create(
                     recipient=agent,
@@ -210,7 +210,7 @@ class Command(BaseCommand):
             else:
                 ticket.status = Ticket.Status.ESCALATED
                 ticket.save()
-                self.stdout.write(f'   ⚠️ No agent available, ticket escalated')
+                self.stdout.write(f'   [WARN] No agent available, ticket escalated')
 
     def create_default_escalation_rules(self, priority):
         """Create default response-timer escalation rules for a priority."""
@@ -229,7 +229,7 @@ class Command(BaseCommand):
                 notify_role=rule_data.get('notify_role'),
                 reassign_to_role=rule_data.get('reassign_to_role'),
             )
-        self.stdout.write(f'   ✅ Created {len(rules)} default escalation rules for {priority}')
+        self.stdout.write(f'   [OK] Created {len(rules)} default escalation rules for {priority}')
 
     def find_available_agent(self):
         """Find an available agent with the fewest open tickets. Excludes
@@ -269,7 +269,7 @@ class Command(BaseCommand):
                         url=f'/tickets/{ticket.pk}/',
                         type=Notification.Type.TICKET
                     )
-                self.stdout.write(f'   📧 Notified {len(users)} {rule.notify_role}(s)')
+                self.stdout.write(f'   [NOTIFY] Notified {len(users)} {rule.notify_role}(s)')
 
         elif action_type == 'reassign':
             if rule.reassign_to_role:
@@ -289,4 +289,4 @@ class Command(BaseCommand):
                         url=f'/tickets/{ticket.pk}/',
                         type=Notification.Type.TICKET
                     )
-                    self.stdout.write(f'   🔄 Reassigned to {new_assignee.get_full_name()}')
+                    self.stdout.write(f'   [OK] Reassigned to {new_assignee.get_full_name()}')

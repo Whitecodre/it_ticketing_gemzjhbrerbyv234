@@ -1,0 +1,27 @@
+{% load lucide %}
+{% if available_documents %}
+<form method="post" action="{% url 'documents_display:folder_add_documents' folder.slug %}">
+    {% csrf_token %}
+    <div class="max-h-96 overflow-y-auto space-y-1 mb-3 border rounded-lg p-2" style="border-color: var(--color-border);">
+        {% for doc in available_documents %}
+        <label class="flex items-center gap-3 rounded-lg p-2 hover:bg-background cursor-pointer">
+            <input type="checkbox" name="document_ids" value="{{ doc.pk }}" class="rounded border-border text-primary focus:ring-primary">
+            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                {% lucide "file" size=14 %}
+            </span>
+            <span class="flex-1 min-w-0">
+                <span class="block text-sm truncate" style="color: var(--color-text-primary);">{{ doc.title }}</span>
+                <span class="block text-xs text-text-secondary truncate">{{ doc.category.name }}</span>
+            </span>
+        </label>
+        {% endfor %}
+    </div>
+    <button type="submit" class="btn-primary text-sm px-4 py-2 rounded-lg flex items-center gap-1.5">
+        {% lucide "plus" size=14 %} Add Selected to Folder
+    </button>
+</form>
+{% else %}
+<p class="text-sm text-text-secondary">
+    {% if query %}No matching documents found.{% else %}Type above to search documents you can access and add them to this folder.{% endif %}
+</p>
+{% endif %}

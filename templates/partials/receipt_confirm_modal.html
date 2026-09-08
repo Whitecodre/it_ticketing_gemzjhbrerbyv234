@@ -24,23 +24,27 @@
 
             <div class="space-y-3">
                 {% for item in pending_items %}
-                <div class="rounded-lg border p-3" style="border-color: var(--color-border);">
-                    <p class="text-sm font-medium text-text-primary">
-                        {{ item.asset.name }} <span class="font-mono text-text-secondary">({{ item.asset.tracking_id }})</span>
-                        {% if item.quantity > 1 %}<span class="text-text-secondary">x{{ item.quantity }}</span>{% endif %}
-                    </p>
-                    <div class="flex flex-wrap items-center gap-2 mt-2">
+                <div class="rounded-lg border p-2.5" style="border-color: var(--color-border);">
+                    <div class="flex items-center gap-2">
                         <button type="button" id="itemAcceptBtn{{ item.pk }}" onclick="markReceiptItem({{ item.pk }}, 'accept')"
-                                class="btn-success text-xs px-3 py-1.5 rounded">
-                            {% lucide "check" size=12 class="inline -mt-0.5" %} I received this
+                                title="I received this"
+                                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition hover:bg-success/10 text-text-secondary"
+                                style="border-color: var(--color-border);">
+                            {% lucide "check" size=14 %}
                         </button>
                         <button type="button" id="itemDisputeBtn{{ item.pk }}" onclick="markReceiptItem({{ item.pk }}, 'dispute')"
-                                class="btn-ghost text-xs px-3 py-1.5 rounded text-error">
-                            I didn't receive this
+                                title="I didn't receive this"
+                                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition hover:bg-error/10 text-text-secondary"
+                                style="border-color: var(--color-border);">
+                            {% lucide "x" size=14 %}
                         </button>
+                        <p class="text-sm font-medium text-text-primary min-w-0 truncate">
+                            {{ item.asset.name }} <span class="font-mono text-text-secondary">({{ item.asset.tracking_id }})</span>
+                            {% if item.quantity > 1 %}<span class="text-text-secondary">x{{ item.quantity }}</span>{% endif %}
+                        </p>
+                        <p id="itemStatus{{ item.pk }}" class="hidden text-xs font-medium ml-auto shrink-0"></p>
                     </div>
-                    <p id="itemStatus{{ item.pk }}" class="hidden text-xs font-medium mt-2"></p>
-                    <div id="itemDisputeReason{{ item.pk }}" class="hidden mt-2">
+                    <div id="itemDisputeReason{{ item.pk }}" class="hidden mt-2 ml-9">
                         <textarea id="itemReasonText{{ item.pk }}" rows="2" placeholder="What happened? (optional)"
                                   class="w-full text-sm rounded-lg border p-2 bg-background border-border text-text-primary"></textarea>
                     </div>

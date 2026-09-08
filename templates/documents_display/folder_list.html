@@ -34,29 +34,44 @@
     {% if folders %}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for folder in folders %}
-        <a href="{% url 'documents_display:folder_detail' folder.slug %}"
-           class="group block rounded-lg border p-4 hover:shadow-md transition hover:border-primary"
-           style="border-color: var(--color-border); background-color: var(--color-surface);">
-            <div class="flex items-start gap-3">
-                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-                    {% lucide "folder" size=16 %}
-                </span>
-                <div class="flex-1 min-w-0">
-                    <h3 class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ folder.name }}</h3>
-                    {% if folder.description %}
-                    <p class="text-xs text-text-secondary truncate">{{ folder.description }}</p>
-                    {% endif %}
-                    <div class="flex items-center gap-2 mt-1 text-[0.65rem] text-text-secondary">
-                        <span>{{ folder.documents.count }} document(s)</span>
-                        <span>•</span>
-                        <span>Updated {{ folder.updated_at|date:"M d, Y" }}</span>
+        <div class="group relative rounded-lg border p-4 hover:shadow-md transition hover:border-primary"
+             style="border-color: var(--color-border); background-color: var(--color-surface);">
+            <a href="{% url 'documents_display:folder_detail' folder.slug %}" class="block">
+                <div class="flex items-start gap-3 pr-14">
+                    <span class="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                        {% lucide "folder" size=16 %}
+                    </span>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="text-sm font-medium truncate" style="color: var(--color-text-primary);">{{ folder.name }}</h3>
+                        {% if folder.description %}
+                        <p class="text-xs text-text-secondary truncate">{{ folder.description }}</p>
+                        {% endif %}
+                        <div class="flex items-center gap-2 mt-1 text-[0.65rem] text-text-secondary">
+                            <span>{{ folder.documents.count }} document(s)</span>
+                            <span>•</span>
+                            <span>Updated {{ folder.updated_at|date:"M d, Y" }}</span>
+                        </div>
+                        {% if request.user.is_superuser and folder.created_by_id != request.user.id %}
+                        <span class="text-[0.6rem] text-text-secondary">Created by {{ folder.created_by.get_full_name }}</span>
+                        {% endif %}
                     </div>
-                    {% if request.user.is_superuser and folder.created_by_id != request.user.id %}
-                    <span class="text-[0.6rem] text-text-secondary">Created by {{ folder.created_by.get_full_name }}</span>
-                    {% endif %}
                 </div>
+            </a>
+            <div class="absolute top-3 right-3 flex items-center gap-1">
+                <button type="button" onclick="event.preventDefault(); openFolderEditModal('{{ folder.slug }}');"
+                        class="p-1.5 rounded hover:bg-black/5 text-text-secondary hover:text-primary transition" title="Rename folder" aria-label="Rename folder">
+                    {% lucide "pencil" size=14 %}
+                </button>
+                <form method="post" action="{% url 'documents_display:folder_delete' folder.slug %}" class="inline" id="folderDeleteForm{{ folder.slug }}" onsubmit="event.stopPropagation();">
+                    {% csrf_token %}
+                    <button type="button"
+                            onclick="event.preventDefault(); confirmDelete('{{ folder.name|escapejs }}', 'folder', function() { document.getElementById('folderDeleteForm{{ folder.slug }}').submit(); });"
+                            class="p-1.5 rounded hover:bg-black/5 text-text-secondary hover:text-error transition" title="Delete folder" aria-label="Delete folder">
+                        {% lucide "trash-2" size=14 %}
+                    </button>
+                </form>
             </div>
-        </a>
+        </div>
         {% endfor %}
     </div>
     {% else %}
@@ -104,4 +119,21 @@
 {% if form.errors %}
 <script>document.getElementById('newFolderModal').classList.remove('hidden');</script>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+<script>
+    function openFolderEditModal(slug) {
+        const existing = document.getElementById('folderEditModal');
+        if (existing) existing.remove();
+        fetch(`/documents_display/folder/${slug}/edit/`)
+            .then(response => response.text())
+            .then(html => {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = html;
+                document.body.appendChild(wrapper.firstElementChild);
+            });
+    }
+</script>
 {% endblock %}

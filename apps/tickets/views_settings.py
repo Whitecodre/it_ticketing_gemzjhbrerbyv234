@@ -104,24 +104,6 @@ def system_settings_category(request, resource):
     return render(request, 'dashboards/system_settings_category.html', context)
 
 
-@login_required
-def system_settings_branding(request):
-    """Branding's own page — same hub-card-links-to-a-single-page pattern
-    as a SettingsResource, just backed by ClientSettings instead of the
-    generic registry (a singleton with a file upload, not a CRUD list)."""
-    if not _is_admin(request.user):
-        return HttpResponse(status=403)
-
-    from apps.accounts.models import ClientSettings
-    client_settings, _ = ClientSettings.objects.get_or_create(id=1)
-
-    context = {
-        'client_settings_obj': client_settings,
-        'sidebar_template': get_sidebar_template(request.user),
-    }
-    return render(request, 'dashboards/system_settings_branding.html', context)
-
-
 def _obj_label(obj):
     return getattr(obj, 'name', None) or getattr(obj, 'number', None) or str(obj)
 
@@ -238,63 +220,3 @@ def settings_resource_activate(request, resource, pk):
     return JsonResponse({'status': 'ok'})
 
 
-@login_required
-@require_POST
-def branding_update(request):
-    if not _is_admin(request.user):
-        return HttpResponse(status=403)
-
-    from apps.accounts.models import ClientSettings
-    client_settings, _ = ClientSettings.objects.get_or_create(id=1)
-
-    changed_fields = []
-    if 'logo' in request.FILES:
-        changed_fields.append('logo')
-
-    company_name = request.POST.get('company_name', '').strip()
-    if company_name and company_name != client_settings.company_name:
-        client_settings.company_name = company_name
-        changed_fields.append('company_name')
-
-    # Org prefix for auto-generated asset tags (e.g. "HD") — blank is valid
-    # (falls back to the legacy AST-{year}-{seq} scheme, see Asset.save()),
-    # so this always accepts whatever was submitted, including clearing it.
-    if 'asset_tag_prefix' in request.POST:
-        new_prefix = request.POST.get('asset_tag_prefix', '').strip()
-        if new_prefix != client_settings.asset_tag_prefix:
-            client_settings.asset_tag_prefix = new_prefix
-            changed_fields.append('asset_tag_prefix')
-
-    # Company initials prefixed onto every exported report/document
-    # filename (see report_exporters._filename) — blank is valid (no prefix).
-    if 'company_initials' in request.POST:
-        new_initials = request.POST.get('company_initials', '').strip()
-        if new_initials != client_settings.company_initials:
-            client_settings.company_initials = new_initials
-            changed_fields.append('company_initials')
-
-    if 'logo' in request.FILES:
-        logo = request.FILES['logo']
-        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-        if logo.content_type not in allowed_types:
-            messages.error(request, 'Please upload a valid image (JPEG, PNG, GIF, or WEBP).')
-            return redirect('tickets:system_settings_branding')
-        if logo.size > 2 * 1024 * 1024:
-            messages.error(request, 'Logo must be less than 2MB.')
-            return redirect('tickets:system_settings_branding')
-        if client_settings.logo:
-            try:
-                client_settings.logo.delete(save=False)
-            except Exception:
-                pass
-        client_settings.logo = logo
-
-    client_settings.updated_by = request.user
-    client_settings.save()
-    if changed_fields:
-        log_admin_action(
-            request.user, AdminActionLog.Category.SYSTEM_SETTINGS, 'Updated branding', client_settings.company_name,
-            details=f'Fields changed: {", ".join(changed_fields)}',
-        )
-    messages.success(request, 'Branding updated successfully.')
-    return redirect('tickets:system_settings_branding')

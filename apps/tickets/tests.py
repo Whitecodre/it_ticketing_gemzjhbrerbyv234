@@ -1230,11 +1230,14 @@ class MobilizationReceiptConfirmationTests(TestCase):
         self.assertNotIn('ordered from vendor', created_comment.body)
         self.assertTrue(created_comment.is_system_generated)
 
-    def test_mobilization_cards_attributed_to_system_not_admin(self):
+    def test_mobilization_cards_attributed_to_real_admin_not_system(self):
+        # Mobilization/system-styled cards attribute to whoever actually
+        # triggered them (here, the admin who ran mobilization_create) —
+        # "System" is reserved for the one true bot account
+        # (system@ticketswipe.local), not every automated-looking card.
         self.client.login(email='receipt-requester@example.com', password='TestPass123!')
         response = self.client.get(reverse('tickets:detail', args=[self.ticket.pk]))
-        self.assertContains(response, 'System')
-        self.assertNotContains(response, 'Receipt Admin')
+        self.assertContains(response, 'Receipt Admin')
 
     def test_confirmed_card_still_shows_real_requester_name(self):
         self.client.login(email='receipt-requester@example.com', password='TestPass123!')
@@ -1841,15 +1844,13 @@ class SystemSettingsHubTests(TestCase):
         )
         self.client.login(email='settingshub-admin@example.com', password='AdminPass123!')
 
-    def test_hub_groups_resources_and_shows_branding_card(self):
+    def test_hub_groups_resources(self):
         response = self.client.get(reverse('tickets:system_settings'))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Tickets &amp; Service')
         self.assertContains(response, 'Assets &amp; Fleet')
         self.assertContains(response, 'Vessels')
-        self.assertContains(response, 'Branding')
         self.assertContains(response, reverse('tickets:system_settings_category', args=['vessels']))
-        self.assertContains(response, reverse('tickets:system_settings_branding'))
 
     def test_hub_shows_pending_count_badge_for_proposed_rows(self):
         Vessel.objects.create(name='Proposed Vessel', is_active=False, proposed_by=self.agent)
@@ -1869,20 +1870,11 @@ class SystemSettingsHubTests(TestCase):
         response = self.client.get(reverse('tickets:system_settings_category', args=['not-a-real-resource']))
         self.assertEqual(response.status_code, 404)
 
-    def test_branding_page_renders_and_save_redirects_back_to_it(self):
-        response = self.client.get(reverse('tickets:system_settings_branding'))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Company Name')
-
-        response = self.client.post(reverse('tickets:branding_update'), {'company_name': 'New Co Name'})
-        self.assertRedirects(response, reverse('tickets:system_settings_branding'))
-
-    def test_non_admin_denied_hub_category_and_branding_pages(self):
+    def test_non_admin_denied_hub_and_category_pages(self):
         self.client.logout()
         self.client.login(email='settingshub-agent@example.com', password='TestPass123!')
         self.assertEqual(self.client.get(reverse('tickets:system_settings')).status_code, 403)
         self.assertEqual(self.client.get(reverse('tickets:system_settings_category', args=['vessels'])).status_code, 403)
-        self.assertEqual(self.client.get(reverse('tickets:system_settings_branding')).status_code, 403)
 
 
 class ServiceRequestReportConfirmationFieldsTests(TestCase):

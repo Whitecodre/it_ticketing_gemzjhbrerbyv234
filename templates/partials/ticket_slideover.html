@@ -12,9 +12,21 @@
                 {% lucide "x" size=20 %}
             </button>
         </div>
+        {% comment %}
+        Inline styles, not just bg-white/20 + text-white utility classes —
+        .status-chip.<status> and .priority-chip.<level> (theme.css) each
+        set their own background-color/color keyed to the status/priority's
+        own semantic tone (e.g. approved -> green-on-green-tint), and a
+        two-class selector like that beats a single utility class on
+        specificity regardless of source order. The badges were rendering
+        in their normal semantic colors, which on this same teal gradient
+        header blended in exactly the way reported in live testing — inline
+        styles win over any class-based rule, so this is what actually
+        forces white-on-translucent here.
+        {% endcomment %}
         <div class="flex gap-2 mt-3">
-            <span class="status-chip {{ ticket.status|lower }} text-xs bg-white/20 text-white border-0">{{ ticket.get_status_display }}</span>
-            <span class="priority-chip {% if ticket.priority == 'P1' %}critical{% elif ticket.priority == 'P2' %}high{% elif ticket.priority == 'P3' %}medium{% else %}low{% endif %} text-xs bg-white/20 text-white border-0">{{ ticket.get_priority_display }}</span>
+            <span class="status-chip {{ ticket.status|lower }} text-xs border-0" style="background-color: rgba(255,255,255,0.22); color: #fff;">{{ ticket.get_status_display }}</span>
+            <span class="priority-chip {% if ticket.priority == 'P1' %}critical{% elif ticket.priority == 'P2' %}high{% elif ticket.priority == 'P3' %}medium{% else %}low{% endif %} text-xs border-0" style="background-color: rgba(255,255,255,0.22); color: #fff;">{{ ticket.get_priority_display }}</span>
         </div>
     </div>
 
@@ -141,15 +153,31 @@
                                 <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md bg-warning/10 border border-warning/30 text-text-primary">
                                     <span class="font-semibold text-warning">Internal Note</span>
                                     <span class="text-text-secondary text-[0.6rem] ml-2">{{ comment.author.get_full_name_with_role }} · {{ comment.created_at|timesince }} ago</span>
-                                    <div class="mt-0.5">{{ comment.body|truncatechars:120 }}</div>
+                                    {% comment %}
+                                    System-generated comments (revision requests, mobilization
+                                    events, etc.) store real HTML (e.g. <strong> tags) — this is
+                                    a plain-text digest preview, not the full card treatment the
+                                    main conversation page gives them, so strip tags rather than
+                                    rendering |safe (which previously showed the raw tag text
+                                    literally, having neither escaped nor rendered it).
+                                    {% endcomment %}
+                                    <div class="mt-0.5">{{ comment.body|striptags|truncatechars:120 }}</div>
                                 </div>
                             </div>
                         {% else %}
+                            {% comment %}
+                            Explicit white text on the primary-colored (staff) bubble — same
+                            pairing the main conversation timeline already uses for its own
+                            "mine" bubble. The generic text-text-primary token used here
+                            previously is a light color in dark mode, which on this same
+                            bright teal background was low-contrast to the point of blending
+                            in, per live testing.
+                            {% endcomment %}
                             <div class="flex {% if comment.author == ticket.requester %}justify-start{% else %}justify-end{% endif %}">
-                                <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md text-text-primary {% if comment.author == ticket.requester %}bg-gray-100 dark:bg-gray-800{% else %}bg-primary{% endif %}">
+                                <div class="max-w-[80%] text-xs px-3 py-1.5 rounded-md border {% if comment.author == ticket.requester %}bg-background border-border text-text-primary{% else %}bg-primary border-primary text-white{% endif %}">
                                     <span class="font-medium">{{ comment.author.get_full_name_with_role|default:comment.author.email.split.0 }}</span>
-                                    <span class="text-text-secondary text-[0.6rem] ml-2">{{ comment.created_at|timesince }} ago</span>
-                                    <div class="mt-0.5">{{ comment.body|truncatechars:120 }}</div>
+                                    <span class="text-[0.6rem] ml-2 {% if comment.author == ticket.requester %}text-text-secondary{% else %}text-white/70{% endif %}">{{ comment.created_at|timesince }} ago</span>
+                                    <div class="mt-0.5">{{ comment.body|striptags|truncatechars:120 }}</div>
                                 </div>
                             </div>
                         {% endif %}
@@ -172,7 +200,8 @@
         {% if not ticket.assigned_to %}
         <button class="btn-primary text-xs flex items-center gap-1 px-4 py-2" id="slideoverClaimBtn"
                 data-ticket-id="{{ ticket.pk }}"
-                data-claim-url="{% url 'tickets:claim_ticket' ticket.pk %}">
+                data-claim-url="{% url 'tickets:claim_ticket' ticket.pk %}"
+                data-conversation-url="{% url 'tickets:conversation' ticket.pk %}">
             {% lucide "user-plus" size=14 %} Claim Ticket
         </button>
         {% endif %}
@@ -192,6 +221,7 @@
             
             const claimUrl = this.dataset.claimUrl;
             const ticketId = this.dataset.ticketId;
+            const conversationUrl = this.dataset.conversationUrl;
             
             if (!claimUrl) return;
             
@@ -226,12 +256,20 @@
             .then(data => {
                 // Close slide-over
                 closeSlideover();
-                
+
                 if (data.success) {
+                    // Same reasoning as the queue-table dropdown's claim action —
+                    // claiming a single ticket means "I'm about to work this,"
+                    // so go straight into the conversation instead of closing
+                    // the preview and reloading back onto the list.
+                    if (conversationUrl) {
+                        window.location.href = conversationUrl;
+                        return;
+                    }
                     if (typeof showToast === 'function') {
                         showToast(data.message || 'Ticket claimed successfully!', 'success');
                     }
-                    
+
                     // RELOAD THE PAGE
                     setTimeout(function() {
                         window.location.reload();

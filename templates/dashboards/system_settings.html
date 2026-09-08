@@ -63,25 +63,6 @@
     </div>
     {% endfor %}
 
-    {# Branding — a singleton (ClientSettings), not a SettingsResource, so it's not part of `groups` #}
-    <div data-settings-group>
-        <h3 class="text-xs font-semibold uppercase tracking-wider text-text-secondary mb-3">Branding</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <a href="{% url 'tickets:system_settings_branding' %}"
-               class="settings-hub-card dashboard-card p-4 flex flex-col gap-2.5 hover:shadow-md transition-shadow"
-               data-settings-card
-               data-search-text="branding company name logo">
-                <div class="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
-                    {% lucide "palette" size=20 %}
-                </div>
-                <div>
-                    <div class="text-sm font-semibold text-text-primary">Branding</div>
-                    <div class="text-xs text-text-secondary mt-0.5">Company name &amp; logo</div>
-                </div>
-            </a>
-        </div>
-    </div>
-
 </div>
 
 <script src="{% static 'js/settings_hub.js' %}"></script>

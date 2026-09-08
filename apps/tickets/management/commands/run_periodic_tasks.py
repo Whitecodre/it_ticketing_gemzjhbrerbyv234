@@ -38,9 +38,9 @@ class Command(BaseCommand):
         run_once = options['once']
 
         self.stdout.write(self.style.SUCCESS(
-            f'🔄 Periodic task runner started. Processing every {interval} minutes...'
+            f'[START] Periodic task runner started. Processing every {interval} minutes...'
         ))
-        self.stdout.write(f'📅 Started at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+        self.stdout.write(f'[INFO] Started at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
 
         def process():
             run_periodic_jobs(stdout=self.stdout, stderr=self.stderr)
@@ -55,7 +55,7 @@ class Command(BaseCommand):
         schedule.every(interval).minutes.do(process)
 
         self.stdout.write(self.style.SUCCESS(
-            '✅ Scheduler running. Press Ctrl+C to stop.'
+            '[OK] Scheduler running. Press Ctrl+C to stop.'
         ))
 
         try:
@@ -63,5 +63,5 @@ class Command(BaseCommand):
                 schedule.run_pending()
                 time.sleep(1)
         except KeyboardInterrupt:
-            self.stdout.write(self.style.WARNING('\n🛑 Scheduler stopped by user.'))
+            self.stdout.write(self.style.WARNING('\n[STOP] Scheduler stopped by user.'))
             sys.exit(0)

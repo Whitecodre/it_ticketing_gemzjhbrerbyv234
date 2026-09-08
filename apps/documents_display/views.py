@@ -1018,12 +1018,17 @@ def folder_detail(request, slug):
         return redirect('documents_display:folder_list')
 
     folder_document_ids = set(folder.documents.values_list('pk', flat=True))
-    query = request.GET.get('q', '')
-    available_documents = get_viewable_documents(request.user).exclude(pk__in=folder_document_ids)
+    query = request.GET.get('q', '').strip()
+    # Only actually queries once something's been typed — with nothing to
+    # narrow it down, dumping every document the admin can access (which,
+    # org-wide, can easily be 50-100+) as one long scrollable checkbox list
+    # is exactly the "aggravating" picker this replaced live search for.
     if query:
-        available_documents = available_documents.filter(
+        available_documents = get_viewable_documents(request.user).exclude(pk__in=folder_document_ids).filter(
             Q(title__icontains=query) | Q(file_name__icontains=query)
         )
+    else:
+        available_documents = DisplayDocument.objects.none()
 
     context = {
         'folder': folder,
@@ -1033,6 +1038,28 @@ def folder_detail(request, slug):
         'sidebar_template': get_sidebar_template(request.user),
     }
     return render(request, 'documents_display/folder_detail.html', context)
+
+
+@login_required
+@document_admin_required
+def folder_edit(request, slug):
+    """Rename a folder / change its description. Slug is set once at
+    creation and never recomputed on save (see DocumentFolder.save()), so
+    renaming never breaks an already-shared folder link."""
+    folder = _get_manageable_folder(request, slug)
+    if folder is None:
+        return HttpResponse(status=403)
+
+    if request.method == 'POST':
+        form = DocumentFolderForm(request.POST, instance=folder)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f'Folder renamed to "{folder.name}".')
+            return redirect('documents_display:folder_detail', slug=folder.slug)
+    else:
+        form = DocumentFolderForm(instance=folder)
+
+    return render(request, 'documents_display/folder_edit_modal.html', {'folder': folder, 'form': form})
 
 
 @login_required

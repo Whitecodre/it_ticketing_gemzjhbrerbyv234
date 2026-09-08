@@ -118,6 +118,7 @@ MIDDLEWARE = [
     'apps.common.middleware.SecurityHeadersMiddleware',
     'apps.common.middleware.ImpersonationMiddleware',
     'apps.common.middleware.LastSeenMiddleware',
+    'apps.common.middleware.TimezoneMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'

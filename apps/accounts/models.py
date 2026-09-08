@@ -181,12 +181,18 @@ class User(AbstractUser):
         return self.is_it_staff()
 
     def can_manage_display_documents(self):
-        """Admin role or superuser: only these may create/edit/delete display documents & categories.
+        """Admin role, superuser, or an IT-department Team Lead: same
+        "IT Team Lead gets Admin-equivalent access" precedent as
+        apps.common.permissions.can_manage_fulfillment (admin and Team Lead
+        are frequently the same person in practice, and document
+        management is an IT-operational responsibility like fulfillment).
         Active-role aware (mirrors apps.common.permissions.effective_role_name, inlined here to
         avoid a models -> views-layer circular import) so a role-switched user is judged by their
         current active role, not a possibly-stale legacy `role` field."""
         active_role = self.get_active_role()
         role_name = active_role.name if active_role else self.role
+        if role_name == self.Role.TEAM_LEAD:
+            return self.department == 'IT'
         return self.is_superuser or role_name == self.Role.ADMIN
 
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)

@@ -757,7 +757,8 @@ def ticket_detail(request, pk):
     The 'is_agent' flag controls visibility of agent‑only UI elements.
     """
     ticket = get_object_or_404(Ticket, pk=pk)
-    if request.user != ticket.requester and effective_role_name(request.user) not in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']:
+    is_agent = effective_role_name(request.user) in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+    if request.user != ticket.requester and not is_agent:
         return redirect('dashboard')
 
     # Handle comment submission from requester
@@ -782,14 +783,20 @@ def ticket_detail(request, pk):
 
             if ticket.status == Ticket.Status.PENDING_USER:
                 old_status = ticket.status
-                # PENDING_USER means two different things depending on why it
-                # was set: a manager requesting changes on a service request
-                # (must go back through manager review, not straight to IT),
-                # or an agent proposing a resolution and awaiting confirmation
-                # (a reply here just reopens it to IN_PROGRESS). Disambiguate
-                # via whichever of those two actions happened most recently.
+                # PENDING_USER means several different things depending on why
+                # it was set: a manager requesting changes on a service
+                # request (must go back through manager review, not straight
+                # to IT) is the only one that doesn't just reopen to
+                # IN_PROGRESS — resolution-proposed, asset-fulfillment
+                # receipt, and a staff reply awaiting a response (see
+                # add_comment_conversation) all just reopen. 'resolution_requested'
+                # and 'agent_reply_awaiting_response' are both listed here
+                # (not just left out) purely so they win over a *stale*
+                # 'manager_requested_changes' from earlier in the ticket's
+                # history when picking "most recent" — either would already
+                # fall to the IN_PROGRESS branch below on its own.
                 last_reason = ticket.activities.filter(
-                    action__in=['manager_requested_changes', 'resolution_requested']
+                    action__in=['manager_requested_changes', 'resolution_requested', 'agent_reply_awaiting_response']
                 ).first()
                 if last_reason and last_reason.action == 'manager_requested_changes':
                     ticket.status = Ticket.Status.PENDING_MANAGER_REVIEW
@@ -804,6 +811,8 @@ def ticket_detail(request, pk):
                     notify_department_team_leads_pending_review(ticket)
 
             comments = ticket.comments.prefetch_related('attachment_set').all().order_by('created_at')
+            if not is_agent:
+                comments = comments.exclude(visibility='INTERNAL')
             initial_attachments = ticket.attachments.filter(comment__isnull=True)
             return render(request, 'partials/conversation_timeline.html', {
                 'ticket': ticket,
@@ -814,15 +823,21 @@ def ticket_detail(request, pk):
         else:
             return HttpResponse('Please check your comment and try again.', status=422)
 
-    # GET request – render conversation page
+    # GET request – render conversation page. Internal-only comments are
+    # excluded outright for the requester (not just visually hidden) —
+    # visibility='INTERNAL' means staff-only by definition, and the
+    # template's role-based styling alone isn't an access control: without
+    # this filter, an internal note still reaches the requester's browser
+    # in the page source, just unstyled, as a plain comment bubble.
     comments = ticket.comments.all().order_by('created_at')
+    if not is_agent:
+        comments = comments.exclude(visibility='INTERNAL')
     initial_attachments = ticket.attachments.filter(comment__isnull=True)
     user_attachments = ticket.attachments.filter(uploaded_by__role='END_USER')
     agent_attachments = ticket.attachments.filter(
         uploaded_by__role__in=['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
     )
     form = CommentForm()
-    is_agent = effective_role_name(request.user) in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
 
     return render(request, 'agent/ticket_conversation.html', {
         'ticket': ticket,
@@ -834,6 +849,36 @@ def ticket_detail(request, pk):
         'sidebar_template': get_sidebar_template(request.user),
         'is_agent': is_agent,
         'can_fulfill_ticket': can_manage_fulfillment(request.user),
+    })
+
+
+@login_required
+def ticket_conversation_poll(request, pk):
+    """Lightweight GET endpoint the conversation thread polls on an interval
+    (see the hx-trigger on #commentTimeline in agent/ticket_conversation.html)
+    so an active back-and-forth shows the other person's replies without a
+    manual refresh — same idea as the WebSocket notification bell already
+    uses elsewhere, but reusing HTMX/polling here instead of a new consumer:
+    a poll can only ever re-render exactly what ticket_detail's own
+    visibility-filtered queryset already allows this viewer to see, so it
+    can't reopen the internal-note leak that was just closed by filtering
+    at the query level — a naive WebSocket broadcast would have needed that
+    same per-recipient filtering re-implemented in a second place.
+    Returns just the timeline partial, same shape as the POST-comment
+    response, so this is a drop-in swap target."""
+    ticket = get_object_or_404(Ticket, pk=pk)
+    is_agent = effective_role_name(request.user) in ['AGENT', 'TEAM_LEAD', 'ADMIN', 'SUPERADMIN']
+    if request.user != ticket.requester and not is_agent:
+        return HttpResponse(status=403)
+
+    comments = ticket.comments.prefetch_related('attachment_set').all().order_by('created_at')
+    if not is_agent:
+        comments = comments.exclude(visibility='INTERNAL')
+    initial_attachments = ticket.attachments.filter(comment__isnull=True)
+    return render(request, 'partials/conversation_timeline.html', {
+        'ticket': ticket,
+        'comments': comments,
+        'initial_attachments': initial_attachments,
     })
 
 # ==========================================================================
@@ -1152,10 +1197,39 @@ def add_comment_conversation(request, pk):
     old_status = ticket.status
     if comment.visibility == 'PUBLIC':
         if old_status in [Ticket.Status.ASSIGNED, Ticket.Status.IN_PROGRESS,
-                          Ticket.Status.PENDING_USER, Ticket.Status.NEW, Ticket.Status.TRIAGED]:
-            ticket.status = Ticket.Status.IN_PROGRESS
+                          Ticket.Status.NEW, Ticket.Status.TRIAGED]:
+            # A staff public reply here means the ball is back in the
+            # requester's court — same as every other "waiting on someone
+            # outside the agent's control" case. PENDING_USER is already one
+            # of the Resolution SLA pause states (Ticket.RESOLUTION_PAUSE_STATUSES),
+            # so this also means time spent genuinely waiting on a reply no
+            # longer counts against the team, closing the gap where an
+            # agent could ask a question and wait days with the clock still
+            # running.
+            ticket.status = Ticket.Status.PENDING_USER
             ticket.save()
-            if old_status != ticket.status:
+            TicketActivityLog.objects.create(
+                ticket=ticket, action='agent_reply_awaiting_response', actor=request.user,
+                details={'from': old_status, 'to': ticket.status}
+            )
+        elif old_status == Ticket.Status.PENDING_USER:
+            # Already awaiting the requester. If that's for one of the three
+            # dedicated confirm/edit flows (propose-resolution, asset-
+            # fulfillment receipt, a requested revision), leave it alone — a
+            # stray staff reply shouldn't quietly abandon a state the
+            # requester is meant to act on via its own dedicated card/button,
+            # same as before this change. If it's PENDING_USER only because
+            # of *this same* mechanism (a previous staff reply already
+            # awaiting a response), a further staff reply is a no-op —
+            # still awaiting the requester, nothing to reset.
+            awaiting_asset_receipt = ticket.is_asset_request and ticket.fulfilled_at and not ticket.resolution_confirmed_at
+            last_pending_reason = ticket.activities.filter(
+                action__in=['resolution_requested', 'manager_requested_changes', 'agent_reply_awaiting_response'],
+            ).first()  # TicketActivityLog.Meta.ordering = ['-created_at']
+            still_awaiting_a_response = last_pending_reason and last_pending_reason.action == 'agent_reply_awaiting_response'
+            if not awaiting_asset_receipt and not still_awaiting_a_response:
+                ticket.status = Ticket.Status.IN_PROGRESS
+                ticket.save()
                 TicketActivityLog.objects.create(
                     ticket=ticket, action='status_changed', actor=request.user,
                     details={'from': old_status, 'to': ticket.status}
@@ -1188,7 +1262,23 @@ def resolve_ticket(request, pk):
             return HttpResponse('<div class="p-4 text-center"><p class="text-text-secondary">This ticket is already resolved.</p></div>')
         messages.warning(request, 'Ticket is already resolved or closed.')
         return redirect('tickets:conversation', pk=ticket.pk)
-    
+
+    # A resolution-confirmation card is already awaiting the requester —
+    # the Resolve button is hidden client-side for this case
+    # (awaiting_resolution_confirmation template tag), but a second request
+    # here would silently create another 'resolution_requested' system
+    # comment that only shows as a stray plain-text bubble (only the latest
+    # one renders as the actionable card), so reject it server-side too.
+    if ticket.status == Ticket.Status.PENDING_USER:
+        last_pending_reason = ticket.activities.filter(
+            action__in=['resolution_requested', 'manager_requested_changes', 'agent_reply_awaiting_response'],
+        ).order_by('-created_at').first()
+        if last_pending_reason and last_pending_reason.action == 'resolution_requested':
+            if request.headers.get('HX-Request'):
+                return HttpResponse('<div class="p-4 text-center"><p class="text-text-secondary">A resolution confirmation is already awaiting the requester\'s response.</p></div>')
+            messages.warning(request, 'A resolution confirmation is already awaiting the requester\'s response.')
+            return redirect('tickets:conversation', pk=ticket.pk)
+
     is_incident = ticket.type == Ticket.Type.INCIDENT
 
     # GET request - return the modal (HTMX)
@@ -1217,7 +1307,9 @@ def resolve_ticket(request, pk):
                 )
                 TicketComment.objects.create(
                     ticket=ticket, author=request.user, visibility='PUBLIC',
-                    body=f"Resolved.{' ' + escape(comment) if comment else ''}"
+                    body=f"Resolved.{' ' + escape(comment) if comment else ''}",
+                    is_system_generated=True,
+                    system_icon='check-circle',
                 )
                 if request.headers.get('HX-Request'):
                     return HttpResponse(status=204, headers={'HX-Redirect': reverse('tickets:conversation', kwargs={'pk': ticket.pk})})
@@ -2133,7 +2225,7 @@ def reports_dashboard(request):
     ticket_filter = ticket_filter & date_range_filter
     
     # ========== SLA COMPLIANCE ==========
-    slas = SLA.objects.all().order_by('priority')
+    slas = SLA.objects.select_related('calendar').order_by('priority')
     sla_data = []
 
     for sla in slas:
@@ -2143,9 +2235,9 @@ def reports_dashboard(request):
             status__in=['RESOLVED', 'CLOSED'],
             resolved_at__isnull=False
         )
-        
+
         total = resolved_tickets.count()
-        
+
         if total == 0:
             compliance = 100
             compliant_count = 0
@@ -2153,16 +2245,26 @@ def reports_dashboard(request):
         else:
             compliant_count = 0
             breached_count = 0
-            
+
             for ticket in resolved_tickets:
                 if ticket.resolved_at and ticket.created_at:
-                    actual_minutes = (ticket.resolved_at - ticket.created_at).total_seconds() / 60
-                    
+                    # Same business-calendar-aware, pause-credited math as
+                    # Ticket.sla_status() (which drives the badge/detail
+                    # page) -- a raw (resolved_at - created_at) wall-clock
+                    # delta here would count weekends/holidays and time
+                    # genuinely spent waiting on the requester/vendor/an
+                    # approval stage against the agent, making this chart
+                    # disagree with what every other SLA display in the app
+                    # says about the exact same ticket.
+                    raw_elapsed = business_minutes_elapsed(ticket.created_at, ticket.resolved_at, sla.calendar)
+                    paused_minutes = ticket.resolution_paused_minutes or 0
+                    actual_minutes = max(0, raw_elapsed - paused_minutes)
+
                     if actual_minutes <= sla.resolution_minutes:
                         compliant_count += 1
                     else:
                         breached_count += 1
-            
+
             compliance = round((compliant_count / total) * 100, 1)
         
         sla_data.append({
@@ -5945,16 +6047,37 @@ def procurement_reorder_create(request, asset_pk):
 
 @login_required
 def procurement_list(request):
-    """All vendor procurement requests, filterable by status."""
+    """All vendor procurement requests, filterable by status and by when
+    they were requested. Unlike the Reports date filter, this has no
+    default range — an empty start/end means "no date filter" so an old
+    still-open request never silently drops out of view just because
+    nobody touched the filter."""
     if not can_manage_fulfillment(request.user):
         return HttpResponse(status=403)
 
     status_filter = request.GET.get('status', '').strip()
+    start_date_str = request.GET.get('start_date', '').strip()
+    end_date_str = request.GET.get('end_date', '').strip()
+    start_date = end_date = None
+    if start_date_str and end_date_str:
+        # `datetime` at module scope here is the datetime *module*, not the
+        # class — from .models import * (above) re-clobbers the class import
+        # at the top of this file, same quirk worked around locally in
+        # reports() and elsewhere in this same file.
+        from datetime import datetime
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = end_date = None
+
     requests_qs = AssetProcurementRequest.objects.select_related(
         'category', 'vendor', 'ticket', 'mobilization', 'requested_by'
     ).order_by('-requested_at')
     if status_filter:
         requests_qs = requests_qs.filter(status=status_filter)
+    if start_date and end_date:
+        requests_qs = requests_qs.filter(requested_at__date__gte=start_date, requested_at__date__lte=end_date)
 
     paginator = Paginator(requests_qs, 25)
     page_obj = paginator.get_page(request.GET.get('page', 1))
@@ -5963,6 +6086,8 @@ def procurement_list(request):
         'procurement_requests': page_obj,
         'status_choices': AssetProcurementRequest.Status.choices,
         'current_status': status_filter,
+        'start_date': start_date,
+        'end_date': end_date,
         'sidebar_template': get_sidebar_template(request.user),
     })
 
@@ -6768,6 +6893,7 @@ def mobilization_detail(request, pk):
         'items': mobilization.items.select_related('asset', 'demobilized_by').all(),
         'date_extensions': mobilization.date_extensions.all(),
         'sidebar_template': get_sidebar_template(request.user),
+        'can_manage_fulfillment': can_manage_fulfillment(request.user),
     })
 
 

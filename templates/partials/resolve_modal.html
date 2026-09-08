@@ -19,7 +19,8 @@
           hx-post="{% url 'tickets:resolve_ticket' ticket.pk %}"
           hx-target="#resolveModalContainer"
           hx-swap="innerHTML"
-          data-guard-submit>
+          data-guard-submit
+          hx-on::after-request="if(event.detail.xhr.status === 204) closeResolveModal();">
         {% csrf_token %}
         <input type="hidden" name="action" value="confirm">
 

@@ -90,7 +90,7 @@
                 <span class="text-text-primary">{{ pr.item_name }} x{{ pr.quantity }}{% if pr.vendor %} — {{ pr.vendor.name }}{% endif %}
                     {% if pr.expected_arrival_date %}<span class="text-text-secondary text-xs">(expected {{ pr.expected_arrival_date|date:"M j" }})</span>{% endif %}
                 </span>
-                {% if active_role_name in 'ADMIN,SUPERADMIN' %}
+                {% if can_manage_fulfillment %}
                 <button onclick="openReceiveModal({{ pr.pk }})" class="btn-primary text-xs px-3 py-1.5 rounded">Receive</button>
                 {% endif %}
             </li>

@@ -247,10 +247,12 @@
                         </p>
                         {% if comment.remote_session %}
                         {% with session=comment.remote_session %}
-                        {# Deep-links straight to this session's own page — where the
-                           accept/reject/code-entry UI actually lives — so the party
-                           with a pending action reaches it directly from the thread
-                           instead of having to go find the right notification. #}
+                        {% comment %}
+                        Deep-links straight to this session's own page — where the
+                        accept/reject/code-entry UI actually lives — so the party
+                        with a pending action reaches it directly from the thread
+                        instead of having to go find the right notification.
+                        {% endcomment %}
                         {% if session.status == 'REQUESTED' and user == session.requester %}
                         <a href="{% url 'tickets:remote_session_detail' session.pk %}"
                            class="btn-primary text-xs px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5 mt-2">

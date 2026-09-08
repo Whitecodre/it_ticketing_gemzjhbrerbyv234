@@ -3,9 +3,46 @@ from django.shortcuts import redirect
 from django.contrib import messages
 from django.urls import reverse
 from datetime import datetime, timedelta
+from urllib.parse import unquote
+from zoneinfo import available_timezones
 from django.utils import timezone
 
 # apps/common/middleware.py
+
+_VALID_TIMEZONES = available_timezones()
+
+
+class TimezoneMiddleware(MiddlewareMixin):
+    """Activates the viewer's actual local timezone for the duration of the
+    request, so every server-rendered `|date`/`|time` filter (impersonation
+    log, ticket timestamps, audit log, etc.) matches the browser's wall
+    clock instead of always showing TIME_ZONE ('UTC', see settings/base.py) —
+    USE_TZ=True only stores in UTC, it does nothing to localize display on
+    its own, and nothing else in this project ever calls timezone.activate().
+
+    Reads a 'tz' cookie holding an IANA name (e.g. 'Africa/Lagos'), set by
+    the inline script in base_registration.html via
+    Intl.DateTimeFormat().resolvedOptions().timeZone — no server-side
+    geolocation, no per-user setting to maintain. Falls back to the
+    project's TIME_ZONE (deactivate()) when the cookie is missing or not a
+    real IANA name, so a first-ever request (before the cookie exists) or a
+    tampered value never raises — it just renders in UTC same as before."""
+
+    def process_request(self, request):
+        # Django's cookie parsing leaves values percent-encoded as-is (it
+        # does not unquote them) — the browser script sets this cookie via
+        # encodeURIComponent (so 'Africa/Lagos' arrives here as
+        # 'Africa%2FLagos'), so it must be decoded before the lookup below
+        # or it will never match a real zone name and silently no-op.
+        tz_name = request.COOKIES.get('tz')
+        if tz_name:
+            tz_name = unquote(tz_name)
+        if tz_name and tz_name in _VALID_TIMEZONES:
+            timezone.activate(tz_name)
+        else:
+            timezone.deactivate()
+        return None
+
 
 class CloudflareRealIPMiddleware(MiddlewareMixin):
     """Rewrites REMOTE_ADDR to the real client IP from Cloudflare's

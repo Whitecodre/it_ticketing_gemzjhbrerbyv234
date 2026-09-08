@@ -86,6 +86,47 @@
         --shadow-lg: 0 24px 56px -16px rgba(0, 0, 0, .7);
   }
 
+    /* ---------- TAILWIND TYPOGRAPHY (.prose) THEME MAPPING ----------
+       KB article content (article_detail.html) renders through the
+       @tailwindcss/typography `.prose` class, which ships its own fixed
+       light-mode color palette via --tw-prose-* custom properties (near-
+       black headings/bold text, dark gray body) — this app's dark mode is
+       hand-rolled via a `.dark` class on :root (not Tailwind's `dark:`
+       variant system, which isn't even configured — darkMode defaults to
+       'media' in tailwind.config.js), so `.prose` never picked up dark
+       mode at all. Headings and bold text rendered dark-on-dark and were
+       essentially unreadable. Mapping every --tw-prose-* variable to this
+       theme's own --color-* variables fixes both themes in one place and
+       automatically tracks the same toggle everything else on the page
+       uses, since --color-* itself is what flips under :root.dark above. */
+    .prose {
+        --tw-prose-body: var(--color-text-primary);
+        --tw-prose-headings: var(--color-text-primary);
+        --tw-prose-lead: var(--color-text-secondary);
+        --tw-prose-links: var(--color-primary);
+        --tw-prose-bold: var(--color-text-primary);
+        --tw-prose-counters: var(--color-text-secondary);
+        --tw-prose-bullets: var(--color-text-secondary);
+        --tw-prose-hr: var(--color-border);
+        --tw-prose-quotes: var(--color-text-primary);
+        --tw-prose-quote-borders: var(--color-border);
+        --tw-prose-captions: var(--color-text-secondary);
+        --tw-prose-code: var(--color-text-primary);
+        --tw-prose-pre-code: var(--color-text-primary);
+        --tw-prose-pre-bg: var(--color-surface);
+        --tw-prose-th-borders: var(--color-border);
+        --tw-prose-td-borders: var(--color-border);
+    }
+    .prose :where(code):not(:where([class~="not-prose"] *)) {
+        background-color: var(--color-surface-2, var(--color-background));
+        padding: 0.15em 0.4em;
+        border-radius: 4px;
+    }
+    .prose :where(pre):not(:where([class~="not-prose"] *)) {
+        background-color: var(--color-background);
+        border: 1px solid var(--color-border);
+    }
+
     /* ---------- CUSTOM SCROLLBAR ----------
        Applied globally so every scrollable area (page body, message
        timeline, dropdowns, modals, tables) gets the same themed scrollbar

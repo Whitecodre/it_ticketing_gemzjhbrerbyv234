@@ -286,6 +286,23 @@
             </div>
         </div>
 
+        {% comment %}
+        Shared attachment-preview modal (partials/attachment_card.html's
+        preview button always targets these two IDs). Previously only
+        defined per-page on ~9 templates, so anywhere else the attachment
+        card renders — including inside the slideover panel above, which
+        can be opened from any dashboard page via the queue table's row
+        actions — the preview button silently found no #modalContainer to
+        swap into and did nothing. One global copy here covers every page;
+        the old per-page copies were removed to avoid duplicate-ID clashes.
+        {% endcomment %}
+        <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
+             onclick="if(event.target===this) closeAttachmentModal()">
+            <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
+                {# Content loaded via HTMX #}
+            </div>
+        </div>
+
         {% if messages %}
         <div id="django-messages-data" style="display:none;"
              data-messages='[

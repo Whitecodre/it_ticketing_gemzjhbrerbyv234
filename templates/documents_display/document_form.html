@@ -116,9 +116,21 @@
                             <thead>
                                 <tr class="border-b text-left text-text-secondary border-border">
                                     <th class="px-3 py-2 font-medium">Department</th>
-                                    <th class="px-3 py-2 font-medium">Access</th>
-                                    <th class="px-3 py-2 font-medium">Edit</th>
-                                    <th class="px-3 py-2 font-medium">Download</th>
+                                    <th class="px-3 py-2 font-medium">
+                                        <label class="inline-flex items-center gap-1.5 cursor-pointer" title="Select Access for every department">
+                                            <input type="checkbox" data-select-all-col="0"> Access
+                                        </label>
+                                    </th>
+                                    <th class="px-3 py-2 font-medium">
+                                        <label class="inline-flex items-center gap-1.5 cursor-pointer" title="Select Edit for every department">
+                                            <input type="checkbox" data-select-all-col="1"> Edit
+                                        </label>
+                                    </th>
+                                    <th class="px-3 py-2 font-medium">
+                                        <label class="inline-flex items-center gap-1.5 cursor-pointer" title="Select Download for every department">
+                                            <input type="checkbox" data-select-all-col="2"> Download
+                                        </label>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -201,17 +213,49 @@
         toggleGroups();
 
         // Cosmetic nicety: checking Edit or Download auto-checks Access for that row.
-        document.querySelectorAll('#departmentAccessGroup tbody tr').forEach(function(row) {
+        const rowCheckboxes = Array.from(document.querySelectorAll('#departmentAccessGroup tbody tr')).map(function(row) {
             const checkboxes = row.querySelectorAll('input[type="checkbox"]');
-            const accessBox = checkboxes[0];
-            const editBox = checkboxes[1];
-            const downloadBox = checkboxes[2];
-            [editBox, downloadBox].forEach(function(box) {
+            return { access: checkboxes[0], edit: checkboxes[1], download: checkboxes[2] };
+        });
+        rowCheckboxes.forEach(function(row) {
+            [row.edit, row.download].forEach(function(box) {
                 box.addEventListener('change', function() {
-                    if (box.checked) accessBox.checked = true;
+                    if (box.checked) row.access.checked = true;
+                    updateSelectAllState();
                 });
             });
+            row.access.addEventListener('change', updateSelectAllState);
         });
+
+        // "Select all" checkbox in each column header — ticking it applies
+        // that column's state to every department row at once, so granting
+        // (or revoking) Access/Edit/Download org-wide doesn't mean clicking
+        // every row one by one. Unticking a row afterward un-ticks the
+        // header automatically (updateSelectAllState), same convention as
+        // the asset table's bulk-select checkbox.
+        const colKeys = ['access', 'edit', 'download'];
+        const selectAllBoxes = document.querySelectorAll('[data-select-all-col]');
+        selectAllBoxes.forEach(function(headerBox) {
+            const col = colKeys[parseInt(headerBox.dataset.selectAllCol, 10)];
+            headerBox.addEventListener('change', function() {
+                rowCheckboxes.forEach(function(row) {
+                    row[col].checked = headerBox.checked;
+                    if (headerBox.checked && col !== 'access') row.access.checked = true;
+                });
+                updateSelectAllState();
+            });
+        });
+
+        function updateSelectAllState() {
+            colKeys.forEach(function(col, idx) {
+                const headerBox = document.querySelector('[data-select-all-col="' + idx + '"]');
+                if (!headerBox) return;
+                const checkedCount = rowCheckboxes.filter(function(row) { return row[col].checked; }).length;
+                headerBox.checked = checkedCount === rowCheckboxes.length && rowCheckboxes.length > 0;
+                headerBox.indeterminate = checkedCount > 0 && checkedCount < rowCheckboxes.length;
+            });
+        }
+        updateSelectAllState();
     });
 </script>
 {% endblock %}

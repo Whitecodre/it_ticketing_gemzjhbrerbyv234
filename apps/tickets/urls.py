@@ -25,6 +25,7 @@ urlpatterns = [
     path('<int:pk>/slideover/', views.agent_ticket_detail, name='slideover'),
     path('<int:pk>/conversation/', views.agent_ticket_conversation, name='conversation'),
     path('<int:pk>/comment-conversation/', views.add_comment_conversation, name='add_comment_conversation'),
+    path('<int:pk>/conversation-poll/', views.ticket_conversation_poll, name='conversation_poll'),
     path('<int:pk>/details-panel/', views.ticket_details_panel, name='details_panel'),
     path('<int:pk>/edit-subject/', views.edit_subject, name='edit_subject'),
     path('<int:pk>/assign-popover/', views.assign_popover, name='assign_popover'),
@@ -143,8 +144,6 @@ urlpatterns = [
 
     # SYSTEM SETTINGS
     path('settings/', views_settings.system_settings, name='system_settings'),
-    path('settings/branding/', views_settings.system_settings_branding, name='system_settings_branding'),
-    path('settings/branding/save/', views_settings.branding_update, name='branding_update'),
     path('settings/pending-count/', views.pending_settings_approvals_count, name='pending_settings_approvals_count'),
     path('settings/<slug:resource>/create/', views_settings.settings_resource_create, name='settings_resource_create'),
     path('settings/<slug:resource>/<int:pk>/update/', views_settings.settings_resource_update, name='settings_resource_update'),

@@ -6,6 +6,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% comment %}
+    Keeps the 'tz' cookie (read by TimezoneMiddleware, see apps/common/middleware.py)
+    in sync with the browser's actual IANA timezone, so every server-rendered
+    timestamp on the page — impersonation log, ticket dates, audit log —
+    matches the viewer's wall clock instead of the server's fixed UTC. Runs
+    before anything else renders: on a mismatch (new browser, first visit,
+    traveled to a new timezone) it reloads once so this very page comes back
+    correctly localized rather than waiting for the next navigation. The
+    sessionStorage guard stops a reload loop if cookies are blocked.
+    {% endcomment %}
+    <script>
+        (function() {
+            try {
+                var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                var match = document.cookie.match(/(?:^|; )tz=([^;]*)/);
+                var current = match ? decodeURIComponent(match[1]) : null;
+                if (tz && tz !== current) {
+                    document.cookie = 'tz=' + encodeURIComponent(tz) + ';path=/;max-age=31536000;SameSite=Lax';
+                    if (!sessionStorage.getItem('tzReloaded')) {
+                        sessionStorage.setItem('tzReloaded', '1');
+                        location.reload();
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
     <title>{% block title %}IT Ticketing{% endblock %}</title>
     {# FAVICON #}
     <link rel="shortcut icon" href="{% static 'img/favicon.ico' %}" />

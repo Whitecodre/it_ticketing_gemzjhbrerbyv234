@@ -285,9 +285,11 @@ heading aligned with the card instead of sitting flush against the sidebar.
             </div>
             {% endif %}
 
-            {% comment %} {# Owner Confirmation Card — per target asset, compact rows in a
-               capped-height scroll area so this doesn't push the rest of the
-               page down when a schedule has many target assets. #} {% endcomment %}
+            {% comment %}
+            Owner Confirmation Card — per target asset, compact rows in a
+            capped-height scroll area so this doesn't push the rest of the
+            page down when a schedule has many target assets.
+            {% endcomment %}
             {% if asset_confirmations %}
             <div class="rounded-lg border p-4" style="background-color: var(--color-surface); border-color: var(--color-border);">
                 <div class="flex items-center justify-between mb-3">

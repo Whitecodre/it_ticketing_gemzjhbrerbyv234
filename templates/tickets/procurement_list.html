@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block dashboard_title %}Procurement{% endblock %}
 {% block page_title_area %}{% endblock %}
@@ -31,14 +32,21 @@
         hx-swap="outerHTML"
         hx-trigger="change">
 
-        <select name="status" class="text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
+        <select name="status" class="w-40 text-sm rounded-lg border py-2 px-3 focus:outline-none focus:ring-2 bg-background border-border text-text-primary ring-primary">
             <option value="">All Status</option>
             {% for value, label in status_choices %}
             <option value="{{ value }}" {% if current_status == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
         </select>
 
-        <button type="reset" class="btn-ghost text-sm">Reset</button>
+        <input type="hidden" name="start_date" id="procurementStartDate" value="{{ start_date|date:'Y-m-d'|default:'' }}">
+        <input type="hidden" name="end_date" id="procurementEndDate" value="{{ end_date|date:'Y-m-d'|default:'' }}">
+        {% with drf_presets="7:Last 7 days,30:Last 30 days,90:Last 90 days" %}
+        {% matching_preset_days start_date|date:"Y-m-d" end_date|date:"Y-m-d" drf_presets as procurement_active_preset %}
+        {% include "components/date_range_filter.html" with filter_id="procurement" presets=drf_presets start=start_date|date:"Y-m-d" end=end_date|date:"Y-m-d" apply_mode="htmx" start_input_id="procurementStartDate" end_input_id="procurementEndDate" active_preset_days=procurement_active_preset %}
+        {% endwith %}
+
+        <button type="reset" class="btn-ghost text-sm">Reset Status</button>
     </form>
 
     <div id="procurementTableContainer" class="dashboard-card p-0 overflow-hidden shadow-sm">
@@ -48,11 +56,11 @@
                 <thead>
                     <tr class="border-b border-border">
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Item</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Qty</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Vendor</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">For</th>
-                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Expected</th>
                         <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Status</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Qty</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Requested For</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Vendor</th>
+                        <th class="text-left py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Expected</th>
                         <th class="text-right py-3 px-4 font-semibold text-text-secondary uppercase tracking-wider text-xs">Actions</th>
                     </tr>
                 </thead>
@@ -60,14 +68,6 @@
                     {% for pr in procurement_requests %}
                     <tr class="border-b hover:bg-black/5 transition-colors border-border">
                         <td class="py-3 px-4 text-text-primary">{{ pr.item_name }}</td>
-                        <td class="py-3 px-4 text-text-secondary">{{ pr.quantity }}</td>
-                        <td class="py-3 px-4 text-text-secondary">{{ pr.vendor.name|default:"—" }}</td>
-                        <td class="py-3 px-4 text-text-secondary">
-                            {% if pr.ticket %}<a href="{% url 'tickets:conversation' pr.ticket.pk %}" class="text-primary underline">{{ pr.ticket.number }}</a>
-                            {% elif pr.mobilization %}<a href="{% url 'tickets:mobilization_detail' pr.mobilization.pk %}" class="text-primary underline">{{ pr.mobilization.destination_display }}</a>
-                            {% else %}—{% endif %}
-                        </td>
-                        <td class="py-3 px-4 text-text-secondary">{{ pr.expected_arrival_date|date:"M j, Y"|default:"—" }}</td>
                         <td class="py-3 px-4">
                             <span class="status-chip text-xs
                                 {% if pr.status == 'REQUESTED' %}pending
@@ -75,25 +75,48 @@
                                 {% elif pr.status == 'RECEIVED' %}success
                                 {% else %}error{% endif %}">{{ pr.get_status_display }}</span>
                         </td>
-                        <td class="py-3 px-4 text-right whitespace-nowrap">
-                            <a href="{% url 'tickets:procurement_export_pdf' pr.pk %}" class="btn-ghost text-xs px-2 py-1.5 rounded inline-flex items-center gap-1" data-tooltip="Download Form">
-                                {% lucide "download" size=14 %}
-                            </a>
-                            {% if pr.status == 'REQUESTED' %}
-                            <form method="post" action="{% url 'tickets:procurement_mark_ordered' pr.pk %}" class="inline" id="markOrderedForm{{ pr.pk }}">
-                                {% csrf_token %}
-                                <button type="button" class="btn-ghost text-xs px-2 py-1.5 rounded"
-                                        onclick="confirmStatusChange('ORDERED', '{{ pr.item_name|escapejs }}', function() { document.getElementById('markOrderedForm{{ pr.pk }}').submit(); })">Mark Ordered</button>
-                            </form>
-                            {% endif %}
-                            {% if pr.is_open %}
-                            <button type="button" class="btn-primary text-xs px-3 py-1.5 rounded" onclick="openReceiveModal({{ pr.pk }})">Receive</button>
-                            <form method="post" action="{% url 'tickets:procurement_cancel' pr.pk %}" class="inline" id="cancelProcurementForm{{ pr.pk }}">
-                                {% csrf_token %}
-                                <button type="button" class="btn-ghost text-xs px-2 py-1.5 rounded text-error"
-                                        onclick="confirmStatusChange('CANCELLED', '{{ pr.item_name|escapejs }}', function() { document.getElementById('cancelProcurementForm{{ pr.pk }}').submit(); })">Cancel</button>
-                            </form>
-                            {% endif %}
+                        <td class="py-3 px-4 text-text-secondary">{{ pr.quantity }}</td>
+                        <td class="py-3 px-4 text-text-secondary">
+                            {% if pr.ticket %}<a href="{% url 'tickets:conversation' pr.ticket.pk %}" class="text-primary underline">{{ pr.ticket.number }}</a>
+                            {% elif pr.mobilization %}<a href="{% url 'tickets:mobilization_detail' pr.mobilization.pk %}" class="text-primary underline">{{ pr.mobilization.destination_display }}</a>
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="py-3 px-4 text-text-secondary">{{ pr.vendor.name|default:"—" }}</td>
+                        <td class="py-3 px-4 text-text-secondary">{{ pr.expected_arrival_date|date:"M j, Y"|default:"—" }}</td>
+                        <td class="py-3 px-4 text-right">
+                            <button type="button" class="btn-ghost p-1.5 rounded inline-flex items-center" onclick="openRowActionsMenu(this)" aria-label="More actions for {{ pr.item_name|escapejs }}">
+                                {% lucide "more-vertical" size=16 %}
+                            </button>
+                            {% comment %} {# Not rendered in place — copied into the single shared floating menu on open, so a dropdown from a row near the bottom of the table isn't clipped by the card's own overflow:hidden. #} {% endcomment %}
+                            <template class="row-actions-template">
+                                {% if pr.is_open %}
+                                <button type="button" class="row-actions-item" onclick="closeRowActionsMenu(); openReceiveModal({{ pr.pk }});">
+                                    {% lucide "check-circle" size=14 %} Receive
+                                </button>
+                                {% if pr.status == 'REQUESTED' %}
+                                <form method="post" action="{% url 'tickets:procurement_mark_ordered' pr.pk %}" id="markOrderedForm{{ pr.pk }}">
+                                    {% csrf_token %}
+                                    <button type="button" class="row-actions-item"
+                                            onclick="closeRowActionsMenu(); confirmStatusChange('ORDERED', '{{ pr.item_name|escapejs }}', function() { document.getElementById('markOrderedForm{{ pr.pk }}').submit(); });">
+                                        {% lucide "truck" size=14 %} Mark Ordered
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% endif %}
+                                <a href="{% url 'tickets:procurement_export_pdf' pr.pk %}" class="row-actions-item">
+                                    {% lucide "download" size=14 %} Download Form
+                                </a>
+                                {% if pr.is_open %}
+                                <div class="row-actions-divider"></div>
+                                <form method="post" action="{% url 'tickets:procurement_cancel' pr.pk %}" id="cancelProcurementForm{{ pr.pk }}">
+                                    {% csrf_token %}
+                                    <button type="button" class="row-actions-item row-actions-item--danger"
+                                            onclick="closeRowActionsMenu(); confirmStatusChange('CANCELLED', '{{ pr.item_name|escapejs }}', function() { document.getElementById('cancelProcurementForm{{ pr.pk }}').submit(); });">
+                                        {% lucide "x-circle" size=14 %} Cancel Order
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </template>
                         </td>
                     </tr>
                     {% endfor %}
@@ -141,11 +164,83 @@
         <!-- Content loaded via HTMX -->
     </div>
 </div>
+
+{% comment "" %}
+ Single shared "More actions" dropdown, repositioned per-row on open — see
+   openRowActionsMenu() below. Rendered fixed-position at the body level so
+   it's never clipped by the table card's own overflow:hidden, however far
+   down the list a row sits.
+{% endcomment %}
+<div id="rowActionsMenu" class="hidden fixed z-50 w-48 rounded-lg border shadow-lg py-1"
+     style="background-color: var(--color-surface); border-color: var(--color-border);">
+</div>
 {% endblock %}
 
 {% block scripts %}
 {{ block.super }}
+<script src="{% static 'js/date_range_filter.js' %}"></script>
+<script defer src="{% static 'js/alpine.min.js' %}"></script>
+<style>
+    .row-actions-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8125rem;
+        color: var(--color-text-primary);
+    }
+    .row-actions-item:hover { background-color: color-mix(in oklch, var(--color-text-primary) 6%, transparent); }
+    .row-actions-item--danger { color: var(--color-error); }
+    .row-actions-divider { margin: 0.25rem 0; border-top: 1px solid var(--color-border); }
+</style>
 <script>
+    let rowActionsCleanup = null;
+
+    function openRowActionsMenu(btn) {
+        const menu = document.getElementById('rowActionsMenu');
+        const template = btn.closest('tr').querySelector('.row-actions-template');
+        if (!menu || !template) return;
+
+        // Toggle off if this same row's button is clicked again.
+        if (!menu.classList.contains('hidden') && menu.dataset.forBtn === btn.dataset.rowId) {
+            closeRowActionsMenu();
+            return;
+        }
+        if (!btn.dataset.rowId) btn.dataset.rowId = 'row-' + Math.random().toString(36).slice(2);
+        menu.dataset.forBtn = btn.dataset.rowId;
+
+        menu.innerHTML = '';
+        menu.appendChild(template.content.cloneNode(true));
+        menu.classList.remove('hidden');
+
+        // Shared helper (static/js/global.js) — same one the date-range
+        // filter's calendar popover uses — handles vertical flip,
+        // horizontal flip/clamp, and re-positions live on scroll/resize.
+        if (rowActionsCleanup) rowActionsCleanup();
+        rowActionsCleanup = window.positionDropdown(btn, menu, { align: 'right' });
+    }
+
+    function closeRowActionsMenu() {
+        const menu = document.getElementById('rowActionsMenu');
+        if (!menu) return;
+        menu.classList.add('hidden');
+        menu.removeAttribute('data-for-btn');
+        menu.innerHTML = '';
+        if (rowActionsCleanup) { rowActionsCleanup(); rowActionsCleanup = null; }
+    }
+
+    document.addEventListener('click', function(e) {
+        const menu = document.getElementById('rowActionsMenu');
+        if (!menu || menu.classList.contains('hidden')) return;
+        if (menu.contains(e.target) || e.target.closest('[onclick^="openRowActionsMenu"]')) return;
+        closeRowActionsMenu();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeRowActionsMenu();
+    });
+
     function openReceiveModal(pk) {
         const url = `/tickets/procurement/${pk}/receive-modal/`;
         const container = document.getElementById('modalContainer');

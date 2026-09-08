@@ -13,10 +13,12 @@
     <div>
         <div class="flex items-center justify-between mb-2">
             <label class="text-[0.65rem] font-semibold uppercase tracking-wider text-text-secondary">Assignee</label>
-            {# Team Lead/Admin/Superadmin only — reassigning a ticket away from
-               whoever holds it is a workload/oversight call, not something a
-               plain Agent should be able to do (they still claim an unclaimed
-               ticket via the row-action "Claim" button in the queue table). #}
+            {% comment %}
+            Team Lead/Admin/Superadmin only — reassigning a ticket away from
+            whoever holds it is a workload/oversight call, not something a
+            plain Agent should be able to do (they still claim an unclaimed
+            ticket via the row-action "Claim" button in the queue table).
+            {% endcomment %}
             {% if active_role_name in 'TEAM_LEAD,ADMIN,SUPERADMIN' %}
             <button type="button" class="text-[0.65rem] font-semibold text-primary hover:underline"
                     hx-get="{% url 'tickets:assign_popover' ticket.pk %}"
@@ -91,12 +93,14 @@
         {% endif %}
 
         {% if ticket.status == 'PENDING_USER' %}
-        {% comment %} {# This panel only renders for agent/admin roles (see the is_agent
-           guard around its include) — the requester never sees it, so this
-           is an informational note only. The actual Confirm Receipt action
-           lives in the conversation thread itself, visible to the requester
-           there — see conversation_timeline.html's is_receipt_confirmation_prompt
-           card. #} {% endcomment %}
+        {% comment %}
+        This panel only renders for agent/admin roles (see the is_agent
+        guard around its include) — the requester never sees it, so this
+        is an informational note only. The actual Confirm Receipt action
+        lives in the conversation thread itself, visible to the requester
+        there — see conversation_timeline.html's is_receipt_confirmation_prompt
+        card.
+        {% endcomment %}
         <p class="text-xs text-text-secondary mt-3 flex items-center gap-1.5">
             {% lucide "clock" size=13 class="text-info" %} Awaiting the requester's confirmation in the conversation thread.
         </p>

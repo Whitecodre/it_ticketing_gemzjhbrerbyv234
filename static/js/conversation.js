@@ -37,54 +37,93 @@ function toggleSubjectEdit() {
     }
 }
 
-// ================================================================
-// ATTACHMENT PREVIEW MODAL (open via inline onclick elsewhere; close here)
-// ================================================================
-// #modalContainer is shared by every "open a thing in the middle of the
-// screen" trigger on this page (attachment previews, the requester profile
-// card, etc). Most of those want the wide default box; a few (the profile
-// card) shrink it to fit their own content and must NOT leave that behind
-// for the next, unrelated modal — so every close restores this canonical
-// className rather than leaving whatever the last content set.
-const MODAL_CONTAINER_DEFAULT_CLASS = 'bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto';
-
-function closeAttachmentModal() {
-    const overlay = document.getElementById('modalOverlay');
-    if (overlay) overlay.classList.add('hidden');
-    const container = document.getElementById('modalContainer');
-    if (container) {
-        container.innerHTML = '';
-        container.className = MODAL_CONTAINER_DEFAULT_CLASS;
-    }
-    document.body.style.overflow = '';
-}
+// closeAttachmentModal() and MODAL_CONTAINER_DEFAULT_CLASS now live in
+// global.js (loaded on every page, not just this one) — this used to be a
+// page-scoped duplicate, which meant every OTHER page that can open the
+// ticket slideover (most of them) had no closeAttachmentModal() at all,
+// silently failing on both the modal's own X button and clicking its
+// backdrop. See global.js's comment for the full explanation.
 
 // ================================================================
-// SCROLL TIMELINE TO BOTTOM
+// SCROLL TIMELINE TO BOTTOM / LIVE-POLL SWAP HANDLING
 // ================================================================
+// #commentTimeline polls itself every few seconds (see the hx-trigger in
+// ticket_conversation.html) so an active back-and-forth shows the other
+// person's replies without a manual refresh, and it's also the swap target
+// when the compose form successfully posts. Both cases fire htmx:afterSwap
+// on this same element, but they need very different handling:
+//   - a poll swap must NEVER touch the composer — it previously did (this
+//     listener used to assume the only thing that could ever swap
+//     #commentTimeline was a successful send), which cleared out whatever
+//     you were mid-typing every ~4 seconds even though nothing was sent.
+//   - a send swap should reset the composer and always jump to the bottom.
+//   - either kind of swap replaces the timeline's innerHTML, which would
+//     otherwise reset scrollTop to 0 each time — stick to the bottom only
+//     if the viewer was already near it (or hasn't scrolled at all), leave
+//     their position alone if they've scrolled up to read history.
+const TIMELINE_NEAR_BOTTOM_PX = 120;
+let timelineStickToBottom = true;
+
 function scrollTimelineToBottom() {
     const el = document.getElementById('commentTimeline');
     if (el) el.scrollTop = el.scrollHeight;
 }
 
+function isTimelineNearBottom() {
+    const el = document.getElementById('commentTimeline');
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < TIMELINE_NEAR_BOTTOM_PX;
+}
+
 document.addEventListener('DOMContentLoaded', scrollTimelineToBottom);
+
+document.addEventListener('scroll', function(evt) {
+    if (evt.target && evt.target.id === 'commentTimeline') {
+        timelineStickToBottom = isTimelineNearBottom();
+    }
+}, true);
+
+// Set directly by #commentForm's own request lifecycle (htmx:beforeRequest
+// fires on the element whose hx-post is driving the request — the form
+// itself, unambiguously) rather than inferred from evt.detail.elt on the
+// afterSwap event, which turned out not to reliably identify the form here.
+let pendingSwapIsSend = false;
+const commentFormEl = document.getElementById('commentForm');
+if (commentFormEl) {
+    commentFormEl.addEventListener('htmx:beforeRequest', function() {
+        pendingSwapIsSend = true;
+    });
+}
 
 document.body.addEventListener('htmx:afterSwap', function(evt) {
     if (evt.detail.target && evt.detail.target.id === 'commentTimeline') {
-        scrollTimelineToBottom();
+        const wasSend = pendingSwapIsSend;
+        pendingSwapIsSend = false;
+
+        if (wasSend) {
+            timelineStickToBottom = true;
+        }
+        if (timelineStickToBottom) {
+            scrollTimelineToBottom();
+        }
+
         const newTimeline = document.getElementById('commentTimeline');
         const inner = newTimeline ? newTimeline.querySelector('#timelineInner') : null;
         if (inner) {
             const newStatus = inner.getAttribute('data-status');
             if (newStatus) updateStatusChip(newStatus);
         }
-        // The comment composer sits outside #commentTimeline, so nothing
-        // else clears it after a successful send — reset it here.
-        const editor = document.getElementById('commentEditor');
-        const hidden = document.getElementById('commentBodyHidden');
-        if (editor) editor.innerHTML = '';
-        if (hidden) hidden.value = '';
-        if (window.resetAttachmentComposer) window.resetAttachmentComposer();
+
+        if (wasSend) {
+            // The comment composer sits outside #commentTimeline, so nothing
+            // else clears it after a successful send — reset it here. Never
+            // do this on a poll swap — the viewer is very possibly mid-typing.
+            const editor = document.getElementById('commentEditor');
+            const hidden = document.getElementById('commentBodyHidden');
+            if (editor) editor.innerHTML = '';
+            if (hidden) hidden.value = '';
+            if (window.resetAttachmentComposer) window.resetAttachmentComposer();
+        }
     }
 });
 

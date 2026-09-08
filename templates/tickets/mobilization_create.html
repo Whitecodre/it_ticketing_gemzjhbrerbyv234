@@ -334,6 +334,54 @@ function renumberProcurementRows() {
     });
 }
 
+function rowIsEmpty(row) {
+    const itemName = row.querySelector('input[name="procurement_item_name"]');
+    const category = row.querySelector('select[name="procurement_category_id"]');
+    const quantity = row.querySelector('input[name="procurement_quantity"]');
+    return (!itemName || !itemName.value.trim())
+        && (!category || !category.value)
+        && (!quantity || quantity.value === '' || quantity.value === '1');
+}
+
+// Called from autopickAssets() when "Add by Quantity" can't find enough (or
+// any) stock for the requested category — rather than leaving the admin to
+// notice the shortfall message, reopen the Vendor panel themselves, and
+// retype the item/category/quantity they just entered above, this fills a
+// vendor-request row with exactly what's still needed so all that's left is
+// picking a vendor. Still fully editable — never submitted on its own.
+function prefillVendorRequestForShortfall(categoryId, categoryText, shortfallQuantity) {
+    const container = document.getElementById('procurementContainer');
+    if (!container) return;
+    let row = Array.from(container.querySelectorAll('.procurement-row')).find(rowIsEmpty);
+    if (!row) {
+        addProcurementRow();
+        row = container.querySelector('.procurement-row:last-child');
+    }
+    if (!row) return;
+
+    const itemNameInput = row.querySelector('input[name="procurement_item_name"]');
+    const categorySelect = row.querySelector('select[name="procurement_category_id"]');
+    const quantityInput = row.querySelector('input[name="procurement_quantity"]');
+    const vendorSelect = row.querySelector('select[name="procurement_vendor_id"]');
+
+    if (itemNameInput && !itemNameInput.value.trim()) itemNameInput.value = categoryText;
+    if (categorySelect) {
+        categorySelect.value = categoryId;
+        if (vendorSelect) filterVendorSelectByCategory(categorySelect, vendorSelect);
+    }
+    if (quantityInput) quantityInput.value = shortfallQuantity;
+
+    const panel = document.getElementById('vendorPanel');
+    const btn = document.getElementById('btnToggleVendor');
+    if (panel && panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        btn.classList.add('btn-primary');
+        btn.classList.remove('btn-outline');
+    }
+    row.classList.add('quick-add-highlighted');
+    row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 function addProcurementRow() {
     const container = document.getElementById('procurementContainer');
     const template = container.querySelector('.procurement-row');
@@ -544,19 +592,24 @@ function autopickAssets() {
         return;
     }
 
+    const categoryText = categorySelect.options[categorySelect.selectedIndex] ? categorySelect.options[categorySelect.selectedIndex].text : '';
+
     const url = `{% url 'tickets:mobilization_autopick_assets' %}?category_id=${encodeURIComponent(categoryId)}&quantity=${encodeURIComponent(quantity)}`;
     fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(response => response.json())
         .then(data => {
             const assets = (data.assets || []).filter(a => !autopickedAssetIds.has(a.id));
             if (assets.length === 0) {
-                messageEl.textContent = 'No available assets found in that category.';
+                messageEl.textContent = 'None in stock — pre-filled a vendor request below for all ' + quantity + '.';
                 messageEl.classList.remove('hidden');
+                prefillVendorRequestForShortfall(categoryId, categoryText, quantity);
                 return;
             }
             if (assets.length < quantity) {
-                messageEl.textContent = `Only ${assets.length} available — added what could be found.`;
+                const shortfall = quantity - assets.length;
+                messageEl.textContent = `Only ${assets.length} available — added what could be found, and pre-filled a vendor request below for the remaining ${shortfall}.`;
                 messageEl.classList.remove('hidden');
+                prefillVendorRequestForShortfall(categoryId, categoryText, shortfall);
             }
             const container = document.getElementById('autopickedAssetsContainer');
             assets.forEach(function(asset) {

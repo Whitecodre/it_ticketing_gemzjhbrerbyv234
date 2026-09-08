@@ -221,21 +221,12 @@
     </div>
 </div>
 
-<!-- Modal Overlay for Attachment Preview -->
-<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
-     onclick="if(event.target===this) closeAttachmentModal()">
-    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-        <!-- Content loaded via HTMX -->
-    </div>
-</div>
+{% comment %}Attachment preview modal is now defined once, globally, in base_dashboard.html.{% endcomment %}
 
 <script>
-    function closeAttachmentModal() {
-        const overlay = document.getElementById('modalOverlay');
-        if (overlay) overlay.classList.add('hidden');
-        const container = document.getElementById('modalContainer');
-        if (container) container.innerHTML = '';
-    }
+    // closeAttachmentModal() now lives in global.js (loaded on every page) —
+    // see that file's comment for why the page-scoped copy that used to be
+    // here was actually the bug, not a harmless duplicate.
 
     function submitAction(action) {
         confirmReviewDecision(action, function() {

@@ -1,6 +1,33 @@
 // global.js – Global utility functions (NO ALPINE.JS COMPONENTS)
 
 // ================================================================
+// SHARED ATTACHMENT-PREVIEW MODAL
+// ================================================================
+// #modalOverlay/#modalContainer are defined once, globally, in
+// base_dashboard.html (see that file's comment for why — they used to be
+// per-page and most pages that can open the ticket slideover didn't have
+// them at all). closeAttachmentModal() itself had the exact same bug one
+// level up: it was defined twice, once inside conversation.js ("loaded
+// only on the agent conversation page" per that file's own header) and
+// once inline in manager_review_ticket.html — so partials/attachment_card.html's
+// preview button, which calls this by name from every page in the app,
+// silently failed everywhere else: clicking the backdrop or the preview
+// modal's own X button called a function that simply didn't exist on that
+// page. Defined here once so every page actually has it.
+const MODAL_CONTAINER_DEFAULT_CLASS = 'bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto';
+
+function closeAttachmentModal() {
+    const overlay = document.getElementById('modalOverlay');
+    if (overlay) overlay.classList.add('hidden');
+    const container = document.getElementById('modalContainer');
+    if (container) {
+        container.innerHTML = '';
+        container.className = MODAL_CONTAINER_DEFAULT_CLASS;
+    }
+    document.body.style.overflow = '';
+}
+
+// ================================================================
 // SHARED DROPDOWN POSITIONING
 // ================================================================
 // Positions a dropdown panel with `position: fixed`, anchored to its
@@ -1021,26 +1048,38 @@ function markReceiptItem(itemPk, decision) {
     const reasonBox = document.getElementById('itemDisputeReason' + itemPk);
     const statusEl = document.getElementById('itemStatus' + itemPk);
 
+    // Small icon buttons (see receipt_confirm_modal.html) — selected state
+    // is a filled background + colored icon instead of the old big
+    // text-labeled pill buttons, so both "selected" and "neutral" need
+    // explicit class toggling here rather than relying on a button's own
+    // permanent color (btn-success/text-error) to carry the meaning.
+    function setBtnState(btn, selected, colorClass, bgClass) {
+        if (!btn) return;
+        btn.classList.toggle(colorClass, selected);
+        btn.classList.toggle(bgClass, selected);
+        btn.classList.toggle('text-text-secondary', !selected);
+    }
+
     const current = window.receiptDecisions[key];
     if (current && current.decision === decision) {
         // Clicked the same decision again — undo it.
         delete window.receiptDecisions[key];
-        if (acceptBtn) acceptBtn.classList.remove('ring-2', 'ring-success');
-        if (disputeBtn) disputeBtn.classList.remove('ring-2', 'ring-error');
+        setBtnState(acceptBtn, false, 'text-success', 'bg-success/10');
+        setBtnState(disputeBtn, false, 'text-error', 'bg-error/10');
         if (reasonBox) reasonBox.classList.add('hidden');
         if (statusEl) statusEl.classList.add('hidden');
     } else {
         window.receiptDecisions[key] = { decision: decision, reason: '' };
         if (decision === 'accept') {
-            if (acceptBtn) acceptBtn.classList.add('ring-2', 'ring-success');
-            if (disputeBtn) disputeBtn.classList.remove('ring-2', 'ring-error');
+            setBtnState(acceptBtn, true, 'text-success', 'bg-success/10');
+            setBtnState(disputeBtn, false, 'text-error', 'bg-error/10');
             if (reasonBox) reasonBox.classList.add('hidden');
-            if (statusEl) { statusEl.textContent = 'Marked as received'; statusEl.classList.remove('hidden', 'text-error'); statusEl.classList.add('text-success'); }
+            if (statusEl) { statusEl.textContent = 'Received'; statusEl.classList.remove('hidden', 'text-error'); statusEl.classList.add('text-success'); }
         } else {
-            if (disputeBtn) disputeBtn.classList.add('ring-2', 'ring-error');
-            if (acceptBtn) acceptBtn.classList.remove('ring-2', 'ring-success');
+            setBtnState(disputeBtn, true, 'text-error', 'bg-error/10');
+            setBtnState(acceptBtn, false, 'text-success', 'bg-success/10');
             if (reasonBox) reasonBox.classList.remove('hidden');
-            if (statusEl) { statusEl.textContent = 'Marked as not received'; statusEl.classList.remove('hidden', 'text-success'); statusEl.classList.add('text-error'); }
+            if (statusEl) { statusEl.textContent = 'Not received'; statusEl.classList.remove('hidden', 'text-success'); statusEl.classList.add('text-error'); }
         }
     }
     updateReceiptDoneButton();
@@ -1384,4 +1423,97 @@ function createFallbackToast(message, type = 'info', duration = 5000) {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 300);
     }, duration);
+}
+
+// ================================================================
+// NOTIFICATION WEBSOCKET (live toast)
+// ================================================================
+// Connects to apps.common.consumers.NotificationConsumer (ws/notifications/).
+// The server already scopes which events actually reach this socket to the
+// recipient's currently active role (apps/common/signals.py) — this handler
+// just has to render whatever arrives, no role filtering needed here.
+
+function notificationWsEscape(s) {
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+}
+
+function initNotificationWebSocket() {
+    const badgeContainer = document.getElementById('notificationBadgeContainer');
+    if (!badgeContainer || typeof WebSocket === 'undefined') return;
+
+    let retryDelay = 1000;
+    const maxRetryDelay = 30000;
+    let closedByUs = false;
+
+    function refreshBadgeAndDropdown() {
+        if (!window.htmx) return;
+        htmx.ajax('GET', '/notifications/unread-count/', {
+            target: '#notificationBadgeContainer',
+            swap: 'innerHTML'
+        });
+        const dropdown = document.getElementById('notificationDropdown');
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+            htmx.ajax('GET', '/notifications/list/', {
+                target: '#notificationDropdownContent',
+                swap: 'innerHTML'
+            });
+        }
+    }
+
+    function connect() {
+        const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+        const socket = new WebSocket(protocol + window.location.host + '/ws/notifications/');
+
+        socket.addEventListener('message', function(event) {
+            let data;
+            try {
+                data = JSON.parse(event.data);
+            } catch (e) {
+                return;
+            }
+            if (data.message) {
+                // Longer than the default info duration (5s) — this toast is
+                // clickable (navigates to the notification's URL) and needs
+                // enough time on screen to actually be read and clicked,
+                // unlike a fire-and-forget "Saved" style confirmation.
+                showToast(notificationWsEscape(data.message), 'info', 12000);
+                if (data.url && data.notification_id) {
+                    const container = document.getElementById('toastContainer');
+                    const lastToast = container && container.lastElementChild;
+                    if (lastToast) {
+                        lastToast.style.cursor = 'pointer';
+                        lastToast.addEventListener('click', function(clickEvent) {
+                            if (clickEvent.target.closest('.toast-dismiss')) return;
+                            markReadAndGo(data.url, data.notification_id);
+                        });
+                    }
+                }
+            }
+            refreshBadgeAndDropdown();
+        });
+
+        socket.addEventListener('close', function() {
+            if (closedByUs) return;
+            setTimeout(connect, retryDelay);
+            retryDelay = Math.min(retryDelay * 2, maxRetryDelay);
+        });
+
+        socket.addEventListener('open', function() {
+            retryDelay = 1000;
+        });
+    }
+
+    connect();
+
+    window.addEventListener('beforeunload', function() {
+        closedByUs = true;
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initNotificationWebSocket);
+} else {
+    initNotificationWebSocket();
 }

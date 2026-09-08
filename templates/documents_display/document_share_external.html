@@ -14,9 +14,11 @@ role-having user).
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 py-10">
-    {# An external recipient has no other context for whose system this is —
-       show the client's own branding when it's configured, rather than a
-       page with no identifying marks at all. #}
+    {% comment %}
+    An external recipient has no other context for whose system this is —
+    show the client's own branding when it's configured, rather than a
+    page with no identifying marks at all.
+    {% endcomment %}
     <div class="flex items-center gap-2.5 mb-4">
         {% if client_settings and client_settings.logo_url %}
         <img src="{{ client_settings.logo_url }}" alt="{{ client_settings.company_name|default:'Company logo' }}" class="h-7 w-auto object-contain">

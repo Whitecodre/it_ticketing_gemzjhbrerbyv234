@@ -1,6 +1,7 @@
 {% extends "base_dashboard.html" %}
 {% load static %}
 {% load lucide %}
+{% load badge_tags %}
 
 {% block main_content_class %}p-0 md:p-0{% endblock %}
 {% block dashboard_title %}Ticket {{ ticket.number }}{% endblock %}
@@ -22,9 +23,11 @@
         {# MAIN CONVERSATION COLUMN #}
         <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
 
-            {% comment %} {# Header — subject line, then one merged row for ticket meta +
+            {% comment %}
+            Header — subject line, then one merged row for ticket meta +
             (agents only) quick actions, so this whole block costs 2 compact
-            rows of height instead of 3 separate padded bars. #} {% endcomment %}
+            rows of height instead of 3 separate padded bars.
+            {% endcomment %}
             <div class="px-3 py-1.5 sm:px-4 sm:py-2 border-b flex flex-col gap-1 shrink-0 bg-surface border-border">
                 <div class="flex items-start sm:items-center justify-between gap-1.5">
                     <div class="flex-1 min-w-0">
@@ -66,8 +69,9 @@
 
                     {% if is_agent %}
                     <div class="flex flex-wrap items-center gap-1.5">
-                        {# Resolve button - only show if not already resolved/closed #}
-                        {% if ticket.status not in 'RESOLVED,CLOSED' %}
+                        {# Resolve button - only show if not already resolved/closed, and not already awaiting a resolution confirmation from the requester #}
+                        {% awaiting_resolution_confirmation ticket as awaiting_resolve_confirm %}
+                        {% if ticket.status not in 'RESOLVED,CLOSED' and not awaiting_resolve_confirm %}
                             {% if ticket.is_asset_request and ticket.resolution_confirmed_at %}
                             {# Requester already confirmed receipt — resolve directly, no modal round-trip. #}
                             <form method="post" action="{% url 'tickets:resolve_ticket' ticket.pk %}" style="display:inline">
@@ -121,8 +125,18 @@
                 </div>
             </div>
 
-            {# Message Timeline #}
-            <div class="flex-1 overflow-y-auto px-2 sm:px-4 pt-2 sm:pt-2.5 pb-2 space-y-2.5 bg-background" id="commentTimeline">
+            {% comment %}
+            Message Timeline — polls for new messages so an active back-and-
+            forth updates like a chat app, no manual refresh needed. Scroll
+            behavior (stick to bottom / preserve position while reading
+            history) and NOT clearing the composer on a poll swap (only on
+            an actual send) both live in static/js/conversation.js's
+            htmx:afterSwap listener — see the comment there.
+            {% endcomment %}
+            <div class="flex-1 overflow-y-auto px-2 sm:px-4 pt-2 sm:pt-2.5 pb-2 space-y-2.5 bg-background" id="commentTimeline"
+                 hx-get="{% url 'tickets:conversation_poll' ticket.pk %}"
+                 hx-trigger="every 4s"
+                 hx-swap="innerHTML">
                 {% include "partials/conversation_timeline.html" %}
             </div>
 
@@ -263,13 +277,7 @@
     </div>
 </div>
 
-<!-- Modal Overlay for Attachment Preview -->
-<div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 hidden"
-     onclick="if(event.target===this) closeAttachmentModal()">
-    <div id="modalContainer" class="bg-surface rounded-xl shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-        <!-- Content loaded via HTMX -->
-    </div>
-</div>
+{% comment %}Attachment preview modal is now defined once, globally, in base_dashboard.html.{% endcomment %}
 {% endblock %}
 
 {% block scripts %}

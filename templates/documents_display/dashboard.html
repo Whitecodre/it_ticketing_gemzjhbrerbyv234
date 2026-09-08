@@ -69,7 +69,7 @@
                     </span>
                     <div>
                         <h3 class="text-sm font-semibold text-text-primary">{{ category.name }}</h3>
-                        <p class="text-xs text-text-secondary">{{ category.documents.count }} documents</p>
+                        <p class="text-xs text-text-secondary">{{ category.doc_count }} documents</p>
                     </div>
                 </div>
                 <p class="text-xs text-text-secondary line-clamp-2">{{ category.description|default:"" }}</p>
@@ -99,7 +99,7 @@
                     <div class="flex-1 min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
                             <h3 class="text-sm font-semibold text-text-primary">{{ category.name }}</h3>
-                            <span class="text-xs text-text-secondary">({{ category.documents.count }} documents)</span>
+                            <span class="text-xs text-text-secondary">({{ category.doc_count }} documents)</span>
                         </div>
                         {% if category.description %}
                         <p class="text-xs text-text-secondary truncate">{{ category.description }}</p>

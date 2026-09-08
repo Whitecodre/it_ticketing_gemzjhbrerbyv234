@@ -41,6 +41,7 @@ urlpatterns = [
     # Folders
     path('folders/', views.folder_list, name='folder_list'),
     path('folder/<slug:slug>/', views.folder_detail, name='folder_detail'),
+    path('folder/<slug:slug>/edit/', views.folder_edit, name='folder_edit'),
     path('folder/<slug:slug>/add-documents/', views.folder_add_documents, name='folder_add_documents'),
     path('folder/<slug:slug>/remove-document/<int:document_id>/', views.folder_remove_document, name='folder_remove_document'),
     path('folder/<slug:slug>/delete/', views.folder_delete, name='folder_delete'),

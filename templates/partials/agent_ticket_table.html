@@ -529,12 +529,20 @@
             .then(function(response) { return response.json(); })
             .then(function(data) {
                 if (data.success) {
+                    // Claiming a single ticket almost always means "I'm about to
+                    // work this now" — previously this just faded the row out of
+                    // the queue and left the agent to go find it again in My
+                    // Tickets. Go straight into the conversation instead, same as
+                    // clicking the ticket itself would. (Bulk-claim, above, stays
+                    // on the queue on purpose — claiming several at once isn't
+                    // "open all of them.")
+                    if (activeData.conversationUrl) {
+                        window.location.href = activeData.conversationUrl;
+                        return;
+                    }
                     if (typeof showToast === 'function') {
                         showToast(data.message || 'Ticket claimed successfully!', 'success');
                     }
-                    // Update in place (fade + remove the row) instead of a full
-                    // page reload, matching doBulkClaimTickets above — so the
-                    // dropdown/table stay interactive right away.
                     var claimedRow = tableBody && activeData.ticketId
                         ? tableBody.querySelector('.ticket-row[data-ticket-id="' + activeData.ticketId + '"]')
                         : null;

@@ -62,6 +62,25 @@ def latest_pending_user_prompt_id(ticket):
     return comment.pk if comment else None
 
 
+@register.simple_tag
+def awaiting_resolution_confirmation(ticket):
+    """True while a resolution-confirmation card is genuinely still live —
+    ticket sitting in PENDING_USER because of resolve_ticket's 'confirm'
+    action specifically, not one of PENDING_USER's other reasons (agent
+    reply, manager-requested changes). Gates the Resolve button so an agent
+    can't fire a second resolution request while the first is still
+    awaiting the requester — each call creates its own system comment, but
+    only the latest renders as a card (see latest_resolution_confirmation_prompt_id),
+    so a duplicate previously showed up as a stray plain-text bubble instead
+    of just being blocked outright."""
+    if ticket.status != 'PENDING_USER':
+        return False
+    last_reason = ticket.activities.filter(
+        action__in=['resolution_requested', 'manager_requested_changes', 'agent_reply_awaiting_response'],
+    ).order_by('-created_at').first()
+    return bool(last_reason and last_reason.action == 'resolution_requested')
+
+
 @register.filter
 def sum_quantity(items):
     """Sum of `.quantity` across a MobilizationItem queryset/list — a

@@ -69,7 +69,15 @@ class Command(BaseCommand):
                 if days_remaining > threshold_days:
                     continue
 
-                if not already_notified_this_run and recipients:
+                # If the renewal is already overdue by the time this
+                # threshold is first evaluated (renewal date corrected/
+                # backdated after the fact, or the job was down past this
+                # threshold), don't send a falsely reassuring "renews in Xd"
+                # notice for a date that's already passed — just mark the
+                # threshold as passed and leave notifying to the dedicated
+                # overdue block below (still reachable, since it stays
+                # False here for that case).
+                if days_remaining >= 0 and not already_notified_this_run and recipients:
                     message = f'📅 "{asset.name}" renews in {label} ({asset.next_renewal_date}) — {cost_display}.'
                     for recipient in recipients:
                         Notification.objects.create(

@@ -19,21 +19,25 @@ document.addEventListener('keydown', function(e) {
         }
     }
 
-    // Enter in textarea (keep for compatibility, but we use contenteditable now)
-    if (e.key === 'Enter' && !e.shiftKey && !isCtrl) {
-        const textarea = document.getElementById('commentBody');
-        if (textarea && target === textarea) {
+    // Enter sends the comment (standard chat-app convention — WhatsApp,
+    // Slack, etc.); Shift+Enter inserts a newline instead (contenteditable's
+    // own default behavior, so that case needs no code here at all — just
+    // not intercepting it). Ctrl/Cmd+Enter also newlines, for anyone whose
+    // muscle memory expects that from other apps.
+    if (e.key === 'Enter' && !e.shiftKey && !isCtrl && !e.isComposing) {
+        const editor = document.getElementById('commentEditor');
+        if (editor && (target === editor || editor.contains(target))) {
             e.preventDefault();
+            if (editor.textContent.trim() === '') return; // nothing to send
             const form = document.getElementById('commentForm');
-            if (form) {
-                form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
-                return;
-            }
+            // The form already syncs #commentBodyHidden from the editor on
+            // its own 'submit' event (see conversation.js) — dispatching a
+            // real submit event here triggers that same listener, same as
+            // clicking the Send button would.
+            if (form) form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+            return;
         }
     }
-
-    // For contenteditable, Enter should create a new line (default behaviour) – we do nothing.
-    // But if you want Shift+Enter to submit, you could add that later.
 
     // Don't interfere with other inputs
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
