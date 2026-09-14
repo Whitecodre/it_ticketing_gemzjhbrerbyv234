@@ -12,6 +12,8 @@ env/
 
 # Test run output
 *.log
+*.tmp.*
+*_test_out.txt
 
 # Media & Static (collected)
 media/
